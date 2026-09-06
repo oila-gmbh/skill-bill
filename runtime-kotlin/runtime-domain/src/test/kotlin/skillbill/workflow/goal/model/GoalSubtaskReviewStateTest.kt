@@ -1,6 +1,8 @@
 package skillbill.workflow.goal.model
 import skillbill.error.InvalidGoalSubtaskReviewStateSchemaError
 import skillbill.review.context.model.CodeReviewExecutionMode
+import skillbill.workflow.decomposition.model.IssueKey
+import skillbill.workflow.decomposition.model.SubtaskId
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_GOAL_CONTINUATION_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeGoalContinuationArtifact
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairOutcome
@@ -251,8 +253,8 @@ class GoalSubtaskReviewStateTest {
       codeReviewMode = CodeReviewExecutionMode.AUTO,
     )
     val continuation = FeatureTaskRuntimeGoalContinuationArtifact(
-      issueKey = "SKILL-119",
-      subtaskId = 2,
+      issueKey = IssueKey("SKILL-119"),
+      subtaskId = SubtaskId(2),
       suppressPr = true,
       goalBranch = "feat/SKILL-119",
       codeReviewMode = CodeReviewExecutionMode.AUTO,
@@ -283,8 +285,8 @@ class GoalSubtaskReviewStateTest {
   @Test
   fun `review invalidation clears raw results through an empty map that stays decodable`() {
     val continuation = FeatureTaskRuntimeGoalContinuationArtifact(
-      issueKey = "SKILL-135",
-      subtaskId = 3,
+      issueKey = IssueKey("SKILL-135"),
+      subtaskId = SubtaskId(3),
       suppressPr = true,
       goalBranch = "feat/SKILL-135",
       codeReviewMode = CodeReviewExecutionMode.INLINE,

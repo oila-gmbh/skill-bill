@@ -1,5 +1,4 @@
 package skillbill.application
-
 import skillbill.application.agentrun.AgentRunService
 import skillbill.application.agentrun.model.AgentRunStartRequest
 import skillbill.install.model.InstallAgent
@@ -8,6 +7,8 @@ import skillbill.ports.agentrun.model.AgentRunLaunchFacts
 import skillbill.ports.agentrun.model.AgentRunLaunchOutcome
 import skillbill.ports.agentrun.model.AgentRunLaunchRequest
 import skillbill.ports.agentrun.model.SkillRunRequest
+import skillbill.workflow.decomposition.model.IssueKey
+import skillbill.workflow.decomposition.model.SubtaskId
 import java.nio.file.Path
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -69,9 +70,9 @@ class AgentRunServiceTest {
   }
 
   private fun skillRunRequest(): SkillRunRequest = SkillRunRequest(
-    issueKey = "SKILL-56",
+    issueKey = IssueKey("SKILL-56"),
     repoRoot = Path.of("/tmp/skillbill-agent-run-service"),
-    subtaskId = 2,
+    subtaskId = SubtaskId(2),
     dbPathOverride = "/tmp/skillbill-agent-run-service/metrics.db",
   )
 }

@@ -1,10 +1,10 @@
 package skillbill.application.featuretask
-
 import skillbill.application.featuretask.model.FeatureTaskRuntimeRunReport
 import skillbill.application.featuretask.model.FeatureTaskRuntimeRunRequest
 import skillbill.application.idestatus.AgentActivityStampWriter
 import skillbill.ports.diagnostics.RuntimeDiagnostics
 import skillbill.ports.goalrunner.runner.GoalRunnerSubtaskLauncher
+import skillbill.workflow.decomposition.model.IssueKey
 import skillbill.workflow.decomposition.model.SpecSource
 import skillbill.workflow.goal.model.GoalSubtaskOperatorDecision
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseOutputValidator
@@ -53,18 +53,18 @@ internal fun resolveLaunchRejectionAttribution(
 
 private const val FEATURE_SPEC_ROOT = ".feature-specs"
 
-fun isFeatureSpecPathForIssue(path: String, issueKey: String): Boolean {
+fun isFeatureSpecPathForIssue(path: String, issueKey: IssueKey): Boolean {
   val normalized = path.trim().trimEnd('/')
   if (normalized == FEATURE_SPEC_ROOT) return true
   if (!normalized.startsWith("$FEATURE_SPEC_ROOT/")) return false
   val issueDirectory = normalized.removePrefix("$FEATURE_SPEC_ROOT/").substringBefore('/')
-  val key = issueKey.trim()
+  val key = issueKey.value.trim()
   return issueDirectory == key || issueDirectory.startsWith("$key-")
 }
 
 fun reconcileCheckpointPathInventory(
   repoRoot: Path,
-  issueKey: String,
+  issueKey: IssueKey,
   specReference: String,
   paths: List<String>,
 ): List<String> {
@@ -115,7 +115,7 @@ class FeatureTaskRuntimeRunLoop internal constructor(
 
   internal val session = FeatureTaskRuntimeRunLoopSession(
     operatorBlockRetry = recorder
-      .loadOperatorBlockRetry(request.workflowId, request.dbPathOverride)
+      .loadOperatorBlockRetry(request.workflowId)
       ?.takeIf { retry ->
         state.recordFor(retry.phaseId)?.status.let { status -> status == null || status == "pending" }
       },
@@ -164,7 +164,7 @@ class FeatureTaskRuntimeRunLoop internal constructor(
 
   fun report(): FeatureTaskRuntimeRunReport {
     val branch = session.resolvedBranch
-      ?: recorder.loadResolvedBranch(request.workflowId, request.dbPathOverride)?.branch
+      ?: recorder.loadResolvedBranch(request.workflowId)?.branch
     return session.decomposed ?: session.paused?.let { report ->
       if (report.resolvedBranch == null && branch != null) report.copy(resolvedBranch = branch) else report
     } ?: session.blocked?.let { report ->
@@ -179,7 +179,7 @@ class FeatureTaskRuntimeRunLoop internal constructor(
   }
 
   fun applyOperatorDecision(decision: GoalSubtaskOperatorDecision): String? {
-    val auditGapPause = recorder.loadAuditGapPause(request.workflowId, request.dbPathOverride)
+    val auditGapPause = recorder.loadAuditGapPause(request.workflowId)
     if (auditGapPause != null) {
       return FeatureTaskRuntimeRunLoopPlanningBranch.applyAuditGapPauseDecision(this, auditGapPause, decision)
     }

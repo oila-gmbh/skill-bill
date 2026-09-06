@@ -1,5 +1,8 @@
 package skillbill.application.goalrunner.planning
 
+import skillbill.workflow.engine.model.WorkflowId
+import skillbill.agent.model.AgentId
+
 import skillbill.application.featuretask.FeatureTaskRuntimePhaseBriefingAssembler
 import skillbill.application.featuretask.FeatureTaskRuntimePhasePromptComposer
 import skillbill.application.featuretask.model.FeatureTaskRuntimePhasePromptComposeInputs
@@ -27,13 +30,12 @@ internal fun DefaultGoalPlanningSweep.launchPlanningAttempt(
         issueKey = request.issueKey,
         repoRoot = shared.repoRoot,
         subtaskId = phase.subtask?.id,
-        dbPathOverride = shared.dbPathOverride,
         timeout = request.planningBudget,
         progressIdleTimeout = request.progressIdleTimeout,
         outputSink = sink,
         promptOverride = prompt,
         streamOutputForLiveness = true,
-        spawnAuthorization = manifestStore.authorizePlanningLaunch(shared.parentWorkflowId, shared.dbPathOverride),
+        spawnAuthorization = manifestStore.authorizePlanningLaunch(shared.parentWorkflowId),
       ),
     ),
   )

@@ -1,4 +1,6 @@
 package skillbill.application.goalrunner
+
+import skillbill.workflow.engine.model.WorkflowId
 import skillbill.application.decomposition.decodeArtifacts
 import skillbill.application.featuretask.buildCompletedUpstreamMissingOutputRepair
 import skillbill.application.featuretask.diagnoseUnsettledCompletedUpstreamPhaseId
@@ -78,7 +80,7 @@ class GoalRunnerChildRepairWedgeApplyLoop(
         currentStepId = record.currentStepId,
         stepUpdates = null,
         artifactsPatch = state.patch,
-        sessionId = record.sessionId.orEmpty(),
+        sessionId = record.sessionId,
       ),
     )
     WorkflowFamily.TASK_RUNTIME.save(workflowStates, updated)

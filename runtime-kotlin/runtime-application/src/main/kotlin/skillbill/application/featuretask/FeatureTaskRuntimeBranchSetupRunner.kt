@@ -33,7 +33,7 @@ class FeatureTaskRuntimeBranchSetupRunner(
     if (!current.ok) {
       return FeatureTaskRuntimeBranchSetupOutcome.blocked(branchSetupBlockedReason(current.error))
     }
-    val persisted = recorder.loadResolvedBranch(request.workflowId, request.dbPathOverride)
+    val persisted = recorder.loadResolvedBranch(request.workflowId)
     return when {
       persisted != null -> reattachPersisted(request, observability, persisted.branch, current.value)
       request.goalContinuation != null -> reattachGoalContinuationBranch(request, observability, current.value)
@@ -225,7 +225,6 @@ class FeatureTaskRuntimeBranchSetupRunner(
           .distinct()
           .sorted(),
       ),
-      request.dbPathOverride,
     )
     if (!recorded) {
       return FeatureTaskRuntimeBranchSetupOutcome.blocked(branchSetupNotPersistedBlockedReason(branch))

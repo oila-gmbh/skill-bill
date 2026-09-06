@@ -1,10 +1,11 @@
 package skillbill.application.goalrunner
-
 import skillbill.goalrunner.model.GoalAttemptLedgerAction
 import skillbill.goalrunner.model.GoalRunnerLaunchFacts
 import skillbill.goalrunner.model.GoalRunnerLivenessSnapshot
 import skillbill.goalrunner.model.GoalRunnerStopReason
 import skillbill.ports.goalrunner.runner.model.GoalRunnerWorkflowProgress
+import skillbill.workflow.decomposition.model.IssueKey
+import skillbill.workflow.decomposition.model.SubtaskId
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 
 fun reAttemptCauseFor(reason: GoalRunnerStopReason, childLoopIterations: Map<String, Int>): String? {
@@ -78,8 +79,8 @@ fun GoalRunnerStopReason.nextSafeAction(): String = when (this) {
 }
 
 fun recoverySafeAction(
-  issueKey: String,
-  subtaskId: Int,
+  issueKey: IssueKey,
+  subtaskId: SubtaskId,
   progress: GoalRunnerWorkflowProgress?,
   fallback: String,
 ): String = when (classifyDurableChild(progress)) {

@@ -1,5 +1,5 @@
 package skillbill.config.model
-
+import skillbill.agent.model.AgentId
 import skillbill.install.model.InstallAgent
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 
@@ -54,8 +54,8 @@ data class ExecutionMatrix(
    * `reasoning` stays the one-line way to route every reasoning phase while a single phase can
    * opt out without restructuring the tier map.
    */
-  fun directiveFor(agentId: String, phaseId: String): PhaseModelDirective? {
-    val agent = InstallAgent.entries.firstOrNull { it.id == agentId.trim().lowercase() } ?: return null
+  fun directiveFor(agentId: AgentId, phaseId: String): PhaseModelDirective? {
+    val agent = InstallAgent.entries.firstOrNull { it.id == agentId.value.trim().lowercase() } ?: return null
     return agentPhaseOverrides[agent]?.get(phaseId) ?: agents[agent]?.get(tierOf(phaseId))
   }
 }
@@ -137,7 +137,7 @@ private fun parseAgents(raw: Any?): Map<InstallAgent, AgentDirectives> {
       rawTiers,
       "is not a supported install agent.",
     )
-    agent to parseAgentDirectives(agentId, rawTiers)
+    agent to parseAgentDirectives(AgentId(agentId), rawTiers)
   }
 }
 
@@ -150,7 +150,7 @@ private fun parseAgents(raw: Any?): Map<InstallAgent, AgentDirectives> {
 private val COLLIDING_PHASE_IDS: List<String> =
   FeatureTaskRuntimePhaseWorkflowDefinition.definition.stepIds.filter { ExecutionTier.fromId(it) != null }
 
-private fun parseAgentDirectives(agentId: String, raw: Any?): AgentDirectives {
+private fun parseAgentDirectives(agentId: AgentId, raw: Any?): AgentDirectives {
   require(COLLIDING_PHASE_IDS.isEmpty()) {
     "Runtime phase ids $COLLIDING_PHASE_IDS collide with execution-tier ids, so an agent's " +
       "per-phase override key would silently resolve as a tier directive."

@@ -1,5 +1,7 @@
 package skillbill.application.featuretask
 
+import skillbill.agent.model.AgentId
+
 import skillbill.application.featuretask.model.CompletedUpstreamRepairRequest
 import skillbill.workflow.engine.model.WorkflowUpdateInput
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition

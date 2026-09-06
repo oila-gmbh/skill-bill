@@ -28,7 +28,6 @@ object CliRuntime {
     val resolved = runtimeComponent.resolvedEnvironmentContext
     val runState = CliRunState(context.stdinText)
     val runInputs = CliRunInputs(
-      dbPathOverride = resolved.dbPathOverride,
       stdinText = context.stdinText,
       environment = resolved.environment,
       externalCommandRunner = context.externalCommandRunner,

@@ -24,7 +24,7 @@ internal fun crashReconcileExpiredWorkerToResumable(
   if (!reconciled) return null
   return GoalRunnerStoredOutcome(
     status = GoalRunnerTerminalStatus.RECONCILABLE,
-    workflowId = request.workflowId,
+    workflowId = request.workflowId.value,
     commitSha = null,
     blockedReason = null,
     lastResumableStep = request.row.currentStepId.ifBlank { "preplan" },

@@ -1,5 +1,4 @@
 package skillbill.application
-
 import skillbill.application.featuretask.FeatureTaskRuntimeRunner
 import skillbill.application.featuretask.model.FeatureTaskRuntimeGoalContinuationContext
 import skillbill.application.featuretask.model.FeatureTaskRuntimeRunReport
@@ -16,6 +15,9 @@ import skillbill.ports.agentrun.model.AgentRunLaunchOutcome
 import skillbill.ports.goalrunner.runner.GoalRunnerSubtaskLauncher
 import skillbill.ports.goalrunner.runner.model.GoalRunnerSubtaskLaunchRequest
 import skillbill.review.context.model.CodeReviewExecutionMode
+import skillbill.workflow.decomposition.model.IssueKey
+import skillbill.workflow.decomposition.model.SubtaskId
+import skillbill.workflow.engine.model.WorkflowId
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseOutputValidator
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerAction
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerAction.COMPLETE
@@ -42,7 +44,7 @@ class GoalRunnerFeatureTaskRuntimeIntegrationTest {
 
     val paused = runner.run(
       GoalRunnerRunRequest(
-        issueKey = "SKILL-56",
+        issueKey = IssueKey("SKILL-56"),
         repoRoot = Path.of("/tmp/skillbill-goal-runner"),
         invokedAgentId = INVOKED_AGENT,
         stopAfterSubtaskId = 1,
@@ -54,7 +56,7 @@ class GoalRunnerFeatureTaskRuntimeIntegrationTest {
 
     val resumed = runner.run(
       GoalRunnerRunRequest(
-        issueKey = "SKILL-56",
+        issueKey = IssueKey("SKILL-56"),
         repoRoot = Path.of("/tmp/skillbill-goal-runner"),
         invokedAgentId = INVOKED_AGENT,
         stopAfterSubtaskId = 1,
@@ -114,8 +116,8 @@ class GoalRunnerFeatureTaskRuntimeIntegrationTest {
 
     val failedRun = goalRunForChildReport(
       FeatureTaskRuntimeRunReport.Decomposed(
-        issueKey = "SKILL-56",
-        workflowId = WORKFLOW_ID,
+        issueKey = IssueKey("SKILL-56"),
+        workflowId = WorkflowId(WORKFLOW_ID),
         featureSize = "MEDIUM",
         reason = "terminal failure",
         completedPhaseIds = listOf("preplan"),
@@ -136,7 +138,7 @@ class GoalRunnerFeatureTaskRuntimeIntegrationTest {
 
   @Test
   fun `goal review policy and exact baseline reach the runtime child review prompt`() {
-    val workflowId = WORKFLOW_ID
+    val workflowId = WorkflowId(WORKFLOW_ID)
     val outcomes = RecordingOutcomeStore().apply { seedReviewState(workflowId) }
     val phaseLauncher = defaultPhaseAwareLauncher()
     val gitOperations = RecordingWorkflowGitOperations(currentBranchValue = "feat/SKILL-56-goal")
@@ -160,7 +162,7 @@ class GoalRunnerFeatureTaskRuntimeIntegrationTest {
 
     val report = goalRunner.run(
       GoalRunnerRunRequest(
-        issueKey = "SKILL-56",
+        issueKey = IssueKey("SKILL-56"),
         repoRoot = runtime.request().repoRoot,
         invokedAgentId = INVOKED_AGENT,
         codeReviewMode = CodeReviewExecutionMode.INLINE,
@@ -193,7 +195,7 @@ class GoalRunnerFeatureTaskRuntimeIntegrationTest {
 
   @Test
   fun `goal child audit gap reuses initial planning context and resumes at implement`() {
-    val workflowId = WORKFLOW_ID
+    val workflowId = WorkflowId(WORKFLOW_ID)
     val outcomes = RecordingOutcomeStore().apply { seedReviewState(workflowId) }
     val phaseLauncher = auditGapLauncher(convergeOnAudit = 2)
     val runtime = runnerHarness(
@@ -214,7 +216,7 @@ class GoalRunnerFeatureTaskRuntimeIntegrationTest {
 
     val report = goalRunner.run(
       GoalRunnerRunRequest(
-        issueKey = "SKILL-56",
+        issueKey = IssueKey("SKILL-56"),
         repoRoot = runtime.request().repoRoot,
         invokedAgentId = INVOKED_AGENT,
       ),
@@ -553,17 +555,17 @@ private fun completedChildReport(
   reason: String?,
   step: String,
 ): FeatureTaskRuntimeRunReport.Completed = FeatureTaskRuntimeRunReport.Completed(
-  issueKey = "SKILL-56",
-  workflowId = WORKFLOW_ID,
+  issueKey = IssueKey("SKILL-56"),
+  workflowId = WorkflowId(WORKFLOW_ID),
   featureSize = "MEDIUM",
   completedPhaseIds = listOf("preplan", "plan", "implement"),
   resolvedBranch = "feat/SKILL-56-goal",
   subtaskOutcome = FeatureTaskRuntimeSubtaskOutcome(
-    issueKey = "SKILL-56",
-    subtaskId = 1,
+    issueKey = IssueKey("SKILL-56"),
+    subtaskId = SubtaskId(1),
     status = status,
     commitSha = commitSha,
-    workflowId = WORKFLOW_ID,
+    workflowId = WorkflowId(WORKFLOW_ID),
     blockedReason = reason,
     lastResumableStep = step,
   ),
@@ -589,7 +591,7 @@ private fun goalRunForChildReport(
   )
   val report = runner.run(
     GoalRunnerRunRequest(
-      issueKey = "SKILL-56",
+      issueKey = IssueKey("SKILL-56"),
       repoRoot = Path.of("/tmp/repo"),
       invokedAgentId = INVOKED_AGENT,
     ),
@@ -630,7 +632,7 @@ private fun goalChildParityRun(
     ),
   )
   val runRequest = GoalRunnerRunRequest(
-    issueKey = "SKILL-56",
+    issueKey = IssueKey("SKILL-56"),
     repoRoot = runtime.request().repoRoot,
     invokedAgentId = INVOKED_AGENT,
     codeReviewMode = config.codeReviewMode,

@@ -1,9 +1,11 @@
 package skillbill.review.context.model
 
+import skillbill.workflow.engine.model.SessionId
+
 const val REVIEW_RULE_EXCERPT_MAX_CHARS: Int = 2_000
-data class ReviewRevision(val sessionId: String, val runRevision: Int) {
+data class ReviewRevision(val sessionId: SessionId, val runRevision: Int) {
   init {
-    require(sessionId.isNotBlank()) { "Review revision session id must not be blank." }
+    require(sessionId.value.isNotBlank()) { "Review revision session id must not be blank." }
     require(runRevision >= 1) { "Review run revision must be positive." }
   }
 

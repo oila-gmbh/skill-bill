@@ -1,10 +1,11 @@
 package skillbill.application.goalrunner.planning
-
 import skillbill.application.goalrunner.staleChildPlanningRecoveryCommand
 import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_CONTRACT_VERSION
 import skillbill.error.IncompatibleGoalPlanningPreparationRecoveryError
 import skillbill.error.InvalidFeatureTaskRuntimePhaseOutputSchemaError
 import skillbill.error.InvalidGoalPlanningPreparationSchemaError
+import skillbill.workflow.decomposition.model.SubtaskId
+import skillbill.workflow.engine.model.WorkflowId
 import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertEquals
@@ -13,8 +14,8 @@ class GoalPlanningRecoveryClassificationTest {
   @Test
   fun `phase output contract version mismatch classifies as hard reset`() {
     val error = IncompatibleGoalPlanningPreparationRecoveryError(
-      workflowId = "wftr-parent",
-      subtaskId = 2,
+      workflowId = WorkflowId("wftr-parent"),
+      subtaskId = SubtaskId(2),
       reason = "stored import provenance differs from the hydration request at " +
         "phase_output_contract_version",
     )
@@ -29,8 +30,8 @@ class GoalPlanningRecoveryClassificationTest {
   @Test
   fun `regenerated after hydration classifies as scoped replan`() {
     val error = IncompatibleGoalPlanningPreparationRecoveryError(
-      workflowId = "wftr-parent",
-      subtaskId = 2,
+      workflowId = WorkflowId("wftr-parent"),
+      subtaskId = SubtaskId(2),
       reason = "stored goal planning 'plan' record for subtask 2 was already imported by this child " +
         "and the stored version now fails its projection contract. This occurs when the shared " +
         "preplan or subtask plan was regenerated after the child was hydrated, making the " +

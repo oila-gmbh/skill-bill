@@ -1,6 +1,10 @@
 package skillbill.ports.goalrunner.persistence.model
+
 import skillbill.ports.goalrunner.GoalRunnerPersistenceSession
 import skillbill.workflow.decomposition.model.DecompositionSubtask
+import skillbill.workflow.decomposition.model.IssueKey
+import skillbill.workflow.decomposition.model.SubtaskId
+import skillbill.workflow.engine.model.WorkflowId
 import java.nio.file.Path
 
 enum class GoalRunnerWedgeClass(val wireValue: String, val durableField: String) {
@@ -33,15 +37,14 @@ enum class GoalRunnerRepairStatus(val wireValue: String) {
 }
 
 data class GoalRunnerRepairRequest(
-  val issueKey: String,
+  val issueKey: IssueKey,
   val apply: Boolean = false,
-  val subtaskId: Int? = null,
-  val dbPathOverride: String? = null,
+  val subtaskId: SubtaskId? = null,
   val repoRoot: Path? = null,
 ) {
   init {
-    require(issueKey.isNotBlank()) { "issueKey is required." }
-    require(subtaskId == null || subtaskId > 0) { "subtaskId must be positive." }
+    require(issueKey.value.isNotBlank()) { "issueKey is required." }
+    require(subtaskId == null || subtaskId.value > 0) { "subtaskId must be positive." }
   }
 }
 
@@ -52,8 +55,8 @@ data class GoalRunnerWedgeFinding(
 )
 
 data class GoalRunnerChildWedgeDiagnosis(
-  val subtaskId: Int,
-  val workflowId: String?,
+  val subtaskId: SubtaskId,
+  val workflowId: WorkflowId?,
   val wedges: List<GoalRunnerWedgeFinding> = emptyList(),
   val passedChecks: List<String> = emptyList(),
 ) {
@@ -61,28 +64,26 @@ data class GoalRunnerChildWedgeDiagnosis(
 }
 
 data class GoalRunnerChildWedgeDiagnosisRequest(
-  val workflowId: String,
-  val issueKey: String,
-  val subtaskId: Int,
+  val workflowId: WorkflowId,
+  val issueKey: IssueKey,
+  val subtaskId: SubtaskId,
   val subtasks: List<DecompositionSubtask>,
   val repoRoot: Path,
-  val dbPathOverride: String? = null,
 )
 
 data class GoalRunnerChildWedgeRepairRequest(
-  val workflowId: String,
-  val issueKey: String,
-  val subtaskId: Int,
+  val workflowId: WorkflowId,
+  val issueKey: IssueKey,
+  val subtaskId: SubtaskId,
   val wedgeClasses: List<GoalRunnerWedgeClass>,
   val repoRoot: Path,
-  val dbPathOverride: String? = null,
 )
 
 data class GoalRunnerChildRepairApplyRequest(
   val unitOfWork: GoalRunnerPersistenceSession,
-  val workflowId: String,
-  val issueKey: String,
-  val subtaskId: Int,
+  val workflowId: WorkflowId,
+  val issueKey: IssueKey,
+  val subtaskId: SubtaskId,
   val wedgeClasses: List<GoalRunnerWedgeClass>,
   val repoRoot: Path,
 )
@@ -93,8 +94,8 @@ data class GoalRunnerChildRepairApplyResult(
 )
 
 data class GoalRunnerAppliedRepair(
-  val subtaskId: Int,
-  val workflowId: String,
+  val subtaskId: SubtaskId,
+  val workflowId: WorkflowId,
   val wedgeClass: GoalRunnerWedgeClass,
   val field: String,
   val priorValue: String?,
@@ -102,15 +103,15 @@ data class GoalRunnerAppliedRepair(
 )
 
 data class GoalRunnerRepairResult(
-  val issueKey: String,
+  val issueKey: IssueKey,
   val status: GoalRunnerRepairStatus,
-  val parentWorkflowId: String? = null,
+  val parentWorkflowId: WorkflowId? = null,
   val diagnoses: List<GoalRunnerChildWedgeDiagnosis> = emptyList(),
   val appliedRepairs: List<GoalRunnerAppliedRepair> = emptyList(),
   val refusalReason: String? = null,
   val liveLeaseWorkflowId: String? = null,
 ) {
   init {
-    require(issueKey.isNotBlank()) { "issueKey is required." }
+    require(issueKey.value.isNotBlank()) { "issueKey is required." }
   }
 }

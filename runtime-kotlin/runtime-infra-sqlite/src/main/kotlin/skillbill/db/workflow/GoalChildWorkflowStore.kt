@@ -2,6 +2,8 @@ package skillbill.db.workflow
 
 import skillbill.ports.workflow.GoalChildWorkflowStateRepository
 import skillbill.ports.workflow.model.GoalChildWorkflowDeletionScope
+import skillbill.workflow.decomposition.model.SubtaskId
+import skillbill.workflow.engine.model.WorkflowId
 import java.sql.Connection
 
 internal class GoalChildWorkflowStore(
@@ -26,8 +28,8 @@ internal class GoalChildWorkflowStore(
 
   override fun deleteGoalChildWorkflow(
     parentWorkflowId: String,
-    subtaskId: Int,
-    workflowId: String,
+    subtaskId: SubtaskId,
+    workflowId: WorkflowId,
     scope: GoalChildWorkflowDeletionScope,
   ): Int {
     val deletableStatuses = scope.deletableStatuses
@@ -46,12 +48,12 @@ internal class GoalChildWorkflowStore(
           AND json_extract(artifacts_json, '$.goal_continuation.subtask_id') = ?
       """.trimIndent(),
     ).use { statement ->
-      statement.setString(1, workflowId)
+      statement.setString(1, workflowId.value)
       deletableStatuses.forEachIndexed { offset, status ->
         statement.setString(DELETE_GOAL_CHILD_FIRST_STATUS_INDEX + offset, status)
       }
       statement.setString(DELETE_GOAL_CHILD_FIRST_STATUS_INDEX + deletableStatuses.size, parentWorkflowId)
-      statement.setInt(DELETE_GOAL_CHILD_FIRST_STATUS_INDEX + deletableStatuses.size + 1, subtaskId)
+      statement.setInt(DELETE_GOAL_CHILD_FIRST_STATUS_INDEX + deletableStatuses.size + 1, subtaskId.value)
       statement.executeUpdate()
     }
   }

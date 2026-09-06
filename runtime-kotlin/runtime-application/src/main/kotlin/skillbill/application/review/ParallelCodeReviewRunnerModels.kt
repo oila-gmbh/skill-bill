@@ -1,4 +1,5 @@
 package skillbill.application.review
+import skillbill.agent.model.AgentId
 import skillbill.application.review.model.ParallelCodeReviewRequest
 import skillbill.application.review.model.ReviewDelegatedStageLaunch
 import skillbill.application.review.model.ReviewSpecialistLaunchRequest
@@ -28,7 +29,7 @@ import skillbill.review.model.ReviewStageResumeReport
 import skillbill.scaffold.model.PlatformManifest
 
 internal data class LaunchParentLaneArgs(
-  val agentId: String,
+  val agentId: AgentId,
   val launchRequests: List<ReviewSpecialistLaunchRequest>,
   val routedManifests: List<PlatformManifest>,
   val budget: ReviewContextBudgetPolicy,
@@ -109,7 +110,7 @@ internal data class ParallelCodeReviewSoftRegisterAdmission(
 )
 
 class ParallelCodeReviewInlineParentLaunch(
-  val agentId: String,
+  val agentId: AgentId,
   val selected: List<ReviewSpecialistLaunchRequest>,
   val prompt: String,
   val bundleState: ReviewLaneCompletionState,

@@ -1,5 +1,7 @@
 package skillbill.application.goalrunner
 
+import skillbill.workflow.engine.model.WorkflowId
+
 import skillbill.application.goalrunner.model.GoalRunnerRunEvent
 import skillbill.application.goalrunner.model.GoalRunnerRunRequest
 import skillbill.application.goalrunner.planning.GoalPlanningSweep
@@ -28,7 +30,7 @@ internal class GoalRunnerGoalLoop(
     var currentPlanning = args.planning
     var terminalReport: GoalRunnerRunReport? = preflightPolicyBlockedReport(state, args.request, args.ledger)
     while (terminalReport == null) {
-      val pause = pauseBoundary.pauseBeforeLaunch(state, args.request)
+      val pause = pauseBoundary.pauseBeforeLaunch(state)
       if (pause != null) {
         state = pause.state
         terminalReport = pause.report
@@ -130,9 +132,8 @@ internal class GoalRunnerGoalLoop(
     val attempted = args.attempted
     val saved = manifestStore.save(
       state.copy(manifest = state.manifest.withBlockedSelection(selection.subtask.id, selection.reason)),
-      request.dbPathOverride,
     )
-    selection.subtask.workflowId?.takeIf(String::isNotBlank)?.let { workflowId ->
+    selection.subtask.workflowId?.takeIf { it.value.isNotBlank() }?.let { workflowId ->
       observability.record(
         subject = GoalRunnerObservabilitySubject(workflowId, saved.manifest.issueKey, selection.subtask.id),
         signal = GoalRunnerObservabilitySignal(
@@ -147,7 +148,7 @@ internal class GoalRunnerGoalLoop(
           action = GoalAttemptLedgerAction.POLICY_BLOCK,
           issueKey = saved.manifest.issueKey,
           subtaskId = selection.subtask.id,
-          progress = progressReader.safeProgress(workflowId, request),
+          progress = progressReader.safeProgress(workflowId),
           blockedReason = selection.reason,
           stopReason = GoalRunnerStopReason.DEPENDENCIES_BLOCKED.name.lowercase(),
         ),
@@ -204,7 +205,7 @@ internal class GoalRunnerGoalLoop(
       is GoalRunnerSelection.Blocked -> selection.subtask.id
       is GoalRunnerSelection.Done -> 0
     }
-    val blockedManifest = if (subtaskId > 0) {
+    val blockedManifest = if (subtaskId.value > 0) {
       state.manifest.withBlockedSelection(subtaskId, violation)
     } else {
       state.manifest.copy(
@@ -212,7 +213,7 @@ internal class GoalRunnerGoalLoop(
         currentSubtaskIntent = CurrentSubtaskIntent(subtaskId = 0, action = "blocked"),
       )
     }
-    val saved = manifestStore.save(state.copy(manifest = blockedManifest), request.dbPathOverride)
+    val saved = manifestStore.save(state.copy(manifest = blockedManifest))
     ledger.recordLedgerEntry(
       GoalRunnerLedgerContext(
         workflowId = saved.parentWorkflowId,
@@ -223,7 +224,7 @@ internal class GoalRunnerGoalLoop(
         stopReason = GoalRunnerStopReason.POLICY_BLOCKED.name.lowercase(),
       ),
     )
-    if (subtaskId > 0) {
+    if (subtaskId.value > 0) {
       request.eventSink.emit(
         GoalRunnerRunEvent.SubtaskStopped(
           issueKey = saved.manifest.issueKey,

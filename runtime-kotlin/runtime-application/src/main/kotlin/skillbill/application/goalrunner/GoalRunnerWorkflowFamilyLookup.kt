@@ -1,5 +1,4 @@
 package skillbill.application.goalrunner
-
 import skillbill.agentaddon.model.AgentAddonSelection
 import skillbill.agentaddon.model.PersistedAgentAddonSelectionEntry
 import skillbill.application.workflow.model.WorkflowFamily
@@ -10,8 +9,9 @@ import skillbill.goalrunner.model.GOAL_PAUSE_REASON_STOP_AFTER_SUBTASK
 import skillbill.goalrunner.model.GoalRunnerControlState
 import skillbill.ports.workflow.WorkflowStateRepository
 import skillbill.ports.workflow.model.FeatureTaskWorkflowMode
+import skillbill.workflow.engine.model.WorkflowId
 
-fun workflowFamilyFor(workflowStates: WorkflowStateRepository, workflowId: String): WorkflowFamily? {
+fun workflowFamilyFor(workflowStates: WorkflowStateRepository, workflowId: WorkflowId): WorkflowFamily? {
   val featureTaskRow = workflowStates.getFeatureTaskWorkflow(workflowId)
   if (featureTaskRow != null) {
     return when (featureTaskRow.mode) {

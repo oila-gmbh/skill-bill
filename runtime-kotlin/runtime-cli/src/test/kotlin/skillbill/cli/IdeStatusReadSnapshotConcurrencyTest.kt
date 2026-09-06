@@ -1,5 +1,4 @@
 package skillbill.cli
-
 import skillbill.application.idestatus.model.IdeStatusProblemCode
 import skillbill.application.idestatus.model.IdeStatusRequest
 import skillbill.application.idestatus.model.IdeStatusResult
@@ -26,7 +25,10 @@ import skillbill.ports.workflow.model.FeatureTaskExecutionIdentity
 import skillbill.ports.workflow.model.FeatureTaskRouteScope
 import skillbill.ports.workflow.model.FeatureTaskWorkflowMode
 import skillbill.ports.workflow.model.WorkflowStateRecord
+import skillbill.workflow.decomposition.model.IssueKey
 import skillbill.workflow.engine.WorkflowSnapshotValidator
+import skillbill.workflow.engine.model.SessionId
+import skillbill.workflow.engine.model.WorkflowId
 import skillbill.workflow.engine.model.WorkflowStateSnapshot
 import java.nio.file.Files
 import java.nio.file.Path
@@ -107,7 +109,7 @@ class IdeStatusReadSnapshotConcurrencyTest {
         statement.executeUpdate()
       }
     }
-    database.transaction(dbPath.toString()) { unitOfWork ->
+    database.transaction { unitOfWork ->
       // A goal child bound elsewhere makes an unbound goal resolve as "belongs to another repository",
       // so a torn read of the goal binding drops the candidate instead of silently passing.
       unitOfWork.workflowStates.saveFeatureTaskRuntimeWorkflow(foreignChildWorkflow())
@@ -120,8 +122,8 @@ class IdeStatusReadSnapshotConcurrencyTest {
   }
 
   private fun foreignChildWorkflow(): WorkflowStateRecord = WorkflowStateRecord(
-    workflowId = FOREIGN_CHILD_WORKFLOW_ID,
-    sessionId = "ftr-$FOREIGN_CHILD_WORKFLOW_ID",
+    workflowId = WorkflowId(FOREIGN_CHILD_WORKFLOW_ID),
+    sessionId = SessionId("ftr-$FOREIGN_CHILD_WORKFLOW_ID"),
     workflowName = "bill-feature-task",
     contractVersion = "1.0",
     workflowStatus = "running",
@@ -131,12 +133,12 @@ class IdeStatusReadSnapshotConcurrencyTest {
     startedAt = "2026-08-06T09:00:00Z",
     updatedAt = "2026-08-06T09:00:00Z",
     finishedAt = null,
-    issueKey = ISSUE_KEY,
+    issueKey = IssueKey(ISSUE_KEY),
     mode = FeatureTaskWorkflowMode.RUNTIME,
   )
 
   private fun foreignChildIdentity(): FeatureTaskExecutionIdentity = FeatureTaskExecutionIdentity(
-    workflowId = FOREIGN_CHILD_WORKFLOW_ID,
+    workflowId = WorkflowId(FOREIGN_CHILD_WORKFLOW_ID),
     normalizedIssueKey = ISSUE_KEY,
     repositoryIdentity = "${REPOSITORY_IDENTITY_PREFIX}/other-repo",
     governedSpecPath = "spec.md",
@@ -169,7 +171,7 @@ private class SnapshotFixture(
     private set
 
   fun clearGoalBinding() {
-    database.transaction(dbPath.toString()) { unitOfWork ->
+    database.transaction { unitOfWork ->
       unitOfWork.goalRunnerControls.persistControlState("goal-snapshot", GoalRunnerControlState())
     }
   }
@@ -217,13 +219,13 @@ private class InterleavingDatabase(
   private val interleaveAfterCall: Int?,
   private val onInterleave: () -> Unit,
 ) : DatabaseSessionFactory by delegate {
-  override fun <T> read(dbOverride: String?, block: (UnitOfWork) -> T): T {
+  override fun <T> read(block: (UnitOfWork) -> T): T {
     var calls = 0
     val trigger: () -> Unit = {
       calls += 1
       if (calls == interleaveAfterCall) onInterleave()
     }
-    return delegate.read(dbOverride) { unitOfWork -> block(InterleavingUnitOfWork(unitOfWork, trigger)) }
+    return delegate.read { unitOfWork -> block(InterleavingUnitOfWork(unitOfWork, trigger)) }
   }
 }
 

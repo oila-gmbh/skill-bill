@@ -1,5 +1,4 @@
 package skillbill.review
-
 import skillbill.SAMPLE_REVIEW
 import skillbill.goalrunner.model.ReviewFindingOutcome
 import skillbill.goalrunner.model.ReviewFindingOutcomeRecord
@@ -11,6 +10,7 @@ import skillbill.infrastructure.sqlite.review.summarizeFindingRows
 import skillbill.review.model.FeedbackRequest
 import skillbill.review.model.FeedbackTelemetryOptions
 import skillbill.tempDbConnection
+import skillbill.workflow.engine.model.WorkflowId
 import java.sql.Connection
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -78,7 +78,7 @@ class LoopRecordedOutcomeStatsTest {
       SQLiteUnaddressedFindingsRepository(connection).recordOutcomes(
         listOf(
           ReviewFindingOutcomeRecord(
-            workflowId = "wf-1",
+            workflowId = WorkflowId("wf-1"),
             reviewPassNumber = 1,
             findingOrdinal = 1,
             outcome = ReviewFindingOutcome.ADDRESSED,
@@ -86,7 +86,7 @@ class LoopRecordedOutcomeStatsTest {
             findingId = "F-001",
           ),
           ReviewFindingOutcomeRecord(
-            workflowId = "wf-1",
+            workflowId = WorkflowId("wf-1"),
             reviewPassNumber = 1,
             findingOrdinal = 2,
             outcome = ReviewFindingOutcome.REJECTED,

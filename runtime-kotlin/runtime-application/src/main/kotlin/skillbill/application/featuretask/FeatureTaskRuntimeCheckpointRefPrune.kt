@@ -1,9 +1,10 @@
 package skillbill.application.featuretask
-
 import skillbill.application.featuretask.model.FeatureTaskRuntimeCheckpointRefPruneRequest
 import skillbill.ports.workflow.gitops.WorkflowGitOperations
 import skillbill.ports.workflow.gitops.deleteCheckpointRef
 import skillbill.ports.workflow.gitops.listCheckpointRefs
+import skillbill.workflow.decomposition.model.IssueKey
+import skillbill.workflow.decomposition.model.SubtaskId
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_CHECKPOINT_REF_NAMESPACE
 import java.nio.file.Path
 
@@ -46,16 +47,16 @@ internal data class FeatureTaskRuntimeCheckpointRefPruneResult(
   val skippedReason: String? = null,
 )
 
-fun featureTaskRuntimeSubtaskCheckpointRefPrefix(issueKey: String, subtaskId: String): String =
-  "${FEATURE_TASK_RUNTIME_CHECKPOINT_REF_NAMESPACE}/${issueKey.trim()}/$subtaskId/"
+fun featureTaskRuntimeSubtaskCheckpointRefPrefix(issueKey: IssueKey, subtaskId: SubtaskId): String =
+  "${FEATURE_TASK_RUNTIME_CHECKPOINT_REF_NAMESPACE}/${issueKey.value.trim()}/${subtaskId.value}/"
 
 internal fun WorkflowGitOperations.pruneSubtaskCheckpointRefs(
   repoRoot: Path,
   request: FeatureTaskRuntimeCheckpointRefPruneRequest,
   record: (String) -> Unit,
 ): FeatureTaskRuntimeCheckpointRefPruneResult {
-  val issueKey = request.issueKey.trim()
-  val subtaskId = request.subtaskId.trim()
+  val issueKey = request.issueKey.value.trim()
+  val subtaskId = request.subtaskId.value.toString().trim()
   if (issueKey.isBlank() || subtaskId.isBlank()) {
     return FeatureTaskRuntimeCheckpointRefPruneResult(
       attempted = false,
@@ -111,8 +112,8 @@ private fun WorkflowGitOperations.pruneEligibilityResult(
 
 private fun WorkflowGitOperations.pruneListedCheckpointRefs(
   repoRoot: Path,
-  issueKey: String,
-  subtaskId: String,
+  issueKey: IssueKey,
+  subtaskId: SubtaskId,
   record: (String) -> Unit,
 ): FeatureTaskRuntimeCheckpointRefPruneResult {
   val prefix = featureTaskRuntimeSubtaskCheckpointRefPrefix(issueKey, subtaskId)
@@ -179,7 +180,7 @@ internal fun pruneCompletedSubtaskCheckpointRefs(
 fun pruneResetSubtaskCheckpointRefs(
   gitOperations: WorkflowGitOperations,
   repoRoot: Path,
-  issueKey: String,
+  issueKey: IssueKey,
   subtaskIds: Collection<Int>,
   record: (String) -> Unit,
 ): Int = subtaskIds.sumOf { subtaskId ->

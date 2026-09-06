@@ -1,5 +1,4 @@
 package skillbill.application
-
 import skillbill.application.work.WorkListService
 import skillbill.error.InvalidWorkflowStateSchemaError
 import skillbill.ports.db.DatabaseSessionFactory
@@ -17,7 +16,10 @@ import skillbill.ports.work.model.WorkItem
 import skillbill.ports.work.model.WorkItemKind
 import skillbill.ports.workflow.WorkflowStateRepository
 import skillbill.ports.workflow.model.WorkflowStateRecord
+import skillbill.workflow.decomposition.model.IssueKey
 import skillbill.workflow.engine.WorkflowSnapshotValidator
+import skillbill.workflow.engine.model.SessionId
+import skillbill.workflow.engine.model.WorkflowId
 import skillbill.workflow.engine.model.WorkflowStateSnapshot
 import java.nio.file.Path
 import java.time.Instant
@@ -31,8 +33,8 @@ class WorkListServiceTest {
     val workflows = InMemoryWorkflowStates()
     workflows.saveFeatureTaskRuntimeWorkflow(
       WorkflowStateRecord(
-        workflowId = "wftr-invalid-snapshot",
-        sessionId = "ftr-117",
+        workflowId = WorkflowId("wftr-invalid-snapshot"),
+        sessionId = SessionId("ftr-117"),
         workflowName = "bill-feature-task",
         contractVersion = "0.1",
         workflowStatus = "running",
@@ -53,9 +55,9 @@ class WorkListServiceTest {
         workflows = workflows,
         work = listOf(
           WorkItem(
-            issueKey = "SKILL-117",
+            issueKey = IssueKey("SKILL-117"),
             workflowKind = WorkItemKind.FEATURE_TASK_RUNTIME,
-            workflowId = "wftr-invalid-snapshot",
+            workflowId = WorkflowId("wftr-invalid-snapshot"),
             startedAt = Instant.parse("2026-05-01T12:00:00Z"),
             currentState = "running",
             stateEnteredAt = Instant.parse("2026-05-01T12:00:00Z"),
@@ -75,11 +77,11 @@ class WorkListServiceTest {
     val workflows = BatchingWorkflowStates(delegate)
     val work = buildList {
       repeat(901) { index ->
-        val workflowId = "wftr-batch-$index"
+        val workflowId = WorkflowId("wftr-batch-$index")
         delegate.saveFeatureTaskRuntimeWorkflow(
           WorkflowStateRecord(
             workflowId = workflowId,
-            sessionId = "ftr-batch-$index",
+            sessionId = SessionId("ftr-batch-$index"),
             workflowName = "bill-feature-task",
             contractVersion = "0.1",
             workflowStatus = "running",
@@ -93,7 +95,7 @@ class WorkListServiceTest {
         )
         add(
           WorkItem(
-            issueKey = "SKILL-117",
+            issueKey = IssueKey("SKILL-117"),
             workflowKind = WorkItemKind.FEATURE_TASK_RUNTIME,
             workflowId = workflowId,
             startedAt = Instant.parse("2026-05-01T12:00:00Z"),
@@ -122,15 +124,15 @@ private class WorkListDatabase(
   private val workflows: WorkflowStateRepository,
   private val work: List<WorkItem>,
 ) : DatabaseSessionFactory {
-  override fun resolveDbPath(dbOverride: String?): Path = Path.of("/fake/work-list.db")
+  override fun resolveDbPath(): Path = Path.of("/fake/work-list.db")
 
-  override fun databaseExists(dbOverride: String?): Boolean = true
+  override fun databaseExists(): Boolean = true
 
-  override fun <T> read(dbOverride: String?, block: (UnitOfWork) -> T): T = block(unitOfWork())
+  override fun <T> read(block: (UnitOfWork) -> T): T = block(unitOfWork())
 
-  override fun <T> selfManagedWrite(dbOverride: String?, block: (UnitOfWork) -> T): T = transaction(dbOverride, block)
+  override fun <T> selfManagedWrite(block: (UnitOfWork) -> T): T = transaction(block)
 
-  override fun <T> transaction(dbOverride: String?, block: (UnitOfWork) -> T): T = block(unitOfWork())
+  override fun <T> transaction(block: (UnitOfWork) -> T): T = block(unitOfWork())
 
   private fun unitOfWork(): UnitOfWork = object : UnitOfWorkDefaults() {
     override val dbPath: Path = Path.of("/fake/work-list.db")
@@ -158,7 +160,7 @@ private class BatchingWorkflowStates(
 ) : WorkflowStateRepository by delegate {
   val snapshotBatchSizes = mutableListOf<Int>()
 
-  override fun getFeatureTaskRuntimeWorkflows(workflowIds: Set<String>): Map<String, WorkflowStateRecord> {
+  override fun getFeatureTaskRuntimeWorkflows(workflowIds: Set<WorkflowId>): Map<WorkflowId, WorkflowStateRecord> {
     snapshotBatchSizes += workflowIds.size
     require(workflowIds.size <= 900) { "Snapshot lookup exceeds SQLite's bind limit." }
     return delegate.getFeatureTaskRuntimeWorkflows(workflowIds)

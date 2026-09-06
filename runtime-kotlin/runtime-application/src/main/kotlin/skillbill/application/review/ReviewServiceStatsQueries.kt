@@ -13,9 +13,8 @@ import skillbill.review.model.GoalWorkflowStats
 
 internal fun reviewStatsResult(
   database: DatabaseSessionFactory,
-  dbOverride: String?,
   statsBuilder: (ReviewRepository) -> ReviewRepositoryStatsSnapshot,
-): ReviewStatsResult = database.read(dbOverride) { unitOfWork ->
+): ReviewStatsResult = database.read { unitOfWork ->
   val snapshot = statsBuilder(unitOfWork.reviews)
   ReviewStatsResult(
     dbPath = unitOfWork.dbPath.toString(),
@@ -29,9 +28,8 @@ internal fun reviewStatsResult(
 
 internal fun featureVerifyStatsResult(
   database: DatabaseSessionFactory,
-  dbOverride: String?,
   statsBuilder: (ReviewRepository) -> FeatureVerifyWorkflowStats,
-): FeatureVerifyStatsResult = database.read(dbOverride) { unitOfWork ->
+): FeatureVerifyStatsResult = database.read { unitOfWork ->
   FeatureVerifyStatsResult(
     dbPath = unitOfWork.dbPath.toString(),
     stats = statsBuilder(unitOfWork.reviews),
@@ -40,9 +38,8 @@ internal fun featureVerifyStatsResult(
 
 internal fun featureTaskRuntimeStatsResult(
   database: DatabaseSessionFactory,
-  dbOverride: String?,
   statsBuilder: (ReviewRepository) -> FeatureTaskRuntimeWorkflowStats,
-): FeatureTaskRuntimeStatsResult = database.read(dbOverride) { unitOfWork ->
+): FeatureTaskRuntimeStatsResult = database.read { unitOfWork ->
   FeatureTaskRuntimeStatsResult(
     dbPath = unitOfWork.dbPath.toString(),
     stats = statsBuilder(unitOfWork.reviews),
@@ -51,9 +48,8 @@ internal fun featureTaskRuntimeStatsResult(
 
 internal fun goalStatsResult(
   database: DatabaseSessionFactory,
-  dbOverride: String?,
   statsBuilder: (ReviewRepository) -> GoalWorkflowStats,
-): GoalStatsResult = database.read(dbOverride) { unitOfWork ->
+): GoalStatsResult = database.read { unitOfWork ->
   GoalStatsResult(
     dbPath = unitOfWork.dbPath.toString(),
     stats = statsBuilder(unitOfWork.reviews),

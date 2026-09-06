@@ -1,5 +1,4 @@
 package skillbill.application.featurespec
-
 import skillbill.application.decomposition.DecompositionManifestWriter
 import skillbill.application.decomposition.loadDecompositionManifest
 import skillbill.application.goalrunner.model.GoalRunnerStatusRequest
@@ -14,6 +13,7 @@ import skillbill.infrastructure.fs.DecompositionManifestValidatorAdapter
 import skillbill.infrastructure.fs.FileSystemDecompositionManifestFileStore
 import skillbill.model.RuntimeContext
 import skillbill.workflow.decomposition.model.DecompositionManifest
+import skillbill.workflow.decomposition.model.IssueKey
 import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.test.Test
@@ -50,7 +50,7 @@ class FeatureSpecPreparationWriterValidationTest {
 
     val goalStatus = component.goalRunnerStatusService.status(
       GoalRunnerStatusRequest(
-        issueKey = "SKILL-59",
+        issueKey = IssueKey("SKILL-59"),
         invokedAgentId = "codex",
         dbPathOverride = dbPath.toString(),
         repoRoot = repoRoot,
@@ -66,7 +66,7 @@ class FeatureSpecPreparationWriterValidationTest {
 
   private fun decomposedWriteRequest(): FeatureSpecWriteRequest = FeatureSpecWriteRequest(
     decision = FeatureSpecPreparationDecision(
-      issueKey = "SKILL-59",
+      issueKey = IssueKey("SKILL-59"),
       intendedOutcome = "decomposed",
       acceptanceCriteria = listOf("Write parent and subtask specs."),
       constraints = listOf("Reuse decomposition writer/validator seams."),

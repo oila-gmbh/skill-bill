@@ -1,4 +1,7 @@
 package skillbill.application.goalrunner.planning
+
+import skillbill.workflow.engine.model.WorkflowId
+import skillbill.workflow.decomposition.model.IssueKey
 import skillbill.application.goalplanning.sha256HexUtf8
 import skillbill.application.goalrunner.ProduceMissingPlansArgs
 import skillbill.application.goalrunner.ProducePlanArgs
@@ -69,7 +72,7 @@ internal fun DefaultGoalPlanningSweep.producePlan(args: ProducePlanArgs): GoalPl
     planPayload = planPayload,
     repairEvidence = captured.repairEvidence,
   )
-  return runCatching { checkpoint.recheckpointSubtaskPlan(record, shared.dbPathOverride) }.fold(
+  return runCatching { checkpoint.recheckpointSubtaskPlan(record) }.fold(
     onSuccess = { null },
     onFailure = { error ->
       stopped(
@@ -95,7 +98,6 @@ internal fun DefaultGoalPlanningSweep.descriptor(
     identity,
     subtask.id,
     governedPath,
-    shared.dbPathOverride,
   )
   val subSpecHash = when {
     recovered != null && subtask.status == "complete" -> recovered.subSpecHash

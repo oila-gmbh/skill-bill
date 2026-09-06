@@ -1,10 +1,11 @@
 package skillbill.application.goalrunner.planning
-
 import skillbill.application.goalrunner.model.GoalRunnerRunRequest
 import skillbill.application.goalrunner.planning.model.GoalPlanningSweepOutcome
 import skillbill.goalrunner.model.GoalRunnerStopReason
 import skillbill.ports.repository.RepositoryEnclosingRootPort
 import skillbill.workflow.decomposition.model.DecompositionSubtask
+import skillbill.workflow.decomposition.model.IssueKey
+import skillbill.workflow.decomposition.model.SubtaskId
 import java.nio.file.Path
 
 fun preSweepStopped(
@@ -36,7 +37,7 @@ fun projectionRejectedReason(phaseId: String, error: Throwable): String =
   "Goal planning phase '$phaseId' rejected a declared bounded projection at the launch seam: " +
     "${error.message.orEmpty()}. Migrate or delete the affected goal-planning preparation record."
 
-fun preparationStateReadReason(error: Throwable, issueKey: String, subtaskId: Int): String =
+fun preparationStateReadReason(error: Throwable, issueKey: IssueKey, subtaskId: SubtaskId): String =
   goalPlanningPreparationStateReadStopReason(error, issueKey, subtaskId)
 
 internal fun stopped(
@@ -53,7 +54,21 @@ internal fun stopped(
   lastResumableStep = lastResumableStep,
 )
 
-fun noSuchSubtaskReason(subtaskId: Int): String =
+internal fun stopped(
+  shared: GoalPlanningSharedContext,
+  subtaskId: SubtaskId,
+  blockedReason: String,
+  lastResumableStep: String = GoalPlanningSweepConstants.PHASE_PREPLAN,
+  reason: GoalRunnerStopReason = GoalRunnerStopReason.BLOCKED,
+): GoalPlanningSweepOutcome.Stopped = stopped(
+  shared,
+  subtaskId.toString().toInt(),
+  blockedReason,
+  lastResumableStep,
+  reason,
+)
+
+fun noSuchSubtaskReason(subtaskId: SubtaskId): String =
   "Goal planning selected subtask '$subtaskId' which is not present in the accepted decomposition."
 
 fun unresolvedSpecReason(subtask: DecompositionSubtask): String =

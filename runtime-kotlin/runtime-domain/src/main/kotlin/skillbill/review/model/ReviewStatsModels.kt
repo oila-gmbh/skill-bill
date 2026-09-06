@@ -1,5 +1,9 @@
 package skillbill.review.model
 
+import skillbill.workflow.decomposition.model.IssueKey
+import skillbill.workflow.decomposition.model.SubtaskId
+import skillbill.workflow.engine.model.WorkflowId
+
 data class ReviewFindingDetail(
   val findingId: String,
   val severity: String,
@@ -114,7 +118,7 @@ data class ReviewStageMetrics(
 
 data class ReviewFinishedTelemetry(
   val findingStats: ReviewFinishedFindingStats,
-  val reviewRunId: String,
+  val reviewRunId: ReviewRunId,
   val reviewSessionId: String,
   val routedSkill: String?,
   val reviewSubskills: List<String>,
@@ -188,9 +192,9 @@ data class GoalModeStats(
 )
 
 data class GoalBlockedSubtaskSummary(
-  val subtaskId: Int,
+  val subtaskId: SubtaskId,
   val subtaskName: String,
-  val issueKey: String,
+  val issueKey: IssueKey,
   val blockedReason: String,
   val attemptCount: Int,
 )
@@ -198,8 +202,8 @@ data class GoalBlockedSubtaskSummary(
 // SKILL-66 Subtask 2: per-run summary used for the most-recent-run lookup in
 // goal stats. `finishedAt`/`status` are blank until the run finishes.
 data class GoalRunSummary(
-  val workflowId: String,
-  val issueKey: String,
+  val workflowId: WorkflowId,
+  val issueKey: IssueKey,
   val featureName: String,
   val status: String,
   val startedAt: String,

@@ -1,4 +1,7 @@
 package skillbill.application.review
+
+import skillbill.review.model.ReviewRunId
+import skillbill.agent.model.AgentId
 import skillbill.application.review.model.ReviewPrelaunchExpansion
 import skillbill.application.review.model.ReviewPreparationRequest
 import skillbill.application.review.model.ReviewPreparationResult
@@ -136,7 +139,7 @@ object ParallelReviewPreparationCompiler {
     compileInput.hunkLocatorReader,
   ).prepare(
     ReviewPreparationRequest(
-      reviewId = compileInput.input.reviewRunId ?: "code-review-${compileInput.revisionId}",
+      reviewId = compileInput.input.reviewRunId?.value ?: "code-review-${compileInput.revisionId}",
       reviewRevision = ReviewRevision(compileInput.revisionId, 1),
       criteriaReferences = criteriaReferences(compileInput.routes, compileInput.input.specIntentResolution),
       baselineUntrackedPolicy = compileInput.input.baselineUntrackedPolicy,
@@ -284,7 +287,7 @@ private data class SelectedRubric(val planned: PlannedReviewRubric, val ownedPat
 
 private data class SpecialistRoute(
   val lane: String,
-  val agentId: String,
+  val agentId: AgentId,
   val rubric: ReviewRubricProjection,
   val descriptor: ReviewLaunchLane,
   val originLayerChains: List<List<String>>,
@@ -309,7 +312,7 @@ internal data class ParallelReviewPreparationInput(
   val repoRoot: Path,
   val routedPacks: List<String>,
   val lanes: List<PlannedReviewRubric>,
-  val reviewRunId: String? = null,
+  val reviewRunId: ReviewRunId? = null,
   val baseRevision: String,
   val headRevision: String,
   val prelaunchExpansions: List<ReviewPrelaunchExpansion> = emptyList(),

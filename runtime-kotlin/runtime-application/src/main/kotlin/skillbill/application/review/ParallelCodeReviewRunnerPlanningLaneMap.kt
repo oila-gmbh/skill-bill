@@ -1,5 +1,5 @@
 package skillbill.application.review
-
+import skillbill.agent.model.AgentId
 import skillbill.application.review.model.ParallelCodeReviewRequest
 import skillbill.application.review.model.StackDetectionException
 import skillbill.application.review.model.UsageValidationException
@@ -11,13 +11,13 @@ import skillbill.review.plan.ReviewStackRouting
 import skillbill.review.plan.model.ReviewRoutingChangedFile
 import java.nio.file.Path
 
-internal fun ParallelCodeReviewRunnerPlanning.resolveAgent(agentId: String, label: String): InstallAgent {
-  if (agentId.isBlank()) {
+internal fun ParallelCodeReviewRunnerPlanning.resolveAgent(agentId: AgentId, label: String): InstallAgent {
+  if (agentId.value.isBlank()) {
     throw UsageValidationException(
       "Option $label is required. Supported agents: ${InstallAgent.supportedIds.joinToString()}.",
     )
   }
-  return runCatching { InstallAgent.fromNormalizedId(agentId, label = label) }
+  return runCatching { InstallAgent.fromNormalizedId(agentId.value, label = label) }
     .getOrElse {
       throw UsageValidationException(
         "Unsupported agent '$agentId' for $label. Supported agents: ${InstallAgent.supportedIds.joinToString()}.",

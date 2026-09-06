@@ -1,10 +1,12 @@
 package skillbill.infrastructure.sqlite.review
+
 import skillbill.db.PARAM_ONE
 import skillbill.ports.review.model.ReviewRepositoryStatsSnapshot
 import skillbill.review.model.FeatureTaskRuntimeWorkflowStats
 import skillbill.review.model.FeatureVerifyWorkflowStats
 import skillbill.review.model.GoalWorkflowStats
 import skillbill.review.model.ReviewFinishedTelemetry
+import skillbill.review.model.ReviewRunId
 import java.sql.Connection
 
 object ReviewStatsRuntime {
@@ -15,7 +17,7 @@ object ReviewStatsRuntime {
       }
     }
     return ReviewRepositoryStatsSnapshot(
-      reviewRunId = reviewRunId,
+      reviewRunId = reviewRunId?.let(::ReviewRunId),
       stats = summarizeFindingRows(queryLatestFindingOutcomes(connection, reviewRunId)),
       health = buildReviewHealthStats(connection, reviewRunId),
       laneEffectiveness = queryReviewLaneEffectiveness(connection, reviewRunId),

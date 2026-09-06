@@ -1,5 +1,7 @@
 package skillbill.application.featuretask
 
+import skillbill.agent.model.AgentId
+
 import skillbill.application.featuretask.model.FeatureTaskRuntimePhaseStateRequest
 import skillbill.application.featuretask.model.FeatureTaskRuntimeRunReport
 import skillbill.application.review.RuntimeOwnedReviewMode
@@ -38,7 +40,6 @@ object FeatureTaskRuntimeRunLoopPlanningBranch {
         outputArtifact = null,
         blockedReason = reason,
       ),
-      runLoop.request.dbPathOverride,
     )
     runLoop.observability.branchSetupBlocked(phaseId, BRANCH_SETUP_AGENT_ID, reason)
   }
@@ -125,7 +126,6 @@ object FeatureTaskRuntimeRunLoopPlanningBranch {
     }
     runLoop.goalContinuationRecorder.updateReviewState(
       runLoop.request.workflowId,
-      runLoop.request.dbPathOverride,
     ) { state ->
       state.copy(
         resolvedTier = RuntimeOwnedReviewMode.execute(resolution.resolvedTier),
@@ -145,14 +145,14 @@ object FeatureTaskRuntimeRunLoopPlanningBranch {
     if (!isGoalContinuationRun(runLoop.request)) {
       null
     } else {
-      runLoop.goalContinuationRecorder.reviewState(runLoop.request.workflowId, runLoop.request.dbPathOverride)
+      runLoop.goalContinuationRecorder.reviewState(runLoop.request.workflowId)
     }
 
   fun regenerationCapExhaustionReason(runLoop: FeatureTaskRuntimeRunLoop, loopId: String, edgeIteration: Int): String {
     val producer = FeatureTaskRuntimePhaseWorkflowDefinition.REGENERATION_LOOP_ID_BY_PRODUCER.entries
       .firstOrNull { it.value == loopId }?.key
     val latest = producer?.let { producing ->
-      runLoop.recorder.loadQuarantinedRecords(runLoop.request.workflowId, runLoop.request.dbPathOverride)
+      runLoop.recorder.loadQuarantinedRecords(runLoop.request.workflowId)
         .orEmpty()
         .lastOrNull { it.producingPhaseId == producing }
     }
@@ -306,14 +306,13 @@ object FeatureTaskRuntimeRunLoopPlanningBranch {
     auditPhaseId: String,
     auditOutputArtifact: String?,
   ) {
-    runLoop.recorder.persistAuditGapPause(runLoop.request.workflowId, pause, runLoop.request.dbPathOverride)
+    runLoop.recorder.persistAuditGapPause(runLoop.request.workflowId, pause)
     if (isGoalContinuationRun(runLoop.request)) {
       runLoop.goalContinuationRecorder.recordGoalContinuationState(
         GoalContinuationStateRecordRequest(
           workflowId = runLoop.request.workflowId,
           workflowStatus = STATUS_PAUSED,
         ),
-        dbOverride = runLoop.request.dbPathOverride,
       )
     }
     val resolvedAgent = FeatureTaskRuntimeAgentResolver.resolve(
@@ -335,7 +334,6 @@ object FeatureTaskRuntimeRunLoopPlanningBranch {
         edgeIteration = pause.edgeIteration,
         outputArtifact = auditOutputArtifact,
       ),
-      dbOverride = runLoop.request.dbPathOverride,
     )
     pauseAt(runLoop, auditPhaseId, pause.reason, FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT)
   }
@@ -353,7 +351,6 @@ object FeatureTaskRuntimeRunLoopPlanningBranch {
         runLoop.recorder.persistAuditGapPause(
           runLoop.request.workflowId,
           pause.copy(operatorDecision = AUDIT_GAP_PAUSE_DECISION_RETRY_FIX),
-          runLoop.request.dbPathOverride,
         )
         null
       }
@@ -361,7 +358,6 @@ object FeatureTaskRuntimeRunLoopPlanningBranch {
         runLoop.recorder.persistAuditGapPause(
           runLoop.request.workflowId,
           pause.copy(operatorDecision = AUDIT_GAP_PAUSE_DECISION_ABANDON_SUBTASK),
-          runLoop.request.dbPathOverride,
         )
         null
       }

@@ -5,6 +5,7 @@ import skillbill.ports.goalrunner.GoalSubtaskPlanRepository
 import skillbill.ports.goalrunner.model.GoalPlanningIdentity
 import skillbill.ports.goalrunner.model.GoalSubtaskPlanCheckpoint
 import skillbill.ports.goalrunner.model.GovernedGoalSubtaskDescriptor
+import skillbill.workflow.decomposition.model.SubtaskId
 
 internal class GoalSubtaskPlanStore(
   private val statusProjection: GoalPlanningStatusProjectionSql,
@@ -25,28 +26,28 @@ internal class GoalSubtaskPlanStore(
   }
 
   override fun checkpointSubtaskPlan(checkpoint: GoalSubtaskPlanCheckpoint) {
-    translateSqlFailure(checkpoint.identity.parentGoalWorkflowId, checkpoint.subtaskId) {
+    translateSqlFailure(checkpoint.identity.parentGoalWorkflowId, checkpoint.subtaskId.value) {
       subtaskPlan.checkpointSubtaskPlan(checkpoint)
     }
   }
 
   override fun replaceSubtaskPlan(checkpoint: GoalSubtaskPlanCheckpoint) {
-    translateSqlFailure(checkpoint.identity.parentGoalWorkflowId, checkpoint.subtaskId) {
+    translateSqlFailure(checkpoint.identity.parentGoalWorkflowId, checkpoint.subtaskId.value) {
       subtaskPlan.replaceSubtaskPlan(checkpoint)
     }
   }
 
-  override fun deleteSubtaskPlan(parentGoalWorkflowId: String, subtaskId: Int): Int =
-    translateSqlFailure(parentGoalWorkflowId, subtaskId) {
-      subtaskPlan.deleteSubtaskPlan(parentGoalWorkflowId, subtaskId)
+  override fun deleteSubtaskPlan(parentGoalWorkflowId: String, subtaskId: SubtaskId): Int =
+    translateSqlFailure(parentGoalWorkflowId, subtaskId.value) {
+      subtaskPlan.deleteSubtaskPlan(parentGoalWorkflowId, subtaskId.value)
     }
 
   override fun findSubtaskPlan(
     expectedIdentity: GoalPlanningIdentity,
-    subtaskId: Int,
+    subtaskId: SubtaskId,
     governedSubSpecPath: String,
-  ): GoalSubtaskPlanCheckpoint? = translateSqlFailure(expectedIdentity.parentGoalWorkflowId, subtaskId) {
-    subtaskPlan.findSubtaskPlan(expectedIdentity, subtaskId, governedSubSpecPath)
+  ): GoalSubtaskPlanCheckpoint? = translateSqlFailure(expectedIdentity.parentGoalWorkflowId, subtaskId.value) {
+    subtaskPlan.findSubtaskPlan(expectedIdentity, subtaskId.value, governedSubSpecPath)
   }
 
   override fun listSubtaskPlansOrdered(

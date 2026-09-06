@@ -40,7 +40,7 @@ fun WorkflowStateRecord.toSnapshot(): WorkflowStateSnapshot = WorkflowStateSnaps
 
 @OpenBoundaryMap("Feature-implement session summary wire payload")
 fun FeatureImplementSessionSummary.toPayload(): Map<String, Any?> = linkedMapOf(
-  "session_id" to sessionId,
+  "session_id" to sessionId.value,
   "issue_key_provided" to issueKeyProvided,
   "issue_key_type" to issueKeyType,
   "spec_input_types" to specInputTypes,
@@ -55,7 +55,7 @@ fun FeatureImplementSessionSummary.toPayload(): Map<String, Any?> = linkedMapOf(
 
 @OpenBoundaryMap("Feature-verify session summary wire payload")
 fun FeatureVerifySessionSummary.toPayload(): Map<String, Any?> = linkedMapOf(
-  "session_id" to sessionId,
+  "session_id" to sessionId.value,
   "acceptance_criteria_count" to acceptanceCriteriaCount,
   "rollout_relevant" to rolloutRelevant,
   "spec_summary" to specSummary,

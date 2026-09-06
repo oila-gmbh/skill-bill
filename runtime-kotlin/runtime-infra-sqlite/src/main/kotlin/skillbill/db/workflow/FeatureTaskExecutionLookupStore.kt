@@ -5,12 +5,13 @@ import skillbill.error.InvalidWorkflowStateSchemaError
 import skillbill.ports.workflow.FeatureTaskExecutionLookupRepository
 import skillbill.ports.workflow.model.FeatureTaskExecutionIdentity
 import skillbill.ports.workflow.model.FeatureTaskWorkflowCandidate
+import skillbill.workflow.engine.model.WorkflowId
 import java.sql.Connection
 
 internal class FeatureTaskExecutionLookupStore(
   private val connection: Connection,
 ) : FeatureTaskExecutionLookupRepository {
-  override fun claimFeatureTaskContinuation(workflowId: String, expectedUpdatedAt: String?): Boolean =
+  override fun claimFeatureTaskContinuation(workflowId: WorkflowId, expectedUpdatedAt: String?): Boolean =
     connection.prepareStatement(
       """
       UPDATE feature_task_workflows
@@ -20,7 +21,7 @@ internal class FeatureTaskExecutionLookupStore(
         AND ((updated_at IS NULL AND ? IS NULL) OR updated_at = ?)
       """.trimIndent(),
     ).use { statement ->
-      statement.setString(CLAIM_WORKFLOW_ID_INDEX, workflowId)
+      statement.setString(CLAIM_WORKFLOW_ID_INDEX, workflowId.value)
       statement.setString(CLAIM_EXPECTED_UPDATED_AT_NULL_INDEX, expectedUpdatedAt)
       statement.setString(CLAIM_EXPECTED_UPDATED_AT_INDEX, expectedUpdatedAt)
       statement.executeUpdate() == 1
@@ -36,7 +37,7 @@ internal class FeatureTaskExecutionLookupStore(
       ON CONFLICT(workflow_id) DO NOTHING
       """.trimIndent(),
     ).use { statement ->
-      statement.setString(IDENTITY_WORKFLOW_ID_INDEX, identity.workflowId)
+      statement.setString(IDENTITY_WORKFLOW_ID_INDEX, identity.workflowId.value)
       statement.setString(IDENTITY_CONTRACT_VERSION_INDEX, identity.contractVersion)
       statement.setString(IDENTITY_ISSUE_KEY_INDEX, identity.normalizedIssueKey)
       statement.setString(IDENTITY_REPOSITORY_INDEX, identity.repositoryIdentity)
@@ -45,18 +46,18 @@ internal class FeatureTaskExecutionLookupStore(
       statement.setString(IDENTITY_ROUTE_SCOPE_INDEX, identity.routeScope.wireValue)
       statement.executeUpdate()
     }
-    val persisted = connection.featureTaskIdentity(identity.workflowId)
-      ?: throw InvalidFeatureTaskExecutionIdentitySchemaError(identity.workflowId, "identity was not persisted")
+    val persisted = connection.featureTaskIdentity(identity.workflowId.value)
+      ?: throw InvalidFeatureTaskExecutionIdentitySchemaError(identity.workflowId.value, "identity was not persisted")
     if (persisted != identity) {
       throw InvalidFeatureTaskExecutionIdentitySchemaError(
-        identity.workflowId,
+        identity.workflowId.value,
         "immutable identity conflicts with the persisted record",
       )
     }
   }
 
-  override fun getFeatureTaskExecutionIdentity(workflowId: String): FeatureTaskExecutionIdentity? =
-    connection.featureTaskIdentity(workflowId)
+  override fun getFeatureTaskExecutionIdentity(workflowId: WorkflowId): FeatureTaskExecutionIdentity? =
+    connection.featureTaskIdentity(workflowId.value)
 
   override fun findStandaloneFeatureTaskCandidates(
     normalizedIssueKey: String,

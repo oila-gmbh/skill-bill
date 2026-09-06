@@ -1,5 +1,4 @@
 package skillbill.application
-
 import skillbill.agentaddon.model.AgentAddonPromptFormatter
 import skillbill.agentaddon.model.HydratedAgentAddonSelection
 import skillbill.agentaddon.model.HydratedAgentAddonSelectionEntry
@@ -70,6 +69,7 @@ import skillbill.review.model.ParallelReviewMergedFinding
 import skillbill.review.model.ParallelReviewParseResult
 import skillbill.review.model.ReviewFindingVerdict
 import skillbill.review.model.ReviewPassClaimSnapshot
+import skillbill.review.model.ReviewRunId
 import skillbill.review.model.ReviewRunLane
 import skillbill.review.model.ReviewSpecProjectionReference
 import skillbill.review.model.ReviewStageBoundary
@@ -971,7 +971,7 @@ class ParallelCodeReviewSuppliedDiffTest {
       recorder,
     ).run(
       harnessRequest(
-        reviewRunId = "runner-addons-stage",
+        reviewRunId = ReviewRunId("runner-addons-stage"),
         codeReviewMode = CodeReviewExecutionMode.INLINE,
       ).copy(
         suppliedDiff = diffForPaths("src/Main.kt"),
@@ -1537,12 +1537,12 @@ internal class RecordingReviewDatabase : DatabaseSessionFactory {
     }
   } as UnitOfWork
 
-  override fun resolveDbPath(dbOverride: String?) = unitOfWork.dbPath
-  override fun databaseExists(dbOverride: String?) = true
-  override fun <T> read(dbOverride: String?, block: (UnitOfWork) -> T): T = block(unitOfWork)
-  override fun <T> selfManagedWrite(dbOverride: String?, block: (UnitOfWork) -> T): T = transaction(dbOverride, block)
+  override fun resolveDbPath() = unitOfWork.dbPath
+  override fun databaseExists() = true
+  override fun <T> read(block: (UnitOfWork) -> T): T = block(unitOfWork)
+  override fun <T> selfManagedWrite(block: (UnitOfWork) -> T): T = transaction(block)
 
-  override fun <T> transaction(dbOverride: String?, block: (UnitOfWork) -> T): T = block(unitOfWork)
+  override fun <T> transaction(block: (UnitOfWork) -> T): T = block(unitOfWork)
 }
 
 private object NoopReviewLifecycleTelemetry : LifecycleTelemetryRepository {
@@ -1606,7 +1606,7 @@ internal fun baseRequest(
   repoRoot = repoRoot,
   timeout = timeout,
   codeReviewMode = CodeReviewExecutionMode.INLINE,
-  reviewRunId = "runner-test-${runnerRequestSequence.incrementAndGet()}",
+  reviewRunId = ReviewRunId("runner-test-${runnerRequestSequence.incrementAndGet()}"),
   // Pinned so most fixtures never reach for Git; a scope test that exercises base or head detection
   // clears them with `detectingRevisions()` to leave the resolution the runner performs visible.
   baseRevision = "base-revision",

@@ -1,5 +1,4 @@
 package skillbill.application
-
 import skillbill.application.featurespec.FeatureSpecPreparationRuntime
 import skillbill.application.featurespec.FeatureSpecPreparationWriter
 import skillbill.application.featuretask.AcceptingFeatureTaskRuntimeHandoffEnvelopeValidator
@@ -156,7 +155,11 @@ import skillbill.scaffold.model.ValidationGateExecutedWorkSignal
 import skillbill.scaffold.model.ValidationGateFindingsFormat.JUNIT_XML
 import skillbill.scaffold.model.ValidationGateFindingsLocator
 import skillbill.telemetry.model.TelemetrySettings
+import skillbill.workflow.decomposition.model.IssueKey
+import skillbill.workflow.decomposition.model.SubtaskId
 import skillbill.workflow.engine.WorkflowSnapshotValidator
+import skillbill.workflow.engine.model.SessionId
+import skillbill.workflow.engine.model.WorkflowId
 import skillbill.workflow.engine.model.WorkflowStateSnapshot
 import skillbill.workflow.goal.model.GOAL_SUBTASK_REVIEW_RESULTS_ARTIFACT_KEY
 import skillbill.workflow.goal.model.GOAL_SUBTASK_REVIEW_STATE_ARTIFACT_KEY
@@ -258,7 +261,7 @@ internal val ALL_PHASES =
 internal val COMPLETED_PHASES_CLEAN_RUN = ALL_PHASES.filterNot { it == "implement_fix" || it == "build" }
 internal val AGENT_LAUNCHED_PHASES = ALL_PHASES.filterNot { it == "review" || it == "implement_fix" || it == "build" }
 internal fun expiredCrashedOwnership(): FeatureTaskRuntimeWorkerOwnership = FeatureTaskRuntimeWorkerOwnership(
-  workflowId = WORKFLOW_ID,
+  workflowId = WorkflowId(WORKFLOW_ID),
   generation = 1,
   ownerToken = "crashed-child-token",
   hostIdentity = "harness-host",
@@ -372,7 +375,7 @@ internal class RunnerHarness(
     recorder.ensureWorkflowOpen(WORKFLOW_ID, SESSION_ID)
     recorder.recordPhaseState(
       FeatureTaskRuntimePhaseStateRequest(
-        workflowId = WORKFLOW_ID,
+        workflowId = WorkflowId(WORKFLOW_ID),
         phaseId = "review",
         status = status,
         attemptCount = attemptCount,
@@ -425,8 +428,8 @@ internal class RunnerHarness(
   fun seedProseModeWorkflow() {
     repository.saveFeatureTaskWorkflow(
       WorkflowStateRecord(
-        workflowId = WORKFLOW_ID,
-        sessionId = SESSION_ID,
+        workflowId = WorkflowId(WORKFLOW_ID),
+        sessionId = SessionId(SESSION_ID),
         workflowName = "bill-feature-task",
         contractVersion = "0.1",
         workflowStatus = "running",
@@ -463,7 +466,7 @@ internal class RunnerHarness(
     recorder.ensureWorkflowOpen(WORKFLOW_ID, SESSION_ID)
     recorder.recordPhaseState(
       FeatureTaskRuntimePhaseStateRequest(
-        workflowId = WORKFLOW_ID,
+        workflowId = WorkflowId(WORKFLOW_ID),
         phaseId = phaseId,
         status = "blocked",
         attemptCount = attemptCount,
@@ -480,7 +483,7 @@ internal class RunnerHarness(
     recorder.ensureWorkflowOpen(WORKFLOW_ID, SESSION_ID)
     recorder.recordPhaseState(
       FeatureTaskRuntimePhaseStateRequest(
-        workflowId = WORKFLOW_ID,
+        workflowId = WorkflowId(WORKFLOW_ID),
         phaseId = seed.phaseId,
         status = seed.status,
         attemptCount = seed.attemptCount,
@@ -497,7 +500,7 @@ internal class RunnerHarness(
     recorder.ensureWorkflowOpen(WORKFLOW_ID, SESSION_ID)
     recorder.appendLedgerEntry(
       FeatureTaskRuntimePhaseLedgerRequest(
-        workflowId = WORKFLOW_ID,
+        workflowId = WorkflowId(WORKFLOW_ID),
         action = FeatureTaskRuntimePhaseLedgerAction.LOOP_EDGE,
         phaseId = phaseId,
         attemptCount = edgeIteration,
@@ -511,7 +514,7 @@ internal class RunnerHarness(
     recorder.ensureWorkflowOpen(WORKFLOW_ID, SESSION_ID)
     recorder.recordPhaseState(
       FeatureTaskRuntimePhaseStateRequest(
-        workflowId = WORKFLOW_ID,
+        workflowId = WorkflowId(WORKFLOW_ID),
         phaseId = phaseId,
         status = "blocked",
         attemptCount = 1,
@@ -703,9 +706,9 @@ private fun runnerHarnessRequest(
   agentAssignment: FeatureTaskRuntimeAgentAssignment,
   sink: FeatureTaskRuntimeRunEventSink,
 ): FeatureTaskRuntimeRunRequest = FeatureTaskRuntimeRunRequest(
-  issueKey = ISSUE_KEY,
-  workflowId = WORKFLOW_ID,
-  sessionId = SESSION_ID,
+  issueKey = IssueKey(ISSUE_KEY),
+  workflowId = WorkflowId(WORKFLOW_ID),
+  sessionId = SessionId(SESSION_ID),
   runInvariants = FeatureTaskRuntimeRunInvariants(
     specReference = runtimeConfig.branchSetup.specReference,
     featureSize = runtimeConfig.branchSetup.featureSize,
@@ -910,9 +913,9 @@ internal class TelemetryRunnerHarness(
 
 private fun telemetryHarnessRequest(runtimeConfig: RuntimeHarnessConfig): FeatureTaskRuntimeRunRequest =
   FeatureTaskRuntimeRunRequest(
-    issueKey = ISSUE_KEY,
-    workflowId = WORKFLOW_ID,
-    sessionId = SESSION_ID,
+    issueKey = IssueKey(ISSUE_KEY),
+    workflowId = WorkflowId(WORKFLOW_ID),
+    sessionId = SessionId(SESSION_ID),
     runInvariants = FeatureTaskRuntimeRunInvariants(
       specReference = runtimeConfig.branchSetup.specReference,
       featureSize = runtimeConfig.branchSetup.featureSize,
@@ -1454,7 +1457,7 @@ internal fun goalContinuationHarness(
     repoRoot = repoRoot,
     goalContinuation = FeatureTaskRuntimeGoalContinuationContext(
       parentIssueKey = ISSUE_KEY,
-      subtaskId = 5,
+      subtaskId = SubtaskId(5),
       goalBranch = "feat/existing-runtime-branch",
       suppressPr = true,
       parentWorkflowId = "wfl-parent",
@@ -2065,7 +2068,7 @@ private fun FeatureTaskRuntimePhaseRecorder.recordPhaseStateForTest(
   outputArtifact: String?,
 ): Boolean = recordPhaseState(
   FeatureTaskRuntimePhaseStateRequest(
-    workflowId = WORKFLOW_ID,
+    workflowId = WorkflowId(WORKFLOW_ID),
     phaseId = phaseId,
     status = status,
     attemptCount = attemptCount,
@@ -2161,16 +2164,16 @@ internal class RuntimeFakeDatabaseSessionFactory(
   }
   fun producerEvidenceAt(key: ProducerEvidenceKey): ProducerOutputEvidence? = producerEvidence[key]
 
-  override fun resolveDbPath(dbOverride: String?): Path = dbPath
+  override fun resolveDbPath(): Path = dbPath
 
-  override fun databaseExists(dbOverride: String?): Boolean = true
+  override fun databaseExists(): Boolean = true
 
-  override fun <T> read(dbOverride: String?, block: (UnitOfWork) -> T): T = block(unitOfWork())
+  override fun <T> read(block: (UnitOfWork) -> T): T = block(unitOfWork())
 
-  override fun <T> selfManagedWrite(dbOverride: String?, block: (UnitOfWork) -> T): T = block(unitOfWork())
+  override fun <T> selfManagedWrite(block: (UnitOfWork) -> T): T = block(unitOfWork())
 
-  override fun <T> transaction(dbOverride: String?, block: (UnitOfWork) -> T): T {
-    transactionDbOverrides += dbOverride
+  override fun <T> transaction(block: (UnitOfWork) -> T): T {
+    transactionDbOverrides += null
     return block(unitOfWork())
   }
 

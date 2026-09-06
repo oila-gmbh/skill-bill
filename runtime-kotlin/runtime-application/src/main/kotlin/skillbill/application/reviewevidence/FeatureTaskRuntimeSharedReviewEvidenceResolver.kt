@@ -1,10 +1,10 @@
 package skillbill.application.reviewevidence
-
 import skillbill.ports.diff.DiffResolverPort
 import skillbill.ports.taskruntime.FeatureTaskRuntimeSharedEvidenceResolverPort
 import skillbill.ports.taskruntime.model.FeatureTaskRuntimeSharedEvidenceDerivation
 import skillbill.ports.taskruntime.model.FeatureTaskRuntimeSharedEvidenceRequest
 import skillbill.ports.taskruntime.model.FeatureTaskRuntimeSharedEvidenceResolveOutcome
+import skillbill.workflow.engine.model.WorkflowId
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepositoryCheckpoint
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeSharedEvidenceFileEntry
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeSharedEvidenceHunkEntry
@@ -43,11 +43,11 @@ class FeatureTaskRuntimeSharedReviewEvidenceResolver(
 ) {
   internal fun resolve(
     repoRoot: Path,
-    workflowId: String?,
+    workflowId: WorkflowId?,
     checkpoint: FeatureTaskRuntimeRepositoryCheckpoint?,
     consumerPhaseId: String,
   ): FeatureTaskRuntimeSharedReviewEvidenceResolved? {
-    if (workflowId.isNullOrBlank() || checkpoint == null) return null
+    if (workflowId?.value.isNullOrBlank() || checkpoint == null) return null
     val resolution = sharedEvidenceResolver.resolve(
       FeatureTaskRuntimeSharedEvidenceRequest(repoRoot, workflowId, checkpoint),
     ) { requested -> derive(repoRoot, requested) }

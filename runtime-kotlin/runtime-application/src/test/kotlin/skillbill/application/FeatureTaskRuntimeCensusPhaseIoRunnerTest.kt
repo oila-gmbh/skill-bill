@@ -1,5 +1,4 @@
 package skillbill.application
-
 import skillbill.application.featuretask.ApprovingReviewDriverStub
 import skillbill.application.featuretask.FeatureTaskRuntimeReviewDriver
 import skillbill.application.featuretask.model.FeatureTaskRuntimeGoalContinuationContext
@@ -10,6 +9,7 @@ import skillbill.review.context.model.CodeReviewExecutionMode
 import skillbill.review.model.ParallelReviewMergeResult
 import skillbill.review.model.ParallelReviewMergedFinding
 import skillbill.review.model.ParallelReviewSeverity
+import skillbill.workflow.decomposition.model.SubtaskId
 import java.nio.file.Files
 import kotlin.test.Test
 import kotlin.test.assertContains
@@ -222,7 +222,7 @@ class FeatureTaskRuntimeCensusPhaseIoRunnerTest {
         repoRoot = repoRoot,
         goalContinuation = FeatureTaskRuntimeGoalContinuationContext(
           parentIssueKey = "SKILL-65",
-          subtaskId = 5,
+          subtaskId = SubtaskId(5),
           goalBranch = "feat/existing-runtime-branch",
           suppressPr = true,
           parentWorkflowId = "wfl-parent",

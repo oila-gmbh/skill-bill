@@ -1,12 +1,12 @@
 package skillbill.application.featuretask
-
 import skillbill.agentaddon.model.HydratedAgentAddonSelection
 import skillbill.application.featuretask.model.FeatureTaskRuntimePhaseLaunchBriefing
 import skillbill.application.featuretask.model.FeatureTaskRuntimePhasePromptComposeInputs
+import skillbill.workflow.decomposition.model.IssueKey
 
 object FeatureTaskRuntimePhasePromptComposer {
   fun compose(
-    issueKey: String,
+    issueKey: IssueKey,
     briefing: FeatureTaskRuntimePhaseLaunchBriefing,
     configure: FeatureTaskRuntimePhasePromptComposeInputs.() -> FeatureTaskRuntimePhasePromptComposeInputs = { this },
   ): String = compose(

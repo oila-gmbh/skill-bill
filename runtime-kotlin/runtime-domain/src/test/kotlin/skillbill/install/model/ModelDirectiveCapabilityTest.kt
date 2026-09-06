@@ -1,5 +1,6 @@
 package skillbill.install.model
 
+import skillbill.agent.model.AgentId
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -16,13 +17,13 @@ class ModelDirectiveCapabilityTest {
 
   @Test
   fun `supportsModelDirective accepts cursor and rejects junie`() {
-    assertTrue(supportsModelDirective("cursor"))
-    assertTrue(supportsModelDirective("CURSOR"))
-    assertTrue(supportsModelDirective("claude"))
-    assertTrue(supportsModelDirective("codex"))
-    assertFalse(supportsModelDirective("junie"))
-    assertFalse(supportsModelDirective("copilot"))
+    assertTrue(supportsModelDirective(AgentId("cursor")))
+    assertTrue(supportsModelDirective(AgentId("CURSOR")))
+    assertTrue(supportsModelDirective(AgentId("claude")))
+    assertTrue(supportsModelDirective(AgentId("codex")))
+    assertFalse(supportsModelDirective(AgentId("junie")))
+    assertFalse(supportsModelDirective(AgentId("copilot")))
     assertFalse(supportsModelDirective(null))
-    assertFalse(supportsModelDirective(" "))
+    assertFalse(supportsModelDirective(AgentId(" ")))
   }
 }

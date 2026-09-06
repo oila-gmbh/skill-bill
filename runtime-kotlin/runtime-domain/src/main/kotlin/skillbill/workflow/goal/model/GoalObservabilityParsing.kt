@@ -1,7 +1,9 @@
 package skillbill.workflow.goal.model
-
 import skillbill.boundary.OpenBoundaryMap
 import skillbill.contracts.JsonCodec
+import skillbill.workflow.decomposition.model.IssueKey
+import skillbill.workflow.decomposition.model.SubtaskId
+import skillbill.workflow.engine.model.WorkflowId
 import skillbill.workflow.goal.GoalObservabilityEventValidator
 import skillbill.workflow.goal.invalidGoalObservabilityEvent
 
@@ -41,9 +43,9 @@ fun goalObservabilityEventFromArtifact(
   eventMap.requireOnlyKeys(GOAL_OBSERVABILITY_EVENT_KEYS, sourceLabel)
   return GoalObservabilityEvent(
     contractVersion = eventMap.requiredContractVersion(sourceLabel),
-    issueKey = eventMap.requiredString("issue_key", sourceLabel),
-    subtaskId = eventMap.requiredPositiveInt("subtask_id", sourceLabel),
-    workflowId = eventMap.optionalString("workflow_id"),
+    issueKey = IssueKey(eventMap.requiredString("issue_key", sourceLabel)),
+    subtaskId = SubtaskId(eventMap.requiredPositiveInt("subtask_id", sourceLabel)),
+    workflowId = eventMap.optionalString("workflow_id")?.let(::WorkflowId),
     workflowPhase = eventMap.requiredString("workflow_phase", sourceLabel),
     workerRole = eventMap.requiredString("worker_role", sourceLabel),
     livenessClass = eventMap.requiredString("liveness_class", sourceLabel),

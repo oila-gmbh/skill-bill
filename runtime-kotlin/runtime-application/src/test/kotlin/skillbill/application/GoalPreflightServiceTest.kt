@@ -1,5 +1,4 @@
 package skillbill.application
-
 import skillbill.agentaddon.model.AgentAddonConsumer
 import skillbill.agentaddon.model.AgentAddonSelection
 import skillbill.agentaddon.model.HydratedAgentAddonSelection
@@ -28,6 +27,7 @@ import skillbill.workflow.decomposition.model.CurrentSubtaskIntent
 import skillbill.workflow.decomposition.model.DecompositionDependency
 import skillbill.workflow.decomposition.model.DecompositionManifest
 import skillbill.workflow.decomposition.model.DecompositionSubtask
+import skillbill.workflow.decomposition.model.IssueKey
 import skillbill.workflow.decomposition.model.SpecSource
 import java.nio.file.Files
 import java.nio.file.Path
@@ -116,7 +116,7 @@ class GoalPreflightServiceTest {
 
     assertFailsWith<InvalidFeatureTaskExecutionIdentitySchemaError> {
       service.preflight(
-        request(Files.createTempDirectory("goal-preflight-invalid"), issueKey = "SKILL-901\nspoofed"),
+        request(Files.createTempDirectory("goal-preflight-invalid"), issueKey = IssueKey("SKILL-901\nspoofed")),
       )
     }
   }
@@ -144,7 +144,7 @@ class GoalPreflightServiceTest {
     Files.writeString(
       manifestPath,
       encodeDecompositionManifestYaml(
-        manifest().copy(issueKey = "SKILL-902"),
+        manifest().copy(issueKey = IssueKey("SKILL-902")),
         testDecompositionManifestValidator,
         TestDecompositionManifestStore,
       ),
@@ -293,7 +293,7 @@ class GoalPreflightServiceTest {
   )
 
   private fun manifest(specSource: SpecSource = SpecSource.LOCAL): DecompositionManifest = DecompositionManifest(
-    issueKey = "SKILL-901",
+    issueKey = IssueKey("SKILL-901"),
     featureName = "preflight-test",
     parentSpecPath = ".feature-specs/SKILL-901-goal/spec.md",
     specSource = specSource,

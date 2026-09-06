@@ -1,5 +1,4 @@
 package skillbill.application
-
 import skillbill.application.featuretask.FeatureTaskContinuationLookupService
 import skillbill.application.featuretask.model.FeatureTaskContinuationLookupResult
 import skillbill.application.workflow.WorkflowService
@@ -12,6 +11,8 @@ import skillbill.application.workflow.openFeatureTask
 import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_PERSISTENCE_CONTRACT_VERSION
 import skillbill.ports.workflow.decomposition.UnavailableDecompositionManifestStore
 import skillbill.ports.workflow.gitops.NoopWorkflowGitOperations
+import skillbill.workflow.decomposition.model.IssueKey
+import skillbill.workflow.engine.model.SessionId
 import skillbill.workflow.goal.NoopGoalObservabilityEventValidator
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_RECORDS_ARTIFACT_KEY
 import kotlin.test.Test
@@ -48,10 +49,10 @@ class FeatureTaskRouterContinuationTest {
       service.openFeatureTask(
         WorkflowServiceOpenFeatureTaskArgs(
           kind = WorkflowFamilyKind.TASK_RUNTIME,
-          issueKey = "SKILL-120",
+          issueKey = IssueKey("SKILL-120"),
           repositoryIdentity = REPOSITORY_IDENTITY,
           governedSpecPath = SPEC_PATH,
-          sessionId = SESSION_ID,
+          sessionId = SessionId(SESSION_ID),
         ),
       ),
     )

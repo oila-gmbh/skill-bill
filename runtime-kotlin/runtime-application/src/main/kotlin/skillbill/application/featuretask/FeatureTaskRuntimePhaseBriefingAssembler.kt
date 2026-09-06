@@ -1,8 +1,8 @@
 package skillbill.application.featuretask
-
 import skillbill.agentaddon.model.HydratedAgentAddonSelection
 import skillbill.application.featuretask.model.FeatureTaskRuntimeBriefingProjectionInputs
 import skillbill.application.featuretask.model.FeatureTaskRuntimePhaseLaunchBriefing
+import skillbill.workflow.engine.model.WorkflowId
 import skillbill.workflow.taskruntime.FeatureTaskRuntimeHandoffProjectionValidator
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePlanningProjectionValidator
@@ -70,7 +70,7 @@ object FeatureTaskRuntimeRunInvariantPromptAllowlist {
 object FeatureTaskRuntimePhaseBriefingAssembler {
   fun assemble(
     handoff: FeatureTaskRuntimePhaseHandoff,
-    workflowId: String? = null,
+    workflowId: WorkflowId? = null,
     planningProjectionValidator: FeatureTaskRuntimePlanningProjectionValidator,
     agentAddonSelection: HydratedAgentAddonSelection = HydratedAgentAddonSelection(),
     sharedReviewEvidence: FeatureTaskRuntimeSharedReviewEvidenceReference? = null,

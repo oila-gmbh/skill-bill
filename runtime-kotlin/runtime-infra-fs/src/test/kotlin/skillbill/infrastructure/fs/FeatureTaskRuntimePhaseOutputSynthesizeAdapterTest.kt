@@ -4,6 +4,7 @@ import skillbill.contracts.JsonCodec
 import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_CONTRACT_VERSION
 import skillbill.workflow.taskruntime.ProsePhaseOutputSynthesizer
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutputValidationResult
+import skillbill.workflow.taskruntime.model.PhaseOutputStatus
 import skillbill.workflow.taskruntime.model.SettlementEnvelopeRequest
 import kotlin.test.Test
 import kotlin.test.assertIs
@@ -46,7 +47,7 @@ class FeatureTaskRuntimePhaseOutputSynthesizeAdapterTest {
     val envelope = ProsePhaseOutputSynthesizer.envelopeFromSettlement(
       SettlementEnvelopeRequest(
         phaseId = "implement",
-        status = "completed",
+        status = PhaseOutputStatus.COMPLETED,
         value = "receipt prose",
         summary = "receipt prose",
       ),

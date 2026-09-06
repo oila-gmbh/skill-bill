@@ -1,6 +1,6 @@
 package skillbill.application.goalrunner
-
 import skillbill.ports.goalrunner.runner.model.GoalRunnerWorkflowProgress
+import skillbill.workflow.engine.model.WorkflowId
 import kotlin.test.Test
 import kotlin.test.assertEquals
 
@@ -41,7 +41,7 @@ class GoalChildRecoveryTest {
   }
 
   private fun progress(status: String) = GoalRunnerWorkflowProgress(
-    workflowId = "child-1",
+    workflowId = WorkflowId("child-1"),
     workflowStatus = status,
     currentStepId = "implement",
     progressToken = "token",

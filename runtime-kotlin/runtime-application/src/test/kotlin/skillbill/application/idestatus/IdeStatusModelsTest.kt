@@ -1,5 +1,4 @@
 package skillbill.application.idestatus
-
 import skillbill.application.idestatus.model.IdeStatusCurrentModel
 import skillbill.application.idestatus.model.IdeStatusCurrentPhaseExecution
 import skillbill.application.idestatus.model.IdeStatusCurrentPhaseExecutionKind
@@ -10,6 +9,8 @@ import skillbill.application.idestatus.model.IdeStatusSnapshot
 import skillbill.application.idestatus.model.IdeStatusStep
 import skillbill.application.idestatus.model.IdeStatusWorkflowFamily
 import skillbill.goalrunner.model.GoalPlanningStatusState
+import skillbill.workflow.decomposition.model.IssueKey
+import skillbill.workflow.engine.model.WorkflowId
 import java.time.Instant
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -237,8 +238,8 @@ class IdeStatusModelsTest {
 
   private fun snapshot(planning: IdeStatusPlanning?): IdeStatusSnapshot = IdeStatusSnapshot(
     repositoryIdentity = "repo-root-realpath-v1:/repo",
-    issueKey = "SKILL-165",
-    workflowId = "goal-1",
+    issueKey = IssueKey("SKILL-165"),
+    workflowId = WorkflowId("goal-1"),
     workflowFamily = IdeStatusWorkflowFamily.FEATURE_GOAL,
     lifecycleState = IdeStatusLifecycleState.ACTIVE,
     currentStep = IdeStatusStep(id = "planning", label = "Planning"),

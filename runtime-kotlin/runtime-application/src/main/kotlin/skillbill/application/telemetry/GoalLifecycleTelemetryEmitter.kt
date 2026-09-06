@@ -6,23 +6,23 @@ import skillbill.application.telemetry.model.GoalStartedRequest
 import skillbill.application.telemetry.model.GoalSubtaskFinishedRequest
 
 interface GoalLifecycleTelemetryEmitter {
-  fun goalStarted(request: GoalStartedRequest, dbOverride: String?)
+  fun goalStarted(request: GoalStartedRequest)
 
-  fun goalSubtaskFinished(request: GoalSubtaskFinishedRequest, dbOverride: String?)
+  fun goalSubtaskFinished(request: GoalSubtaskFinishedRequest)
 
-  fun goalFinished(request: GoalFinishedRequest, dbOverride: String?)
+  fun goalFinished(request: GoalFinishedRequest)
 
-  fun goalIssueFinished(request: GoalIssueFinishedRequest, dbOverride: String?)
+  fun goalIssueFinished(request: GoalIssueFinishedRequest)
 
   companion object {
     val NONE: GoalLifecycleTelemetryEmitter = object : GoalLifecycleTelemetryEmitter {
-      override fun goalStarted(request: GoalStartedRequest, dbOverride: String?) = Unit
+      override fun goalStarted(request: GoalStartedRequest) = Unit
 
-      override fun goalSubtaskFinished(request: GoalSubtaskFinishedRequest, dbOverride: String?) = Unit
+      override fun goalSubtaskFinished(request: GoalSubtaskFinishedRequest) = Unit
 
-      override fun goalFinished(request: GoalFinishedRequest, dbOverride: String?) = Unit
+      override fun goalFinished(request: GoalFinishedRequest) = Unit
 
-      override fun goalIssueFinished(request: GoalIssueFinishedRequest, dbOverride: String?) = Unit
+      override fun goalIssueFinished(request: GoalIssueFinishedRequest) = Unit
     }
   }
 }

@@ -1,5 +1,7 @@
 package skillbill.ports.goalrunner
 
+import skillbill.workflow.engine.model.WorkflowId
+
 import skillbill.goalrunner.model.GoalPlanningStatusSnapshot
 import skillbill.goalrunner.model.GoalPlanningStatusState.BLOCKED
 import skillbill.goalrunner.model.GoalPlanningStatusState.NOT_STARTED
@@ -10,6 +12,7 @@ import skillbill.ports.goalrunner.model.GoalPlanningPreparationStatus
 import skillbill.ports.goalrunner.model.GoalSubtaskPlanCheckpoint
 import skillbill.ports.goalrunner.model.GovernedGoalSubtaskDescriptor
 import skillbill.ports.goalrunner.model.SharedGoalPreplanCheckpoint
+import skillbill.workflow.decomposition.model.SubtaskId
 
 interface SharedGoalPreplanRepository {
   fun checkpointSharedPreplan(checkpoint: SharedGoalPreplanCheckpoint): Unit =
@@ -28,7 +31,7 @@ interface SharedGoalPreplanRepository {
   ): Unit = error("Shared goal preplan provenance advance is not implemented by this repository.")
 
   fun cascadeSiblingPlansAfterSharedPreplanRefresh(
-    parentGoalWorkflowId: String,
+    parentGoalWorkflowId: WorkflowId,
     cascadePlanSubtaskIds: List<Int>,
   ): List<Int> = error("Shared-preplan refresh plan cascade is not implemented by this repository.")
 
@@ -40,16 +43,16 @@ interface SharedGoalPreplanRepository {
   fun invalidateSharedPreplan(identity: GoalPlanningIdentity, expectedPayloadSha256: String): Int =
     error("Shared goal preplan invalidation is not implemented by this repository.")
 
-  fun listPreparedPlanSubtaskIds(parentGoalWorkflowId: String): List<Int>
+  fun listPreparedPlanSubtaskIds(parentGoalWorkflowId: WorkflowId): List<Int>
 
-  fun hasPreparedSharedPreplan(parentGoalWorkflowId: String): Boolean
+  fun hasPreparedSharedPreplan(parentGoalWorkflowId: WorkflowId): Boolean
 
-  fun sharedPreplanPayloadSha256(parentGoalWorkflowId: String): String?
+  fun sharedPreplanPayloadSha256(parentGoalWorkflowId: WorkflowId): String?
 }
 
 interface GoalSubtaskPlanRepository {
   fun boundedStatus(
-    parentGoalWorkflowId: String,
+    parentGoalWorkflowId: WorkflowId,
     orderedSubtaskIds: List<Int>,
     blockedSubtaskId: Int? = null,
     blockedReason: String? = null,
@@ -72,12 +75,12 @@ interface GoalSubtaskPlanRepository {
   fun replaceSubtaskPlan(checkpoint: GoalSubtaskPlanCheckpoint): Unit =
     error("Goal subtask plan replacement is not implemented by this repository.")
 
-  fun deleteSubtaskPlan(parentGoalWorkflowId: String, subtaskId: Int): Int =
+  fun deleteSubtaskPlan(parentGoalWorkflowId: WorkflowId, subtaskId: SubtaskId): Int =
     error("Goal subtask plan deletion is not implemented by this repository.")
 
   fun findSubtaskPlan(
     expectedIdentity: GoalPlanningIdentity,
-    subtaskId: Int,
+    subtaskId: SubtaskId,
     governedSubSpecPath: String,
   ): GoalSubtaskPlanCheckpoint?
 
@@ -94,7 +97,7 @@ interface GoalSubtaskPlanRepository {
   fun firstMissingPlan(
     expectedIdentity: GoalPlanningIdentity,
     orderedDescriptors: List<GovernedGoalSubtaskDescriptor>,
-  ): Int? {
+  ): SubtaskId? {
     val prepared = listSubtaskPlansOrdered(expectedIdentity, orderedDescriptors).mapTo(mutableSetOf()) { it.subtaskId }
     return orderedDescriptors.firstOrNull { it.subtaskId !in prepared }?.subtaskId
   }
@@ -107,17 +110,17 @@ interface NormalizedGoalPlanningPreparationRepository :
 interface LegacyGoalPlanningPreparationRepository {
   fun markPrepared(record: GoalPlanningPreparationRecord)
 
-  fun findByGoalAndSubtask(parentGoalWorkflowId: String, subtaskId: Int): GoalPlanningPreparationRecord?
+  fun findByGoalAndSubtask(parentGoalWorkflowId: WorkflowId, subtaskId: SubtaskId): GoalPlanningPreparationRecord?
 
-  fun listPreparedByGoalOrdered(parentGoalWorkflowId: String): List<GoalPlanningPreparationRecord>
+  fun listPreparedByGoalOrdered(parentGoalWorkflowId: WorkflowId): List<GoalPlanningPreparationRecord>
 
-  fun preparedCount(parentGoalWorkflowId: String): Int
+  fun preparedCount(parentGoalWorkflowId: WorkflowId): Int
 
-  fun firstMissingOrIncompleteSubtask(parentGoalWorkflowId: String, orderedSubtaskIds: List<Int>): Int?
+  fun firstMissingOrIncompleteSubtask(parentGoalWorkflowId: WorkflowId, orderedSubtaskIds: List<Int>): Int?
 
-  fun preparedStatus(parentGoalWorkflowId: String, subtaskId: Int): GoalPlanningPreparationStatus?
+  fun preparedStatus(parentGoalWorkflowId: WorkflowId, subtaskId: SubtaskId): GoalPlanningPreparationStatus?
 
-  fun deleteByGoal(parentGoalWorkflowId: String): Int
+  fun deleteByGoal(parentGoalWorkflowId: WorkflowId): Int
 }
 
 interface GoalPlanningPreparationRepository :

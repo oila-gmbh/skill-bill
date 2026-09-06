@@ -1,11 +1,12 @@
 package skillbill.launcher
-
 import skillbill.install.model.InstallAgent
 import skillbill.launcher.agentrun.CursorAgentRunCommandBuilder
 import skillbill.launcher.agentrun.PathExecutableLookup
 import skillbill.launcher.agentrun.ProcessAgentRunAdapter
 import skillbill.ports.agentrun.ExecutableLookup
 import skillbill.ports.agentrun.model.SkillRunRequest
+import skillbill.workflow.decomposition.model.IssueKey
+import skillbill.workflow.decomposition.model.SubtaskId
 import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.test.Test
@@ -17,9 +18,9 @@ import kotlin.time.Duration.Companion.seconds
 
 class AgentLauncherPreflightTest {
   private fun request(): SkillRunRequest = SkillRunRequest(
-    issueKey = "SKILL-162",
+    issueKey = IssueKey("SKILL-162"),
     repoRoot = Path.of("/tmp/skillbill-launcher-preflight"),
-    subtaskId = 1,
+    subtaskId = SubtaskId(1),
     timeout = 10.seconds,
     goalContinuation = null,
     promptOverride = "Test prompt",

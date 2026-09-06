@@ -1,5 +1,6 @@
 package skillbill.ports.goalrunner
 
+import SubtaskId
 import skillbill.ports.goalrunner.model.GoalPlanningContractProvenance
 import skillbill.ports.goalrunner.model.GoalPlanningIdentity
 import skillbill.ports.goalrunner.model.GoalPlanningPreparationRecord
@@ -28,11 +29,11 @@ private object EmptyNormalizedGoalPlanningPreparationRepository : NormalizedGoal
   override fun findSharedPreplan(expectedIdentity: GoalPlanningIdentity): SharedGoalPreplanCheckpoint? = null
   override fun checkpointSubtaskPlan(checkpoint: GoalSubtaskPlanCheckpoint) = Unit
   override fun replaceSubtaskPlan(checkpoint: GoalSubtaskPlanCheckpoint) = Unit
-  override fun deleteSubtaskPlan(parentGoalWorkflowId: String, subtaskId: Int): Int = 0
+  override fun deleteSubtaskPlan(parentGoalWorkflowId: String, subtaskId: SubtaskId): Int = 0
   override fun deleteSharedPreplan(identity: GoalPlanningIdentity, expectedPayloadSha256: String): Int = 0
   override fun findSubtaskPlan(
     expectedIdentity: GoalPlanningIdentity,
-    subtaskId: Int,
+    subtaskId: SubtaskId,
     governedSubSpecPath: String,
   ): GoalSubtaskPlanCheckpoint? = null
   override fun listSubtaskPlansOrdered(
@@ -50,7 +51,10 @@ private object EmptyNormalizedGoalPlanningPreparationRepository : NormalizedGoal
 private object EmptyLegacyGoalPlanningPreparationRepository : LegacyGoalPlanningPreparationRepository {
   override fun markPrepared(record: GoalPlanningPreparationRecord) = Unit
 
-  override fun findByGoalAndSubtask(parentGoalWorkflowId: String, subtaskId: Int): GoalPlanningPreparationRecord? = null
+  override fun findByGoalAndSubtask(
+    parentGoalWorkflowId: String,
+    subtaskId: SubtaskId,
+  ): GoalPlanningPreparationRecord? = null
 
   override fun listPreparedByGoalOrdered(parentGoalWorkflowId: String): List<GoalPlanningPreparationRecord> =
     emptyList()
@@ -60,7 +64,7 @@ private object EmptyLegacyGoalPlanningPreparationRepository : LegacyGoalPlanning
   override fun firstMissingOrIncompleteSubtask(parentGoalWorkflowId: String, orderedSubtaskIds: List<Int>): Int? =
     orderedSubtaskIds.firstOrNull()
 
-  override fun preparedStatus(parentGoalWorkflowId: String, subtaskId: Int): GoalPlanningPreparationStatus? = null
+  override fun preparedStatus(parentGoalWorkflowId: String, subtaskId: SubtaskId): GoalPlanningPreparationStatus? = null
 
   override fun deleteByGoal(parentGoalWorkflowId: String): Int = 0
 }

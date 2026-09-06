@@ -1,5 +1,6 @@
 package skillbill.application.goalrunner
 
+import skillbill.agent.model.AgentId
 import me.tatarka.inject.annotations.Inject
 import skillbill.application.featuretask.FeatureTaskRuntimePhaseRecorder
 import skillbill.application.featuretask.FeatureTaskRuntimeStatusService
@@ -28,6 +29,7 @@ import skillbill.ports.workflow.gitops.model.WorkflowSelectedDiffHunksRequest
 import skillbill.ports.workflow.model.FeatureTaskWorkflowMode
 import skillbill.workflow.decomposition.model.DecompositionManifest
 import skillbill.workflow.decomposition.model.DecompositionSubtask
+import skillbill.workflow.engine.model.WorkflowId
 import java.io.IOException
 import java.time.Clock
 import java.time.Instant
@@ -47,14 +49,14 @@ class GoalRunnerStatusProjectionAssembler(
   val repositoryRoot: RepositoryRoot,
 ) {
   fun project(loadedState: GoalRunnerManifestState, request: GoalRunnerStatusRequest): GoalRunnerStatusProjection {
-    val acceptances = manifestStore.outOfBandAcceptances(loadedState.parentWorkflowId, request.dbPathOverride)
+    val acceptances = manifestStore.outOfBandAcceptances(loadedState.parentWorkflowId)
     val manifest = reconcileStatusManifest(loadedState, request, acceptances)
     val currentSubtask = manifest.subtasks.firstOrNull { subtask ->
       subtask.id == manifest.currentSubtaskIntent.subtaskId
     }
     return GoalRunnerStatusProjector.project(
       manifest = manifest,
-      activeAgent = resolveActiveAgent(currentSubtask, request.dbPathOverride),
+      activeAgent = resolveActiveAgent(currentSubtask),
       extras = statusProjectionRuntimeInputs(
         loadedState = loadedState,
         request = request,
@@ -65,18 +67,14 @@ class GoalRunnerStatusProjectionAssembler(
     )
   }
 
-  fun resolveExecutionLiveness(
-    parentWorkflowId: String,
-    currentSubtask: DecompositionSubtask?,
-    dbPathOverride: String?,
-  ): ExecutionLiveness {
-    val workflowId = currentSubtask?.workflowId?.takeIf(String::isNotBlank)
-      ?: return resolveParentExecutionLiveness(parentWorkflowId, dbPathOverride)
-    val childLiveness = resolveChildExecutionLiveness(workflowId, dbPathOverride)
+  fun resolveExecutionLiveness(parentWorkflowId: WorkflowId, currentSubtask: DecompositionSubtask?): ExecutionLiveness {
+    val workflowId = currentSubtask?.workflowId?.takeIf { it.value.isNotBlank() }
+      ?: return resolveParentExecutionLiveness(parentWorkflowId)
+    val childLiveness = resolveChildExecutionLiveness(workflowId)
     if (childLiveness == ExecutionLiveness.LIVE || childLiveness == ExecutionLiveness.UNKNOWN) {
       return childLiveness
     }
-    return resolveParentExecutionLiveness(parentWorkflowId, dbPathOverride)
+    return resolveParentExecutionLiveness(parentWorkflowId)
   }
 }
 
@@ -87,19 +85,18 @@ internal fun GoalRunnerStatusProjectionAssembler.statusProjectionRuntimeInputs(
   currentSubtask: DecompositionSubtask?,
   acceptances: Map<Int, GoalRunnerOutOfBandAcceptance>,
 ): GoalRunnerStatusProjectionRuntimeInputs {
-  val childWorkflowId = currentSubtask?.workflowId?.takeIf(String::isNotBlank)
+  val childWorkflowId = currentSubtask?.workflowId?.takeIf { it.value.isNotBlank() }
   val progress = childWorkflowId?.let { workflowId ->
-    outcomeStore.progress(workflowId, request.dbPathOverride)
+    outcomeStore.progress(workflowId)
   }
-  val derivedCurrentStep = derivedChildCurrentStep(childWorkflowId, request.dbPathOverride)
+  val derivedCurrentStep = derivedChildCurrentStep(childWorkflowId)
   val ledgerSummary = runCatching {
-    attemptLedgerStore.readAttemptLedgerSummary(loadedState.manifest.issueKey, request.dbPathOverride)
+    attemptLedgerStore.readAttemptLedgerSummary(loadedState.manifest.issueKey)
   }.getOrNull()
   return GoalRunnerStatusProjectionRuntimeInputs(
     executionLiveness = resolveExecutionLiveness(
       parentWorkflowId = loadedState.parentWorkflowId,
       currentSubtask = currentSubtask,
-      dbPathOverride = request.dbPathOverride,
     ),
     planning = alignedPlanningStatus(loadedState, request, manifest, currentSubtask),
     currentStepOverride = derivedCurrentStep ?: progress?.currentStepId,
@@ -140,7 +137,6 @@ internal fun GoalRunnerStatusProjectionAssembler.alignedPlanningStatus(
     manifest.subtasks.filter { it.status != "skipped" }.map { it.id },
     planningBlock?.id,
     planningBlock?.blockedReason,
-    request.dbPathOverride,
   )?.let { snapshot ->
     planningStatusReasonCoherence.align(
       GoalPlanningStatusAlignRequest(
@@ -149,7 +145,6 @@ internal fun GoalRunnerStatusProjectionAssembler.alignedPlanningStatus(
         issueKey = manifest.issueKey,
         manifest = manifest,
         repoRoot = request.repoRoot ?: repositoryRoot.path,
-        dbPathOverride = request.dbPathOverride,
       ),
     )
   }
@@ -162,8 +157,7 @@ internal fun GoalRunnerStatusProjectionAssembler.reconcileStatusManifest(
 ): DecompositionManifest {
   val reconciled = reconcileGoalManifest(
     manifest = state.manifest,
-    dbPathOverride = request.dbPathOverride,
-    authoritativeOutcomes = outcomeStore.authoritativeOutcomes(state.manifest.issueKey, request.dbPathOverride),
+    authoritativeOutcomes = outcomeStore.authoritativeOutcomes(state.manifest.issueKey),
     acceptances = acceptances,
     outcomeStore = outcomeStore,
   )
@@ -178,17 +172,13 @@ internal fun GoalRunnerStatusProjectionAssembler.reconcileStatusManifest(
   return reconciled
 }
 
-internal fun GoalRunnerStatusProjectionAssembler.derivedChildCurrentStep(
-  childWorkflowId: String?,
-  dbPathOverride: String?,
-): String? {
-  val workflowId = childWorkflowId?.takeIf(String::isNotBlank) ?: return null
+internal fun GoalRunnerStatusProjectionAssembler.derivedChildCurrentStep(childWorkflowId: WorkflowId?): String? {
+  val workflowId = childWorkflowId?.takeIf { it.value.isNotBlank() } ?: return null
   val statusService = runtimeStatusService ?: return null
   return try {
     statusService.status(
       FeatureTaskRuntimeStatusRequest(
         workflowId = workflowId,
-        dbPathOverride = dbPathOverride,
       ),
     )?.currentPhaseId?.takeIf(String::isNotBlank)
   } catch (error: ShellContentContractException) {
@@ -209,13 +199,12 @@ internal fun GoalRunnerStatusProjectionAssembler.derivedChildCurrentStep(
 }
 
 internal fun GoalRunnerStatusProjectionAssembler.resolveChildExecutionLiveness(
-  workflowId: String,
-  dbPathOverride: String?,
+  workflowId: WorkflowId,
 ): ExecutionLiveness = runCatching {
-  if (phaseRecorder.existingWorkflowMode(workflowId, dbPathOverride) != FeatureTaskWorkflowMode.RUNTIME) {
+  if (phaseRecorder.existingWorkflowMode(workflowId) != FeatureTaskWorkflowMode.RUNTIME) {
     ExecutionLiveness.UNKNOWN
   } else {
-    val ownership = phaseRecorder.workerOwnership(workflowId, dbPathOverride)
+    val ownership = phaseRecorder.workerOwnership(workflowId)
     if (ownership != null && Instant.parse(ownership.expiresAt).isAfter(clock.instant())) {
       livenessOfLeaseOwner(ownership)
     } else {
@@ -225,10 +214,9 @@ internal fun GoalRunnerStatusProjectionAssembler.resolveChildExecutionLiveness(
 }.getOrDefault(ExecutionLiveness.UNKNOWN)
 
 internal fun GoalRunnerStatusProjectionAssembler.resolveParentExecutionLiveness(
-  parentWorkflowId: String,
-  dbPathOverride: String?,
+  parentWorkflowId: WorkflowId,
 ): ExecutionLiveness = runCatching {
-  val lease = manifestStore.executionLease(parentWorkflowId, dbPathOverride)
+  val lease = manifestStore.executionLease(parentWorkflowId)
     ?: return@runCatching ExecutionLiveness.IDLE
   if (Instant.parse(lease.expiresAt).isAfter(clock.instant())) {
     livenessOfLeaseOwner(lease.asWorkerOwnership(parentWorkflowId))
@@ -247,21 +235,18 @@ internal fun GoalRunnerStatusProjectionAssembler.livenessOfLeaseOwner(
   -> ExecutionLiveness.LIVE
 }
 
-internal fun GoalRunnerStatusProjectionAssembler.resolveActiveAgent(
-  currentSubtask: DecompositionSubtask?,
-  dbPathOverride: String?,
-): String? {
+internal fun GoalRunnerStatusProjectionAssembler.resolveActiveAgent(currentSubtask: DecompositionSubtask?): String? {
   if (currentSubtask == null) return null
-  val workflowId = currentSubtask.workflowId?.takeIf(String::isNotBlank)
+  val workflowId = currentSubtask.workflowId?.takeIf { it.value.isNotBlank() }
   if (workflowId != null &&
-    phaseRecorder.existingWorkflowMode(workflowId, dbPathOverride) == FeatureTaskWorkflowMode.RUNTIME
+    phaseRecorder.existingWorkflowMode(workflowId) == FeatureTaskWorkflowMode.RUNTIME
   ) {
-    agentAttributionFromPhaseState(phaseRecorder, workflowId, dbPathOverride).finalizingAgentId
-      ?.takeIf(String::isNotBlank)
+    agentAttributionFromPhaseState(phaseRecorder, workflowId).finalizingAgentId
+      ?.takeIf { it.value.isNotBlank() }
       ?.let { return it }
   }
-  return currentSubtask.finalizingAgentId?.takeIf(String::isNotBlank)
-    ?: currentSubtask.participatingAgentIds.firstOrNull()?.takeIf(String::isNotBlank)
+  return currentSubtask.finalizingAgentId?.takeIf { it.value.isNotBlank() }?.value
+    ?: currentSubtask.participatingAgentIds.firstOrNull()?.takeIf { it.value.isNotBlank() }?.value
 }
 
 internal fun GoalRunnerStatusProjectionAssembler.requestedDiffStat(request: GoalRunnerStatusRequest) =

@@ -1,8 +1,9 @@
 package skillbill.application.goalrunner
-
 import skillbill.goalrunner.model.GoalRunnerReconciledOutcome
 import skillbill.workflow.decomposition.model.CurrentSubtaskIntent
 import skillbill.workflow.decomposition.model.DecompositionManifest
+import skillbill.workflow.decomposition.model.SubtaskId
+import skillbill.workflow.engine.model.WorkflowId
 
 internal data class GoalRunnerBranchPlan(
   val branch: String,
@@ -10,7 +11,7 @@ internal data class GoalRunnerBranchPlan(
   val validateBase: Boolean,
 )
 
-fun DecompositionManifest.withAttemptedSubtask(subtaskId: Int): DecompositionManifest = copy(
+fun DecompositionManifest.withAttemptedSubtask(subtaskId: SubtaskId): DecompositionManifest = copy(
   status = "in_progress",
   currentSubtaskIntent = CurrentSubtaskIntent(subtaskId = subtaskId, action = "resume"),
   subtasks = subtasks.map { subtask ->
@@ -22,17 +23,17 @@ fun DecompositionManifest.withAttemptedSubtask(subtaskId: Int): DecompositionMan
   },
 )
 
-fun DecompositionManifest.withWorkflowId(subtaskId: Int, workflowId: String): DecompositionManifest = copy(
+fun DecompositionManifest.withWorkflowId(subtaskId: SubtaskId, workflowId: WorkflowId): DecompositionManifest = copy(
   subtasks = subtasks.map { subtask ->
     if (subtask.id == subtaskId) subtask.copy(workflowId = workflowId) else subtask
   },
 )
 
-fun DecompositionManifest.knownWorkflowId(subtaskId: Int, outcome: GoalRunnerReconciledOutcome.Stop): String? =
-  outcome.workflowId ?: subtasks.firstOrNull { it.id == subtaskId }?.workflowId?.takeIf(String::isNotBlank)
+fun DecompositionManifest.knownWorkflowId(subtaskId: SubtaskId, outcome: GoalRunnerReconciledOutcome.Stop): WorkflowId? =
+  outcome.workflowId ?: subtasks.firstOrNull { it.id == subtaskId }?.workflowId
 
 fun DecompositionManifest.withCompletedSubtask(
-  subtaskId: Int,
+  subtaskId: SubtaskId,
   outcome: GoalRunnerReconciledOutcome.Complete,
 ): DecompositionManifest {
   val updated = copy(
@@ -59,9 +60,9 @@ fun DecompositionManifest.withCompletedSubtask(
 }
 
 fun DecompositionManifest.withStoppedSubtask(
-  subtaskId: Int,
+  subtaskId: SubtaskId,
   outcome: GoalRunnerReconciledOutcome.Stop,
-  knownWorkflowId: String? = outcome.workflowId,
+  knownWorkflowId: WorkflowId? = outcome.workflowId,
 ): DecompositionManifest = copy(
   status = "blocked",
   currentSubtaskIntent = CurrentSubtaskIntent(subtaskId = subtaskId, action = "blocked"),
@@ -81,9 +82,9 @@ fun DecompositionManifest.withStoppedSubtask(
 )
 
 fun DecompositionManifest.withResumableSubtask(
-  subtaskId: Int,
+  subtaskId: SubtaskId,
   outcome: GoalRunnerReconciledOutcome.Stop,
-  knownWorkflowId: String? = outcome.workflowId,
+  knownWorkflowId: WorkflowId? = outcome.workflowId,
 ): DecompositionManifest = copy(
   status = "in_progress",
   currentSubtaskIntent = CurrentSubtaskIntent(subtaskId = subtaskId, action = "resume"),

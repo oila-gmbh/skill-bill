@@ -15,13 +15,13 @@ class SystemService(
 ) {
   fun version(): VersionContract = VersionContract(version = versionValue)
 
-  fun doctor(dbOverride: String?): DoctorContract {
-    val dbPath = database.resolveDbPath(dbOverride)
+  fun doctor(): DoctorContract {
+    val dbPath = database.resolveDbPath()
     val settings = telemetrySettingsOrNull(settingsProvider)
     return DoctorContract(
       version = versionValue,
       dbPath = dbPath.toString(),
-      dbExists = database.databaseExists(dbOverride),
+      dbExists = database.databaseExists(),
       telemetryEnabled = settings?.enabled ?: false,
       telemetryLevel = settings?.level ?: "off",
     )

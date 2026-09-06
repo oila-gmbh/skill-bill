@@ -1,5 +1,6 @@
 package skillbill.application.workflow
 
+import skillbill.workflow.engine.model.WorkflowId
 import kotlinx.serialization.json.JsonElement
 import skillbill.application.decomposition.DECOMPOSITION_RUNTIME_ARTIFACT_KEY
 import skillbill.application.decomposition.encodeDecompositionManifestMap
@@ -10,6 +11,8 @@ import skillbill.ports.persistence.UnitOfWork
 import skillbill.workflow.decomposition.DecompositionManifestValidator
 import skillbill.workflow.decomposition.model.DecompositionContinuationSelection
 import skillbill.workflow.decomposition.model.DecompositionManifest
+import skillbill.workflow.decomposition.model.IssueKey
+import skillbill.workflow.decomposition.model.SubtaskId
 import skillbill.workflow.engine.model.WorkflowStateSnapshot
 
 /**
@@ -35,8 +38,8 @@ internal data class ContinuationStepResult(
     }
 
   fun withDecompositionFields(
-    issueKey: String,
-    subtaskId: Int,
+    issueKey: IssueKey,
+    subtaskId: SubtaskId,
     specPath: String,
     outcome: GoalContinuationOutcome,
   ): ContinuationStepResult {
@@ -109,8 +112,8 @@ fun doneDecompositionResult(
 )
 
 fun blockedGitResult(
-  parentWorkflowId: String,
-  issueKey: String,
+  parentWorkflowId: WorkflowId,
+  issueKey: IssueKey,
   dbPath: String,
   reason: String,
 ): WorkflowContinueResult = WorkflowContinueResult.DecompositionBlockedGit(

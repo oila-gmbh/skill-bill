@@ -1,5 +1,4 @@
 package skillbill.application
-
 import skillbill.application.goalrunner.model.GoalRunnerReplanRequest
 import skillbill.application.goalrunner.model.GoalRunnerStatusRequest
 import skillbill.application.goalrunner.testGoalRunnerStatusService
@@ -9,6 +8,9 @@ import skillbill.goalrunner.model.GoalRunnerExecutionLease
 import skillbill.ports.goalrunner.runner.model.GoalRunnerOutOfBandAcceptance
 import skillbill.workflow.decomposition.model.CurrentSubtaskIntent
 import skillbill.workflow.decomposition.model.DecompositionManifest
+import skillbill.workflow.decomposition.model.IssueKey
+import skillbill.workflow.decomposition.model.SubtaskId
+import skillbill.workflow.engine.model.WorkflowId
 import java.time.Clock
 import java.time.Instant
 import java.time.ZoneOffset
@@ -25,11 +27,11 @@ class GoalRunnerReplanTest {
   fun `scoped replan deletes only the target plan and retargets intent`() {
     val original = manifest(subtaskCount = 3).copy(
       status = "in_progress",
-      currentSubtaskIntent = CurrentSubtaskIntent(subtaskId = 3, action = "start"),
+      currentSubtaskIntent = CurrentSubtaskIntent(subtaskId = SubtaskId(3), action = "start"),
       subtasks = manifest(subtaskCount = 3).subtasks.map { subtask ->
         when (subtask.id) {
-          1 -> subtask.copy(status = "complete", commitSha = "sha-1", workflowId = "wfl-1")
-          2 -> subtask.copy(status = "complete", commitSha = "sha-2", workflowId = "wfl-2")
+          1 -> subtask.copy(status = "complete", commitSha = "sha-1", workflowId = WorkflowId("wfl-1"))
+          2 -> subtask.copy(status = "complete", commitSha = "sha-2", workflowId = WorkflowId("wfl-2"))
           else -> subtask.copy(status = "pending")
         }
       },
@@ -52,14 +54,14 @@ class GoalRunnerReplanTest {
     )
 
     val result = requireNotNull(
-      service.replan(GoalRunnerReplanRequest(issueKey = "SKILL-56", subtaskId = 3)),
+      service.replan(GoalRunnerReplanRequest(issueKey = IssueKey("SKILL-56"), subtaskId = SubtaskId(3))),
     )
 
     assertTrue(result.discardedPlan)
     assertEquals(listOf(1, 2, 3), result.before.plannedSubtaskIds)
     assertEquals(listOf(1, 2), result.after.plannedSubtaskIds)
     assertTrue(result.after.sharedPreplanPrepared)
-    assertEquals(CurrentSubtaskIntent(subtaskId = 3, action = "start"), store.manifest.currentSubtaskIntent)
+    assertEquals(CurrentSubtaskIntent(subtaskId = SubtaskId(3), action = "start"), store.manifest.currentSubtaskIntent)
     assertEquals(original.subtasks, store.manifest.subtasks)
     assertEquals(
       mapOf(1 to GoalRunnerOutOfBandAcceptance(1, "sha-1", "landed outside", "2026-07-27T11:00:00Z")),
@@ -80,7 +82,7 @@ class GoalRunnerReplanTest {
           manifest(subtaskCount = 2).subtasks[0].copy(status = "complete", commitSha = "sha-1"),
           manifest(subtaskCount = 2).subtasks[1].copy(
             status = "in_progress",
-            workflowId = "wfl-2",
+            workflowId = WorkflowId("wfl-2"),
             lastResumableStep = "implement",
           ),
         ),
@@ -96,7 +98,7 @@ class GoalRunnerReplanTest {
       clock = idleClock,
     )
 
-    service.replan(GoalRunnerReplanRequest("SKILL-56", subtaskId = 2))
+    service.replan(GoalRunnerReplanRequest("SKILL-56", subtaskId = SubtaskId(2)))
 
     assertEquals(CurrentSubtaskIntent(2, "resume"), store.manifest.currentSubtaskIntent)
     assertEquals("wfl-2", store.manifest.subtasks.last().workflowId)
@@ -133,7 +135,7 @@ class GoalRunnerReplanTest {
           refusalBaseManifest().subtasks[0],
           refusalBaseManifest().subtasks[1].copy(
             status = "in_progress",
-            workflowId = "wfl-prose-unknown",
+            workflowId = WorkflowId("wfl-prose-unknown"),
             lastResumableStep = "implement",
           ),
         ),
@@ -206,7 +208,7 @@ class GoalRunnerReplanTest {
   @Test
   fun `non-positive subtask id is rejected at the request boundary`() {
     assertFailsWith<IllegalArgumentException> {
-      GoalRunnerReplanRequest(issueKey = "SKILL-56", subtaskId = 0)
+      GoalRunnerReplanRequest(issueKey = IssueKey("SKILL-56"), subtaskId = SubtaskId(0))
     }
   }
 
@@ -251,10 +253,10 @@ class GoalRunnerReplanTest {
   fun `include-shared-preplan preserves complete-with-commit plans and cascades only non-terminals`() {
     val original = manifest(subtaskCount = 3).copy(
       status = "in_progress",
-      currentSubtaskIntent = CurrentSubtaskIntent(subtaskId = 3, action = "start"),
+      currentSubtaskIntent = CurrentSubtaskIntent(subtaskId = SubtaskId(3), action = "start"),
       subtasks = manifest(subtaskCount = 3).subtasks.map { subtask ->
         when (subtask.id) {
-          1 -> subtask.copy(status = "complete", commitSha = "sha-1", workflowId = "wfl-1")
+          1 -> subtask.copy(status = "complete", commitSha = "sha-1", workflowId = WorkflowId("wfl-1"))
           2 -> subtask.copy(status = "pending")
           else -> subtask.copy(status = "pending")
         }
@@ -279,7 +281,13 @@ class GoalRunnerReplanTest {
 
     val result = requireNotNull(
       service.replan(
-        GoalRunnerReplanRequest(issueKey = "SKILL-56", subtaskId = 3, includeSharedPreplan = true),
+        GoalRunnerReplanRequest(
+          issueKey =
+          IssueKey("SKILL-56"),
+          subtaskId =
+          SubtaskId(3),
+          includeSharedPreplan = true,
+        ),
       ),
     )
 
@@ -307,11 +315,11 @@ class GoalRunnerReplanTest {
   fun `include-shared-preplan WE-4719 shape retains every complete-with-commit sibling`() {
     val original = manifest(subtaskCount = 3).copy(
       status = "in_progress",
-      currentSubtaskIntent = CurrentSubtaskIntent(subtaskId = 3, action = "start"),
+      currentSubtaskIntent = CurrentSubtaskIntent(subtaskId = SubtaskId(3), action = "start"),
       subtasks = manifest(subtaskCount = 3).subtasks.map { subtask ->
         when (subtask.id) {
-          1 -> subtask.copy(status = "complete", commitSha = "sha-1", workflowId = "wfl-1")
-          2 -> subtask.copy(status = "complete", commitSha = "sha-2", workflowId = "wfl-2")
+          1 -> subtask.copy(status = "complete", commitSha = "sha-1", workflowId = WorkflowId("wfl-1"))
+          2 -> subtask.copy(status = "complete", commitSha = "sha-2", workflowId = WorkflowId("wfl-2"))
           else -> subtask.copy(status = "pending")
         }
       },
@@ -330,7 +338,13 @@ class GoalRunnerReplanTest {
 
     val result = requireNotNull(
       service.replan(
-        GoalRunnerReplanRequest(issueKey = "SKILL-56", subtaskId = 3, includeSharedPreplan = true),
+        GoalRunnerReplanRequest(
+          issueKey =
+          IssueKey("SKILL-56"),
+          subtaskId =
+          SubtaskId(3),
+          includeSharedPreplan = true,
+        ),
       ),
     )
 
@@ -385,8 +399,8 @@ class GoalRunnerReplanTest {
         currentSubtaskIntent = CurrentSubtaskIntent(3, "start"),
         subtasks = manifest(subtaskCount = 3).subtasks.map { subtask ->
           when (subtask.id) {
-            1 -> subtask.copy(status = "complete", commitSha = "sha-1", workflowId = "wfl-1")
-            2 -> subtask.copy(status = "complete", commitSha = "sha-2", workflowId = "wfl-2")
+            1 -> subtask.copy(status = "complete", commitSha = "sha-1", workflowId = WorkflowId("wfl-1"))
+            2 -> subtask.copy(status = "complete", commitSha = "sha-2", workflowId = WorkflowId("wfl-2"))
             else -> subtask.copy(status = "pending")
           }
         },
@@ -420,8 +434,8 @@ class GoalRunnerReplanTest {
         currentSubtaskIntent = CurrentSubtaskIntent(3, "start"),
         subtasks = manifest(subtaskCount = 3).subtasks.map { subtask ->
           when (subtask.id) {
-            1 -> subtask.copy(status = "complete", commitSha = "sha-1", workflowId = "wfl-1")
-            2 -> subtask.copy(status = "complete", commitSha = "sha-2", workflowId = "wfl-2")
+            1 -> subtask.copy(status = "complete", commitSha = "sha-1", workflowId = WorkflowId("wfl-1"))
+            2 -> subtask.copy(status = "complete", commitSha = "sha-2", workflowId = WorkflowId("wfl-2"))
             else -> subtask.copy(status = "pending")
           }
         },
@@ -442,7 +456,7 @@ class GoalRunnerReplanTest {
     val status = requireNotNull(
       service.status(
         GoalRunnerStatusRequest(
-          issueKey = "SKILL-56",
+          issueKey = IssueKey("SKILL-56"),
           invokedAgentId = "codex",
         ),
       ),

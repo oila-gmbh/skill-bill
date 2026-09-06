@@ -1,6 +1,9 @@
 package skillbill.application.featuretask.model
-
+import skillbill.agent.model.AgentId
 import skillbill.ports.diagnostics.model.ProducerOutputEvidence
+import skillbill.workflow.decomposition.model.IssueKey
+import skillbill.workflow.decomposition.model.SubtaskId
+import skillbill.workflow.engine.model.WorkflowId
 import skillbill.workflow.goal.model.GoalSubtaskBlockerDisposition
 import skillbill.workflow.goal.model.GoalSubtaskCommitFocusedAccounting
 import skillbill.workflow.goal.model.GoalSubtaskReviewCompactFinding
@@ -20,7 +23,7 @@ data class GoalReviewPhaseCompletionRequest(
 )
 
 data class FeatureTaskRuntimeProjectionRejection(
-  val workflowId: String,
+  val workflowId: WorkflowId,
   val consumerPhaseId: String,
   val projectionContractId: String,
   val producerIteration: FeatureTaskRuntimeProducerIteration,
@@ -38,18 +41,17 @@ sealed class FeatureTaskRuntimeProducerOutputRead {
 }
 
 data class ProducerOutputQueryArgs(
-  val workflowId: String,
+  val workflowId: WorkflowId,
   val phaseId: String,
   val attempt: Int,
-  val agentId: String,
-  val dbOverride: String?,
+  val agentId: AgentId,
   val generation: Int,
 )
 
 data class AppendCheckpointIdentityArgs(
-  val workflowId: String,
-  val issueKey: String,
-  val subtaskId: String,
+  val workflowId: WorkflowId,
+  val issueKey: IssueKey,
+  val subtaskId: SubtaskId,
   val branch: String,
   val phaseId: String,
   val loopId: String?,
@@ -57,5 +59,4 @@ data class AppendCheckpointIdentityArgs(
   val parentSha: String?,
   val ownedPaths: List<String>,
   val commitSha: String,
-  val dbOverride: String?,
 )

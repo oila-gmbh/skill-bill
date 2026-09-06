@@ -1,8 +1,11 @@
 package skillbill.application.continuation.model
 
+import skillbill.workflow.engine.model.WorkflowId
+import skillbill.workflow.decomposition.model.IssueKey
+
 data class GoalContinuationCandidate(
-  val parentWorkflowId: String,
-  val issueKey: String,
+  val parentWorkflowId: WorkflowId,
+  val issueKey: IssueKey,
   val status: String,
   val currentSubtaskId: Int?,
   val currentAction: String,

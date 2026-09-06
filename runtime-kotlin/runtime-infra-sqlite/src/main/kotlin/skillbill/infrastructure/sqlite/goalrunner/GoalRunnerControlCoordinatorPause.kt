@@ -1,5 +1,4 @@
 package skillbill.infrastructure.sqlite.goalrunner
-
 import skillbill.db.goalrunner.goalRepositoryIdentity
 import skillbill.db.goalrunner.migrateLegacyGoalRunnerControls
 import skillbill.db.workflow.findDecomposedParentWorkflow
@@ -10,6 +9,8 @@ import skillbill.ports.persistence.UnitOfWork
 import skillbill.ports.workflow.get
 import skillbill.ports.workflow.model.WorkflowFamily
 import skillbill.ports.workflow.model.toSnapshot
+import skillbill.workflow.decomposition.model.IssueKey
+import skillbill.workflow.engine.model.WorkflowId
 import java.nio.file.Path
 
 internal fun GoalRunnerControlCoordinator.persistPauseRequest(
@@ -31,27 +32,24 @@ internal fun GoalRunnerControlCoordinator.persistPauseRequest(
   }
 }
 
-internal fun GoalRunnerControlCoordinator.requestPause(
-  parentWorkflowId: String,
-  dbPathOverride: String?,
-): GoalRunnerControlState? = database.transaction(dbPathOverride) { unitOfWork ->
-  WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, parentWorkflowId)?.let { parent ->
-    migrateLegacyGoalRunnerControls(unitOfWork, parent)
-    persistPauseRequest(unitOfWork, parentWorkflowId)
+internal fun GoalRunnerControlCoordinator.requestPause(parentWorkflowId: String): GoalRunnerControlState? =
+  database.transaction { unitOfWork ->
+    WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, WorkflowId(parentWorkflowId))?.let { parent ->
+      migrateLegacyGoalRunnerControls(unitOfWork, parent)
+      persistPauseRequest(unitOfWork, parentWorkflowId)
+    }
   }
-}
 
 internal fun GoalRunnerControlCoordinator.requestPauseByIssueKey(
-  issueKey: String,
-  dbPathOverride: String?,
+  issueKey: IssueKey,
   repoRoot: Path?,
-): GoalRunnerPausePersistenceResult? = database.transaction(dbPathOverride) { unitOfWork ->
+): GoalRunnerPausePersistenceResult? = database.transaction { unitOfWork ->
   val parent = unitOfWork.workflowStates.findDecomposedParentWorkflow(
-    issueKey,
+    issueKey.value,
     decompositionManifestValidator,
   ) ?: return@transaction null
   migrateLegacyGoalRunnerControls(unitOfWork, parent.toSnapshot())
-  val existing = unitOfWork.goalRunnerControls.controlState(parent.workflowId)
+  val existing = unitOfWork.goalRunnerControls.controlState(parent.workflowId.value)
   if (repoRoot != null) {
     val identity = goalRepositoryIdentity(repoRoot)
     require(existing.repositoryIdentity == null || existing.repositoryIdentity == identity) {
@@ -59,10 +57,10 @@ internal fun GoalRunnerControlCoordinator.requestPauseByIssueKey(
     }
     if (existing.repositoryIdentity == null) {
       unitOfWork.goalRunnerControls.persistControlState(
-        parent.workflowId,
+        parent.workflowId.value,
         existing.copy(repositoryIdentity = identity),
       )
     }
   }
-  GoalRunnerPausePersistenceResult(parent.workflowId, persistPauseRequest(unitOfWork, parent.workflowId))
+  GoalRunnerPausePersistenceResult(parent.workflowId.value, persistPauseRequest(unitOfWork, parent.workflowId.value))
 }

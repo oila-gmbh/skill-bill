@@ -1,8 +1,8 @@
 package skillbill.cli.goal
-
 import skillbill.goalrunner.model.GoalPlanningStatusSnapshot
 import skillbill.goalrunner.model.GoalPlanningStatusState
 import skillbill.goalrunner.model.GoalRunnerStatusProjection
+import skillbill.workflow.decomposition.model.IssueKey
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
@@ -15,7 +15,7 @@ class GoalCliStatusPlanningWaveTest {
   @Test
   fun `goal status carries every concurrent planning subtask and names the count on the human line`() {
     val projection = GoalRunnerStatusProjection(
-      issueKey = "SKILL-230",
+      issueKey = IssueKey("SKILL-230"),
       completeCount = 1,
       pendingCount = 7,
       blockedCount = 0,

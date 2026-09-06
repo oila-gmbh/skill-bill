@@ -1,10 +1,10 @@
 package skillbill.application
-
 import skillbill.application.featuretask.FeatureTaskRuntimeBranchDecisionInvalid
 import skillbill.application.featuretask.FeatureTaskRuntimeBranchDecisionResolved
 import skillbill.application.featuretask.FeatureTaskRuntimeBranchSetup
 import skillbill.application.featuretask.FeatureTaskRuntimeTargetBranchInvalid
 import skillbill.application.featuretask.FeatureTaskRuntimeTargetBranchResolved
+import skillbill.workflow.decomposition.model.IssueKey
 import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertEquals
@@ -18,7 +18,7 @@ class FeatureTaskRuntimeBranchSetupTest {
   fun `target branch follows feat issue-key feature-name convention parsed from spec parent dir`() {
     val resolved = assertIs<FeatureTaskRuntimeTargetBranchResolved>(
       FeatureTaskRuntimeBranchSetup.targetBranch(
-        issueKey = "SKILL-65.1",
+        issueKey = IssueKey("SKILL-65.1"),
         specReference = ".feature-specs/SKILL-65.1-runtime-feature-task-parity/spec_subtask_1.md",
       ),
     )
@@ -30,7 +30,7 @@ class FeatureTaskRuntimeBranchSetupTest {
   fun `target branch is invalid when the request issue key diverges from the spec parent dir`() {
     val invalid = assertIs<FeatureTaskRuntimeTargetBranchInvalid>(
       FeatureTaskRuntimeBranchSetup.targetBranch(
-        issueKey = "SKILL-65",
+        issueKey = IssueKey("SKILL-65"),
         specReference = ".feature-specs/SKILL-65.1-runtime-feature-task-parity/spec.md",
       ),
     )
@@ -43,7 +43,7 @@ class FeatureTaskRuntimeBranchSetupTest {
   @Test
   fun `target branch is invalid when the spec reference has no parent directory`() {
     val invalid = assertIs<FeatureTaskRuntimeTargetBranchInvalid>(
-      FeatureTaskRuntimeBranchSetup.targetBranch(issueKey = "SKILL-65", specReference = "spec.md"),
+      FeatureTaskRuntimeBranchSetup.targetBranch(issueKey = IssueKey("SKILL-65"), specReference = "spec.md"),
     )
 
     assertContains(invalid.reason, "no parent directory")
@@ -52,7 +52,12 @@ class FeatureTaskRuntimeBranchSetupTest {
   @Test
   fun `decide is invalid when the spec reference has no parent directory`() {
     val invalid = assertIs<FeatureTaskRuntimeBranchDecisionInvalid>(
-      FeatureTaskRuntimeBranchSetup.decide(issueKey = "SKILL-65", specReference = "spec.md", currentBranch = "main"),
+      FeatureTaskRuntimeBranchSetup.decide(
+        issueKey =
+        IssueKey("SKILL-65"),
+        specReference = "spec.md",
+        currentBranch = "main",
+      ),
     )
 
     assertContains(invalid.reason, "no parent directory")
@@ -62,7 +67,7 @@ class FeatureTaskRuntimeBranchSetupTest {
   fun `default branch decision creates and switches from main`() {
     val decision = assertIs<FeatureTaskRuntimeBranchDecisionResolved>(
       FeatureTaskRuntimeBranchSetup.decide(
-        issueKey = "SKILL-65.1",
+        issueKey = IssueKey("SKILL-65.1"),
         specReference = ".feature-specs/SKILL-65.1-runtime-feature-task-parity/spec.md",
         currentBranch = "main",
       ),
@@ -78,7 +83,7 @@ class FeatureTaskRuntimeBranchSetupTest {
     listOf("master", "trunk", "MAIN", "  ").forEach { current ->
       val decision = assertIs<FeatureTaskRuntimeBranchDecisionResolved>(
         FeatureTaskRuntimeBranchSetup.decide(
-          issueKey = "SKILL-65.1",
+          issueKey = IssueKey("SKILL-65.1"),
           specReference = ".feature-specs/SKILL-65.1-runtime/spec.md",
           currentBranch = current,
         ),
@@ -93,7 +98,7 @@ class FeatureTaskRuntimeBranchSetupTest {
   fun `non-default branch is reused as-is without a base branch`() {
     val decision = assertIs<FeatureTaskRuntimeBranchDecisionResolved>(
       FeatureTaskRuntimeBranchSetup.decide(
-        issueKey = "SKILL-65.1",
+        issueKey = IssueKey("SKILL-65.1"),
         specReference = ".feature-specs/SKILL-65.1-runtime/spec.md",
         currentBranch = "feat/pre-created",
       ),

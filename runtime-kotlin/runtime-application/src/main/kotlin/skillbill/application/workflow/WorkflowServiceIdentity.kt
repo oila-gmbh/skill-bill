@@ -1,15 +1,15 @@
 package skillbill.application.workflow
-
 import skillbill.application.workflow.model.BuildFeatureTaskExecutionIdentityArgs
 import skillbill.application.workflow.model.WorkflowFamilyKind
 import skillbill.ports.workflow.FeatureTaskExecutionIdentityPolicy
 import skillbill.ports.workflow.model.FeatureTaskExecutionIdentity
 import skillbill.ports.workflow.model.FeatureTaskWorkflowMode
+import skillbill.workflow.decomposition.model.IssueKey
 
 fun hasIncompleteFeatureTaskIdentity(
   kind: WorkflowFamilyKind,
   hasIdentityCoordinates: Boolean,
-  issueKey: String?,
+  issueKey: IssueKey?,
   repositoryIdentity: String?,
   governedSpecPath: String?,
 ): Boolean = kind in FEATURE_TASK_FAMILY_KINDS &&

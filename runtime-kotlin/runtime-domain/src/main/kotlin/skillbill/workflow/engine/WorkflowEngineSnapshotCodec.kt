@@ -20,7 +20,7 @@ internal fun snapshotViewFrom(record: WorkflowStateSnapshot): WorkflowSnapshotVi
   }
   return WorkflowSnapshotView(
     workflowId = record.workflowId,
-    sessionId = record.sessionId.orEmpty(),
+    sessionId = record.sessionId,
     workflowName = record.workflowName,
     mode = record.mode,
     contractVersion = record.contractVersion,

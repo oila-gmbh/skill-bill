@@ -5,6 +5,7 @@ import skillbill.error.ProseFeatureTaskWorkflowWriteRefusedError
 import skillbill.ports.workflow.FeatureTaskWorkflowRowRepository
 import skillbill.ports.workflow.model.FeatureTaskWorkflowMode
 import skillbill.ports.workflow.model.WorkflowStateRecord
+import skillbill.workflow.engine.model.WorkflowId
 import java.sql.Connection
 
 internal class FeatureTaskWorkflowRowStore(
@@ -17,7 +18,7 @@ internal class FeatureTaskWorkflowRowStore(
     // `WorkflowService` calls for both families, so the guard lives here rather than only in the
     // `FeatureImplementWorkflowStateRepository` compatibility alias below.
     if (mode == FeatureTaskWorkflowMode.PROSE) {
-      throw ProseFeatureTaskWorkflowWriteRefusedError(row.workflowId)
+      throw ProseFeatureTaskWorkflowWriteRefusedError(row.workflowId.value)
     }
     connection.upsertFeatureTaskWorkflowRow(
       row = row,
@@ -27,14 +28,18 @@ internal class FeatureTaskWorkflowRowStore(
     )
   }
 
-  override fun getFeatureTaskWorkflow(workflowId: String): WorkflowStateRecord? =
+  override fun getFeatureTaskWorkflow(workflowId: WorkflowId): WorkflowStateRecord? =
     connection.getFeatureTaskWorkflowRow(workflowId)
 
-  override fun getFeatureTaskWorkflowAsMode(workflowId: String, mode: FeatureTaskWorkflowMode): WorkflowStateRecord? {
+  override fun getFeatureTaskWorkflowAsMode(
+    workflowId: WorkflowId,
+    mode: FeatureTaskWorkflowMode,
+  ): WorkflowStateRecord? {
     val row = connection.getFeatureTaskWorkflowRow(workflowId) ?: return null
     if (row.mode != mode) {
       throw InvalidWorkflowStateSchemaError(
-        "Feature-task workflow '$workflowId' is mode='${row.mode?.wireValue.orEmpty()}', not '${mode.wireValue}'.",
+        "Feature-task workflow '${workflowId.value}' is mode='${row.mode?.wireValue.orEmpty()}', " +
+          "not '${mode.wireValue}'.",
       )
     }
     return row

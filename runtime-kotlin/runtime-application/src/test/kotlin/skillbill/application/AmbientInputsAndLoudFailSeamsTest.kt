@@ -1,10 +1,10 @@
 package skillbill.application
-
 import skillbill.application.featuretask.FeatureTaskRuntimeRunState
 import skillbill.application.goalrunner.GoalRunnerChildProgressRead
 import skillbill.application.goalrunner.GoalRunnerProgressReader
 import skillbill.application.goalrunner.model.GoalRunnerRunRequest
 import skillbill.error.InvalidFeatureTaskRuntimePhaseOutputSchemaError
+import skillbill.workflow.decomposition.model.IssueKey
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutput
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeTransitionDeclaration
@@ -39,7 +39,7 @@ class AmbientInputsAndLoudFailSeamsTest {
     val outcomes = RecordingOutcomeStore().apply { throwOnProgress = true }
     val reader = GoalRunnerProgressReader(outcomes)
     val request = GoalRunnerRunRequest(
-      issueKey = "SKILL-227",
+      issueKey = IssueKey("SKILL-227"),
       repoRoot = Path.of("/tmp/skillbill-ambient"),
       invokedAgentId = "claude",
     )

@@ -1,5 +1,4 @@
 package skillbill.cli
-
 import kotlinx.serialization.json.JsonElement
 import skillbill.application.workflow.model.WorkflowFamilyKind
 import skillbill.application.workflow.model.WorkflowOpenResult
@@ -37,6 +36,8 @@ import skillbill.ports.workflow.gitops.model.WorkflowGitOperationResult
 import skillbill.ports.workflow.gitops.model.WorkflowSelectedDiffHunksRequest
 import skillbill.ports.workflow.gitops.model.WorkflowSelectedDiffHunksResult
 import skillbill.ports.workflow.gitops.model.WorkflowWorktreeActivityResult
+import skillbill.workflow.decomposition.model.IssueKey
+import skillbill.workflow.decomposition.model.SubtaskId
 import skillbill.workflow.goal.model.GoalObservabilityDiffStat
 import skillbill.workflow.goal.model.GoalObservabilitySelectedDiffHunk
 import skillbill.workflow.goal.model.GoalObservabilitySelectedDiffHunks
@@ -109,8 +110,8 @@ internal fun clearWorkerLease(fixture: GoalCliFixture, workflowId: String) {
 
 internal fun startRunningGoalChild(fixture: GoalCliFixture): String = RuntimeWorkflowTestSupport.continueByIssueKey(
   dbPath = fixture.dbPath,
-  issueKey = "SKILL-901",
-  subtaskId = 1,
+  issueKey = IssueKey("SKILL-901"),
+  subtaskId = SubtaskId(1),
   context = fixture.context(launcher = NoopGoalTestAgentRunLauncher),
 )["workflow_id"] as String
 

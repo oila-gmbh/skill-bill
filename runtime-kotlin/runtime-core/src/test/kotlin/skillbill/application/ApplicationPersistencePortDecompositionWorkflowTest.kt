@@ -1,11 +1,12 @@
 package skillbill.application
-
 import skillbill.application.workflow.model.WorkflowContinueResult
 import skillbill.application.workflow.model.WorkflowFamilyKind
 import skillbill.application.workflow.model.WorkflowGetResult
 import skillbill.application.workflow.model.WorkflowOpenResult
 import skillbill.application.workflow.model.WorkflowUpdateRequest
 import skillbill.application.workflow.model.WorkflowUpdateResult
+import skillbill.workflow.decomposition.model.SubtaskId
+import skillbill.workflow.engine.model.SessionId
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_RECORDS_ARTIFACT_KEY
 import java.nio.file.Files
 import kotlin.test.Test
@@ -23,7 +24,12 @@ class ApplicationPersistencePortDecompositionWorkflowTest {
     val workflowRepository = InMemoryWorkflowStateRepository()
     val database = FakeDatabaseSessionFactory(workflows = workflowRepository)
     val service = testWorkflowService(database)
-    val opened = service.openTestFeatureTask(WorkflowFamilyKind.TASK_RUNTIME, sessionId = "ftr-001", dbOverride = null)
+    val opened = service.openTestFeatureTask(
+      WorkflowFamilyKind.TASK_RUNTIME,
+      sessionId =
+      SessionId("ftr-001"),
+      dbOverride = null,
+    )
       as WorkflowOpenResult.Ok
     val workflowId = opened.workflowId
 
@@ -71,7 +77,12 @@ class ApplicationPersistencePortDecompositionWorkflowTest {
     val workflowRepository = InMemoryWorkflowStateRepository()
     val database = FakeDatabaseSessionFactory(workflows = workflowRepository)
     val service = testWorkflowService(database)
-    val opened = service.openTestFeatureTask(WorkflowFamilyKind.TASK_RUNTIME, sessionId = "ftr-001", dbOverride = null)
+    val opened = service.openTestFeatureTask(
+      WorkflowFamilyKind.TASK_RUNTIME,
+      sessionId =
+      SessionId("ftr-001"),
+      dbOverride = null,
+    )
       as WorkflowOpenResult.Ok
     val workflowId = opened.workflowId
 
@@ -112,7 +123,12 @@ class ApplicationPersistencePortDecompositionWorkflowTest {
     val workflowRepository = InMemoryWorkflowStateRepository()
     val database = FakeDatabaseSessionFactory(workflows = workflowRepository)
     val service = testWorkflowService(database)
-    val opened = service.openTestFeatureTask(WorkflowFamilyKind.TASK_RUNTIME, sessionId = "ftr-001", dbOverride = null)
+    val opened = service.openTestFeatureTask(
+      WorkflowFamilyKind.TASK_RUNTIME,
+      sessionId =
+      SessionId("ftr-001"),
+      dbOverride = null,
+    )
       as WorkflowOpenResult.Ok
     val workflowId = opened.workflowId
 
@@ -255,7 +271,7 @@ class ApplicationPersistencePortDecompositionWorkflowTest {
     val blocked = service.continueWorkflow(
       WorkflowFamilyKind.TASK_RUNTIME,
       "SKILL-51",
-      subtaskId = 2,
+      subtaskId = SubtaskId(2),
       dbOverride = null,
     ) as WorkflowContinueResult.DecompositionBlockedSubtask
 
@@ -307,7 +323,7 @@ class ApplicationPersistencePortDecompositionWorkflowTest {
     val continued = service.continueWorkflow(
       WorkflowFamilyKind.TASK_RUNTIME,
       "SKILL-51",
-      subtaskId = 2,
+      subtaskId = SubtaskId(2),
       dbOverride = null,
     ) as WorkflowContinueResult.DecompositionStandard
 
@@ -435,7 +451,7 @@ class ApplicationPersistencePortDecompositionWorkflowTest {
     val continued = service.continueWorkflow(
       WorkflowFamilyKind.TASK_RUNTIME,
       "SKILL-51",
-      subtaskId = 1,
+      subtaskId = SubtaskId(1),
       dbOverride = null,
     ) as WorkflowContinueResult.DecompositionSubtaskOutcome
     val manifest = loadTestDecompositionManifest(parentSpec.parent.resolve("decomposition-manifest.yaml"))

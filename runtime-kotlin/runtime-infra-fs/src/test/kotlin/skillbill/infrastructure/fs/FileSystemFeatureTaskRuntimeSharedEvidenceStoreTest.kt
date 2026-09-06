@@ -1,10 +1,10 @@
 package skillbill.infrastructure.fs
-
 import skillbill.error.ReviewHunkEvidenceLocatorMissingError
 import skillbill.error.ReviewHunkEvidenceLocatorUnreadableError
 import skillbill.ports.taskruntime.FeatureTaskRuntimeSharedEvidenceFingerprintContradictionError
 import skillbill.ports.taskruntime.model.FeatureTaskRuntimeSharedEvidenceLocatorReadRequest
 import skillbill.ports.taskruntime.model.FeatureTaskRuntimeSharedEvidenceRequest
+import skillbill.workflow.engine.model.WorkflowId
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepositoryCheckpoint
 import java.io.IOException
 import java.nio.file.Files
@@ -219,7 +219,7 @@ class FileSystemFeatureTaskRuntimeSharedEvidenceStoreTest {
 
   private fun request(fingerprint: String) = FeatureTaskRuntimeSharedEvidenceRequest(
     repoRoot = repoRoot,
-    workflowId = "wf-1",
+    workflowId = WorkflowId("wf-1"),
     checkpoint = FeatureTaskRuntimeRepositoryCheckpoint(fingerprint),
   )
 }

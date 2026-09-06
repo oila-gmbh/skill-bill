@@ -1,5 +1,7 @@
 package skillbill.application.goalrunner.planning
 
+import skillbill.workflow.engine.model.WorkflowId
+
 import me.tatarka.inject.annotations.Inject
 import skillbill.application.diagnostics.model.RejectedOutputDiagnosticRequest
 import skillbill.application.featuretask.FeatureTaskRuntimePhaseRecorder
@@ -31,7 +33,6 @@ class DurableGoalPlanningRejectionRecorder(
           model = "unspecified",
           rawResponse = record.rawEvidence.encodeToByteArray(),
         ),
-        record.dbPathOverride,
       )
     }
   }

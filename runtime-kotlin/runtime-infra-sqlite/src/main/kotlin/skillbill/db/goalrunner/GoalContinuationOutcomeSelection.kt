@@ -1,4 +1,5 @@
 package skillbill.db.goalrunner
+
 import skillbill.boundary.OpenBoundaryMap
 import skillbill.contracts.JsonCodec
 import skillbill.goalrunner.asGoalRunnerIntOrNull

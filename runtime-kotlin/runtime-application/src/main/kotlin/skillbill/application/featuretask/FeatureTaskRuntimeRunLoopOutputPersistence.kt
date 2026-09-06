@@ -1,5 +1,8 @@
 package skillbill.application.featuretask
 
+import skillbill.workflow.decomposition.model.IssueKey
+import skillbill.agent.model.AgentId
+
 import skillbill.application.featuretask.model.FeatureTaskRuntimePhasePromptComposeInputs
 import skillbill.application.featuretask.model.FeatureTaskRuntimePhaseStateRequest
 import skillbill.application.featuretask.model.GoalReviewPhaseCompletionRequest
@@ -31,9 +34,9 @@ object FeatureTaskRuntimeRunLoopOutputPersistence {
     val reviewOutput = runLoop.state.outputFor(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW)
       ?.normalizedOutput?.envelope
       ?: return
-    val reviewState = runLoop.goalContinuationRecorder.reviewState(run.request.workflowId, run.request.dbPathOverride)
+    val reviewState = runLoop.goalContinuationRecorder.reviewState(run.request.workflowId)
     val passNumber = reviewState?.completedPassCount?.takeIf { it > 0 } ?: 1
-    val recordedVerdicts = runLoop.recorder.recordedFindingVerdicts(reviewOutput, run.request.dbPathOverride)
+    val recordedVerdicts = runLoop.recorder.recordedFindingVerdicts(reviewOutput)
     val truncationRecords = mutableListOf<String>()
     val rejected = GoalSubtaskReviewSummaryReducer.rejectedVerificationFindings(
       verifyOutput = verifyOutput,
@@ -55,7 +58,6 @@ object FeatureTaskRuntimeRunLoopOutputPersistence {
       workflowId = run.request.workflowId,
       passNumber = passNumber,
       rejected = rejected,
-      dbOverride = run.request.dbPathOverride,
     )
   }
 
@@ -89,7 +91,6 @@ object FeatureTaskRuntimeRunLoopOutputPersistence {
             ),
           ),
         ),
-        run.request.dbPathOverride,
       )
     } catch (error: RuntimeOwnedFactUnavailable) {
       return FeatureTaskRuntimeRunLoopPhaseAttempts.blockInPhase(
@@ -134,7 +135,6 @@ object FeatureTaskRuntimeRunLoopOutputPersistence {
     val completed = runCatching {
       runLoop.recorder.completeGoalReviewPhase(
         completion = completion,
-        dbOverride = run.request.dbPathOverride,
       )
     }.getOrElse { error ->
       return FeatureTaskRuntimeRunLoopPhaseAttempts.blockAndPersistInPhase(
@@ -191,7 +191,7 @@ object FeatureTaskRuntimeRunLoopOutputPersistence {
     val priorCorrection = args.priorCorrection
     val durablyClosedCriterionRefs = args.durablyClosedCriterionRefs
     val repositoryCheckpoint = args.repositoryCheckpoint
-    val resolvedBranchRecord = runLoop.recorder.loadResolvedBranch(run.request.workflowId, run.request.dbPathOverride)
+    val resolvedBranchRecord = runLoop.recorder.loadResolvedBranch(run.request.workflowId)
     val handoff = assembleLaunchHandoff(
       runLoop,
       AssembleLaunchHandoffArgs(run, state, durablyClosedCriterionRefs, repositoryCheckpoint, resolvedBranchRecord),
@@ -212,7 +212,6 @@ object FeatureTaskRuntimeRunLoopOutputPersistence {
     runLoop.recorder.recordPhaseBriefing(
       run.request.workflowId,
       briefing,
-      run.request.dbPathOverride,
       sharedEvidence?.measurement,
     )
     val prompt = composeLaunchPrompt(
@@ -255,7 +254,7 @@ object FeatureTaskRuntimeRunLoopOutputPersistence {
     val handoff = args.handoff
     val priorCorrection = args.priorCorrection
     val briefing = args.briefing
-    val resolvedBranchRecord = runLoop.recorder.loadResolvedBranch(run.request.workflowId, run.request.dbPathOverride)
+    val resolvedBranchRecord = runLoop.recorder.loadResolvedBranch(run.request.workflowId)
     val passNumber = reviewPassNumber(runLoop, run, state)
     val depthResolution = passNumber?.let { pass ->
       FeatureTaskRuntimeReviewPassSequence.resolveForPass(run.request.runInvariants.codeReviewMode, pass)
@@ -315,7 +314,6 @@ object FeatureTaskRuntimeRunLoopOutputPersistence {
     runLoop.state.reserveReviewPass(phaseState.reviewPassNumber)
     runLoop.recorder.recordPhaseState(
       phaseState,
-      write.run.request.dbPathOverride,
     )
   }
 
@@ -386,7 +384,7 @@ object FeatureTaskRuntimeRunLoopOutputPersistence {
   ): GoalReviewPhaseCompletionRequest {
     val outputText = normalizedOutput.canonicalJson
     val outputMap = normalizedOutput.envelope
-    val recordedVerdicts = runLoop.recorder.recordedFindingVerdicts(outputMap, runLoop.request.dbPathOverride)
+    val recordedVerdicts = runLoop.recorder.recordedFindingVerdicts(outputMap)
     val findings = GoalSubtaskReviewSummaryReducer.fromOutput(outputMap, recordedVerdicts)
     val outcome = GoalSubtaskReviewSummaryReducer.outcomeFor(outputMap, findings)
     return GoalReviewPhaseCompletionRequest(

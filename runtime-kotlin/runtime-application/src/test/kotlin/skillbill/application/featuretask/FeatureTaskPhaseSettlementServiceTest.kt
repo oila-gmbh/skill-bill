@@ -1,10 +1,10 @@
 package skillbill.application.featuretask
-
 import skillbill.application.featuretask.model.FeatureTaskPhaseSettlementBlockRequest
 import skillbill.application.featuretask.model.FeatureTaskPhaseSettlementCompleteRequest
 import skillbill.application.testHarnessClock
 import skillbill.contracts.JsonCodec
 import skillbill.ports.featuretask.model.FeatureTaskPhaseSettlement
+import skillbill.workflow.engine.model.WorkflowId
 import java.time.Instant
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -18,7 +18,7 @@ class FeatureTaskPhaseSettlementServiceTest {
     val service = FeatureTaskPhaseSettlementService(InMemoryFeatureTaskPhaseSettlementRepository(), testHarnessClock)
     service.complete(
       FeatureTaskPhaseSettlementCompleteRequest(
-        workflowId = "wftr-test",
+        workflowId = WorkflowId("wftr-test"),
         phaseId = "implement",
         attempt = 1,
         value = """{"projection_kind":"implementation_receipt","completed_task_ids":["task-1"]}""",
@@ -35,7 +35,7 @@ class FeatureTaskPhaseSettlementServiceTest {
     val service = FeatureTaskPhaseSettlementService(InMemoryFeatureTaskPhaseSettlementRepository(), testHarnessClock)
     service.complete(
       FeatureTaskPhaseSettlementCompleteRequest(
-        workflowId = "wftr-test",
+        workflowId = WorkflowId("wftr-test"),
         phaseId = "plan",
         attempt = 1,
         value = "first",
@@ -43,7 +43,7 @@ class FeatureTaskPhaseSettlementServiceTest {
     )
     service.complete(
       FeatureTaskPhaseSettlementCompleteRequest(
-        workflowId = "wftr-test",
+        workflowId = WorkflowId("wftr-test"),
         phaseId = "plan",
         attempt = 1,
         value = "second",
@@ -59,7 +59,7 @@ class FeatureTaskPhaseSettlementServiceTest {
     val service = FeatureTaskPhaseSettlementService(InMemoryFeatureTaskPhaseSettlementRepository(), testHarnessClock)
     service.block(
       FeatureTaskPhaseSettlementBlockRequest(
-        workflowId = "wftr-test",
+        workflowId = WorkflowId("wftr-test"),
         phaseId = "preplan",
         attempt = 1,
         reason = "needs human",
@@ -75,7 +75,7 @@ class FeatureTaskPhaseSettlementServiceTest {
     val service = FeatureTaskPhaseSettlementService(repo, testHarnessClock)
     repo.upsert(
       FeatureTaskPhaseSettlement(
-        workflowId = "wftr-test",
+        workflowId = WorkflowId("wftr-test"),
         phaseId = "plan",
         attempt = 1,
         kind = FeatureTaskPhaseSettlementService.KIND_COMPLETE,

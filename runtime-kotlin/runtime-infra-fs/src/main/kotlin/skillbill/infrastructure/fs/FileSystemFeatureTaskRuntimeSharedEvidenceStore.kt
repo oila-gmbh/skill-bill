@@ -60,7 +60,7 @@ open class FileSystemFeatureTaskRuntimeSharedEvidenceStore :
     val fingerprint = request.checkpoint.fingerprint
     val artifactDir = artifactDir(request)
     val storePath = storePath(request.repoRoot, artifactDir)
-    readStored(mapper, artifactDir, fingerprint, request.workflowId, storePath)?.let {
+    readStored(mapper, artifactDir, fingerprint, request.workflowId.value, storePath)?.let {
       return it.copy(storePath = storePath, outcome = FeatureTaskRuntimeSharedEvidenceResolveOutcome.REUSE)
     }
     val outcome = if (siblingFingerprintsExist(artifactDir)) {
@@ -233,7 +233,7 @@ internal fun storePath(repoRoot: Path, artifactDir: Path): String =
 internal fun artifactDir(request: FeatureTaskRuntimeSharedEvidenceRequest): Path = request.repoRoot
   .resolve(".skill-bill")
   .resolve("run-evidence")
-  .resolve(pathSegment(request.workflowId))
+  .resolve(pathSegment(request.workflowId.value))
   .resolve(pathSegment(request.checkpoint.fingerprint))
   .toAbsolutePath()
   .normalize()

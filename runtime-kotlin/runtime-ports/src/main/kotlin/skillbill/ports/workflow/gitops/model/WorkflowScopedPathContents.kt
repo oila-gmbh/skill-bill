@@ -1,9 +1,5 @@
 package skillbill.ports.workflow.gitops.model
 
-/**
- * One logical file in the validate-boundary inventory, paired with its base-ref
- * identity (rename-aware) and contents at HEAD (current tree) and base.
- */
 data class WorkflowScopedPathContent(
   val headPath: String,
   val basePath: String?,
@@ -11,10 +7,30 @@ data class WorkflowScopedPathContent(
   val baseContent: String?,
 )
 
-data class WorkflowScopedPathContentsResult(
-  val status: String,
-  val pairs: List<WorkflowScopedPathContent> = emptyList(),
-  val error: String = "",
-) {
-  val ok: Boolean get() = status == "ok"
+sealed interface WorkflowScopedPathContentsResult {
+  val pairs: List<WorkflowScopedPathContent>
+  val error: String
+  val ok: Boolean
+    get() = this is WorkflowScopedPathContentsResult.Ok
+
+  data class Ok(override val pairs: List<WorkflowScopedPathContent> = emptyList()) :
+    WorkflowScopedPathContentsResult {
+    override val error: String = ""
+  }
+
+  data class Failed(
+    override val error: String,
+    override val pairs: List<WorkflowScopedPathContent> = emptyList(),
+  ) : WorkflowScopedPathContentsResult
+
+  companion object {
+    operator fun invoke(
+      status: String,
+      pairs: List<WorkflowScopedPathContent> = emptyList(),
+      error: String = "",
+    ): WorkflowScopedPathContentsResult =
+      if (status == OK_STATUS) Ok(pairs) else Failed(error.ifBlank { status }, pairs)
+  }
 }
+
+private const val OK_STATUS = "ok"

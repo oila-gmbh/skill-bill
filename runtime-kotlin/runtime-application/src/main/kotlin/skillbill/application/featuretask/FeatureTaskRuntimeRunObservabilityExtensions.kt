@@ -1,5 +1,7 @@
 package skillbill.application.featuretask
 
+import skillbill.agent.model.AgentId
+
 import skillbill.application.featuretask.model.FeatureTaskRuntimePhaseLedgerRequest
 import skillbill.application.featuretask.model.FeatureTaskRuntimeRunEvent
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerAction
@@ -7,7 +9,7 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeVerdict
 
 fun FeatureTaskRuntimeRunObservability.fixLoopIteration(
   phaseId: String,
-  resolvedAgentId: String,
+  resolvedAgentId: AgentId,
   attemptCount: Int,
   fixLoopIteration: Int,
 ) {
@@ -22,7 +24,7 @@ fun FeatureTaskRuntimeRunObservability.fixLoopIteration(
 
 internal fun FeatureTaskRuntimeRunObservability.continuation(
   phaseId: String,
-  resolvedAgentId: String,
+  resolvedAgentId: AgentId,
   attemptCount: Int,
   iteration: Int,
   kind: FeatureTaskRuntimeContinuationKind,
@@ -50,7 +52,7 @@ internal fun FeatureTaskRuntimeRunObservability.continuation(
   )
 }
 
-fun FeatureTaskRuntimeRunObservability.completedEvent(phaseId: String, resolvedAgentId: String, attemptCount: Int) {
+fun FeatureTaskRuntimeRunObservability.completedEvent(phaseId: String, resolvedAgentId: AgentId, attemptCount: Int) {
   emitSafely(
     FeatureTaskRuntimeRunEvent.PhaseCompleted(
       workflowId = observabilityRequest.workflowId,
@@ -63,7 +65,7 @@ fun FeatureTaskRuntimeRunObservability.completedEvent(phaseId: String, resolvedA
 
 fun FeatureTaskRuntimeRunObservability.paused(
   phaseId: String,
-  resolvedAgentId: String,
+  resolvedAgentId: AgentId,
   attemptCount: Int,
   pauseReason: String,
 ) {
@@ -90,7 +92,7 @@ fun FeatureTaskRuntimeRunObservability.paused(
 
 fun FeatureTaskRuntimeRunObservability.blocked(
   phaseId: String,
-  resolvedAgentId: String,
+  resolvedAgentId: AgentId,
   attemptCount: Int,
   blockedReason: String,
 ) {
@@ -157,7 +159,7 @@ fun FeatureTaskRuntimeRunObservability.emitSafely(event: FeatureTaskRuntimeRunEv
 }
 
 fun FeatureTaskRuntimeRunObservability.appendLedger(ledgerRequest: FeatureTaskRuntimePhaseLedgerRequest) {
-  observabilityRecorder.appendLedgerEntry(ledgerRequest, observabilityRequest.dbPathOverride)
+  observabilityRecorder.appendLedgerEntry(ledgerRequest)
 }
 
 val FeatureTaskRuntimeRunObservability.observabilityRecorder get() = recorder

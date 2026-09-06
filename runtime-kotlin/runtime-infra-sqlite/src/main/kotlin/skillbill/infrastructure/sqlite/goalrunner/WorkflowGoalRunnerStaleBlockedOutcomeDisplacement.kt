@@ -1,5 +1,4 @@
 package skillbill.infrastructure.sqlite.goalrunner
-
 import skillbill.db.decomposition.decodeArtifacts
 import skillbill.db.goalrunner.goalContinuation
 import skillbill.db.goalrunner.toGoalContinuationWireStatus
@@ -16,6 +15,7 @@ import skillbill.ports.workflow.get
 import skillbill.ports.workflow.model.WorkflowFamily
 import skillbill.ports.workflow.save
 import skillbill.workflow.engine.WorkflowEngine
+import skillbill.workflow.engine.model.WorkflowId
 import skillbill.workflow.engine.model.WorkflowStateSnapshot
 import skillbill.workflow.engine.model.WorkflowUpdateInput
 import java.time.Clock
@@ -42,7 +42,7 @@ internal class WorkflowGoalRunnerStaleBlockedOutcomeDisplacement(
     subtaskId: Int,
   ): DisplacementContext? {
     val family = workflowFamilyFor(workflowStates, workflowId) ?: return null
-    val record = family.get(workflowStates, workflowId) ?: return null
+    val record = family.get(workflowStates, WorkflowId(workflowId)) ?: return null
     val artifacts = decodeArtifacts(record.artifactsJson)
     val continuation = goalContinuation(artifacts)
       ?.takeIf { it.issueKey == issueKey && it.subtaskId == subtaskId }
@@ -93,7 +93,7 @@ internal class WorkflowGoalRunnerStaleBlockedOutcomeDisplacement(
           }
           put("goal_continuation_outcome", null)
         },
-        sessionId = context.record.sessionId.orEmpty(),
+        sessionId = context.record.sessionId,
       ),
     )
     context.family.save(workflowStates, updated)

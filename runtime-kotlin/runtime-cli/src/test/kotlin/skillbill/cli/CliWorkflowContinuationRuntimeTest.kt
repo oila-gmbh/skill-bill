@@ -1,5 +1,4 @@
 package skillbill.cli
-
 import skillbill.cli.model.CliRuntimeContext
 import skillbill.ports.workflow.gitops.RepositoryFingerprintGitOperations
 import skillbill.ports.workflow.gitops.RepositoryOwnedPathsGitOperations
@@ -8,6 +7,8 @@ import skillbill.ports.workflow.gitops.model.WorkflowGitOperationResult
 import skillbill.ports.workflow.gitops.model.WorkflowSelectedDiffHunksRequest
 import skillbill.ports.workflow.gitops.model.WorkflowSelectedDiffHunksResult
 import skillbill.ports.workflow.gitops.model.WorkflowWorktreeActivityResult
+import skillbill.workflow.decomposition.model.IssueKey
+import skillbill.workflow.decomposition.model.SubtaskId
 import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.test.Test
@@ -41,8 +42,8 @@ class CliWorkflowContinuationRuntimeTest {
     )
     val continued = RuntimeWorkflowTestSupport.continueByIssueKey(
       dbPath = fixture.dbPath,
-      issueKey = "SKILL-51",
-      subtaskId = 1,
+      issueKey = IssueKey("SKILL-51"),
+      subtaskId = SubtaskId(1),
       context = fixture.context,
     )
 
@@ -81,8 +82,8 @@ class CliWorkflowContinuationRuntimeTest {
     )
     val continued = RuntimeWorkflowTestSupport.continueByIssueKey(
       dbPath = fixture.dbPath,
-      issueKey = "SKILL-51",
-      subtaskId = 2,
+      issueKey = IssueKey("SKILL-51"),
+      subtaskId = SubtaskId(2),
       context = fixture.context,
     )
 

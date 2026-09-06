@@ -1,23 +1,35 @@
 package skillbill.workflow.taskruntime.model
 
+import skillbill.agent.model.AgentId
 import skillbill.boundary.OpenBoundaryMap
+import skillbill.workflow.decomposition.model.IssueKey
+import skillbill.workflow.decomposition.model.SubtaskId
+import skillbill.workflow.engine.model.WorkflowId
 
 data class FeatureTaskRuntimeGoalContinuationOutcome(
-  val issueKey: String,
-  val subtaskId: Int,
+  val issueKey: IssueKey,
+  val subtaskId: SubtaskId,
   val status: String,
-  val workflowId: String,
+  val workflowId: WorkflowId,
   val commitSha: String? = null,
   val blockedReason: String? = null,
   val lastResumableStep: String,
-  val finalizingAgentId: String? = null,
-  val participatingAgentIds: List<String> = emptyList(),
+  val finalizingAgentId: AgentId? = null,
+  val participatingAgentIds: List<AgentId> = emptyList(),
 ) {
   init {
-    require(issueKey.isNotBlank()) { "FeatureTaskRuntimeGoalContinuationOutcome.issueKey must be non-blank." }
-    require(subtaskId > 0) { "FeatureTaskRuntimeGoalContinuationOutcome.subtaskId must be positive." }
-    require(status.isNotBlank()) { "FeatureTaskRuntimeGoalContinuationOutcome.status must be non-blank." }
-    require(workflowId.isNotBlank()) { "FeatureTaskRuntimeGoalContinuationOutcome.workflowId must be non-blank." }
+    require(issueKey.value.isNotBlank()) {
+      "FeatureTaskRuntimeGoalContinuationOutcome.issueKey must be non-blank."
+    }
+    require(subtaskId.value > 0) {
+      "FeatureTaskRuntimeGoalContinuationOutcome.subtaskId must be positive."
+    }
+    require(status.isNotBlank()) {
+      "FeatureTaskRuntimeGoalContinuationOutcome.status must be non-blank."
+    }
+    require(workflowId.value.isNotBlank()) {
+      "FeatureTaskRuntimeGoalContinuationOutcome.workflowId must be non-blank."
+    }
     require(lastResumableStep.isNotBlank()) {
       "FeatureTaskRuntimeGoalContinuationOutcome.lastResumableStep must be non-blank."
     }
@@ -25,16 +37,16 @@ data class FeatureTaskRuntimeGoalContinuationOutcome(
 
   @OpenBoundaryMap("Feature-task-runtime goal-continuation outcome artifact map at the durable workflow-artifact seam")
   fun toArtifactMap(): Map<String, Any?> = linkedMapOf<String, Any?>(
-    "issue_key" to issueKey,
-    "subtask_id" to subtaskId,
+    "issue_key" to issueKey.value,
+    "subtask_id" to subtaskId.value,
     "status" to status,
-    "workflow_id" to workflowId,
+    "workflow_id" to workflowId.value,
     "last_resumable_step" to lastResumableStep,
-    "participating_agent_ids" to participatingAgentIds,
+    "participating_agent_ids" to participatingAgentIds.map { it.value },
   ).apply {
     commitSha?.let { put("commit_sha", it) }
     blockedReason?.let { put("blocked_reason", it) }
-    finalizingAgentId?.let { put("finalizing_agent_id", it) }
+    finalizingAgentId?.let { put("finalizing_agent_id", it.value) }
   }
 
   companion object {
@@ -42,15 +54,15 @@ data class FeatureTaskRuntimeGoalContinuationOutcome(
     @OpenBoundaryMap("Feature-task-runtime goal-continuation outcome decode from the durable workflow-artifact map")
     fun fromArtifactMap(raw: Map<String, Any?>): FeatureTaskRuntimeGoalContinuationOutcome =
       FeatureTaskRuntimeGoalContinuationOutcome(
-        issueKey = raw.requireStringField("issue_key"),
-        subtaskId = raw.requireIntField("subtask_id"),
+        issueKey = IssueKey(raw.requireStringField("issue_key")),
+        subtaskId = SubtaskId(raw.requireIntField("subtask_id")),
         status = raw.requireStringField("status"),
-        workflowId = raw.requireStringField("workflow_id"),
+        workflowId = WorkflowId(raw.requireStringField("workflow_id")),
         commitSha = raw.optionalStringField("commit_sha"),
         blockedReason = raw.optionalStringField("blocked_reason"),
         lastResumableStep = raw.requireStringField("last_resumable_step"),
-        finalizingAgentId = raw.optionalStringField("finalizing_agent_id"),
-        participatingAgentIds = raw.optionalStringListField("participating_agent_ids"),
+        finalizingAgentId = raw.optionalStringField("finalizing_agent_id")?.let(::AgentId),
+        participatingAgentIds = raw.optionalStringListField("participating_agent_ids").map(::AgentId),
       )
   }
 }

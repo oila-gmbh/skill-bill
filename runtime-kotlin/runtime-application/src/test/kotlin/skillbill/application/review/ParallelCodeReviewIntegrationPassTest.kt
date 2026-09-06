@@ -1,8 +1,8 @@
 package skillbill.application.review
-
 import skillbill.ports.goalrunner.runner.model.GoalRunnerSubtaskLaunchRequest
 import skillbill.review.context.model.CodeReviewExecutionMode
 import skillbill.review.context.model.ReviewIntegrationTerminalOutcome
+import skillbill.review.model.ReviewRunId
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -170,7 +170,7 @@ class ParallelCodeReviewIntegrationPassTest {
         RecordedWorkerResponse(spawnFailed = request.skillRunRequest.issueKey == INTEGRATION_ISSUE_KEY)
       },
       recorder,
-    ).run(delegatedRequest(reviewRunId = RUN_ID))
+    ).run(delegatedRequest(reviewRunId = ReviewRunId(RUN_ID)))
 
     assertEquals(1, recorder.specialistLaunches.size)
     assertEquals(
@@ -178,7 +178,12 @@ class ParallelCodeReviewIntegrationPassTest {
       assertNotNull(recorder.durableIntegrationPass).terminalOutcome,
     )
 
-    val resumed = reviewHarness(delegatedConfig(sixCommitPaths), recorder).run(delegatedRequest(reviewRunId = RUN_ID))
+    val resumed = reviewHarness(delegatedConfig(sixCommitPaths), recorder).run(
+      delegatedRequest(
+        reviewRunId =
+        ReviewRunId(RUN_ID),
+      ),
+    )
 
     assertEquals(
       1,
@@ -191,10 +196,10 @@ class ParallelCodeReviewIntegrationPassTest {
 
   @Test fun `a resume holding a durable integration result re-runs neither boundary`() {
     val recorder = ReviewRecorder()
-    reviewHarness(delegatedConfig(sixCommitPaths), recorder).run(delegatedRequest(reviewRunId = RUN_ID))
+    reviewHarness(delegatedConfig(sixCommitPaths), recorder).run(delegatedRequest(reviewRunId = ReviewRunId(RUN_ID)))
     val afterFirst = recorder.parentLaunches.size
 
-    reviewHarness(delegatedConfig(sixCommitPaths), recorder).run(delegatedRequest(reviewRunId = RUN_ID))
+    reviewHarness(delegatedConfig(sixCommitPaths), recorder).run(delegatedRequest(reviewRunId = ReviewRunId(RUN_ID)))
 
     assertEquals(afterFirst, recorder.parentLaunches.size, "A settled review re-launches nothing on resume.")
   }
@@ -206,12 +211,12 @@ class ParallelCodeReviewIntegrationPassTest {
     reviewHarness(
       delegatedConfig(narrow) { RecordedWorkerResponse(timedOut = true) },
       recorder,
-    ).run(delegatedRequest(reviewRunId = RUN_ID))
+    ).run(delegatedRequest(reviewRunId = ReviewRunId(RUN_ID)))
     val afterFirst = recorder.specialistLaunches.size
 
     // The resume compiles a lane that has no durable row at all. It must launch, not be dropped.
     val resumed = reviewHarness(delegatedConfig(narrow + "src/db/Repo.kt"), recorder)
-      .run(delegatedRequest(reviewRunId = RUN_ID))
+      .run(delegatedRequest(reviewRunId = ReviewRunId(RUN_ID)))
 
     val relaunched = recorder.specialistLaunches.drop(afterFirst)
     assertTrue(
@@ -229,7 +234,7 @@ class ParallelCodeReviewIntegrationPassTest {
         RecordedWorkerResponse(timedOut = request.skillRunRequest.issueKey == INTEGRATION_ISSUE_KEY)
       },
       recorder,
-    ).run(delegatedRequest(reviewRunId = RUN_ID))
+    ).run(delegatedRequest(reviewRunId = ReviewRunId(RUN_ID)))
 
     val integration = assertNotNull(result.integration)
     assertEquals(ReviewIntegrationTerminalOutcome.TIMEOUT, integration.terminalOutcome)

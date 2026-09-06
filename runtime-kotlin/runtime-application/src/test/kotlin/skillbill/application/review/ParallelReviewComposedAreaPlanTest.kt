@@ -1,5 +1,5 @@
 package skillbill.application.review
-
+import skillbill.review.model.ReviewRunId
 import skillbill.review.plan.ReviewLaunchPlanPolicy
 import skillbill.scaffold.model.PlatformManifest
 import kotlin.test.Test
@@ -80,7 +80,7 @@ class ParallelReviewComposedAreaPlanTest {
   private fun run(packs: List<PlatformManifest>, diff: String): ReviewRecorder {
     val recorder = ReviewRecorder()
     reviewHarness(ReviewHarnessConfig(manifests = packs, diff = diff), recorder)
-      .run(harnessRequest(reviewRunId = "composed-area-plan"))
+      .run(harnessRequest(reviewRunId = ReviewRunId("composed-area-plan")))
     return recorder
   }
 }

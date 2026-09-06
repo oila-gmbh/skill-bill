@@ -12,6 +12,7 @@ import skillbill.ports.workflow.saveRecord
 import skillbill.ports.workflow.toRecord
 import skillbill.workflow.decomposition.DecompositionManifestValidator
 import skillbill.workflow.decomposition.model.DecompositionManifest
+import skillbill.workflow.decomposition.model.IssueKey
 import skillbill.workflow.decomposition.runtime.DECOMPOSITION_RUNTIME_ARTIFACT_KEY
 import skillbill.workflow.engine.WorkflowEngine
 import skillbill.workflow.engine.model.WorkflowStateSnapshot
@@ -54,7 +55,7 @@ class GoalParentProjectionWriter(
     )
     WorkflowFamily.TASK_RUNTIME.saveRecord(
       unitOfWork.workflowStates,
-      updated.toRecord().copy(issueKey = normalizeRequiredIssueKey(manifest.issueKey)),
+      updated.toRecord().copy(issueKey = IssueKey(normalizeRequiredIssueKey(manifest.issueKey))),
     )
   }
 }

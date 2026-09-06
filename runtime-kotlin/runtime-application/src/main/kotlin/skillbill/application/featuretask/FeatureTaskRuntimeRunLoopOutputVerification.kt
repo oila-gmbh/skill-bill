@@ -1,5 +1,7 @@
 package skillbill.application.featuretask
 
+import skillbill.agent.model.AgentId
+
 import skillbill.application.featuretask.model.FeatureTaskRuntimeFindingBoundaryMemoryRequest
 import skillbill.application.featuretask.model.FeatureTaskRuntimeFindingBoundaryMemorySection
 import skillbill.application.featuretask.model.FeatureTaskRuntimeImplementationContinuation
@@ -82,7 +84,7 @@ object FeatureTaskRuntimeRunLoopOutputVerification {
     run: PhaseRun,
   ): FeatureTaskRuntimeImplementationContinuation? {
     if (!FeatureTaskRuntimePhaseWorkflowDefinition.isMutatingPhase(run.phaseId)) return null
-    val attempts = runLoop.recorder.loadImplementationAttempts(run.request.workflowId, run.request.dbPathOverride)
+    val attempts = runLoop.recorder.loadImplementationAttempts(run.request.workflowId)
       ?: return null
     return featureTaskRuntimeImplementationContinuationFrom(run.phaseId, attempts, implementationObligations(run))
       ?.takeIf { it.priorValueSegments.isNotEmpty() }
@@ -157,7 +159,7 @@ object FeatureTaskRuntimeRunLoopOutputVerification {
         repositoryCheckpoint = checkpoint,
         expectedRepositoryCheckpoint = checkpoint,
         branchIdentity = runLoop.session.resolvedBranch,
-        baseBranch = runLoop.recorder.loadResolvedBranch(run.request.workflowId, run.request.dbPathOverride)
+        baseBranch = runLoop.recorder.loadResolvedBranch(run.request.workflowId)
           ?.baseBranch
           ?: "main",
       ),
@@ -193,7 +195,7 @@ object FeatureTaskRuntimeRunLoopOutputVerification {
         ?.let { JsonCodec.jsonElementToValue(it) }
         ?.let(JsonCodec::anyToStringAnyMap)
       ?: return emptyList()
-    return runLoop.recorder.recordedFindingVerdicts(envelope, runLoop.request.dbPathOverride)
+    return runLoop.recorder.recordedFindingVerdicts(envelope)
   }
 
   internal fun resolveSharedReviewEvidence(
@@ -243,7 +245,7 @@ object FeatureTaskRuntimeRunLoopOutputVerification {
     if (auditOutputArtifact.isBlank()) return null
     val verdict = FeatureTaskRuntimeOutputVerification.verdictFor(run.phaseId, outputMap)
     val currentHasGaps = verdict == FeatureTaskRuntimeVerdict.GAPS_FOUND
-    val previous = runLoop.recorder.loadAuditGapProgress(runLoop.request.workflowId, runLoop.request.dbPathOverride)
+    val previous = runLoop.recorder.loadAuditGapProgress(runLoop.request.workflowId)
     val decision = if (previous == null || !currentHasGaps) {
       FeatureTaskRuntimeAuditRepairProgressDecision(blocked = false, reason = null)
     } else {
@@ -261,10 +263,9 @@ object FeatureTaskRuntimeRunLoopOutputVerification {
           criterionRefs = setOf(FeatureTaskRuntimeAuditGapProgress.HAD_GAPS_MARKER),
           repositoryFingerprint = repositoryFingerprint,
         ),
-        runLoop.request.dbPathOverride,
       )
     } else {
-      runLoop.recorder.loadAuditGapPause(runLoop.request.workflowId, runLoop.request.dbPathOverride)?.let { pause ->
+      runLoop.recorder.loadAuditGapPause(runLoop.request.workflowId)?.let { pause ->
         if (!pause.grantConsumed || pause.operatorDecision != null) {
           FeatureTaskRuntimeRunLoopDrive.consumeAuditGapRetryGrant(runLoop, pause)
         }
@@ -359,7 +360,6 @@ object FeatureTaskRuntimeRunLoopOutputVerification {
     val recordedVerdicts = reviewOutput?.let {
       runLoop.recorder.recordedFindingVerdicts(
         it,
-        run.request.dbPathOverride,
       )
     }.orEmpty()
     val findings = reviewOutput?.let {
@@ -403,19 +403,16 @@ object FeatureTaskRuntimeRunLoopOutputVerification {
     } else {
       runLoop.recorder.loadFindingVerificationBoundarySelection(
         run.request.workflowId,
-        run.request.dbPathOverride,
       ) != null
     }
     if (delivered) return BoundaryBodyDeliveryDecision.NotApplicable
     runLoop.recorder.persistFindingVerificationBoundarySelection(
       workflowId = run.request.workflowId,
       selections = selections,
-      dbOverride = run.request.dbPathOverride,
     )
     runLoop.recorder.persistFindingVerificationCheckpoint(
       workflowId = run.request.workflowId,
       dispositions = dispositions,
-      dbOverride = run.request.dbPathOverride,
     )
     return BoundaryBodyDeliveryDecision.ContinueDecision.of(
       "Selected boundary headings recorded; re-read the briefing with resolved entry bodies and re-emit " +
@@ -447,7 +444,6 @@ object FeatureTaskRuntimeRunLoopOutputVerification {
     )?.let { return it }
     val persisted = runLoop.recorder.loadFindingVerificationBoundarySelection(
       run.request.workflowId,
-      run.request.dbPathOverride,
     )
     val memory = runLoop.phaseGates.findingVerificationBoundaryMemory
     memory.validateBoundarySelectionsDelivered(sections, dispositions, persisted)?.let { return it }
@@ -478,7 +474,6 @@ object FeatureTaskRuntimeRunLoopOutputVerification {
     runLoop.recorder.persistFindingVerificationCheckpoint(
       workflowId = run.request.workflowId,
       dispositions = dispositions,
-      dbOverride = run.request.dbPathOverride,
     )
   }
 
@@ -486,7 +481,7 @@ object FeatureTaskRuntimeRunLoopOutputVerification {
     val reviewOutput = runLoop.state.outputFor(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW)
       ?.normalizedOutput?.envelope
       ?: return emptySet()
-    val recordedVerdicts = runLoop.recorder.recordedFindingVerdicts(reviewOutput, runLoop.request.dbPathOverride)
+    val recordedVerdicts = runLoop.recorder.recordedFindingVerdicts(reviewOutput)
     return GoalSubtaskReviewStructuredFindingsParse.structuredFindings(reviewOutput, recordedVerdicts)
       .mapNotNull { it.findingId }
       .toSet()
@@ -597,11 +592,10 @@ object FeatureTaskRuntimeRunLoopOutputVerification {
     runLoop: FeatureTaskRuntimeRunLoop,
     run: PhaseRun,
   ): FeatureTaskRuntimeRepositoryCheckpoint? {
-    val resolvedBranchRecord = runLoop.recorder.loadResolvedBranch(run.request.workflowId, run.request.dbPathOverride)
+    val resolvedBranchRecord = runLoop.recorder.loadResolvedBranch(run.request.workflowId)
     runLoop.session.resolvedBranch = resolvedBranchRecord?.branch
     val goalReviewState = runLoop.goalContinuationRecorder.reviewState(
       run.request.workflowId,
-      run.request.dbPathOverride,
     )
     val revisions = FeatureTaskRuntimeRunLoopOutputVerification.resolveCheckpointRevisions(
       runLoop,
@@ -667,7 +661,6 @@ object FeatureTaskRuntimeRunLoopOutputVerification {
       runLoop.recorder.recordWorkflowOwnedPaths(
         run.request.workflowId,
         inventory,
-        run.request.dbPathOverride,
       )
     }
   }
@@ -849,7 +842,6 @@ object FeatureTaskRuntimeRunLoopOutputVerification {
           ),
         ),
       ),
-      run.request.dbPathOverride,
     )
     if (!persisted) {
       return AttemptResult.settled(

@@ -1,5 +1,7 @@
 package skillbill.application.featuretask
 
+import skillbill.agent.model.AgentId
+
 import skillbill.application.diagnostics.model.FeatureTaskRuntimeRejectedOutputWrite
 import skillbill.application.featuretask.model.FeatureTaskRuntimePhaseStateRequest
 import skillbill.application.featuretask.model.FeatureTaskRuntimeProducerOutputRead
@@ -274,7 +276,7 @@ object FeatureTaskRuntimeRunLoopPhaseAttempts {
 
   internal fun durableContinuationSegmentCount(runLoop: FeatureTaskRuntimeRunLoop, run: PhaseRun): Int {
     if (!FeatureTaskRuntimePhaseWorkflowDefinition.isMutatingPhase(run.phaseId)) return 0
-    val attempts = runLoop.recorder.loadImplementationAttempts(run.request.workflowId, run.request.dbPathOverride)
+    val attempts = runLoop.recorder.loadImplementationAttempts(run.request.workflowId)
       ?: return 0
     return attempts.count {
       it.phaseId == run.phaseId &&
@@ -303,7 +305,6 @@ object FeatureTaskRuntimeRunLoopPhaseAttempts {
         loopId = run.reentry?.loopId,
         edgeIteration = run.reentry?.edgeIteration,
       ),
-      run.request.dbPathOverride,
     )
   }
 
@@ -347,7 +348,6 @@ object FeatureTaskRuntimeRunLoopPhaseAttempts {
     runLoop.state.reserveReviewPass(phaseState.reviewPassNumber)
     runLoop.recorder.recordPhaseState(
       phaseState,
-      run.request.dbPathOverride,
     )
     runLoop.observability.blocked(run.phaseId, run.resolvedAgent.resolvedAgentId, attemptCount.coerceAtLeast(1), reason)
     return PhaseOutcome.blocked(reason)
@@ -369,7 +369,6 @@ object FeatureTaskRuntimeRunLoopPhaseAttempts {
           workflowId = runLoop.request.workflowId,
           workflowStatus = STATUS_PAUSED,
         ),
-        dbOverride = runLoop.request.dbPathOverride,
       )
     }
     runLoop.recorder.recordPhaseState(
@@ -390,7 +389,6 @@ object FeatureTaskRuntimeRunLoopPhaseAttempts {
         edgeIteration = run.reentry?.edgeIteration,
         launchOutcomeKnown = false,
       ),
-      run.request.dbPathOverride,
     )
     observability.paused(run.phaseId, run.resolvedAgent.resolvedAgentId, attempt, reason)
     FeatureTaskRuntimeRunLoopPlanningBranch.pauseAt(runLoop, run.phaseId, reason, run.phaseId)
@@ -514,7 +512,6 @@ object FeatureTaskRuntimeRunLoopPhaseAttempts {
           phaseId = producer,
           attempt = producingIteration,
           agentId = producerAgentId,
-          dbOverride = runLoop.request.dbPathOverride,
           generation = runLoop.state.evidenceGeneration(producer),
         ),
       )
@@ -709,7 +706,6 @@ object FeatureTaskRuntimeRunLoopPhaseAttempts {
         rejectedRecordSha256 = args.producerEvidence.sha256,
         diagnosticDegraded = args.diagnosticWrite is FeatureTaskRuntimeRejectedOutputWrite.Degraded,
       ),
-      runLoop.request.dbPathOverride,
     )
   }
 }

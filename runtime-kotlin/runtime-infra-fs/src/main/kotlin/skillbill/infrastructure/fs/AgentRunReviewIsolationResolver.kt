@@ -1,6 +1,7 @@
 package skillbill.infrastructure.fs
 
 import me.tatarka.inject.annotations.Inject
+import skillbill.agent.model.AgentId
 import skillbill.install.model.InstallAgent
 import skillbill.launcher.agentrun.ClaudeAgentRunCommandBuilder
 import skillbill.launcher.agentrun.CodexAgentRunCommandBuilder
@@ -18,8 +19,8 @@ class AgentRunReviewIsolationResolver : ReviewLaunchIsolationResolver {
     JunieAgentRunCommandBuilder(),
   ).associate { builder -> builder.agent to builder.reviewIsolation }
 
-  override fun isolationFor(agentId: String): ReviewLaunchIsolationStrategy {
-    val agent = InstallAgent.supportedIds.firstOrNull { it == agentId }
+  override fun isolationFor(agentId: AgentId): ReviewLaunchIsolationStrategy {
+    val agent = InstallAgent.supportedIds.firstOrNull { it == agentId.value }
       ?.let { id -> strategies.keys.firstOrNull { it.id == id } }
     return agent?.let(strategies::get) ?: ReviewLaunchIsolationStrategy.UNSUPPORTED
   }

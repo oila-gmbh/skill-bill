@@ -1,5 +1,4 @@
 package skillbill.application
-
 import skillbill.application.decomposition.decodeArtifacts
 import skillbill.application.decomposition.decompositionManifestPath
 import skillbill.application.decomposition.parentSpecPath
@@ -38,6 +37,7 @@ import skillbill.ports.workflow.model.FeatureTaskWorkflowCandidate
 import skillbill.ports.workflow.model.FeatureVerifySessionSummary
 import skillbill.ports.workflow.model.WorkflowStateRecord
 import skillbill.workflow.engine.WorkflowSnapshotValidator
+import skillbill.workflow.engine.model.WorkflowId
 import skillbill.workflow.engine.model.WorkflowStateSnapshot
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_DIAGNOSTIC_SIGNALS_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeDecomposeTerminal
@@ -81,7 +81,7 @@ class FeatureTaskRuntimeStatusServiceTest {
   fun `null projection for an unknown workflow id`() {
     val harness = statusHarness()
 
-    assertNull(harness.service.status(FeatureTaskRuntimeStatusRequest(workflowId = "wftr-missing")))
+    assertNull(harness.service.status(FeatureTaskRuntimeStatusRequest(workflowId = WorkflowId("wftr-missing"))))
   }
 
   @Test
@@ -91,7 +91,7 @@ class FeatureTaskRuntimeStatusServiceTest {
     harness.recordRunInvariants(FeatureTaskRuntimeFeatureSize.LARGE)
 
     val projection = requireNotNull(
-      harness.service.status(FeatureTaskRuntimeStatusRequest(workflowId = WORKFLOW_ID)),
+      harness.service.status(FeatureTaskRuntimeStatusRequest(workflowId = WorkflowId(WORKFLOW_ID))),
     )
 
     assertEquals("LARGE", projection.featureSize)
@@ -108,7 +108,7 @@ class FeatureTaskRuntimeStatusServiceTest {
     harness.recorder.ensureWorkflowOpen(WORKFLOW_ID, SESSION_ID)
     harness.recorder.recordPhaseState(
       FeatureTaskRuntimePhaseStateRequest(
-        workflowId = WORKFLOW_ID,
+        workflowId = WorkflowId(WORKFLOW_ID),
         phaseId = "implement",
         status = "running",
         attemptCount = 1,
@@ -126,7 +126,7 @@ class FeatureTaskRuntimeStatusServiceTest {
     assertNull(records.getValue("plan").launchedModel)
 
     val projection = requireNotNull(
-      harness.service.status(FeatureTaskRuntimeStatusRequest(workflowId = WORKFLOW_ID)),
+      harness.service.status(FeatureTaskRuntimeStatusRequest(workflowId = WorkflowId(WORKFLOW_ID))),
     )
     assertEquals(
       "claude-opus-4-8[effort=high]",
@@ -140,7 +140,7 @@ class FeatureTaskRuntimeStatusServiceTest {
     harness.recorder.ensureWorkflowOpen(WORKFLOW_ID, SESSION_ID)
     harness.recorder.recordPhaseState(
       FeatureTaskRuntimePhaseStateRequest(
-        workflowId = WORKFLOW_ID,
+        workflowId = WorkflowId(WORKFLOW_ID),
         phaseId = "implement",
         status = "running",
         attemptCount = 1,
@@ -152,7 +152,7 @@ class FeatureTaskRuntimeStatusServiceTest {
     )
     harness.recorder.recordPhaseState(
       FeatureTaskRuntimePhaseStateRequest(
-        workflowId = WORKFLOW_ID,
+        workflowId = WorkflowId(WORKFLOW_ID),
         phaseId = "implement",
         status = "blocked",
         attemptCount = 1,
@@ -166,7 +166,7 @@ class FeatureTaskRuntimeStatusServiceTest {
     assertEquals("claude-opus-4-8[effort=high]", records.getValue("implement").launchedModel)
     assertEquals(
       "claude-opus-4-8[effort=high]",
-      requireNotNull(harness.service.status(FeatureTaskRuntimeStatusRequest(workflowId = WORKFLOW_ID)))
+      requireNotNull(harness.service.status(FeatureTaskRuntimeStatusRequest(workflowId = WorkflowId(WORKFLOW_ID))))
         .phases.single { it.phaseId == "implement" }.launchedModel,
     )
   }
@@ -177,7 +177,7 @@ class FeatureTaskRuntimeStatusServiceTest {
     harness.recorder.ensureWorkflowOpen(WORKFLOW_ID, SESSION_ID)
     harness.recorder.recordPhaseState(
       FeatureTaskRuntimePhaseStateRequest(
-        workflowId = WORKFLOW_ID,
+        workflowId = WorkflowId(WORKFLOW_ID),
         phaseId = "implement",
         status = "running",
         attemptCount = 1,
@@ -190,7 +190,7 @@ class FeatureTaskRuntimeStatusServiceTest {
     )
     harness.recorder.recordPhaseState(
       FeatureTaskRuntimePhaseStateRequest(
-        workflowId = WORKFLOW_ID,
+        workflowId = WorkflowId(WORKFLOW_ID),
         phaseId = "implement",
         status = "blocked",
         attemptCount = 1,
@@ -222,7 +222,7 @@ class FeatureTaskRuntimeStatusServiceTest {
       harness.recorder.ensureWorkflowOpen(WORKFLOW_ID, SESSION_ID)
       harness.recorder.recordPhaseState(
         FeatureTaskRuntimePhaseStateRequest(
-          workflowId = WORKFLOW_ID,
+          workflowId = WorkflowId(WORKFLOW_ID),
           phaseId = "implement",
           status = "running",
           attemptCount = 1,
@@ -235,7 +235,7 @@ class FeatureTaskRuntimeStatusServiceTest {
       )
       harness.recorder.recordPhaseState(
         FeatureTaskRuntimePhaseStateRequest(
-          workflowId = WORKFLOW_ID,
+          workflowId = WorkflowId(WORKFLOW_ID),
           phaseId = "implement",
           status = "blocked",
           attemptCount = attemptCount,
@@ -257,7 +257,7 @@ class FeatureTaskRuntimeStatusServiceTest {
     harness.recorder.ensureWorkflowOpen(WORKFLOW_ID, SESSION_ID)
     harness.recorder.recordPhaseState(
       FeatureTaskRuntimePhaseStateRequest(
-        workflowId = WORKFLOW_ID,
+        workflowId = WorkflowId(WORKFLOW_ID),
         phaseId = "implement",
         status = "running",
         attemptCount = 1,
@@ -270,7 +270,7 @@ class FeatureTaskRuntimeStatusServiceTest {
     )
     harness.recorder.recordPhaseState(
       FeatureTaskRuntimePhaseStateRequest(
-        workflowId = WORKFLOW_ID,
+        workflowId = WorkflowId(WORKFLOW_ID),
         phaseId = "implement",
         status = "running",
         attemptCount = 2,
@@ -299,7 +299,7 @@ class FeatureTaskRuntimeStatusServiceTest {
     harness.recordLedger(FeatureTaskRuntimePhaseLedgerAction.BLOCKED, "implement", attemptCount = 3)
 
     val projection = requireNotNull(
-      harness.service.status(FeatureTaskRuntimeStatusRequest(workflowId = WORKFLOW_ID)),
+      harness.service.status(FeatureTaskRuntimeStatusRequest(workflowId = WorkflowId(WORKFLOW_ID))),
     )
 
     assertEquals(2, projection.completeCount)
@@ -339,7 +339,7 @@ class FeatureTaskRuntimeStatusServiceTest {
       )
 
       val projection = requireNotNull(
-        harness.service.status(FeatureTaskRuntimeStatusRequest(workflowId = WORKFLOW_ID)),
+        harness.service.status(FeatureTaskRuntimeStatusRequest(workflowId = WorkflowId(WORKFLOW_ID))),
       )
 
       assertEquals(
@@ -369,7 +369,7 @@ class FeatureTaskRuntimeStatusServiceTest {
     )
 
     val projection = requireNotNull(
-      harness.service.status(FeatureTaskRuntimeStatusRequest(workflowId = WORKFLOW_ID)),
+      harness.service.status(FeatureTaskRuntimeStatusRequest(workflowId = WorkflowId(WORKFLOW_ID))),
     )
 
     assertEquals(
@@ -387,7 +387,7 @@ class FeatureTaskRuntimeStatusServiceTest {
     harness.recordLedger(FeatureTaskRuntimePhaseLedgerAction.RESUME, "implement", attemptCount = 4)
 
     val projection = requireNotNull(
-      harness.service.status(FeatureTaskRuntimeStatusRequest(workflowId = WORKFLOW_ID)),
+      harness.service.status(FeatureTaskRuntimeStatusRequest(workflowId = WorkflowId(WORKFLOW_ID))),
     )
 
     assertEquals(0, projection.blockedCount)
@@ -407,7 +407,7 @@ class FeatureTaskRuntimeStatusServiceTest {
     harness.recordLedger(FeatureTaskRuntimePhaseLedgerAction.START, "implement", attemptCount = 1)
 
     val projection = requireNotNull(
-      harness.service.status(FeatureTaskRuntimeStatusRequest(workflowId = WORKFLOW_ID)),
+      harness.service.status(FeatureTaskRuntimeStatusRequest(workflowId = WorkflowId(WORKFLOW_ID))),
     )
 
     assertEquals(1, projection.blockedCount)
@@ -429,7 +429,7 @@ class FeatureTaskRuntimeStatusServiceTest {
     )
 
     val projection = requireNotNull(
-      harness.service.status(FeatureTaskRuntimeStatusRequest(workflowId = WORKFLOW_ID)),
+      harness.service.status(FeatureTaskRuntimeStatusRequest(workflowId = WorkflowId(WORKFLOW_ID))),
     )
 
     assertEquals("implement", projection.currentPhaseId)
@@ -449,7 +449,7 @@ class FeatureTaskRuntimeStatusServiceTest {
     )
 
     val projection = requireNotNull(
-      harness.service.status(FeatureTaskRuntimeStatusRequest(workflowId = WORKFLOW_ID)),
+      harness.service.status(FeatureTaskRuntimeStatusRequest(workflowId = WorkflowId(WORKFLOW_ID))),
     )
 
     assertEquals("implement_fix", projection.currentPhaseId)
@@ -469,7 +469,7 @@ class FeatureTaskRuntimeStatusServiceTest {
     )
 
     val projection = requireNotNull(
-      harness.service.status(FeatureTaskRuntimeStatusRequest(workflowId = WORKFLOW_ID)),
+      harness.service.status(FeatureTaskRuntimeStatusRequest(workflowId = WorkflowId(WORKFLOW_ID))),
     )
 
     assertEquals("feat/SKILL-65-runtime-feature-task-parity", projection.resolvedBranch)
@@ -481,7 +481,7 @@ class FeatureTaskRuntimeStatusServiceTest {
     harness.recorder.ensureWorkflowOpen(WORKFLOW_ID, SESSION_ID)
 
     val projection = requireNotNull(
-      harness.service.status(FeatureTaskRuntimeStatusRequest(workflowId = WORKFLOW_ID)),
+      harness.service.status(FeatureTaskRuntimeStatusRequest(workflowId = WorkflowId(WORKFLOW_ID))),
     )
 
     assertNull(projection.resolvedBranch)
@@ -507,7 +507,7 @@ class FeatureTaskRuntimeStatusServiceTest {
     )
 
     val projection = requireNotNull(
-      harness.service.status(FeatureTaskRuntimeStatusRequest(workflowId = WORKFLOW_ID)),
+      harness.service.status(FeatureTaskRuntimeStatusRequest(workflowId = WorkflowId(WORKFLOW_ID))),
     )
 
     val terminal = requireNotNull(projection.decomposeTerminal)
@@ -532,7 +532,7 @@ class FeatureTaskRuntimeStatusServiceTest {
     harness.recorder.ensureWorkflowOpen(WORKFLOW_ID, SESSION_ID)
 
     val projection = requireNotNull(
-      harness.service.status(FeatureTaskRuntimeStatusRequest(workflowId = WORKFLOW_ID)),
+      harness.service.status(FeatureTaskRuntimeStatusRequest(workflowId = WorkflowId(WORKFLOW_ID))),
     )
 
     assertNull(projection.decomposeTerminal)
@@ -544,7 +544,7 @@ class FeatureTaskRuntimeStatusServiceTest {
     harness.recorder.ensureWorkflowOpen(WORKFLOW_ID, SESSION_ID)
 
     val projection = requireNotNull(
-      harness.service.status(FeatureTaskRuntimeStatusRequest(workflowId = WORKFLOW_ID)),
+      harness.service.status(FeatureTaskRuntimeStatusRequest(workflowId = WorkflowId(WORKFLOW_ID))),
     )
 
     assertNull(projection.featureSize)
@@ -572,7 +572,7 @@ class FeatureTaskRuntimeStatusServiceTest {
       .forEach { harness.recordCompleted(it, attemptCount = 1) }
 
     val projection = requireNotNull(
-      harness.service.status(FeatureTaskRuntimeStatusRequest(workflowId = WORKFLOW_ID)),
+      harness.service.status(FeatureTaskRuntimeStatusRequest(workflowId = WorkflowId(WORKFLOW_ID))),
     )
 
     assertEquals(10, projection.completeCount)
@@ -598,7 +598,7 @@ class FeatureTaskRuntimeStatusServiceTest {
     )
 
     val projection = requireNotNull(
-      harness.service.status(FeatureTaskRuntimeStatusRequest(workflowId = WORKFLOW_ID)),
+      harness.service.status(FeatureTaskRuntimeStatusRequest(workflowId = WorkflowId(WORKFLOW_ID))),
     )
 
     val degraded = requireNotNull(projection.degradedDiagnostic)
@@ -614,7 +614,7 @@ class FeatureTaskRuntimeStatusServiceTest {
     harness.recorder.ensureWorkflowOpen(WORKFLOW_ID, SESSION_ID)
 
     val projection = requireNotNull(
-      harness.service.status(FeatureTaskRuntimeStatusRequest(workflowId = WORKFLOW_ID)),
+      harness.service.status(FeatureTaskRuntimeStatusRequest(workflowId = WorkflowId(WORKFLOW_ID))),
     )
 
     assertNull(projection.degradedDiagnostic)
@@ -627,7 +627,7 @@ class FeatureTaskRuntimeStatusServiceTest {
     harness.seedDiagnosticSignalsArtifact("not-an-array")
 
     assertFailsWith<InvalidWorkflowStateSchemaError> {
-      harness.service.status(FeatureTaskRuntimeStatusRequest(workflowId = WORKFLOW_ID))
+      harness.service.status(FeatureTaskRuntimeStatusRequest(workflowId = WorkflowId(WORKFLOW_ID)))
     }
   }
 
@@ -708,7 +708,7 @@ class FeatureTaskRuntimeStatusAttributionTest {
     harness.recordLedger(COMPLETE, "commit_push", attemptCount = 1, resolvedAgentId = "claude")
 
     val projection = requireNotNull(
-      harness.service.status(FeatureTaskRuntimeStatusRequest(workflowId = WORKFLOW_ID)),
+      harness.service.status(FeatureTaskRuntimeStatusRequest(workflowId = WorkflowId(WORKFLOW_ID))),
     )
 
     assertEquals("claude", projection.finalizingAgentId)
@@ -722,7 +722,7 @@ class FeatureTaskRuntimeStatusAttributionTest {
     harness.recordRunning("audit", attemptCount = 1)
 
     val projection = requireNotNull(
-      harness.service.status(FeatureTaskRuntimeStatusRequest(workflowId = WORKFLOW_ID)),
+      harness.service.status(FeatureTaskRuntimeStatusRequest(workflowId = WorkflowId(WORKFLOW_ID))),
     )
     val execution = requireNotNull(projection.currentPhaseExecution)
 
@@ -747,7 +747,7 @@ class FeatureTaskRuntimeStatusAttributionTest {
     )
 
     val projection = requireNotNull(
-      harness.service.status(FeatureTaskRuntimeStatusRequest(workflowId = WORKFLOW_ID)),
+      harness.service.status(FeatureTaskRuntimeStatusRequest(workflowId = WorkflowId(WORKFLOW_ID))),
     )
     // Ledger-only reopen makes implement current; execution must carry the edge iteration.
     assertEquals("implement", projection.currentPhaseId)
@@ -772,7 +772,7 @@ class FeatureTaskRuntimeStatusAttributionTest {
     // After implement settles the reopen, audit is current again on loop 1.
     harness.recorder.recordPhaseState(
       FeatureTaskRuntimePhaseStateRequest(
-        workflowId = WORKFLOW_ID,
+        workflowId = WorkflowId(WORKFLOW_ID),
         phaseId = "implement",
         status = "completed",
         attemptCount = 2,
@@ -786,7 +786,7 @@ class FeatureTaskRuntimeStatusAttributionTest {
     harness.recordRunning("audit", attemptCount = 2)
 
     val projection = requireNotNull(
-      harness.service.status(FeatureTaskRuntimeStatusRequest(workflowId = WORKFLOW_ID)),
+      harness.service.status(FeatureTaskRuntimeStatusRequest(workflowId = WorkflowId(WORKFLOW_ID))),
     )
     assertEquals("audit", projection.currentPhaseId)
     val execution = requireNotNull(projection.currentPhaseExecution)
@@ -801,7 +801,7 @@ class FeatureTaskRuntimeStatusAttributionTest {
     listOf("preplan", "plan", "implement", "audit").forEach { harness.recordCompleted(it, attemptCount = 1) }
     harness.recorder.recordPhaseState(
       FeatureTaskRuntimePhaseStateRequest(
-        workflowId = WORKFLOW_ID,
+        workflowId = WorkflowId(WORKFLOW_ID),
         phaseId = "review",
         status = "running",
         attemptCount = 5,
@@ -812,7 +812,7 @@ class FeatureTaskRuntimeStatusAttributionTest {
     )
 
     val projection = requireNotNull(
-      harness.service.status(FeatureTaskRuntimeStatusRequest(workflowId = WORKFLOW_ID)),
+      harness.service.status(FeatureTaskRuntimeStatusRequest(workflowId = WorkflowId(WORKFLOW_ID))),
     )
     val execution = requireNotNull(projection.currentPhaseExecution)
     assertEquals("review", projection.currentPhaseId)
@@ -829,7 +829,7 @@ class FeatureTaskRuntimeStatusAttributionTest {
       .forEach { harness.recordCompleted(it, attemptCount = 1) }
     harness.recorder.recordPhaseState(
       FeatureTaskRuntimePhaseStateRequest(
-        workflowId = WORKFLOW_ID,
+        workflowId = WorkflowId(WORKFLOW_ID),
         phaseId = "review",
         status = "completed",
         attemptCount = 1,
@@ -847,7 +847,7 @@ class FeatureTaskRuntimeStatusAttributionTest {
     )
     harness.recorder.recordPhaseState(
       FeatureTaskRuntimePhaseStateRequest(
-        workflowId = WORKFLOW_ID,
+        workflowId = WorkflowId(WORKFLOW_ID),
         phaseId = "implement_fix",
         status = "completed",
         attemptCount = 1,
@@ -860,7 +860,7 @@ class FeatureTaskRuntimeStatusAttributionTest {
     )
 
     val projection = requireNotNull(
-      harness.service.status(FeatureTaskRuntimeStatusRequest(workflowId = WORKFLOW_ID)),
+      harness.service.status(FeatureTaskRuntimeStatusRequest(workflowId = WorkflowId(WORKFLOW_ID))),
     )
     assertEquals("validate", projection.currentPhaseId)
     val execution = projection.currentPhaseExecution
@@ -878,7 +878,7 @@ class FeatureTaskRuntimeStatusAttributionTest {
       .forEach { harness.recordCompleted(it, attemptCount = 1) }
     harness.recorder.recordPhaseState(
       FeatureTaskRuntimePhaseStateRequest(
-        workflowId = WORKFLOW_ID,
+        workflowId = WorkflowId(WORKFLOW_ID),
         phaseId = "review",
         status = "completed",
         attemptCount = 1,
@@ -891,7 +891,7 @@ class FeatureTaskRuntimeStatusAttributionTest {
     harness.recordRunning("validate", attemptCount = 1)
 
     val projection = requireNotNull(
-      harness.service.status(FeatureTaskRuntimeStatusRequest(workflowId = WORKFLOW_ID)),
+      harness.service.status(FeatureTaskRuntimeStatusRequest(workflowId = WorkflowId(WORKFLOW_ID))),
     )
     assertEquals("validate", projection.currentPhaseId)
     val execution = requireNotNull(projection.currentPhaseExecution)
@@ -930,7 +930,7 @@ class FeatureTaskRuntimeStatusAttributionTest {
     )
 
     val projection = requireNotNull(
-      harness.service.status(FeatureTaskRuntimeStatusRequest(workflowId = WORKFLOW_ID)),
+      harness.service.status(FeatureTaskRuntimeStatusRequest(workflowId = WorkflowId(WORKFLOW_ID))),
     )
     val execution = requireNotNull(projection.currentPhaseExecution)
     assertEquals("validate", execution.phaseId)
@@ -948,7 +948,7 @@ class FeatureTaskRuntimeStatusAttributionTest {
     harness.recordCompleted("implement", attemptCount = 1)
     harness.recorder.recordPhaseState(
       FeatureTaskRuntimePhaseStateRequest(
-        workflowId = WORKFLOW_ID,
+        workflowId = WorkflowId(WORKFLOW_ID),
         phaseId = "implement_fix",
         status = "running",
         attemptCount = 2,
@@ -966,7 +966,7 @@ class FeatureTaskRuntimeStatusAttributionTest {
     )
 
     val projection = requireNotNull(
-      harness.service.status(FeatureTaskRuntimeStatusRequest(workflowId = WORKFLOW_ID)),
+      harness.service.status(FeatureTaskRuntimeStatusRequest(workflowId = WorkflowId(WORKFLOW_ID))),
     )
     val execution = requireNotNull(projection.currentPhaseExecution)
     assertEquals("implement_fix", execution.phaseId)
@@ -984,7 +984,7 @@ class FeatureTaskRuntimeStatusAttributionTest {
     harness.recordCompleted("implement", attemptCount = 1)
     harness.recorder.recordPhaseState(
       FeatureTaskRuntimePhaseStateRequest(
-        workflowId = WORKFLOW_ID,
+        workflowId = WorkflowId(WORKFLOW_ID),
         phaseId = "implement_fix",
         status = "running",
         attemptCount = 3,
@@ -1002,7 +1002,7 @@ class FeatureTaskRuntimeStatusAttributionTest {
     )
 
     val projection = requireNotNull(
-      harness.service.status(FeatureTaskRuntimeStatusRequest(workflowId = WORKFLOW_ID)),
+      harness.service.status(FeatureTaskRuntimeStatusRequest(workflowId = WorkflowId(WORKFLOW_ID))),
     )
     val execution = requireNotNull(projection.currentPhaseExecution)
     assertEquals("implement_fix", execution.phaseId)
@@ -1018,7 +1018,7 @@ class FeatureTaskRuntimeStatusAttributionTest {
     val operatorReason = "Configure GITHUB_REGISTRY_AUTH then run npm ci:safe"
     harness.recorder.recordPhaseState(
       FeatureTaskRuntimePhaseStateRequest(
-        workflowId = WORKFLOW_ID,
+        workflowId = WorkflowId(WORKFLOW_ID),
         phaseId = "validate",
         status = "blocked",
         attemptCount = 1,
@@ -1030,7 +1030,7 @@ class FeatureTaskRuntimeStatusAttributionTest {
     )
 
     val projection = requireNotNull(
-      harness.service.status(FeatureTaskRuntimeStatusRequest(workflowId = WORKFLOW_ID)),
+      harness.service.status(FeatureTaskRuntimeStatusRequest(workflowId = WorkflowId(WORKFLOW_ID))),
     )
 
     assertEquals("validate", projection.operatorDecisionPause?.phaseId)
@@ -1044,7 +1044,7 @@ class FeatureTaskRuntimeStatusAttributionTest {
     harness.recordBlocked("validate", attemptCount = 2, blockedReason = "fix loop exhausted")
 
     val projection = requireNotNull(
-      harness.service.status(FeatureTaskRuntimeStatusRequest(workflowId = WORKFLOW_ID)),
+      harness.service.status(FeatureTaskRuntimeStatusRequest(workflowId = WorkflowId(WORKFLOW_ID))),
     )
 
     assertNull(projection.operatorDecisionPause)
@@ -1056,7 +1056,7 @@ class FeatureTaskRuntimeStatusAttributionTest {
     harness.recorder.ensureWorkflowOpen(WORKFLOW_ID, SESSION_ID)
 
     val projection = requireNotNull(
-      harness.service.status(FeatureTaskRuntimeStatusRequest(workflowId = WORKFLOW_ID)),
+      harness.service.status(FeatureTaskRuntimeStatusRequest(workflowId = WorkflowId(WORKFLOW_ID))),
     )
 
     assertEquals("preplan", projection.currentPhaseId)
@@ -1115,7 +1115,7 @@ private class StatusHarness(
 ) {
   fun recordRunning(phaseId: String, attemptCount: Int, resolvedAgentId: String = "claude") = recorder.recordPhaseState(
     FeatureTaskRuntimePhaseStateRequest(
-      workflowId = WORKFLOW_ID,
+      workflowId = WorkflowId(WORKFLOW_ID),
       phaseId = phaseId,
       status = "running",
       attemptCount = attemptCount,
@@ -1128,7 +1128,7 @@ private class StatusHarness(
   fun recordCompleted(phaseId: String, attemptCount: Int, resolvedAgentId: String = "claude") =
     recorder.recordPhaseState(
       FeatureTaskRuntimePhaseStateRequest(
-        workflowId = WORKFLOW_ID,
+        workflowId = WorkflowId(WORKFLOW_ID),
         phaseId = phaseId,
         status = "completed",
         attemptCount = attemptCount,
@@ -1141,7 +1141,7 @@ private class StatusHarness(
   fun recordBlocked(phaseId: String, attemptCount: Int, blockedReason: String, resolvedAgentId: String = "claude") =
     recorder.recordPhaseState(
       FeatureTaskRuntimePhaseStateRequest(
-        workflowId = WORKFLOW_ID,
+        workflowId = WorkflowId(WORKFLOW_ID),
         phaseId = phaseId,
         status = "blocked",
         attemptCount = attemptCount,
@@ -1159,7 +1159,7 @@ private class StatusHarness(
     resolvedAgentId: String = "claude",
   ) = recorder.appendLedgerEntry(
     FeatureTaskRuntimePhaseLedgerRequest(
-      workflowId = WORKFLOW_ID,
+      workflowId = WorkflowId(WORKFLOW_ID),
       action = action,
       phaseId = phaseId,
       attemptCount = attemptCount,
@@ -1176,7 +1176,7 @@ private class StatusHarness(
     trailingDetail: String = "",
   ) = recorder.appendLedgerEntry(
     FeatureTaskRuntimePhaseLedgerRequest(
-      workflowId = WORKFLOW_ID,
+      workflowId = WorkflowId(WORKFLOW_ID),
       action = action,
       phaseId = phaseId,
       attemptCount = attemptCount,
@@ -1193,7 +1193,7 @@ private class StatusHarness(
     resolvedAgentId: String = "claude",
   ) = recorder.appendLedgerEntry(
     FeatureTaskRuntimePhaseLedgerRequest(
-      workflowId = WORKFLOW_ID,
+      workflowId = WorkflowId(WORKFLOW_ID),
       action = LOOP_EDGE,
       phaseId = phaseId,
       attemptCount = attemptCount,
@@ -1220,7 +1220,7 @@ private class StatusHarness(
 
   fun recordRunInvariants(featureSize: FeatureTaskRuntimeFeatureSize) {
     runInvariantsStore.resolve(
-      workflowId = WORKFLOW_ID,
+      workflowId = WorkflowId(WORKFLOW_ID),
       proposed =
       FeatureTaskRuntimeRunInvariants(
         specReference = ".feature-specs/SKILL-65/spec.md",
@@ -1243,15 +1243,15 @@ private class StatusFakeDatabaseSessionFactory(
 ) : DatabaseSessionFactory {
   private val dbPath = Path.of("/fake/status-metrics.db")
 
-  override fun resolveDbPath(dbOverride: String?): Path = dbPath
+  override fun resolveDbPath(): Path = dbPath
 
-  override fun databaseExists(dbOverride: String?): Boolean = true
+  override fun databaseExists(): Boolean = true
 
-  override fun <T> read(dbOverride: String?, block: (UnitOfWork) -> T): T = block(unitOfWork())
+  override fun <T> read(block: (UnitOfWork) -> T): T = block(unitOfWork())
 
-  override fun <T> selfManagedWrite(dbOverride: String?, block: (UnitOfWork) -> T): T = block(unitOfWork())
+  override fun <T> selfManagedWrite(block: (UnitOfWork) -> T): T = block(unitOfWork())
 
-  override fun <T> transaction(dbOverride: String?, block: (UnitOfWork) -> T): T = block(unitOfWork())
+  override fun <T> transaction(block: (UnitOfWork) -> T): T = block(unitOfWork())
 
   private fun unitOfWork(): UnitOfWork = object : UnitOfWorkDefaults() {
     override val dbPath: Path = this@StatusFakeDatabaseSessionFactory.dbPath

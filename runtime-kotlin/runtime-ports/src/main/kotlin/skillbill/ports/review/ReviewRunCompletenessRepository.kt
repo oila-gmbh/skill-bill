@@ -5,42 +5,43 @@ import skillbill.review.model.ParallelReviewMergedFinding
 import skillbill.review.model.ReviewFindingVerdict
 import skillbill.review.model.ReviewLaneEffectivenessRow
 import skillbill.review.model.ReviewPassClaimSnapshot
+import skillbill.review.model.ReviewRunId
 import skillbill.review.model.ReviewRunLane
 import skillbill.review.model.ReviewSpecProjectionReference
 import skillbill.review.model.ReviewStageBoundary
 
 interface ReviewRunLaneCompletenessRepository {
-  fun replaceReviewRunLanes(runId: String, lanes: List<ReviewRunLane>)
+  fun replaceReviewRunLanes(runId: ReviewRunId, lanes: List<ReviewRunLane>)
 
-  fun fetchReviewRunLanes(runId: String): List<ReviewRunLane>
+  fun fetchReviewRunLanes(runId: ReviewRunId): List<ReviewRunLane>
 
-  fun recordFindingLaneAttribution(runId: String, attribution: Map<String, String>)
+  fun recordFindingLaneAttribution(runId: ReviewRunId, attribution: Map<String, String>)
 
-  fun reviewLaneEffectiveness(runId: String?): List<ReviewLaneEffectivenessRow>
+  fun reviewLaneEffectiveness(runId: ReviewRunId?): List<ReviewLaneEffectivenessRow>
 
-  fun ensureTerminalReviewState(runId: String, executionMode: String?)
+  fun ensureTerminalReviewState(runId: ReviewRunId, executionMode: String?)
 
-  fun recordIntegrationPass(runId: String, record: ReviewIntegrationPassRecord)
+  fun recordIntegrationPass(runId: ReviewRunId, record: ReviewIntegrationPassRecord)
 
-  fun fetchIntegrationPass(runId: String): ReviewIntegrationPassRecord?
+  fun fetchIntegrationPass(runId: ReviewRunId): ReviewIntegrationPassRecord?
 }
 
 interface ReviewRunStageCompletenessRepository {
-  fun recordFindingVerdicts(runId: String, verdicts: List<ReviewFindingVerdict>)
+  fun recordFindingVerdicts(runId: ReviewRunId, verdicts: List<ReviewFindingVerdict>)
 
-  fun fetchFindingVerdicts(runId: String): List<ReviewFindingVerdict>
+  fun fetchFindingVerdicts(runId: ReviewRunId): List<ReviewFindingVerdict>
 
-  fun recordReviewPassClaims(runId: String, findings: List<ParallelReviewMergedFinding>)
+  fun recordReviewPassClaims(runId: ReviewRunId, findings: List<ParallelReviewMergedFinding>)
 
-  fun fetchReviewPassClaims(runId: String): ReviewPassClaimSnapshot?
+  fun fetchReviewPassClaims(runId: ReviewRunId): ReviewPassClaimSnapshot?
 
-  fun recordStageBoundary(runId: String, boundary: ReviewStageBoundary)
+  fun recordStageBoundary(runId: ReviewRunId, boundary: ReviewStageBoundary)
 
-  fun fetchStageBoundaries(runId: String): List<ReviewStageBoundary>
+  fun fetchStageBoundaries(runId: ReviewRunId): List<ReviewStageBoundary>
 
-  fun recordSpecProjectionReference(runId: String, reference: ReviewSpecProjectionReference)
+  fun recordSpecProjectionReference(runId: ReviewRunId, reference: ReviewSpecProjectionReference)
 
-  fun fetchSpecProjectionReference(runId: String): ReviewSpecProjectionReference?
+  fun fetchSpecProjectionReference(runId: ReviewRunId): ReviewSpecProjectionReference?
 }
 
 interface ReviewRunCompletenessRepository :

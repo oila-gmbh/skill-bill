@@ -1,5 +1,7 @@
 package skillbill.application.featuretask
 
+import skillbill.workflow.decomposition.model.IssueKey
+
 import skillbill.application.featuretask.model.FeatureTaskContinuationCandidate
 import skillbill.application.featuretask.model.FeatureTaskContinuationLookupQuery
 import skillbill.application.featuretask.model.FeatureTaskContinuationLookupResult

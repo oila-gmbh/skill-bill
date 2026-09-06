@@ -1,5 +1,4 @@
 package skillbill.application
-
 import skillbill.application.featuretask.AcceptingFeatureTaskRuntimeHandoffEnvelopeValidator
 import skillbill.application.featuretask.AcceptingFeatureTaskRuntimeHandoffFoundationValidator
 import skillbill.application.goalrunner.testPhaseRecorder
@@ -13,6 +12,7 @@ import skillbill.error.InvalidFeatureTaskExecutionIdentitySchemaError
 import skillbill.error.WorkflowIssueKeyConflictError
 import skillbill.ports.workflow.decomposition.UnavailableDecompositionManifestStore
 import skillbill.ports.workflow.gitops.NoopWorkflowGitOperations
+import skillbill.workflow.decomposition.model.IssueKey
 import skillbill.workflow.goal.NoopGoalObservabilityEventValidator
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -39,7 +39,7 @@ class WorkflowIssueKeyPersistenceTest {
       service.openFeatureTask(
         WorkflowServiceOpenFeatureTaskArgs(
           kind = WorkflowFamilyKind.TASK_RUNTIME,
-          issueKey = "  SKILL-117  ",
+          issueKey = IssueKey("  SKILL-117  "),
           repositoryIdentity = "repo-root-realpath-v1:/test/repository",
           governedSpecPath = ".feature-specs/SKILL-117/spec.md",
         ),
@@ -49,14 +49,14 @@ class WorkflowIssueKeyPersistenceTest {
       service.openFeatureTask(
         WorkflowServiceOpenFeatureTaskArgs(
           kind = WorkflowFamilyKind.TASK_RUNTIME,
-          issueKey = " SKILL-118 ",
+          issueKey = IssueKey(" SKILL-118 "),
           repositoryIdentity = "repo-root-realpath-v1:/test/repository",
           governedSpecPath = ".feature-specs/SKILL-118/spec.md",
         ),
       ),
     )
     val verify = assertIs<WorkflowOpenResult.Ok>(
-      service.open(WorkflowServiceOpenArgs(kind = WorkflowFamilyKind.VERIFY, issueKey = " SKILL-119 ")),
+      service.open(WorkflowServiceOpenArgs(kind = WorkflowFamilyKind.VERIFY, issueKey = IssueKey(" SKILL-119 "))),
     )
 
     assertEquals("SKILL-117", assertNotNull(workflows.getFeatureTaskRuntimeWorkflow(firstRuntime.workflowId)).issueKey)
@@ -82,7 +82,7 @@ class WorkflowIssueKeyPersistenceTest {
       service.openFeatureTask(
         WorkflowServiceOpenFeatureTaskArgs(
           kind = WorkflowFamilyKind.TASK_RUNTIME,
-          issueKey = "SKILL-117\nspoofed",
+          issueKey = IssueKey("SKILL-117\nspoofed"),
           repositoryIdentity = "repo-root-realpath-v1:/test/repository",
           governedSpecPath = ".feature-specs/SKILL-117/spec.md",
         ),
@@ -111,14 +111,14 @@ class WorkflowIssueKeyPersistenceTest {
     )
 
     recorder.ensureWorkflowOpen("wftr-117", "session-117")
-    recorder.ensureWorkflowOpen("wftr-117", "session-117", issueKey = " SKILL-117 ")
-    recorder.ensureWorkflowOpen("wftr-117", "session-117", issueKey = "SKILL-117")
+    recorder.ensureWorkflowOpen("wftr-117", "session-117", issueKey = IssueKey(" SKILL-117 "))
+    recorder.ensureWorkflowOpen("wftr-117", "session-117", issueKey = IssueKey("SKILL-117"))
 
     val healed = assertNotNull(workflows.getFeatureTaskRuntimeWorkflow("wftr-117"))
     assertEquals("SKILL-117", healed.issueKey)
 
     val conflict = assertFailsWith<WorkflowIssueKeyConflictError> {
-      recorder.ensureWorkflowOpen("wftr-117", "session-117", issueKey = "SKILL-118")
+      recorder.ensureWorkflowOpen("wftr-117", "session-117", issueKey = IssueKey("SKILL-118"))
     }
     assertEquals("wftr-117", conflict.workflowId)
     assertEquals("SKILL-117", conflict.persistedIssueKey)

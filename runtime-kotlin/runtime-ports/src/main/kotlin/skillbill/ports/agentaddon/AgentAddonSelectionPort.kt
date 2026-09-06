@@ -1,5 +1,7 @@
 package skillbill.ports.agentaddon
 
+import skillbill.agent.model.AgentId
+
 import skillbill.agentaddon.model.AgentAddonConsumer
 import skillbill.agentaddon.model.AgentAddonSelection
 import skillbill.agentaddon.model.HydratedAgentAddonSelection

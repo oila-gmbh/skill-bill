@@ -3,32 +3,26 @@ package skillbill.ports.goalrunner.runner
 import skillbill.goalrunner.model.GoalRunnerStoredOutcome
 import skillbill.goalrunner.model.GoalRunnerSupervisionEvent
 import skillbill.ports.goalrunner.runner.model.GoalRunnerReconcileGate
+import skillbill.workflow.decomposition.model.IssueKey
+import skillbill.workflow.engine.model.WorkflowId
 import java.nio.file.Path
 
 interface GoalRunnerWorkflowOutcomeMutationStore {
-  fun authoritativeOutcomes(issueKey: String, dbPathOverride: String? = null): Map<Int, GoalRunnerStoredOutcome> =
-    emptyMap()
+  fun authoritativeOutcomes(issueKey: IssueKey): Map<Int, GoalRunnerStoredOutcome> = emptyMap()
 
   fun reconcileAuthoritativeOutcomes(
-    issueKey: String,
+    issueKey: IssueKey,
     activeWorkflowIds: Set<String> = emptySet(),
     gate: GoalRunnerReconcileGate = GoalRunnerReconcileGate(),
     repoRoot: Path? = null,
-    dbPathOverride: String? = null,
   ): Map<Int, GoalRunnerStoredOutcome>
 
   fun markBlocked(
-    workflowId: String,
+    workflowId: WorkflowId,
     blockedReason: String,
     lastResumableStep: String,
     supervisionEvent: GoalRunnerSupervisionEvent? = null,
-    dbPathOverride: String? = null,
   ): String?
 
-  fun reopenBlockedPhaseForOperatorResume(
-    workflowId: String,
-    preferredPhaseId: String,
-    reason: String,
-    dbPathOverride: String? = null,
-  ): Boolean
+  fun reopenBlockedPhaseForOperatorResume(workflowId: WorkflowId, preferredPhaseId: String, reason: String): Boolean
 }

@@ -1,5 +1,4 @@
 package skillbill.mcp
-
 import skillbill.SAMPLE_REVIEW
 import skillbill.SkillBillVersion
 import skillbill.ZERO_FINDING_REVIEW
@@ -36,7 +35,10 @@ import skillbill.mcp.shared.services
 import skillbill.mcp.workflow.McpWorkflowOpenArgs
 import skillbill.mcp.workflow.McpWorkflowRuntime
 import skillbill.ports.workflow.gitops.repositoryFingerprint
+import skillbill.review.model.ReviewRunId
 import skillbill.telemetry.CONFIG_ENVIRONMENT_KEY
+import skillbill.workflow.decomposition.model.IssueKey
+import skillbill.workflow.engine.model.SessionId
 import java.nio.file.Files
 import java.nio.file.Path
 import java.sql.Connection
@@ -54,7 +56,7 @@ class McpRuntimeTest {
     val opened = McpWorkflowRuntime.open(
       McpWorkflowOpenArgs(
         kind = WorkflowFamilyKind.TASK_RUNTIME,
-        sessionId = "ftr-compat",
+        sessionId = SessionId("ftr-compat"),
         currentStepId = null,
         context = context,
       ),
@@ -316,7 +318,7 @@ class McpRuntimeTest {
           finalFailureCount = 0,
           iterations = 1,
           result = "pass",
-          sessionId = "",
+          sessionId = SessionId(""),
           failingCheckNames = emptyList(),
           unsupportedReason = "",
           orchestrated = true,
@@ -352,7 +354,7 @@ class McpRuntimeTest {
       )
     val triageResult =
       McpRuntime.triageFindings(
-        reviewRunId = "rvw-20260402-001",
+        reviewRunId = ReviewRunId("rvw-20260402-001"),
         decisions = listOf("fix=[1,2]"),
         orchestrated = true,
         context = context,
@@ -404,7 +406,7 @@ class McpRuntimeTest {
     McpRuntime.importReview(SAMPLE_REVIEW.trimIndent(), context = context)
     val triageResult =
       McpRuntime.triageFindings(
-        reviewRunId = "rvw-20260402-001",
+        reviewRunId = ReviewRunId("rvw-20260402-001"),
         decisions = listOf("1 fix", "2 reject"),
         context = context,
       )
@@ -548,7 +550,7 @@ class McpFeatureTaskRuntimeWorkflowTest {
     val opened = McpWorkflowRuntime.open(
       McpWorkflowOpenArgs(
         kind = WorkflowFamilyKind.TASK_RUNTIME,
-        sessionId = "ftr-20260603-mcp",
+        sessionId = SessionId("ftr-20260603-mcp"),
         context = context,
       ),
     )
@@ -628,7 +630,7 @@ class McpTokenEstimationTest {
     val started = lifecycle.featureTaskRuntimeStarted(
       FeatureTaskRuntimeStartedRequest(
         featureSize = "MEDIUM",
-        issueKey = "SKILL-91",
+        issueKey = IssueKey("SKILL-91"),
         featureName = "token-estimation",
       ),
     )
@@ -683,13 +685,13 @@ class McpTokenEstimationTest {
 
     val prefixlessSessionId = recordBlockedFeatureTaskRuntimeFinished(
       context = context,
-      issueKey = "SKILL-109",
+      issueKey = IssueKey("SKILL-109"),
       lastIncompletePhase = "",
       blockedReason = "review requested changes",
     )
     val blankReasonSessionId = recordBlockedFeatureTaskRuntimeFinished(
       context = context,
-      issueKey = "SKILL-109.1",
+      issueKey = IssueKey("SKILL-109.1"),
       lastIncompletePhase = "",
       blockedReason = "",
     )
@@ -951,7 +953,7 @@ private fun recordFeatureTaskRuntimeLifecycle(context: McpRuntimeContext) {
   val started = lifecycle.featureTaskRuntimeStarted(
     FeatureTaskRuntimeStartedRequest(
       featureSize = "MEDIUM",
-      issueKey = "SKILL-65.1",
+      issueKey = IssueKey("SKILL-65.1"),
       featureName = "lifecycle-telemetry-and-stats",
     ),
   )

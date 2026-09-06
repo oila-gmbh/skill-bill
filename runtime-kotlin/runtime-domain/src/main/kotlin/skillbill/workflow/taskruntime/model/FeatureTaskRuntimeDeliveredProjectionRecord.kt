@@ -1,16 +1,16 @@
 package skillbill.workflow.taskruntime.model
-
 import skillbill.boundary.OpenBoundaryMap
 import skillbill.contracts.JsonCodec
 import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_PERSISTENCE_CONTRACT_VERSION
 import skillbill.error.InvalidWorkflowStateSchemaError
+import skillbill.workflow.engine.model.WorkflowId
 
 /**
  * One delivered handoff envelope, recorded per consumer phase and iteration. Carries only the
  * projection envelope: there is no field on this record that can hold a complete phase output.
  */
 data class FeatureTaskRuntimeDeliveredProjectionRecord(
-  val workflowId: String,
+  val workflowId: WorkflowId,
   val consumerPhaseId: String,
   val iteration: Int,
   val envelope: FeatureTaskRuntimeHandoffEnvelope,
@@ -21,7 +21,9 @@ data class FeatureTaskRuntimeDeliveredProjectionRecord(
     envelope.repositoryCheckpoint?.fingerprint ?: "not_required:$consumerPhaseId"
 
   init {
-    require(workflowId.isNotBlank()) { "FeatureTaskRuntimeDeliveredProjectionRecord.workflowId must be non-blank." }
+    require(workflowId.value.isNotBlank()) {
+      "FeatureTaskRuntimeDeliveredProjectionRecord.workflowId must be non-blank."
+    }
     require(consumerPhaseId.isNotBlank()) {
       "FeatureTaskRuntimeDeliveredProjectionRecord.consumerPhaseId must be non-blank."
     }
@@ -41,7 +43,7 @@ data class FeatureTaskRuntimeDeliveredProjectionRecord(
   fun toArtifactMap(): Map<String, Any?> = linkedMapOf(
     "contract_version" to FEATURE_TASK_RUNTIME_PERSISTENCE_CONTRACT_VERSION,
     "record_kind" to "delivered_projection",
-    "workflow_id" to workflowId,
+    "workflow_id" to workflowId.value,
     "consumer_phase_id" to consumerPhaseId,
     "consumer_delivery_iteration" to iteration,
     "source_producer_iterations" to sourceProducerIterations.map {
@@ -82,7 +84,7 @@ data class FeatureTaskRuntimeDeliveredProjectionRecord(
     }
 
     private fun decodeDeliveredProjection(raw: Map<String, Any?>) = FeatureTaskRuntimeDeliveredProjectionRecord(
-      workflowId = raw["workflow_id"] as? String ?: missing("workflow_id"),
+      workflowId = WorkflowId(raw["workflow_id"] as? String ?: missing("workflow_id")),
       consumerPhaseId = raw["consumer_phase_id"] as? String ?: missing("consumer_phase_id"),
       iteration = (raw["consumer_delivery_iteration"] as? Number)?.toInt()
         ?: missing("consumer_delivery_iteration"),

@@ -1,5 +1,4 @@
 package skillbill.application.featuretask
-
 import skillbill.application.InMemoryRuntimeWorkflowRepository
 import skillbill.application.RuntimeFakeDatabaseSessionFactory
 import skillbill.application.featuretask.model.FeatureTaskRuntimeGoalContinuationContext
@@ -13,7 +12,11 @@ import skillbill.ports.diagnostics.NoopRuntimeDiagnostics
 import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewBaseline
 import skillbill.ports.workflow.toRecord
 import skillbill.review.context.model.CodeReviewExecutionMode
+import skillbill.workflow.decomposition.model.IssueKey
+import skillbill.workflow.decomposition.model.SubtaskId
 import skillbill.workflow.engine.WorkflowEngine
+import skillbill.workflow.engine.model.SessionId
+import skillbill.workflow.engine.model.WorkflowId
 import skillbill.workflow.engine.model.WorkflowUpdateInput
 import skillbill.workflow.goal.model.GOAL_SUBTASK_REVIEW_STATE_ARTIFACT_KEY
 import skillbill.workflow.goal.model.GoalSubtaskReviewState
@@ -33,7 +36,7 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class FeatureTaskRuntimeGoalContinuationAdoptionPersistenceTest {
-  private val workflowId = "wftr-skill176-adopt-1"
+  private val workflowId = WorkflowId("wftr-skill176-adopt-1")
   private val baselineSha = "a".repeat(40)
 
   @Test
@@ -172,9 +175,9 @@ class FeatureTaskRuntimeGoalContinuationAdoptionPersistenceTest {
     qualityGateSelection: FeatureTaskRuntimeQualityGateSelection =
       VALIDATE,
   ): FeatureTaskRuntimeRunRequest = FeatureTaskRuntimeRunRequest(
-    issueKey = "SKILL-176",
+    issueKey = IssueKey("SKILL-176"),
     workflowId = workflowId,
-    sessionId = "fis-176",
+    sessionId = SessionId("fis-176"),
     runInvariants = FeatureTaskRuntimeRunInvariants(
       specReference = ".feature-specs/SKILL-176/spec.md",
       featureSize = FeatureTaskRuntimeFeatureSize.MEDIUM,
@@ -186,7 +189,7 @@ class FeatureTaskRuntimeGoalContinuationAdoptionPersistenceTest {
     repoRoot = Path.of("/tmp/skillbill-skill-176"),
     goalContinuation = FeatureTaskRuntimeGoalContinuationContext(
       parentIssueKey = "SKILL-176",
-      subtaskId = 1,
+      subtaskId = SubtaskId(1),
       goalBranch = "feat/SKILL-176",
       suppressPr = true,
       parentWorkflowId = "wfl-parent",
@@ -217,7 +220,7 @@ class FeatureTaskRuntimeGoalContinuationAdoptionPersistenceTest {
             codeReviewMode = CodeReviewExecutionMode.INLINE,
           ).toArtifactMap(),
         ),
-        sessionId = "fis-176",
+        sessionId = SessionId("fis-176"),
       ),
     ).toRecord()
     repository.saveFeatureTaskRuntimeWorkflow(seeded)

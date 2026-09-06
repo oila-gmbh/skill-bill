@@ -1,10 +1,12 @@
 package skillbill.ports.agentrun
-
 import skillbill.goalrunner.model.GoalRunnerObservabilityRecordRequest
 import skillbill.install.model.InstallAgent
 import skillbill.ports.agentrun.model.AgentRunLaunchFacts
 import skillbill.ports.agentrun.model.SkillRunGoalContinuationContext
 import skillbill.ports.agentrun.model.SkillRunRequest
+import skillbill.workflow.decomposition.model.IssueKey
+import skillbill.workflow.decomposition.model.SubtaskId
+import skillbill.workflow.engine.model.WorkflowId
 import skillbill.workflow.goal.model.ValidationDepth
 import java.nio.file.Path
 import kotlin.test.Test
@@ -17,7 +19,7 @@ class AgentRunLauncherModelsTest {
   fun `skill run goal continuation defaults validationDepth to full`() {
     val context = SkillRunGoalContinuationContext(
       parentIssueKey = "SKILL-173",
-      subtaskId = 1,
+      subtaskId = SubtaskId(1),
       goalBranch = "feat/SKILL-173",
       suppressPr = true,
       specPath = ".feature-specs/SKILL-173/spec.md",
@@ -27,34 +29,34 @@ class AgentRunLauncherModelsTest {
 
   @Test
   fun `skill run request allows no wall-clock cap and validates positive caps and subtask id`() {
-    SkillRunRequest(issueKey = "SKILL-56", repoRoot = Path.of("."))
+    SkillRunRequest(issueKey = IssueKey("SKILL-56"), repoRoot = Path.of("."))
 
     assertFailsWith<IllegalArgumentException> {
-      SkillRunRequest(issueKey = "SKILL-56", repoRoot = Path.of("."), timeout = 0.seconds)
+      SkillRunRequest(issueKey = IssueKey("SKILL-56"), repoRoot = Path.of("."), timeout = 0.seconds)
     }
     assertFailsWith<IllegalArgumentException> {
-      SkillRunRequest(issueKey = "SKILL-56", repoRoot = Path.of("."), subtaskId = 0)
+      SkillRunRequest(issueKey = IssueKey("SKILL-56"), repoRoot = Path.of("."), subtaskId = SubtaskId(0))
     }
   }
 
   @Test
   fun `skill run request validates non-blank model and effort overrides`() {
     SkillRunRequest(
-      issueKey = "SKILL-56",
+      issueKey = IssueKey("SKILL-56"),
       repoRoot = Path.of("."),
       modelOverride = "gpt-sol",
       effortOverride = "high",
     )
 
     assertFailsWith<IllegalArgumentException> {
-      SkillRunRequest(issueKey = "SKILL-56", repoRoot = Path.of("."), effortOverride = " ")
+      SkillRunRequest(issueKey = IssueKey("SKILL-56"), repoRoot = Path.of("."), effortOverride = " ")
     }
   }
 
   @Test
   fun `review fan-out is valid only on a governed review launch`() {
     assertFailsWith<IllegalArgumentException> {
-      SkillRunRequest(issueKey = "SKILL-56", repoRoot = Path.of("."), reviewFanOut = true)
+      SkillRunRequest(issueKey = IssueKey("SKILL-56"), repoRoot = Path.of("."), reviewFanOut = true)
     }
   }
 
@@ -85,9 +87,9 @@ class AgentRunLauncherModelsTest {
   @Test
   fun `goal observability record requests validate runtime-owned identity fields`() {
     GoalRunnerObservabilityRecordRequest(
-      workflowId = "wfl-1",
-      issueKey = "SKILL-61",
-      subtaskId = 1,
+      workflowId = WorkflowId("wfl-1"),
+      issueKey = IssueKey("SKILL-61"),
+      subtaskId = SubtaskId(1),
       workflowPhase = "implement",
       workerRole = "goal_runner_supervisor",
       livenessClass = "subtask_start",
@@ -98,9 +100,9 @@ class AgentRunLauncherModelsTest {
 
     assertFailsWith<IllegalArgumentException> {
       GoalRunnerObservabilityRecordRequest(
-        workflowId = "",
-        issueKey = "SKILL-61",
-        subtaskId = 1,
+        workflowId = WorkflowId(""),
+        issueKey = IssueKey("SKILL-61"),
+        subtaskId = SubtaskId(1),
         workflowPhase = "implement",
         workerRole = "goal_runner_supervisor",
         livenessClass = "subtask_start",

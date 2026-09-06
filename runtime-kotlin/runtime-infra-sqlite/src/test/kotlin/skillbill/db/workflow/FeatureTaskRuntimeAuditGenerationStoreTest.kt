@@ -1,9 +1,9 @@
 package skillbill.db.workflow
-
 import skillbill.db.core.DatabaseMigrations
 import skillbill.ports.featuretask.FeatureTaskRuntimeAuditGenerationRepository
 import skillbill.ports.featuretask.model.FeatureTaskRuntimeAuditGenerationRow
 import skillbill.tempDbConnection
+import skillbill.workflow.engine.model.WorkflowId
 import java.nio.file.Path
 import java.sql.Connection
 import java.sql.SQLException
@@ -54,7 +54,7 @@ class FeatureTaskRuntimeAuditGenerationStoreTest {
 
     store.append(row(2))
     store.append(row(1))
-    store.append(row(1, workflowId = "wf-other"))
+    store.append(row(1, workflowId = WorkflowId("wf-other")))
 
     assertEquals(listOf(1, 2), store.listOrdered(WORKFLOW).map { it.generationOrdinal })
     assertEquals(listOf(1), store.listOrdered("wf-other").map { it.generationOrdinal })
@@ -85,7 +85,7 @@ class FeatureTaskRuntimeAuditGenerationStoreTest {
     val store = store()
     store.append(row(1))
     store.append(row(2))
-    store.append(row(1, workflowId = "wf-other"))
+    store.append(row(1, workflowId = WorkflowId("wf-other")))
 
     assertEquals(2, store.quarantineAll(WORKFLOW))
 

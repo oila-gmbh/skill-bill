@@ -16,13 +16,9 @@ private const val DRAIN_TIMEOUT_MILLIS = 5_000L
  * Abandonment is not silent: each path that gives up on the flush emits a [RuntimeDiagnostics]
  * warning, which is the sanctioned channel for a degradation that must stay off the run's output.
  */
-internal fun drainTelemetryOnCompletion(
-  telemetryService: TelemetryService,
-  dbOverride: String?,
-  diagnostics: RuntimeDiagnostics,
-) {
+internal fun drainTelemetryOnCompletion(telemetryService: TelemetryService, diagnostics: RuntimeDiagnostics) {
   val worker = Thread {
-    runCatching { telemetryService.autoSync(dbOverride) }
+    runCatching { telemetryService.autoSync() }
       .onFailure { error -> diagnostics.warning("telemetry completion drain failed to flush the outbox", error) }
   }
   worker.isDaemon = true

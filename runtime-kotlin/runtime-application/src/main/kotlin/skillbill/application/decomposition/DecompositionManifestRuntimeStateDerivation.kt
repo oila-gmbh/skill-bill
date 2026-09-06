@@ -1,11 +1,13 @@
 package skillbill.application.decomposition
 
+import skillbill.agent.model.AgentId
 import skillbill.application.decomposition.model.DecompositionManifestRuntimeUpdate
 import skillbill.application.telemetry.normalizedBlockedReason
 import skillbill.workflow.decomposition.model.CurrentSubtaskIntent
 import skillbill.workflow.decomposition.model.DecompositionExecutionModel
 import skillbill.workflow.decomposition.model.DecompositionManifest
 import skillbill.workflow.decomposition.model.DecompositionSubtask
+import skillbill.workflow.decomposition.model.SubtaskId
 import java.nio.file.Path
 
 // Runtime terminal step is `pr` (FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PR). Keep
@@ -41,7 +43,8 @@ fun DecompositionSubtask.withRuntimeFields(
     commitSha = commitShaFrom(artifacts) ?: commitSha,
     blockedReason = blockedReasonFrom(update, nextStatus) ?: blockedReason.takeUnless { nextStatus != "blocked" },
     lastResumableStep = update.currentStepId.takeIf(String::isNotBlank) ?: lastResumableStep,
-    finalizingAgentId = terminalOutcome?.get("finalizing_agent_id")?.toString()?.takeIf(String::isNotBlank)
+    finalizingAgentId = terminalOutcome?.get("finalizing_agent_id")?.toString()
+      ?.takeIf(String::isNotBlank)?.let(::AgentId)
       ?: finalizingAgentId,
     participatingAgentIds = rolledParticipants.ifEmpty { participatingAgentIds },
   )
@@ -54,7 +57,7 @@ fun DecompositionManifest.currentSubtaskIdForUpdate(repoRoot: Path, update: Deco
   return if (specPath != null) {
     matchedId
   } else {
-    currentSubtaskIntent.subtaskId.takeIf { it != 0 }
+    currentSubtaskIntent.subtaskId.value.takeIf { it != 0 }
   }
 }
 
@@ -73,7 +76,7 @@ fun statusFromUpdate(update: DecompositionManifestRuntimeUpdate): String? {
   }
 }
 
-fun intentFor(subtaskId: Int, status: String?): CurrentSubtaskIntent = when (status) {
+fun intentFor(subtaskId: SubtaskId, status: String?): CurrentSubtaskIntent = when (status) {
   "blocked" -> CurrentSubtaskIntent(subtaskId = subtaskId, action = "blocked")
   "complete", "skipped" -> CurrentSubtaskIntent(subtaskId = 0, action = "complete")
   "in_progress" -> CurrentSubtaskIntent(subtaskId = subtaskId, action = "resume")

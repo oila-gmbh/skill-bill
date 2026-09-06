@@ -1,5 +1,5 @@
 package skillbill.application.diagnostics
-
+import skillbill.agent.model.AgentId
 import skillbill.application.diagnostics.model.RejectedOutputDiagnosticConfig
 import skillbill.application.diagnostics.model.RejectedOutputDiagnosticRequest
 import skillbill.error.InvalidRejectedOutputDiagnosticSchemaError
@@ -11,6 +11,7 @@ import skillbill.ports.diagnostics.model.RejectedOutputDiagnosticError
 import skillbill.ports.diagnostics.model.RejectedOutputDiagnosticRecord
 import skillbill.ports.diagnostics.model.RejectedOutputDiagnosticSelector
 import skillbill.ports.diagnostics.model.RejectedOutputLifecycle
+import skillbill.workflow.engine.model.WorkflowId
 import java.time.Clock
 import java.time.Instant
 import java.time.ZoneOffset
@@ -173,7 +174,7 @@ class RejectedOutputDiagnosticServiceTest {
       RejectedOutputDiagnosticConfig(maximumPayloadBytes = -1)
     }
     assertFailsWith<RejectedOutputDiagnosticError.InvalidRequest> {
-      service(MemoryRepository()).record(request(byteArrayOf(1)).copy(workflowId = ""))
+      service(MemoryRepository()).record(request(byteArrayOf(1)).copy(workflowId = WorkflowId("")))
     }
     assertFailsWith<RejectedOutputDiagnosticError.InvalidRequest> {
       service(MemoryRepository()).inspect(RejectedOutputDiagnosticSelector(""))
@@ -193,13 +194,13 @@ class RejectedOutputDiagnosticServiceTest {
   )
 
   private fun request(bytes: ByteArray, attempt: Int = 1) = RejectedOutputDiagnosticRequest(
-    workflowId = "workflow-1",
+    workflowId = WorkflowId("workflow-1"),
     phaseId = "plan",
     attempt = attempt,
     rule = "phase-output-schema",
     path = "/produced_outputs",
     reason = "required property missing",
-    agentId = "codex",
+    agentId = AgentId("codex"),
     model = "gpt",
     rawResponse = bytes,
   )

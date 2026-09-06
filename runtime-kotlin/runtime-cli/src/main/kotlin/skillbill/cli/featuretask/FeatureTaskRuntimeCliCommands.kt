@@ -145,7 +145,7 @@ abstract class FeatureTaskRuntimePhaseAgentCommand(
     val goalContinuation = parseGoalContinuationContext(requestedReviewMode, deps.inputs.environment)
     val prepared = prepareRuntimeRun(deps)
     val resolvedWorkflowId = workflowId()
-    val report = deps.workerCoordinator.runOwned(resolvedWorkflowId, deps.inputs.dbPathOverride) {
+    val report = deps.workerCoordinator.runOwned(resolvedWorkflowId) {
       deps.runner.run(
         FeatureTaskRuntimeRunRequest(
           issueKey = issueKey,
@@ -160,7 +160,6 @@ abstract class FeatureTaskRuntimePhaseAgentCommand(
           modelAssignment = prepared.modelAssignment,
           compactionSettings = prepared.compactionSettings,
           environment = deps.inputs.environment,
-          dbPathOverride = deps.inputs.dbPathOverride,
           repoRoot = prepared.repoRoot,
           timeout = maxWallClockMinutes.takeIf { it > 0 }?.minutes,
           requestedCodeReviewMode = requestedReviewMode,
@@ -173,7 +172,7 @@ abstract class FeatureTaskRuntimePhaseAgentCommand(
     }
     val payload = report.toRuntimeRunCliMap()
     state.completeText(runtimeRunText(payload), payload, exitCode = payload.runtimeRunExitCode())
-    drainTelemetryOnCompletion(deps.telemetryService, deps.inputs.dbPathOverride, deps.diagnostics)
+    drainTelemetryOnCompletion(deps.telemetryService, deps.diagnostics)
   }
 
   internal fun resolveSpecPath(

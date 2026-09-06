@@ -6,7 +6,6 @@ import skillbill.application.decomposition.encodeDecompositionManifestMap
 import skillbill.application.workflow.decompositionRuntime
 import skillbill.application.workflow.model.WorkflowFamily
 import skillbill.boundary.OpenBoundaryMap
-import skillbill.contracts.issuekey.normalizeRequiredIssueKey
 import skillbill.goalrunner.GOAL_OUT_OF_BAND_ACCEPTANCE_ARTIFACT_KEY
 import skillbill.goalrunner.GOAL_REVIEW_POLICY_ARTIFACT_KEY
 import skillbill.ports.persistence.UnitOfWork
@@ -55,7 +54,7 @@ class GoalParentProjectionWriter(
     )
     WorkflowFamily.TASK_RUNTIME.saveRecord(
       unitOfWork.workflowStates,
-      updated.toRecord().copy(issueKey = normalizeRequiredIssueKey(manifest.issueKey)),
+      updated.toRecord().copy(issueKey = manifest.issueKey),
     )
   }
 }

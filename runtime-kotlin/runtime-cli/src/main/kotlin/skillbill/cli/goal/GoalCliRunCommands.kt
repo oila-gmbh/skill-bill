@@ -8,6 +8,7 @@ import com.github.ajalt.clikt.parameters.options.option
 import com.github.ajalt.clikt.parameters.options.required
 import com.github.ajalt.clikt.parameters.types.int
 import me.tatarka.inject.annotations.Inject
+import skillbill.agent.model.AgentId
 import skillbill.application.featuretask.model.FeatureTaskContinuationCandidate
 import skillbill.application.goalrunner.GoalPreflightService
 import skillbill.application.goalrunner.findings.UnaddressedFindingsLedgerService
@@ -26,6 +27,7 @@ import skillbill.cli.kernel.requireSupportedOptionalAgentId
 import skillbill.cli.model.CliRunInputs
 import skillbill.goalrunner.model.UnaddressedFindingsLedger
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFindingVerificationDisposition
+import skillbill.workflow.decomposition.model.IssueKey
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairLedger
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairLedgerEntry
 import java.nio.file.Path
@@ -66,13 +68,12 @@ class GoalPreflightCommand(
     val agentOverrideId = requireSupportedOptionalAgentId(agentOverride, "--agent-override")
     val result = service.preflight(
       GoalPreflightRequest(
-        issueKey = issueKey,
+        issueKey = IssueKey(issueKey),
         repoRoot = root,
-        invokedAgentId = invokedAgentId,
+        invokedAgentId = AgentId(invokedAgentId),
         agentOverrideId = agentOverrideId,
         requestedReviewMode = parseCodeReviewMode(codeReviewMode),
         requestedAgentAddonSlugs = agentAddonSlugs,
-        dbPathOverride = inputs.dbPathOverride,
         userHome = inputs.userHome,
         environment = inputs.environment,
       ),
@@ -194,7 +195,6 @@ class GoalPlanningLogCommand(
       GoalPlanningLogRequest(
         issueKey = issueKey,
         repoRoot = repoRoot?.let(Path::of),
-        dbPathOverride = inputs.dbPathOverride,
         subtaskId = subtask,
         failuresOnly = failuresOnly,
       ),
@@ -279,9 +279,9 @@ class GoalFindingsCommand(
   private val issueKey by option("--issue-key", help = "Parent issue key.").required()
 
   override fun run() {
-    val ledger = ledgerService.ledger(issueKey, inputs.dbPathOverride)
-    val repairLedgers = ledgerService.repairLedgersByWorkflow(issueKey, inputs.dbPathOverride)
-    val verificationDispositions = ledgerService.verificationDispositions(issueKey, inputs.dbPathOverride)
+    val ledger = ledgerService.ledger(issueKey)
+    val repairLedgers = ledgerService.repairLedgersByWorkflow(issueKey)
+    val verificationDispositions = ledgerService.verificationDispositions(issueKey)
     state.completeText(
       findingsText(ledger, repairLedgers, verificationDispositions),
       findingsPayload(ledger, repairLedgers, verificationDispositions),

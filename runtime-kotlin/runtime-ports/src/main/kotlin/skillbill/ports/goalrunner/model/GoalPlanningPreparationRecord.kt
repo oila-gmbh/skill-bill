@@ -1,13 +1,17 @@
 package skillbill.ports.goalrunner.model
 
+import skillbill.workflow.engine.model.WorkflowId
+import skillbill.workflow.decomposition.model.IssueKey
+
 import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_CONTRACT_VERSION
 import skillbill.contracts.workflow.FeatureTaskRuntimePhaseOutputSchemaPaths
 import skillbill.contracts.workflow.GOAL_PLANNING_PREPARATION_CONTRACT_VERSION
+import skillbill.workflow.decomposition.model.SubtaskId
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutputRepairEvidence
 
 data class GoalPlanningIdentity(
-  val parentGoalWorkflowId: String,
-  val normalizedIssueKey: String,
+  val parentGoalWorkflowId: WorkflowId,
+  val normalizedIssueKey: IssueKey,
   val repositoryIdentity: String,
 )
 
@@ -33,7 +37,7 @@ data class SharedGoalPreplanCheckpoint(
 
 data class GoalSubtaskPlanCheckpoint(
   val identity: GoalPlanningIdentity,
-  val subtaskId: Int,
+  val subtaskId: SubtaskId,
   val manifestOrder: Int,
   val governedSubSpecPath: String,
   val subSpecHash: String,
@@ -56,17 +60,17 @@ data class GoalPlanningPreparationProgress(
 }
 
 data class GovernedGoalSubtaskDescriptor(
-  val subtaskId: Int,
+  val subtaskId: SubtaskId,
   val manifestOrder: Int,
   val governedSubSpecPath: String,
   val subSpecHash: String,
 )
 
 data class GoalPlanningPreparationRecord(
-  val parentGoalWorkflowId: String,
-  val normalizedIssueKey: String,
+  val parentGoalWorkflowId: WorkflowId,
+  val normalizedIssueKey: IssueKey,
   val repositoryIdentity: String,
-  val subtaskId: Int,
+  val subtaskId: SubtaskId,
   val governedSubSpecPath: String,
   val preparationStatus: GoalPlanningPreparationState,
   val provenance: GoalPlanningPreparationProvenance,
@@ -93,8 +97,8 @@ data class GoalPlanningPreparationProvenance(
 }
 
 data class GoalPlanningPreparationStatus(
-  val parentGoalWorkflowId: String,
-  val subtaskId: Int,
+  val parentGoalWorkflowId: WorkflowId,
+  val subtaskId: SubtaskId,
   val preparationStatus: GoalPlanningPreparationState,
   val provenance: GoalPlanningPreparationProvenance,
 )

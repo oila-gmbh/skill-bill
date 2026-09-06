@@ -1,15 +1,18 @@
 package skillbill.application.goalrunner.model
 
+import skillbill.workflow.engine.model.WorkflowId
+import skillbill.workflow.decomposition.model.IssueKey
+
 data class GoalRunnerPauseResult(
-  val issueKey: String,
-  val parentWorkflowId: String? = null,
+  val issueKey: IssueKey,
+  val parentWorkflowId: WorkflowId? = null,
   val status: String,
   val paused: Boolean = false,
   val pauseRequested: Boolean = false,
   val pauseReason: String? = null,
 ) {
   init {
-    require(issueKey.isNotBlank()) { "issueKey is required." }
+    require(issueKey.value.isNotBlank()) { "issueKey is required." }
     require(status.isNotBlank()) { "status is required." }
   }
 }
@@ -23,26 +26,26 @@ enum class GoalRunnerStopStatus(val wireValue: String) {
 }
 
 data class GoalRunnerStopVerbResult(
-  val issueKey: String,
+  val issueKey: IssueKey,
   val status: GoalRunnerStopStatus,
-  val parentWorkflowId: String? = null,
+  val parentWorkflowId: WorkflowId? = null,
   val pauseReason: String? = null,
   val pausedAt: String? = null,
   val terminationAttempted: Boolean = false,
 ) {
   init {
-    require(issueKey.isNotBlank()) { "issueKey is required." }
+    require(issueKey.value.isNotBlank()) { "issueKey is required." }
   }
 }
 
 data class GoalRunnerResumeResult(
-  val issueKey: String,
-  val parentWorkflowId: String? = null,
+  val issueKey: IssueKey,
+  val parentWorkflowId: WorkflowId? = null,
   val status: String,
   val clearedPauseReason: String? = null,
 ) {
   init {
-    require(issueKey.isNotBlank()) { "issueKey is required." }
+    require(issueKey.value.isNotBlank()) { "issueKey is required." }
     require(status.isNotBlank()) { "status is required." }
   }
 }

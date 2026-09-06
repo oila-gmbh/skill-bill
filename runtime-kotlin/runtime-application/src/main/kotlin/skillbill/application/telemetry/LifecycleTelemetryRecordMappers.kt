@@ -1,5 +1,4 @@
 package skillbill.application.telemetry
-
 import skillbill.application.telemetry.model.FeatureTaskRuntimeFinishedRequest
 import skillbill.application.telemetry.model.FeatureTaskRuntimeStartedRequest
 import skillbill.application.telemetry.model.FeatureVerifyFinishedRequest
@@ -14,8 +13,9 @@ import skillbill.telemetry.model.FeatureVerifyStartedRecord
 import skillbill.telemetry.model.PrDescriptionGeneratedRecord
 import skillbill.telemetry.model.QualityCheckFinishedRecord
 import skillbill.telemetry.model.QualityCheckStartedRecord
+import skillbill.workflow.engine.model.SessionId
 
-fun FeatureTaskRuntimeStartedRequest.toRecord(sessionId: String): FeatureTaskRuntimeStartedRecord =
+fun FeatureTaskRuntimeStartedRequest.toRecord(sessionId: SessionId): FeatureTaskRuntimeStartedRecord =
   FeatureTaskRuntimeStartedRecord(
     sessionId = sessionId,
     featureSize = featureSize,
@@ -50,7 +50,7 @@ fun FeatureTaskRuntimeFinishedRequest.toRecord(): FeatureTaskRuntimeFinishedReco
   reviewFixCapExhausted = reviewFixCapExhausted,
 )
 
-fun QualityCheckStartedRequest.toRecord(sessionId: String): QualityCheckStartedRecord = QualityCheckStartedRecord(
+fun QualityCheckStartedRequest.toRecord(sessionId: SessionId): QualityCheckStartedRecord = QualityCheckStartedRecord(
   sessionId = sessionId,
   routedSkill = routedSkill,
   detectedStack = detectedStack,
@@ -75,7 +75,7 @@ fun QualityCheckFinishedRequest.toRecord(): QualityCheckFinishedRecord = Quality
   unsupportedReason = unsupportedReason,
 )
 
-fun FeatureVerifyStartedRequest.toRecord(sessionId: String): FeatureVerifyStartedRecord = FeatureVerifyStartedRecord(
+fun FeatureVerifyStartedRequest.toRecord(sessionId: SessionId): FeatureVerifyStartedRecord = FeatureVerifyStartedRecord(
   sessionId = sessionId,
   acceptanceCriteriaCount = acceptanceCriteriaCount,
   rolloutRelevant = rolloutRelevant,
@@ -93,7 +93,7 @@ fun FeatureVerifyFinishedRequest.toRecord(): FeatureVerifyFinishedRecord = Featu
   gapsFound = gapsFound,
 )
 
-fun PrDescriptionGeneratedRequest.toRecord(sessionId: String): PrDescriptionGeneratedRecord =
+fun PrDescriptionGeneratedRequest.toRecord(sessionId: SessionId): PrDescriptionGeneratedRecord =
   PrDescriptionGeneratedRecord(
     sessionId = sessionId,
     commitCount = commitCount,

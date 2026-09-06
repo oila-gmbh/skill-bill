@@ -1,14 +1,18 @@
 package skillbill.application.featuretask.model
+import skillbill.workflow.decomposition.model.IssueKey
+import skillbill.workflow.decomposition.model.SubtaskId
 
 internal const val SUBTASK_TRAILER_KEY = "Skill-Bill-Subtask"
 
-data class FeatureTaskRuntimeSubtaskCommitIdentity(val issueKey: String, val subtaskId: String) {
+data class FeatureTaskRuntimeSubtaskCommitIdentity(val issueKey: IssueKey, val subtaskId: SubtaskId) {
   init {
-    require(issueKey.isNotBlank()) { "FeatureTaskRuntimeSubtaskCommitIdentity.issueKey must be non-blank." }
-    require(subtaskId.isNotBlank()) { "FeatureTaskRuntimeSubtaskCommitIdentity.subtaskId must be non-blank." }
+    require(issueKey.value.isNotBlank()) { "FeatureTaskRuntimeSubtaskCommitIdentity.issueKey must be non-blank." }
+    require(
+      subtaskId.value.toString().isNotBlank(),
+    ) { "FeatureTaskRuntimeSubtaskCommitIdentity.subtaskId must be non-blank." }
   }
 
-  val trailer: String get() = "$SUBTASK_TRAILER_KEY: $issueKey/$subtaskId"
+  val trailer: String get() = "$SUBTASK_TRAILER_KEY: ${issueKey.value}/${subtaskId.value}"
 
   fun checkpointRefName(sequenceNumber: Int): String =
     skillbill.workflow.taskruntime.model.featureTaskRuntimeCheckpointRefName(issueKey, subtaskId, sequenceNumber)
@@ -27,7 +31,8 @@ data class FeatureTaskRuntimeSubtaskCommitIdentity(val issueKey: String, val sub
       if (segments.size != 2) return null
       val (issueKey, subtaskId) = segments
       if (issueKey.isBlank() || subtaskId.isBlank()) return null
-      return FeatureTaskRuntimeSubtaskCommitIdentity(issueKey, subtaskId)
+      val parsedSubtaskId = subtaskId.toIntOrNull() ?: return null
+      return FeatureTaskRuntimeSubtaskCommitIdentity(IssueKey(issueKey), SubtaskId(parsedSubtaskId))
     }
   }
 }

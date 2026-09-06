@@ -1,10 +1,10 @@
 package skillbill.application.review
-
 import skillbill.ports.goalrunner.runner.model.GoalRunnerSubtaskLaunchRequest
 import skillbill.review.context.model.CodeReviewExecutionMode
 import skillbill.review.model.ReviewClaimVerdict
 import skillbill.review.model.ReviewFindingCitation
 import skillbill.review.model.ReviewFindingVerdict
+import skillbill.review.model.ReviewRunId
 import skillbill.review.model.ReviewStage
 import skillbill.review.model.ReviewStageBoundary
 import skillbill.review.model.ReviewStageReached
@@ -88,7 +88,7 @@ class ParallelCodeReviewStageResumeTest {
   }
 
   private fun delegatedRequest() = harnessRequest(
-    reviewRunId = RUN_ID,
+    reviewRunId = ReviewRunId(RUN_ID),
     codeReviewMode = CodeReviewExecutionMode.DELEGATED,
   )
 

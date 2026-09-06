@@ -1,9 +1,10 @@
 package skillbill.launcher
-
 import skillbill.install.model.InstallAgent
 import skillbill.launcher.agentrun.headlessAgentRunAdapters
 import skillbill.ports.agentrun.model.SkillRunGoalContinuationContext
 import skillbill.ports.agentrun.model.SkillRunRequest
+import skillbill.workflow.decomposition.model.IssueKey
+import skillbill.workflow.decomposition.model.SubtaskId
 import skillbill.workflow.goal.model.ValidationDepth
 import java.nio.file.Path
 import kotlin.test.Test
@@ -183,9 +184,9 @@ class AgentRunGoalContinuationCommandTest {
   private fun skillRunRequest(
     goalContinuation: SkillRunGoalContinuationContext? = goalContinuationContext(),
   ): SkillRunRequest = SkillRunRequest(
-    issueKey = "SKILL-56",
+    issueKey = IssueKey("SKILL-56"),
     repoRoot = Path.of("/tmp/skillbill-agent-run"),
-    subtaskId = 2,
+    subtaskId = SubtaskId(2),
     dbPathOverride = "/tmp/skillbill-agent-run/metrics.db",
     timeout = 3.seconds,
     goalContinuation = goalContinuation,
@@ -196,7 +197,7 @@ class AgentRunGoalContinuationCommandTest {
     assignedWorkflowId: String? = null,
   ): SkillRunGoalContinuationContext = SkillRunGoalContinuationContext(
     parentIssueKey = "SKILL-56",
-    subtaskId = 2,
+    subtaskId = SubtaskId(2),
     goalBranch = "feat/SKILL-56-goal",
     suppressPr = true,
     specPath = ".feature-specs/SKILL-56-goal/spec_subtask_2.md",

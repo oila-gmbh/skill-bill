@@ -1,5 +1,9 @@
 package skillbill.ports.workflow.model
 
+import skillbill.workflow.decomposition.model.IssueKey
+import skillbill.workflow.engine.model.SessionId
+import skillbill.workflow.engine.model.WorkflowId
+
 enum class FeatureTaskWorkflowMode(val wireValue: String) {
   PROSE("prose"),
   RUNTIME("runtime"),
@@ -11,8 +15,8 @@ enum class FeatureTaskWorkflowMode(val wireValue: String) {
 }
 
 data class WorkflowStateRecord(
-  val workflowId: String,
-  val sessionId: String,
+  val workflowId: WorkflowId,
+  val sessionId: SessionId,
   val workflowName: String,
   val contractVersion: String,
   val workflowStatus: String,
@@ -24,13 +28,13 @@ data class WorkflowStateRecord(
   val finishedAt: String?,
   val mode: FeatureTaskWorkflowMode? = null,
   val implementationSkill: String? = null,
-  val issueKey: String? = null,
+  val issueKey: IssueKey? = null,
   val stateEnteredAt: String? = null,
   val stateEnteredAtEstimated: Boolean = false,
 )
 
 data class FeatureImplementSessionSummary(
-  val sessionId: String,
+  val sessionId: SessionId,
   val issueKeyProvided: Boolean,
   val issueKeyType: String,
   val specInputTypes: List<String>,
@@ -44,7 +48,7 @@ data class FeatureImplementSessionSummary(
 )
 
 data class FeatureVerifySessionSummary(
-  val sessionId: String,
+  val sessionId: SessionId,
   val acceptanceCriteriaCount: Int,
   val rolloutRelevant: Boolean,
   val specSummary: String,

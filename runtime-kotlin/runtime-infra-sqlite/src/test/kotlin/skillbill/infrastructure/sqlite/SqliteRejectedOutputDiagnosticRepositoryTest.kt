@@ -1,5 +1,5 @@
 package skillbill.infrastructure.sqlite
-
+import skillbill.agent.model.AgentId
 import skillbill.db.core.DatabaseRuntime
 import skillbill.ports.diagnostics.model.ProducerOutputEvidence
 import skillbill.ports.diagnostics.model.RejectedOutputDiagnostic
@@ -7,6 +7,7 @@ import skillbill.ports.diagnostics.model.RejectedOutputDiagnosticError
 import skillbill.ports.diagnostics.model.RejectedOutputDiagnosticRecord
 import skillbill.ports.diagnostics.model.RejectedOutputDiagnosticSelector
 import skillbill.ports.diagnostics.model.RejectedOutputLifecycle
+import skillbill.workflow.engine.model.WorkflowId
 import java.nio.file.Files
 import java.security.MessageDigest
 import java.time.Instant
@@ -86,11 +87,11 @@ class SqliteRejectedOutputDiagnosticRepositoryTest {
       val claudePayload = "claude-review-0-2".encodeToByteArray()
       val cursorPayload = "cursor-review-0-2".encodeToByteArray()
       repository.retainProducerOutput(
-        evidence(claudePayload, attempt = 2, agentId = "claude"),
+        evidence(claudePayload, attempt = 2, agentId = AgentId("claude")),
       )
 
       repository.retainProducerOutput(
-        evidence(cursorPayload, attempt = 2, agentId = "cursor"),
+        evidence(cursorPayload, attempt = 2, agentId = AgentId("cursor")),
       )
 
       assertContentEquals(
@@ -215,7 +216,7 @@ class SqliteRejectedOutputDiagnosticRepositoryTest {
     evidence(ProducerEvidenceFixture(payload = payload, attempt = attempt, agentId = agentId))
 
   private fun evidence(fixture: ProducerEvidenceFixture) = ProducerOutputEvidence(
-    workflowId = "workflow-1",
+    workflowId = WorkflowId("workflow-1"),
     phaseId = fixture.phaseId,
     attempt = fixture.attempt,
     agentId = fixture.agentId,
@@ -235,13 +236,13 @@ class SqliteRejectedOutputDiagnosticRepositoryTest {
   ): RejectedOutputDiagnosticRecord = RejectedOutputDiagnosticRecord(
     RejectedOutputDiagnostic(
       identity = identity,
-      workflowId = "workflow-1",
+      workflowId = WorkflowId("workflow-1"),
       phaseId = "plan",
       attempt = 1,
       rule = "schema",
       path = "/status",
       reason = "invalid",
-      agentId = "codex",
+      agentId = AgentId("codex"),
       model = "gpt",
       recordedAt = Instant.parse("2026-07-28T10:00:00Z"),
       byteSize = payload.size.toLong(),

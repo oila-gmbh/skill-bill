@@ -1,5 +1,7 @@
 package skillbill.application.featuretask
 
+import skillbill.agent.model.AgentId
+
 import me.tatarka.inject.annotations.Inject
 import skillbill.application.decomposition.resolvedParentSpecPath
 import skillbill.application.featuretask.model.FeatureTaskRuntimeRunReport
@@ -31,7 +33,7 @@ class FeatureTaskRuntimeSpecGate(
     request: FeatureTaskRuntimeRunRequest,
     report: FeatureTaskRuntimeRunReport,
     specSource: SpecSource,
-    finalizingAgentId: (FeatureTaskRuntimeRunRequest) -> String?,
+    finalizingAgentId: (FeatureTaskRuntimeRunRequest) -> AgentId?,
   ) {
     reconcileSingleSpecAgentLine(request, report) { finalizingAgentId(request) }
     deleteSingleSpecScratchOnTerminalSuccess(request, report, specSource)
@@ -44,12 +46,12 @@ class FeatureTaskRuntimeSpecGate(
   private fun reconcileSingleSpecAgentLine(
     request: FeatureTaskRuntimeRunRequest,
     report: FeatureTaskRuntimeRunReport,
-    finalizingAgentId: () -> String?,
+    finalizingAgentId: () -> AgentId?,
   ) {
     if (request.goalContinuation != null || report !is FeatureTaskRuntimeRunReport.Completed) {
       return
     }
-    val agentId = finalizingAgentId()?.takeIf(String::isNotBlank) ?: return
+    val agentId = finalizingAgentId()?.takeIf { it.value.isNotBlank() } ?: return
     runCatching {
       specStatusWriter.writeFinalizingAgent(Path.of(request.runInvariants.specReference), agentId)
     }.onFailure { error ->

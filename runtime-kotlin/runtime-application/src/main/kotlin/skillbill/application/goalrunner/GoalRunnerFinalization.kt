@@ -1,5 +1,6 @@
 package skillbill.application.goalrunner
 
+import skillbill.workflow.engine.model.WorkflowId
 import me.tatarka.inject.annotations.Inject
 import skillbill.application.decomposition.resolvedParentSpecPath
 import skillbill.application.featuretask.model.FeatureTaskRuntimeCheckpointRefPruneRequest
@@ -19,7 +20,9 @@ import skillbill.ports.goalrunner.runner.model.GoalRunnerReconcileGate
 import skillbill.ports.workflow.gitops.stagePaths
 import skillbill.workflow.decomposition.model.DecompositionExecutionModel
 import skillbill.workflow.decomposition.model.DecompositionManifest
+import skillbill.workflow.decomposition.model.IssueKey
 import skillbill.workflow.decomposition.model.SpecSource
+import skillbill.workflow.decomposition.model.SubtaskId
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import java.nio.file.Path
 
@@ -43,13 +46,13 @@ public class GoalRunnerFinalization(
     ledger: GoalRunnerLedgerRecorder,
   ): GoalRunnerRunReport {
     reconcileBeforeFinalization(state, request, ledger)
-    val finalState = manifestStore.save(state, request.dbPathOverride)
+    val finalState = manifestStore.save(state)
     commitAllRemainingWorktree(finalState.manifest, request)?.let { reason ->
       return stopped(
         StoppedReportArgs(
           issueKey = finalState.manifest.issueKey,
           attempted = attempted,
-          subtaskId = finalState.manifest.subtasks.lastOrNull()?.id ?: 0,
+          subtaskId = finalState.manifest.subtasks.lastOrNull()?.id ?: SubtaskId(0),
           reason = GoalRunnerStopReason.PULL_REQUEST_FAILED,
           blockedReason = reason,
           workflowId = null,
@@ -57,7 +60,7 @@ public class GoalRunnerFinalization(
         ),
       )
     }
-    val findingsLedger = resolveFindingsLedger(finalState.manifest.issueKey, request.dbPathOverride)
+    val findingsLedger = resolveFindingsLedger(finalState.manifest.issueKey)
     val result = pullRequestPort.open(finalState.manifest.toPullRequestRequest(request.repoRoot))
     return when (result) {
       is GoalPullRequestResult.Opened -> {
@@ -84,7 +87,8 @@ public class GoalRunnerFinalization(
         StoppedReportArgs(
           issueKey = finalState.manifest.issueKey,
           attempted = attempted,
-          subtaskId = finalState.manifest.currentSubtaskIntent.subtaskId.takeIf { it > 0 }
+          subtaskId = finalState.manifest.currentSubtaskIntent.subtaskId
+            .takeIf { it != SubtaskId(0) }
             ?: finalState.manifest.subtasks.last().id,
           reason = GoalRunnerStopReason.PULL_REQUEST_FAILED,
           blockedReason = result.reason,
@@ -97,7 +101,7 @@ public class GoalRunnerFinalization(
 
   fun deleteCompletedSubtaskSpecScratch(
     manifest: DecompositionManifest,
-    subtaskId: Int,
+    subtaskId: SubtaskId,
     request: GoalRunnerRunRequest,
   ) {
     if (manifest.specSource != SpecSource.LINEAR) return
@@ -116,7 +120,7 @@ public class GoalRunnerFinalization(
 
   fun pruneCompletedCheckpointRefs(
     completed: GoalRunnerManifestState,
-    subtaskId: Int,
+    subtaskId: SubtaskId,
     reconciled: GoalRunnerReconciledOutcome.Complete,
     request: GoalRunnerRunRequest,
     observability: GoalRunnerObservabilityEmitter,
@@ -126,7 +130,7 @@ public class GoalRunnerFinalization(
       repoRoot = request.repoRoot,
       request = FeatureTaskRuntimeCheckpointRefPruneRequest(
         issueKey = completed.manifest.issueKey,
-        subtaskId = subtaskId.toString(),
+        subtaskId = subtaskId.value.toString(),
         manifestCommitSha = reconciled.commitSha,
         featureBranch = completed.manifest.featureBranch,
       ),
@@ -154,18 +158,17 @@ fun GoalRunnerFinalization.reconcileBeforeFinalization(
     activeWorkflowIds = emptySet(),
     gate = GoalRunnerReconcileGate(requireStalenessEvidence = true),
     repoRoot = request.repoRoot,
-    dbPathOverride = request.dbPathOverride,
   )
   state.manifest.subtasks
-    .lastOrNull { subtask -> !subtask.workflowId.isNullOrBlank() }
+    .lastOrNull { subtask -> !subtask.workflowId?.value.isNullOrBlank() }
     ?.let { subtask ->
       ledger.recordLedgerEntry(
         GoalRunnerLedgerContext(
-          workflowId = subtask.workflowId,
+          workflowId = requireNotNull(subtask.workflowId),
           action = GoalAttemptLedgerAction.FINAL_RECONCILED_OUTCOME,
           issueKey = state.manifest.issueKey,
           subtaskId = subtask.id,
-          progress = subtask.workflowId?.let { progressReader.safeProgress(it, request) },
+          progress = subtask.workflowId?.let { progressReader.safeProgress(it) },
           finalReconciledResult = "goal_finalize status=${state.manifest.status}",
         ),
       )
@@ -310,13 +313,10 @@ fun GoalRunnerFinalization.deleteGoalSpecScratchOnSuccess(
     }
 }
 
-fun GoalRunnerFinalization.resolveFindingsLedger(
-  issueKey: String,
-  dbPathOverride: String?,
-): UnaddressedFindingsLedger? {
+fun GoalRunnerFinalization.resolveFindingsLedger(issueKey: IssueKey): UnaddressedFindingsLedger? {
   val service = unaddressedFindingsLedgerService ?: return null
   return try {
-    service.ledger(issueKey, dbPathOverride)
+    service.ledger(issueKey)
   } catch (_: UnaddressedFindingsLedgerAbsentError) {
     UnaddressedFindingsLedger(issueKey, emptyList())
   } catch (_: InvalidUnaddressedFindingsLedgerSchemaError) {

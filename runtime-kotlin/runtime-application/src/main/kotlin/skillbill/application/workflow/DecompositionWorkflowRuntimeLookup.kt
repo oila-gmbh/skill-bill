@@ -1,5 +1,4 @@
 package skillbill.application.workflow
-
 import skillbill.application.decomposition.DECOMPOSITION_RUNTIME_ARTIFACT_KEY
 import skillbill.application.decomposition.asStringAnyMapOrNull
 import skillbill.application.decomposition.decodeArtifacts
@@ -11,7 +10,9 @@ import skillbill.ports.workflow.model.WorkflowStateRecord
 import skillbill.ports.workflow.model.toSnapshot
 import skillbill.workflow.decomposition.DecompositionManifestValidator
 import skillbill.workflow.decomposition.model.DecompositionManifest
+import skillbill.workflow.decomposition.model.IssueKey
 import skillbill.workflow.decomposition.runtime.isActiveGoalRuntime
+import skillbill.workflow.engine.model.WorkflowId
 import skillbill.workflow.engine.model.WorkflowStateSnapshot
 
 fun WorkflowStateSnapshot.decompositionRuntime(validator: DecompositionManifestValidator): DecompositionManifest? =
@@ -24,7 +25,7 @@ fun WorkflowStateSnapshot.hasDecompositionPlan(): Boolean =
 val IMPLEMENT_TERMINAL_STATUSES: Set<String> = setOf("completed", "failed", "abandoned")
 
 fun WorkflowStateRepository.listFeatureTaskWorkflowsForParentDiscovery(): List<WorkflowStateRecord> {
-  val byId = LinkedHashMap<String, WorkflowStateRecord>()
+  val byId = LinkedHashMap<WorkflowId, WorkflowStateRecord>()
   listFeatureTaskWorkflows(FeatureTaskWorkflowMode.RUNTIME, Int.MAX_VALUE).forEach { row ->
     byId[row.workflowId] = row
   }
@@ -41,18 +42,18 @@ fun WorkflowStateRecord.requireRuntimeModeForEngineWrite() {
 }
 
 fun WorkflowStateRepository.findDecomposedParentWorkflow(
-  issueKey: String,
+  issueKey: IssueKey,
   validator: DecompositionManifestValidator,
   currentProjectedManifest: DecompositionManifest? = null,
 ): WorkflowStateRecord? {
-  val normalizedIssueKey = issueKey.trim()
+  val normalizedIssueKey = issueKey.value.trim()
   val candidates = listFeatureTaskWorkflowsForParentDiscovery().mapNotNull { row ->
     val snapshot = row.toSnapshot()
     if (snapshot.isGoalContinuationChildWorkflow()) return@mapNotNull null
     val manifest = snapshot.decompositionRuntime(validator) ?: return@mapNotNull null
     if (
-      (snapshot.hasDecompositionPlan() || row.issueKey?.trim() == normalizedIssueKey) &&
-      manifest.issueKey == normalizedIssueKey
+      (snapshot.hasDecompositionPlan() || row.issueKey?.value?.trim() == normalizedIssueKey) &&
+      manifest.issueKey.value == normalizedIssueKey
     ) {
       DecomposedParentLookupCandidate(row, manifest)
     } else {
@@ -63,7 +64,7 @@ fun WorkflowStateRepository.findDecomposedParentWorkflow(
   if (activeCandidates.size > 1) {
     error(
       "Ambiguous decomposed parent workflows for '$normalizedIssueKey': " +
-        activeCandidates.joinToString { candidate -> candidate.record.workflowId } +
+        activeCandidates.joinToString { candidate -> candidate.record.workflowId.value } +
         ". Pass an explicit workflow or manifest selector before continuing.",
     )
   }

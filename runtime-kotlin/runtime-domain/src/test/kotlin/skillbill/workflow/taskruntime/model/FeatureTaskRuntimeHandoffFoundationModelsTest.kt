@@ -1,5 +1,5 @@
 package skillbill.workflow.taskruntime.model
-
+import skillbill.workflow.engine.model.WorkflowId
 import skillbill.workflow.taskruntime.FeatureTaskRuntimeHandoffFoundationValidator
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -45,7 +45,7 @@ class FeatureTaskRuntimeHandoffFoundationModelsTest {
   @Test
   fun `measurement mapping is versioned and content free`() {
     val wire = FeatureTaskRuntimeProjectionMeasurement(
-      workflowId = "wftr-1",
+      workflowId = WorkflowId("wftr-1"),
       consumerPhaseId = "audit",
       projectionContractId = "feature_task_runtime.phase_prose",
       producerIteration = FeatureTaskRuntimeProducerIteration("implement", 2),
@@ -65,7 +65,7 @@ class FeatureTaskRuntimeHandoffFoundationModelsTest {
   fun `shared evidence measurement emits exactly the declared fields for each outcome`() {
     FeatureTaskRuntimeSharedEvidenceOutcome.entries.forEach { outcome ->
       val wire = FeatureTaskRuntimeSharedEvidenceMeasurement(
-        workflowId = "wftr-1",
+        workflowId = WorkflowId("wftr-1"),
         checkpointFingerprint = "fp-1",
         consumerPhaseId = "audit",
         outcome = outcome,
@@ -109,7 +109,7 @@ class FeatureTaskRuntimeHandoffFoundationModelsTest {
   fun `measurement rejects negative counts`() {
     assertFailsWith<IllegalArgumentException> {
       FeatureTaskRuntimeProjectionMeasurement(
-        workflowId = "wftr-1",
+        workflowId = WorkflowId("wftr-1"),
         consumerPhaseId = "audit",
         projectionContractId = "feature_task_runtime.phase_prose",
         producerIteration = FeatureTaskRuntimeProducerIteration("implement", 1),

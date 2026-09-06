@@ -1,5 +1,4 @@
 package skillbill.application.featurespec
-
 import me.tatarka.inject.annotations.Inject
 import skillbill.application.decomposition.DecompositionManifestWriter
 import skillbill.application.decomposition.defaultFeatureBranch
@@ -14,6 +13,7 @@ import skillbill.featurespec.model.FeatureSpecWriteResult
 import skillbill.ports.workflow.decomposition.DecompositionManifestStore
 import skillbill.ports.workflow.decomposition.writeBundleAtomically
 import skillbill.workflow.decomposition.DecompositionManifestValidator
+import skillbill.workflow.decomposition.model.IssueKey
 import skillbill.workflow.decomposition.model.SpecSource
 import java.nio.file.Path
 
@@ -24,7 +24,7 @@ class FeatureSpecPreparationWriter(
   private val decompositionManifestWriter: DecompositionManifestWriter,
 ) {
   fun write(repoRoot: Path, request: FeatureSpecWriteRequest): FeatureSpecWriteResult {
-    val issueKey = request.decision.issueKey.trim()
+    val issueKey = request.decision.issueKey.value.trim()
     val featureName = normalizeFeatureName(request.featureName)
     if (featureName.isBlank()) {
       invalidRequest("feature_name", "feature name is required.")
@@ -186,7 +186,7 @@ private data class PreparedSubtask(
 )
 
 private data class ParentSpecRenderInput(
-  val issueKey: String,
+  val issueKey: IssueKey,
   val featureName: String,
   val mode: FeatureSpecPreparationMode,
   val intendedOutcome: String,
@@ -238,7 +238,7 @@ private fun renderParentSpec(input: ParentSpecRenderInput): String = buildString
 }
 
 private fun renderSubtaskSpec(
-  issueKey: String,
+  issueKey: IssueKey,
   subtask: FeatureSpecSubtaskPreparation,
   parentSpecPath: String,
   subtaskPath: String,

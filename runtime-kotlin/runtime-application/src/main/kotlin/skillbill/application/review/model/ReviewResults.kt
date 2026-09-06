@@ -1,5 +1,7 @@
 package skillbill.application.review.model
 
+import skillbill.review.model.ReviewRunId
+
 import skillbill.review.model.FeatureTaskRuntimeWorkflowStats
 import skillbill.review.model.FeatureVerifyWorkflowStats
 import skillbill.review.model.GoalWorkflowStats
@@ -11,7 +13,7 @@ import skillbill.review.model.ReviewStageMetrics
 import skillbill.review.model.TriageDecision
 
 data class ReviewPreviewResult(
-  val reviewRunId: String,
+  val reviewRunId: ReviewRunId,
   val reviewSessionId: String,
   val findingCount: Int,
   val routedSkill: String?,
@@ -27,7 +29,7 @@ data class ImportedReviewResult(
 
 data class ReviewFeedbackResult(
   val dbPath: String,
-  val reviewRunId: String,
+  val reviewRunId: ReviewRunId,
   val outcomeType: String,
   val recordedFindings: Int,
 )
@@ -40,7 +42,7 @@ enum class TriageResultKind {
 data class TriageResult(
   val kind: TriageResultKind,
   val dbPath: String,
-  val reviewRunId: String,
+  val reviewRunId: ReviewRunId,
   val findings: List<NumberedFinding> = emptyList(),
   val recorded: List<TriageDecision> = emptyList(),
   val telemetry: ReviewFinishedTelemetry? = null,
@@ -48,7 +50,7 @@ data class TriageResult(
 
 data class ReviewStatsResult(
   val dbPath: String,
-  val reviewRunId: String?,
+  val reviewRunId: ReviewRunId?,
   val stats: ReviewFindingStats,
   val health: ReviewHealthStats,
   val stageMetrics: ReviewStageMetrics? = null,

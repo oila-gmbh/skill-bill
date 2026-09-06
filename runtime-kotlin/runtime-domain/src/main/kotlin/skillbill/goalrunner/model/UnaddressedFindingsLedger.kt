@@ -3,8 +3,12 @@ package skillbill.goalrunner.model
 import skillbill.review.model.ReviewClaimVerdict
 import skillbill.review.model.ReviewFindingCitation
 import skillbill.review.model.ReviewIssueCategory
+import skillbill.review.model.ReviewRunId
 import skillbill.review.model.ReviewScopeDisposition
 import skillbill.review.model.ReviewSeverityAdjustment
+import skillbill.workflow.decomposition.model.IssueKey
+import skillbill.workflow.decomposition.model.SubtaskId
+import skillbill.workflow.engine.model.WorkflowId
 
 val UNADDRESSED_FINDING_SEVERITIES: Set<String> = setOf("blocker", "major", "minor", "nit")
 val UNADDRESSED_FINDING_CATEGORIES: Set<String> = ReviewIssueCategory.entries.mapTo(linkedSetOf()) { it.wireValue }
@@ -67,9 +71,9 @@ fun reviewFindingIdentityKey(location: String, summary: String): String =
 private fun normalizedIdentityPart(value: String): String = value.trim().lowercase().replace(identityWhitespace, " ")
 
 data class UnaddressedFinding(
-  val issueKey: String,
-  val subtaskId: Int,
-  val workflowId: String,
+  val issueKey: IssueKey,
+  val subtaskId: SubtaskId,
+  val workflowId: WorkflowId,
   val reviewPassNumber: Int,
   val findingOrdinal: Int,
   val severity: String,
@@ -81,7 +85,7 @@ data class UnaddressedFinding(
    * no review run was imported for the pass; the pair is then read as unresolved rather than being
    * bucketed to a guessed run.
    */
-  val reviewRunId: String? = null,
+  val reviewRunId: ReviewRunId? = null,
   val findingId: String? = null,
   val claimVerdict: ReviewClaimVerdict? = null,
   val scopeDisposition: ReviewScopeDisposition? = null,
@@ -95,11 +99,11 @@ data class UnaddressedFinding(
 
 /** One finding's terminal outcome, keyed identically to the ledger row it came from. */
 data class ReviewFindingOutcomeRecord(
-  val workflowId: String,
+  val workflowId: WorkflowId,
   val reviewPassNumber: Int,
   val findingOrdinal: Int,
   val outcome: ReviewFindingOutcome,
-  val reviewRunId: String? = null,
+  val reviewRunId: ReviewRunId? = null,
   val findingId: String? = null,
   /**
    * Null only on a row written before cross-pass identity existed. Such a row cannot be matched to a
@@ -123,7 +127,7 @@ fun UnaddressedFinding.toOutcomeRecord(outcome: ReviewFindingOutcome): ReviewFin
   )
 
 data class UnaddressedFindingsLedger(
-  val issueKey: String,
+  val issueKey: IssueKey,
   val findings: List<UnaddressedFinding>,
 ) {
   val severityBreakdown: Map<String, Int> = UNADDRESSED_FINDING_SEVERITIES.associateWith { severity ->

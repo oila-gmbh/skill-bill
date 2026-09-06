@@ -16,7 +16,6 @@ import skillbill.cli.kernel.CliRunState
 import skillbill.cli.kernel.DocumentedCliCommand
 import skillbill.cli.kernel.DocumentedNoOpCliCommand
 import skillbill.cli.model.CliFormat
-import skillbill.cli.model.CliRunInputs
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 
@@ -34,7 +33,6 @@ class WorkTopLevelCommands(
 class WorkListCommand(
   private val service: WorkListService,
   private val state: CliRunState,
-  private val inputs: CliRunInputs,
 ) : DocumentedCliCommand("list", "List persisted feature-task, feature-verify, and feature-goal work.") {
   private val format by option("--format", help = "Output format.").default("table")
   private val limit by option("--limit", help = "Maximum number of rows.").int().validate {
@@ -43,7 +41,7 @@ class WorkListCommand(
 
   override fun run() {
     require(format == "table" || format == "json") { "--format must be one of: table, json." }
-    val result = service.list(limit = limit, dbOverride = inputs.dbPathOverride)
+    val result = service.list(limit = limit)
     val payload = result.toPayload()
     if (format == "json") {
       state.complete(payload, CliFormat.JSON)
@@ -57,7 +55,6 @@ class WorkListCommand(
 class WorkStatusCommand(
   private val service: IdeStatusService,
   private val state: CliRunState,
-  private val inputs: CliRunInputs,
 ) : DocumentedCliCommand(
   "status",
   "Emit one schema-valid IDE status snapshot for an explicit repository root.",
@@ -73,7 +70,6 @@ class WorkStatusCommand(
     val result = service.status(
       IdeStatusRequest(
         repoRoot = repoRoot,
-        dbOverride = inputs.dbPathOverride,
       ),
     )
     state.complete(result.snapshot.toStatusWireMap(), CliFormat.JSON, exitCode = result.exitCode)

@@ -1,15 +1,18 @@
 package skillbill.goalrunner.model
 
 import skillbill.boundary.OpenBoundaryMap
+import skillbill.workflow.decomposition.model.IssueKey
+import skillbill.workflow.decomposition.model.SubtaskId
+import skillbill.workflow.engine.model.WorkflowId
 import skillbill.workflow.goal.model.GoalObservabilityChangedFileSummary
 import skillbill.workflow.goal.model.GoalObservabilityDiffStat
 import skillbill.workflow.goal.model.GoalProgressEventKind
 import skillbill.workflow.goal.model.GoalProgressOutcome
 
 data class GoalRunnerObservabilityRecordRequest(
-  val workflowId: String,
-  val issueKey: String,
-  val subtaskId: Int,
+  val workflowId: WorkflowId,
+  val issueKey: IssueKey,
+  val subtaskId: SubtaskId,
   val workflowPhase: String,
   val workerRole: String,
   val livenessClass: String,
@@ -18,9 +21,9 @@ data class GoalRunnerObservabilityRecordRequest(
   val timestamp: String,
 ) {
   init {
-    require(workflowId.isNotBlank()) { "workflowId is required." }
-    require(issueKey.isNotBlank()) { "issueKey is required." }
-    require(subtaskId > 0) { "subtaskId must be positive." }
+    require(workflowId.value.isNotBlank()) { "workflowId is required." }
+    require(issueKey.value.isNotBlank()) { "issueKey is required." }
+    require(subtaskId.value > 0) { "subtaskId must be positive." }
     require(workflowPhase.isNotBlank()) { "workflowPhase is required." }
     require(workerRole.isNotBlank()) { "workerRole is required." }
     require(livenessClass.isNotBlank()) { "livenessClass is required." }
@@ -40,8 +43,8 @@ data class GoalRunnerProgressEvent(
 )
 
 data class GoalObservabilityProgressEvent(
-  val issueKey: String,
-  val subtaskId: Int,
+  val issueKey: IssueKey,
+  val subtaskId: SubtaskId,
   val workflowPhase: String,
   val workerRole: String,
   val livenessClass: String,
@@ -62,7 +65,7 @@ data class GoalRunnerAttemptLedgerSummary(
 data class BuildDeclaredGoalProgressEventArgs(
   val sourceLabel: String,
   val eventKind: GoalProgressEventKind,
-  val workflowId: String,
+  val workflowId: WorkflowId,
   val workflowPhase: String,
   val sequenceNumber: Int,
   val timestamp: String,
@@ -70,8 +73,8 @@ data class BuildDeclaredGoalProgressEventArgs(
 )
 
 data class GoalContinuation(
-  val issueKey: String,
-  val subtaskId: Int,
+  val issueKey: IssueKey,
+  val subtaskId: SubtaskId,
   val suppressPr: Boolean,
   val goalBranch: String?,
 )
@@ -84,7 +87,7 @@ data class GoalObservabilityWorktreeActivity(
 data class GoalObservabilityProgressInput(
   @OpenBoundaryMap("Existing durable workflow artifacts when projecting goal observability from progress")
   val artifacts: Map<String, Any?>,
-  val workflowId: String,
+  val workflowId: WorkflowId,
   val workflowStatus: String,
   val currentStepId: String,
   val worktreeActivity: GoalObservabilityWorktreeActivity? = null,

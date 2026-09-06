@@ -4,7 +4,6 @@ import skillbill.ports.repository.RepositoryEnclosingRootPort
 import java.nio.file.Path
 
 data class CliRunInputs(
-  val dbPathOverride: String?,
   val stdinText: String?,
   val environment: Map<String, String>,
   val externalCommandRunner: ExternalCommandRunner,

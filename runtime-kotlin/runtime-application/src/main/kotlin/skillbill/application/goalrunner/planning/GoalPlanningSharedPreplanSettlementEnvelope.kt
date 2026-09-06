@@ -1,5 +1,7 @@
 package skillbill.application.goalrunner.planning
 
+import skillbill.workflow.decomposition.model.IssueKey
+
 import skillbill.application.decomposition.DECOMPOSITION_MANIFEST_FILENAME
 import skillbill.application.goalrunner.planning.model.GoalPlanningSweepOutcome
 import skillbill.ports.goalrunner.runner.model.GoalRunnerManifestState

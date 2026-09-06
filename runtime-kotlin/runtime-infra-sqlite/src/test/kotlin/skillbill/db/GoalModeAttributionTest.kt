@@ -1,5 +1,4 @@
 package skillbill.db
-
 import skillbill.db.core.DatabaseColumnMigrations
 import skillbill.db.core.DatabaseRuntime
 import skillbill.db.telemetry.LifecycleTelemetryStore
@@ -7,6 +6,8 @@ import skillbill.infrastructure.sqlite.review.ReviewStatsRuntime
 import skillbill.telemetry.model.GoalFinishedRecord
 import skillbill.telemetry.model.GoalStartedRecord
 import skillbill.telemetry.model.GoalSubtaskFinishedRecord
+import skillbill.workflow.decomposition.model.IssueKey
+import skillbill.workflow.engine.model.WorkflowId
 import java.nio.file.Files
 import java.sql.Connection
 import kotlin.test.Test
@@ -22,12 +23,12 @@ class GoalModeAttributionTest {
       val store = LifecycleTelemetryStore(connection)
 
       store.goalStarted(startedRecord("wf-prose-1", mode = "prose"), level = "full")
-      store.goalSubtaskFinished(subtask(id = 1, workflowId = "wf-prose-1", status = "complete"), "full")
-      store.goalSubtaskFinished(subtask(id = 2, workflowId = "wf-prose-1", status = "blocked"), "full")
+      store.goalSubtaskFinished(subtask(id = 1, workflowId = WorkflowId("wf-prose-1"), status = "complete"), "full")
+      store.goalSubtaskFinished(subtask(id = 2, workflowId = WorkflowId("wf-prose-1"), status = "blocked"), "full")
       store.goalFinished(
         GoalFinishedRecord(
-          issueKey = "SKILL-92",
-          workflowId = "wf-prose-1",
+          issueKey = IssueKey("SKILL-92"),
+          workflowId = WorkflowId("wf-prose-1"),
           status = "blocked",
           startedAt = "2026-06-23T10:00:00Z",
           finishedAt = "2026-06-23T10:30:00Z",
@@ -83,8 +84,8 @@ class GoalModeAttributionTest {
       val store = LifecycleTelemetryStore(connection)
       store.goalStarted(startedRecord("wf-prose-fin-idem", mode = "prose"), level = "full")
       val finished = GoalFinishedRecord(
-        issueKey = "SKILL-92",
-        workflowId = "wf-prose-fin-idem",
+        issueKey = IssueKey("SKILL-92"),
+        workflowId = WorkflowId("wf-prose-fin-idem"),
         status = "completed",
         startedAt = "2026-06-23T10:00:00Z",
         finishedAt = "2026-06-23T10:30:00Z",
@@ -161,9 +162,30 @@ class GoalModeAttributionTest {
     withConnection { connection ->
       val store = LifecycleTelemetryStore(connection)
 
-      finishedRun(store, workflowId = "wf-rt-1", mode = "runtime", status = "completed", durationMs = 60_000)
-      finishedRun(store, workflowId = "wf-rt-2", mode = "runtime", status = "blocked", durationMs = 120_000)
-      finishedRun(store, workflowId = "wf-prose-1", mode = "prose", status = "completed", durationMs = 90_000)
+      finishedRun(
+        store,
+        workflowId =
+        WorkflowId("wf-rt-1"),
+        mode = "runtime",
+        status = "completed",
+        durationMs = 60_000,
+      )
+      finishedRun(
+        store,
+        workflowId =
+        WorkflowId("wf-rt-2"),
+        mode = "runtime",
+        status = "blocked",
+        durationMs = 120_000,
+      )
+      finishedRun(
+        store,
+        workflowId =
+        WorkflowId("wf-prose-1"),
+        mode = "prose",
+        status = "completed",
+        durationMs = 90_000,
+      )
 
       // Simulate a legacy row whose mode defaults to 'runtime' via column DEFAULT.
       // We insert directly without the mode column to confirm the DB default applies.
@@ -197,7 +219,7 @@ class GoalModeAttributionTest {
   }
 
   private fun startedRecord(workflowId: String, mode: String = "runtime"): GoalStartedRecord = GoalStartedRecord(
-    issueKey = "SKILL-92",
+    issueKey = IssueKey("SKILL-92"),
     featureName = "goal mode attribution",
     workflowId = workflowId,
     subtaskTotal = 2,
@@ -208,7 +230,7 @@ class GoalModeAttributionTest {
 
   private fun subtask(id: Int, workflowId: String, status: String): GoalSubtaskFinishedRecord =
     GoalSubtaskFinishedRecord(
-      issueKey = "SKILL-92",
+      issueKey = IssueKey("SKILL-92"),
       workflowId = workflowId,
       subtaskId = id,
       subtaskName = "subtask-$id",
@@ -230,7 +252,7 @@ class GoalModeAttributionTest {
     store.goalStarted(startedRecord(workflowId, mode = mode), level = "full")
     store.goalFinished(
       GoalFinishedRecord(
-        issueKey = "SKILL-92",
+        issueKey = IssueKey("SKILL-92"),
         workflowId = workflowId,
         status = status,
         startedAt = "2026-06-23T10:00:00Z",

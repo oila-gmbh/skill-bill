@@ -1,23 +1,24 @@
 package skillbill.application.telemetry
-
 import skillbill.application.telemetry.model.FeatureVerifyFinishedRequest
 import skillbill.application.telemetry.model.PrDescriptionGeneratedRequest
 import skillbill.application.telemetry.model.QualityCheckFinishedRequest
 import skillbill.boundary.OpenBoundaryMap
+import skillbill.workflow.engine.model.SessionId
 
 private const val STATUS_OK = "ok"
 private const val STATUS_SKIPPED = "skipped"
 
 @OpenBoundaryMap("Lifecycle telemetry event bag emitted to the MCP/CLI telemetry boundary")
-fun lifecycleOkPayload(sessionId: String): Map<String, Any?> = mapOf("status" to STATUS_OK, "session_id" to sessionId)
+fun lifecycleOkPayload(sessionId: SessionId): Map<String, Any?> =
+  mapOf("status" to STATUS_OK, "session_id" to sessionId.value)
 
 @OpenBoundaryMap("Lifecycle telemetry event bag emitted to the MCP/CLI telemetry boundary")
-fun lifecycleSkippedPayload(sessionId: String): Map<String, Any?> =
-  mapOf("status" to STATUS_SKIPPED, "session_id" to sessionId)
+fun lifecycleSkippedPayload(sessionId: SessionId): Map<String, Any?> =
+  mapOf("status" to STATUS_SKIPPED, "session_id" to sessionId.value)
 
 @OpenBoundaryMap("Lifecycle telemetry event bag emitted to the MCP/CLI telemetry boundary")
-fun lifecycleErrorPayload(sessionId: String, error: String): Map<String, Any?> =
-  mapOf("status" to "error", "session_id" to sessionId, "error" to error)
+fun lifecycleErrorPayload(sessionId: SessionId, error: String): Map<String, Any?> =
+  mapOf("status" to "error", "session_id" to sessionId.value, "error" to error)
 
 @OpenBoundaryMap("Lifecycle telemetry event bag emitted to the MCP/CLI telemetry boundary")
 fun orchestratedStartedSkippedPayload(): Map<String, Any?> =

@@ -10,6 +10,7 @@ import skillbill.ports.goalrunner.model.GoalPlanningContractProvenance
 import skillbill.ports.goalrunner.model.GoalPlanningIdentity
 import skillbill.ports.goalrunner.model.GoalPlanningPreparationState
 import skillbill.ports.goalrunner.model.SharedGoalPreplanCheckpoint
+import skillbill.workflow.decomposition.model.IssueKey
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -35,7 +36,7 @@ class GoalPlanningStatusReasonCoherenceTest {
     val aligned = alignPlanningStatusWithLaunchRecoverability(
       snapshot = snapshot,
       recoverability = GoalPlanningProvenanceRecoverability.Irrecoverable(GoalPlanningRecoveryKind.SCOPED_REPLAN),
-      issueKey = "WE-4719",
+      issueKey = IssueKey("WE-4719"),
       remedySubtaskId = 2,
     )
 
@@ -61,7 +62,7 @@ class GoalPlanningStatusReasonCoherenceTest {
     val aligned = alignPlanningStatusWithLaunchRecoverability(
       snapshot = snapshot,
       recoverability = GoalPlanningProvenanceRecoverability.Irrecoverable(GoalPlanningRecoveryKind.SCOPED_REPLAN),
-      issueKey = "SKILL-230",
+      issueKey = IssueKey("SKILL-230"),
       remedySubtaskId = 2,
     )
 
@@ -88,7 +89,7 @@ class GoalPlanningStatusReasonCoherenceTest {
     val aligned = alignPlanningStatusWithLaunchRecoverability(
       snapshot = snapshot,
       recoverability = GoalPlanningProvenanceRecoverability.Reuse(provenance),
-      issueKey = "SKILL-181",
+      issueKey = IssueKey("SKILL-181"),
       remedySubtaskId = 1,
     )
 
@@ -114,7 +115,7 @@ class GoalPlanningStatusReasonCoherenceTest {
     val aligned = alignPlanningStatusWithLaunchRecoverability(
       snapshot = snapshot,
       recoverability = GoalPlanningProvenanceRecoverability.StaleValid(provenance),
-      issueKey = "SKILL-181",
+      issueKey = IssueKey("SKILL-181"),
       remedySubtaskId = 2,
     )
 
@@ -145,7 +146,7 @@ class GoalPlanningStatusReasonCoherenceTest {
     val aligned = alignPlanningStatusWithLaunchRecoverability(
       snapshot = snapshot,
       recoverability = recoverability,
-      issueKey = "SKILL-181",
+      issueKey = IssueKey("SKILL-181"),
       remedySubtaskId = 2,
     )
     assertFalse(GoalPlanningStatusReasons.claimsResume(aligned.reason), aligned.reason)

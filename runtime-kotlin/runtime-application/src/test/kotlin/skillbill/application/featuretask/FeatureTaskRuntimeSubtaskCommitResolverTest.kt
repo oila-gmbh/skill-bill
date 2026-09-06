@@ -1,6 +1,7 @@
 package skillbill.application.featuretask
-
 import skillbill.application.featuretask.model.FeatureTaskRuntimeSubtaskCommitIdentity
+import skillbill.workflow.decomposition.model.IssueKey
+import skillbill.workflow.decomposition.model.SubtaskId
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
@@ -10,7 +11,12 @@ private const val HEAD_SHA = "1111111111111111111111111111111111111111"
 private const val OTHER_SHA = "2222222222222222222222222222222222222222"
 
 class FeatureTaskRuntimeSubtaskCommitResolverTest {
-  private val identity = FeatureTaskRuntimeSubtaskCommitIdentity(issueKey = ISSUE, subtaskId = "3")
+  private val identity = FeatureTaskRuntimeSubtaskCommitIdentity(
+    issueKey =
+    IssueKey(ISSUE),
+    subtaskId =
+    SubtaskId("3".toInt()),
+  )
 
   // The defect this guard exists for: an ownership-keyed amend rewrites the PREVIOUS subtask's
   // finished commit, destroying a delivered subtask on the shared branch.

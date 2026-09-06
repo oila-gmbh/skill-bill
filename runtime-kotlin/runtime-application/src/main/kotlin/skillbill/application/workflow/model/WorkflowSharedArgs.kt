@@ -1,13 +1,15 @@
 package skillbill.application.workflow.model
-
 import skillbill.ports.persistence.UnitOfWork
 import skillbill.ports.workflow.model.FeatureTaskRouteScope
+import skillbill.workflow.decomposition.model.IssueKey
+import skillbill.workflow.engine.model.SessionId
+import skillbill.workflow.engine.model.WorkflowId
 
 data class BuildFeatureTaskExecutionIdentityArgs(
   val kind: WorkflowFamilyKind,
   val hasIdentityCoordinates: Boolean,
-  val workflowId: String,
-  val issueKey: String?,
+  val workflowId: WorkflowId,
+  val issueKey: IssueKey?,
   val repositoryIdentity: String?,
   val governedSpecPath: String?,
   val routeScope: FeatureTaskRouteScope,
@@ -15,10 +17,9 @@ data class BuildFeatureTaskExecutionIdentityArgs(
 
 data class WorkflowServiceOpenArgs(
   val kind: WorkflowFamilyKind,
-  val sessionId: String = "",
+  val sessionId: SessionId = SessionId(""),
   val currentStepId: String? = null,
-  val dbOverride: String? = null,
-  val issueKey: String? = null,
+  val issueKey: IssueKey? = null,
   val repositoryIdentity: String? = null,
   val governedSpecPath: String? = null,
   val routeScope: FeatureTaskRouteScope = FeatureTaskRouteScope.STANDALONE,
@@ -26,28 +27,26 @@ data class WorkflowServiceOpenArgs(
 
 data class WorkflowServiceOpenFeatureTaskArgs(
   val kind: WorkflowFamilyKind,
-  val sessionId: String = "",
+  val sessionId: SessionId = SessionId(""),
   val currentStepId: String? = null,
-  val dbOverride: String? = null,
-  val issueKey: String,
+  val issueKey: IssueKey,
   val repositoryIdentity: String,
   val governedSpecPath: String,
   val routeScope: FeatureTaskRouteScope = FeatureTaskRouteScope.STANDALONE,
 )
 
 data class RepairFeatureTaskRuntimeIdentityArgs(
-  val workflowId: String,
-  val issueKey: String,
+  val workflowId: WorkflowId,
+  val issueKey: IssueKey,
   val repositoryIdentity: String,
   val governedSpecPath: String,
   val reason: String,
-  val dbOverride: String?,
 )
 
 data class FeatureTaskIdentityRepairArgs(
   val unitOfWork: UnitOfWork,
-  val workflowId: String,
-  val normalizedIssueKey: String,
+  val workflowId: WorkflowId,
+  val normalizedIssueKey: IssueKey,
   val repositoryIdentity: String,
   val governedSpecPath: String,
   val normalizedReason: String,

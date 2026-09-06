@@ -64,7 +64,7 @@ fun ImportedReview.toImportedReviewResult(dbPath: String): ImportedReviewResult 
   ImportedReviewResult(dbPath = dbPath, preview = toReviewPreviewResult())
 
 fun ReviewPreviewResult.toReviewPreviewContract(): ReviewPreviewContract = ReviewPreviewContract(
-  reviewRunId = reviewRunId,
+  reviewRunId = reviewRunId.value,
   reviewSessionId = reviewSessionId,
   findingCount = findingCount,
   routedSkill = routedSkill,
@@ -103,7 +103,7 @@ fun TriageDecision.toTriageDecisionContract(): TriageDecisionContract = TriageDe
 
 fun ReviewFeedbackResult.toReviewFeedbackPayload(): JsonPayloadContract = ReviewFeedbackContract(
   dbPath = dbPath,
-  reviewRunId = reviewRunId,
+  reviewRunId = reviewRunId.value,
   outcomeType = outcomeType,
   recordedFindings = recordedFindings,
 )
@@ -112,13 +112,13 @@ fun TriageResult.toTriagePayload(): JsonPayloadContract = when (kind) {
   TriageResultKind.LIST ->
     TriageListContract(
       dbPath = dbPath,
-      reviewRunId = reviewRunId,
+      reviewRunId = reviewRunId.value,
       findings = findings.map { finding -> finding.toNumberedFindingContract() },
     )
   TriageResultKind.RECORDED ->
     TriageRecordedContract(
       dbPath = dbPath,
-      reviewRunId = reviewRunId,
+      reviewRunId = reviewRunId.value,
       recorded = recorded.map { decision -> decision.toTriageDecisionContract() },
     )
 }

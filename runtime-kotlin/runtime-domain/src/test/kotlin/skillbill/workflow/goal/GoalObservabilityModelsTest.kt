@@ -1,5 +1,6 @@
 package skillbill.workflow.goal
-
+import skillbill.workflow.decomposition.model.IssueKey
+import skillbill.workflow.decomposition.model.SubtaskId
 import skillbill.workflow.goal.model.GOAL_OBSERVABILITY_HISTORY_LIMIT
 import skillbill.workflow.goal.model.GoalObservabilityEvent
 import skillbill.workflow.goal.model.GoalObservabilityHistory
@@ -31,8 +32,8 @@ class GoalObservabilityModelsTest {
 
   private fun event(sequence: Int, changedFiles: List<String> = emptyList()): GoalObservabilityEvent =
     GoalObservabilityEvent(
-      issueKey = "SKILL-61",
-      subtaskId = 1,
+      issueKey = IssueKey("SKILL-61"),
+      subtaskId = SubtaskId(1),
       workflowPhase = "implement",
       workerRole = "phase_subagent",
       livenessClass = "durable_progress",

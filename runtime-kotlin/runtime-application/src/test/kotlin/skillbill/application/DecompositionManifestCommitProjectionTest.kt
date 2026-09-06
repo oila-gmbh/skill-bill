@@ -1,5 +1,4 @@
 package skillbill.application
-
 import skillbill.application.decomposition.DECOMPOSITION_RUNTIME_ARTIFACT_KEY
 import skillbill.application.decomposition.loadDecompositionManifest
 import skillbill.application.decomposition.model.DecompositionManifestRuntimeUpdate
@@ -9,6 +8,7 @@ import skillbill.contracts.JsonCodec
 import skillbill.model.toPath
 import skillbill.workflow.decomposition.model.DecompositionManifest
 import skillbill.workflow.decomposition.toWireMap
+import skillbill.workflow.engine.model.WorkflowId
 import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.test.Test
@@ -41,7 +41,7 @@ class DecompositionManifestCommitProjectionTest {
       existingArtifactsJson = durableRuntimeArtifactsJson(initial.manifest, subtaskSpec),
       artifactsPatch = mapOf("commit_push_result" to mapOf("pre_commit_projection" to true)),
       runtimeUpdate = DecompositionManifestRuntimeUpdate(
-        workflowId = "wfl-subtask-1",
+        workflowId = WorkflowId("wfl-subtask-1"),
         workflowStatus = "running",
         currentStepId = "commit_push",
         stepUpdates = listOf(mapOf("step_id" to "commit_push", "status" to "running", "attempt_count" to 1)),
@@ -60,7 +60,7 @@ class DecompositionManifestCommitProjectionTest {
       existingArtifactsJson = durableRuntimeArtifactsJson(preCommit.manifest, subtaskSpec),
       artifactsPatch = mapOf("commit_push_result" to mapOf("commit_sha" to "commit-subtask-1")),
       runtimeUpdate = DecompositionManifestRuntimeUpdate(
-        workflowId = "wfl-subtask-1",
+        workflowId = WorkflowId("wfl-subtask-1"),
         workflowStatus = "running",
         currentStepId = "commit_push",
         stepUpdates = listOf(mapOf("step_id" to "commit_push", "status" to "completed", "attempt_count" to 1)),
@@ -97,7 +97,7 @@ class DecompositionManifestCommitProjectionTest {
       existingArtifactsJson = durableRuntimeArtifactsJson(initial.manifest, subtaskSpec),
       artifactsPatch = mapOf("commit_push_result" to mapOf("commit_sha" to "commit-subtask-1")),
       runtimeUpdate = DecompositionManifestRuntimeUpdate(
-        workflowId = "wfl-subtask-1",
+        workflowId = WorkflowId("wfl-subtask-1"),
         workflowStatus = "completed",
         currentStepId = "finish",
         stepUpdates = listOf(mapOf("step_id" to "finish", "status" to "completed", "attempt_count" to 1)),
@@ -129,7 +129,7 @@ class DecompositionManifestCommitProjectionTest {
     assertNotNull(initial)
     val runtimeManifest = initial.manifest.copy(
       subtasks = initial.manifest.subtasks.map { subtask ->
-        subtask.copy(status = "complete", commitSha = "commit-subtask-1", workflowId = "wfl-subtask-1")
+        subtask.copy(status = "complete", commitSha = "commit-subtask-1", workflowId = WorkflowId("wfl-subtask-1"))
       },
     )
 

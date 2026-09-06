@@ -1,5 +1,5 @@
 package skillbill.workflow.taskruntime
-
+import skillbill.workflow.engine.model.WorkflowId
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeDiagnosticDegradationMeasurement
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeDiagnosticFailureClass
 import kotlin.test.Test
@@ -12,7 +12,7 @@ class FeatureTaskRuntimeDiagnosticDegradationMeasurementTest {
   fun `toTelemetryMap emits exactly the declared content-free keys including contract version 0_1`() {
     val sentinel = "AGENT_OUTPUT /tmp/metrics.db PROMPT_TEXT PROCESS_OUTPUT"
     val map = FeatureTaskRuntimeDiagnosticDegradationMeasurement(
-      workflowId = "wftr-20260812-201951-o64o",
+      workflowId = WorkflowId("wftr-20260812-201951-o64o"),
       phaseId = "validate",
       attempt = 1,
       repairTurn = 2,
@@ -48,7 +48,7 @@ class FeatureTaskRuntimeDiagnosticDegradationMeasurementTest {
   @Test
   fun `repair_turn is omitted when null rather than emitted as null`() {
     val map = FeatureTaskRuntimeDiagnosticDegradationMeasurement(
-      workflowId = "wf-1",
+      workflowId = WorkflowId("wf-1"),
       phaseId = "implement",
       attempt = 1,
       repairTurn = null,

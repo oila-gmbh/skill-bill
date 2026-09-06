@@ -1,5 +1,4 @@
 package skillbill.application.workflow
-
 import skillbill.application.decomposition.DECOMPOSITION_RUNTIME_ARTIFACT_KEY
 import skillbill.application.decomposition.decodeArtifacts
 import skillbill.application.decomposition.encodeDecompositionManifestMap
@@ -13,7 +12,10 @@ import skillbill.workflow.decomposition.DecompositionManifestValidator
 import skillbill.workflow.decomposition.model.DecompositionContinuationSelection
 import skillbill.workflow.decomposition.model.DecompositionManifest
 import skillbill.workflow.decomposition.model.DecompositionSubtask
+import skillbill.workflow.decomposition.model.IssueKey
+import skillbill.workflow.decomposition.model.SubtaskId
 import skillbill.workflow.engine.WorkflowEngine
+import skillbill.workflow.engine.model.WorkflowId
 import skillbill.workflow.engine.model.WorkflowStateSnapshot
 import java.nio.file.Path
 
@@ -55,7 +57,7 @@ internal fun WorkflowEngine.advanceCompletedSubtasks(request: AdvanceCompletedSu
 
 internal fun commitCompletedSubtask(
   manifest: DecompositionManifest,
-  subtaskId: Int,
+  subtaskId: SubtaskId,
   subtaskName: String,
   gitOperations: WorkflowGitOperations,
   repoRootProvider: () -> Path,
@@ -170,12 +172,13 @@ fun terminalSubtaskResult(
   outcome = selection.subtask.toGoalContinuationOutcome(manifest.issueKey),
 )
 
-fun DecompositionSubtask.toGoalContinuationOutcome(issueKey: String): GoalContinuationOutcome = GoalContinuationOutcome(
-  issueKey = issueKey,
-  subtaskId = id,
-  status = status,
-  workflowId = workflowId.orEmpty(),
-  commitSha = commitSha,
-  blockedReason = blockedReason,
-  lastResumableStep = lastResumableStep,
-)
+fun DecompositionSubtask.toGoalContinuationOutcome(issueKey: IssueKey): GoalContinuationOutcome =
+  GoalContinuationOutcome(
+    issueKey = issueKey,
+    subtaskId = id,
+    status = status,
+    workflowId = workflowId ?: WorkflowId(""),
+    commitSha = commitSha,
+    blockedReason = blockedReason,
+    lastResumableStep = lastResumableStep,
+  )

@@ -1,5 +1,4 @@
 package skillbill.application
-
 import skillbill.application.goalrunner.goalRunnerDeps
 import skillbill.application.goalrunner.model.GoalRunnerRunRequest
 import skillbill.application.goalrunner.testGoalRunner
@@ -14,6 +13,9 @@ import skillbill.goalrunner.model.GoalRunnerTerminalStatus
 import skillbill.ports.agentrun.model.AgentRunLivenessSnapshot
 import skillbill.workflow.decomposition.model.CurrentSubtaskIntent
 import skillbill.workflow.decomposition.model.DecompositionSubtask
+import skillbill.workflow.decomposition.model.IssueKey
+import skillbill.workflow.decomposition.model.SubtaskId
+import skillbill.workflow.engine.model.WorkflowId
 import java.nio.file.Path
 import kotlin.test.Test
 import kotlin.test.assertContains
@@ -63,14 +65,14 @@ class GoalRunnerLedgerTest {
   fun `resume selection records a resume ledger action for a previously blocked subtask`() {
     val initial = manifest(subtaskCount = 1).copy(
       status = "blocked",
-      currentSubtaskIntent = CurrentSubtaskIntent(subtaskId = 1, action = "blocked"),
+      currentSubtaskIntent = CurrentSubtaskIntent(subtaskId = SubtaskId(1), action = "blocked"),
       subtasks = listOf(
         DecompositionSubtask(
           id = 1,
           name = "Subtask 1",
           specPath = ".feature-specs/SKILL-56-goal/spec_subtask_1.md",
           status = "blocked",
-          workflowId = "wfl-1",
+          workflowId = WorkflowId("wfl-1"),
           blockedReason = "validation failed",
           lastResumableStep = "validate",
         ),
@@ -232,7 +234,7 @@ class GoalRunnerLedgerTest {
       store.mutate { current -> current.withWorkflowId(subtaskId, "wfl-$subtaskId") }
       outcomes["wfl-$subtaskId"] = GoalRunnerStoredOutcome(
         status = GoalRunnerTerminalStatus.FAILED,
-        workflowId = "wfl-$subtaskId",
+        workflowId = WorkflowId("wfl-$subtaskId"),
         blockedReason = "review failed",
         lastResumableStep = "review",
         suppressPr = true,
@@ -340,7 +342,7 @@ class GoalRunnerLedgerTest {
     outcomes.attemptLedgerRecords.map { it.entry.action.wireValue }
 
   private fun ledgerRunRequest(): GoalRunnerRunRequest = GoalRunnerRunRequest(
-    issueKey = "SKILL-56",
+    issueKey = IssueKey("SKILL-56"),
     repoRoot = Path.of("/tmp/skillbill-goal-runner"),
     invokedAgentId = "claude",
     dbPathOverride = "/tmp/skillbill-goal-runner/metrics.db",

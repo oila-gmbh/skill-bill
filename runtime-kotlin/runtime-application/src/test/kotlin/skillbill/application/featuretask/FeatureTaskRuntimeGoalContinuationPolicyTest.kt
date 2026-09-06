@@ -1,9 +1,12 @@
 package skillbill.application.featuretask
-
 import skillbill.application.featuretask.model.FeatureTaskRuntimeGoalContinuationContext
 import skillbill.application.featuretask.model.FeatureTaskRuntimeRunRequest
 import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewBaseline
 import skillbill.review.context.model.CodeReviewExecutionMode
+import skillbill.workflow.decomposition.model.IssueKey
+import skillbill.workflow.decomposition.model.SubtaskId
+import skillbill.workflow.engine.model.SessionId
+import skillbill.workflow.engine.model.WorkflowId
 import skillbill.workflow.goal.model.ValidationDepth
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFeatureSize
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeGoalContinuationArtifact
@@ -45,7 +48,7 @@ class FeatureTaskRuntimeGoalContinuationPolicyTest {
       ValidationDepth.FULL,
       FeatureTaskRuntimeGoalContinuationContext(
         parentIssueKey = "SKILL-173",
-        subtaskId = 1,
+        subtaskId = SubtaskId(1),
         goalBranch = "feat/SKILL-173",
         suppressPr = true,
         reviewBaseline = baseline,
@@ -56,9 +59,9 @@ class FeatureTaskRuntimeGoalContinuationPolicyTest {
   private fun request(
     goalContinuation: FeatureTaskRuntimeGoalContinuationContext? = null,
   ): FeatureTaskRuntimeRunRequest = FeatureTaskRuntimeRunRequest(
-    issueKey = "SKILL-173",
-    workflowId = "wfl-child",
-    sessionId = "ftr-child",
+    issueKey = IssueKey("SKILL-173"),
+    workflowId = WorkflowId("wfl-child"),
+    sessionId = SessionId("ftr-child"),
     runInvariants = FeatureTaskRuntimeRunInvariants(
       specReference = ".feature-specs/SKILL-173/spec.md",
       featureSize = FeatureTaskRuntimeFeatureSize.MEDIUM,
@@ -74,7 +77,7 @@ class FeatureTaskRuntimeGoalContinuationPolicyTest {
   private fun continuation(validationDepth: ValidationDepth): FeatureTaskRuntimeGoalContinuationContext =
     FeatureTaskRuntimeGoalContinuationContext(
       parentIssueKey = "SKILL-173",
-      subtaskId = 1,
+      subtaskId = SubtaskId(1),
       goalBranch = "feat/SKILL-173",
       suppressPr = true,
       parentWorkflowId = "wfl-parent",
@@ -85,8 +88,8 @@ class FeatureTaskRuntimeGoalContinuationPolicyTest {
 
   private fun durable(validationDepth: ValidationDepth?): FeatureTaskRuntimeGoalContinuationArtifact =
     FeatureTaskRuntimeGoalContinuationArtifact(
-      issueKey = "SKILL-173",
-      subtaskId = 1,
+      issueKey = IssueKey("SKILL-173"),
+      subtaskId = SubtaskId(1),
       suppressPr = true,
       goalBranch = "feat/SKILL-173",
       parentWorkflowId = "wfl-parent",

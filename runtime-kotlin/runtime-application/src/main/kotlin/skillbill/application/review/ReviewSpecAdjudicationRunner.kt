@@ -1,5 +1,7 @@
 package skillbill.application.review
 
+import skillbill.agent.model.AgentId
+
 import skillbill.application.review.model.ReviewSpecAdjudicationOutcome
 import skillbill.application.review.model.ReviewSpecAdjudicationRunRequest
 import skillbill.contracts.JsonCodec

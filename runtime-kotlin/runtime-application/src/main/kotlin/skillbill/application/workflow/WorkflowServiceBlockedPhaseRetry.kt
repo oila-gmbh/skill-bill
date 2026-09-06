@@ -1,5 +1,6 @@
 package skillbill.application.workflow
 
+import skillbill.agent.model.AgentId
 import skillbill.application.decomposition.DecompositionManifestWriteGuard
 import skillbill.application.decomposition.DecompositionManifestWriter
 import skillbill.application.workflow.model.WorkflowUpdateResult
@@ -11,6 +12,7 @@ import skillbill.ports.workflow.get
 import skillbill.ports.workflow.save
 import skillbill.workflow.decomposition.DecompositionManifestValidator
 import skillbill.workflow.engine.WorkflowEngine
+import skillbill.workflow.engine.model.WorkflowId
 import skillbill.workflow.engine.model.WorkflowStateSnapshot
 import skillbill.workflow.engine.model.WorkflowUpdateInput
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_OPERATOR_BLOCK_RETRY_ARTIFACT_KEY
@@ -33,10 +35,9 @@ class WorkflowServiceBlockedPhaseRetry(
 ) {
   fun retry(
     database: DatabaseSessionFactory,
-    workflowId: String,
+    workflowId: WorkflowId,
     phaseId: String,
     reason: String,
-    dbOverride: String?,
   ): WorkflowUpdateResult {
     val normalizedReason = reason.trim()
     if (
@@ -58,7 +59,7 @@ class WorkflowServiceBlockedPhaseRetry(
       )
     }
     val request = BlockedPhaseRetryRequest(workflowId, normalizedPhaseId, normalizedReason)
-    val persistence = database.transaction(dbOverride) { unitOfWork ->
+    val persistence = database.transaction { unitOfWork ->
       retryInTransaction(unitOfWork, request)
     }
     persistence.projectionArtifactsJson?.let { artifactsJson ->
@@ -188,7 +189,7 @@ class WorkflowServiceBlockedPhaseRetry(
 }
 
 private data class BlockedPhaseRetryRequest(
-  val workflowId: String,
+  val workflowId: WorkflowId,
   val phaseId: String,
   val reason: String,
 )

@@ -1,5 +1,4 @@
 package skillbill.db
-
 import skillbill.contracts.JsonCodec
 import skillbill.db.core.DatabaseRuntime
 import skillbill.db.telemetry.LifecycleTelemetryStore
@@ -9,6 +8,8 @@ import skillbill.ports.telemetry.model.TelemetryOutboxRecord
 import skillbill.telemetry.model.GoalFinishedRecord
 import skillbill.telemetry.model.GoalIssueFinishedRecord
 import skillbill.telemetry.model.GoalStartedRecord
+import skillbill.workflow.decomposition.model.IssueKey
+import skillbill.workflow.engine.model.WorkflowId
 import java.nio.file.Files
 import java.sql.Connection
 import java.time.Instant
@@ -27,7 +28,7 @@ class GoalIssueProgressStoreTest {
       store.goalStarted(initial, "full")
       assertGoalIssueState(connection, parentWorkflowId, "running", initial.startedAt)
 
-      store.goalStarted(initial.copy(workflowId = "$parentWorkflowId:seg:2", resumed = true), "full")
+      store.goalStarted(initial.copy(workflowId = WorkflowId("$parentWorkflowId:seg:2"), resumed = true), "full")
       assertGoalIssueState(connection, parentWorkflowId, "running", initial.startedAt)
 
       val blocked = finishBlockedSegment(connection, store, parentWorkflowId)
@@ -65,7 +66,14 @@ class GoalIssueProgressStoreTest {
       store.goalIssueFinished(goalIssueFinishedRecord(parentWorkflowId), "full")
 
       val terminal = goalIssueState(connection, parentWorkflowId)
-      store.goalStarted(firstSegment.copy(workflowId = "$parentWorkflowId:seg:late", resumed = true), "full")
+      store.goalStarted(
+        firstSegment.copy(
+          workflowId =
+          WorkflowId("$parentWorkflowId:seg:late"),
+          resumed = true,
+        ),
+        "full",
+      )
       assertEquals(terminal, goalIssueState(connection, parentWorkflowId))
     }
   }
@@ -94,7 +102,7 @@ class GoalIssueProgressStoreTest {
   fun `goal issue completion without trustworthy history suppresses terminal emission`() {
     withConnection { connection ->
       LifecycleTelemetryStore(connection).goalIssueFinished(
-        goalIssueFinishedRecord("wf-missing").copy(issueKey = "SKILL-NO-HISTORY"),
+        goalIssueFinishedRecord("wf-missing").copy(issueKey = IssueKey("SKILL-NO-HISTORY")),
         "full",
       )
       assertEquals(0, pendingOutbox(connection).count { it.eventName == "skillbill_goal_issue_finished" })
@@ -153,7 +161,7 @@ class GoalIssueProgressStoreTest {
     initial: GoalStartedRecord,
     parentWorkflowId: String,
   ): GoalIssueState {
-    store.goalStarted(initial.copy(workflowId = "$parentWorkflowId:seg:3", resumed = true), "full")
+    store.goalStarted(initial.copy(workflowId = WorkflowId("$parentWorkflowId:seg:3"), resumed = true), "full")
     return goalIssueState(connection, parentWorkflowId).also { state ->
       assertEquals("running", state.status)
       assertFalse(state.estimated)
@@ -192,9 +200,9 @@ class GoalIssueProgressStoreTest {
     resumed: Boolean,
     startedAt: String = "2026-06-04T10:00:00Z",
   ): GoalStartedRecord = GoalStartedRecord(
-    issueKey = "SKILL-66",
+    issueKey = IssueKey("SKILL-66"),
     featureName = "goal telemetry",
-    workflowId = "$parentWorkflowId:$segment",
+    workflowId = WorkflowId("$parentWorkflowId:$segment"),
     subtaskTotal = 1,
     resumed = resumed,
     startedAt = startedAt,
@@ -205,7 +213,7 @@ class GoalIssueProgressStoreTest {
 
   private fun finishedRecord(workflowId: String, status: String, startedAt: String): GoalFinishedRecord =
     GoalFinishedRecord(
-      issueKey = "SKILL-66",
+      issueKey = IssueKey("SKILL-66"),
       workflowId = workflowId,
       status = status,
       startedAt = startedAt,
@@ -220,7 +228,7 @@ class GoalIssueProgressStoreTest {
     )
 
   private fun goalIssueFinishedRecord(parentWorkflowId: String): GoalIssueFinishedRecord = GoalIssueFinishedRecord(
-    issueKey = "SKILL-66",
+    issueKey = IssueKey("SKILL-66"),
     parentWorkflowId = parentWorkflowId,
     status = "completed",
     subtasksComplete = 1,

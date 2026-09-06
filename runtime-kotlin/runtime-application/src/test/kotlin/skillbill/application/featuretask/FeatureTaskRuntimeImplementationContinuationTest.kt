@@ -1,5 +1,5 @@
 package skillbill.application.featuretask
-
+import skillbill.agent.model.AgentId
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeImplementationAttempt
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeImplementationAttemptStatus
 import kotlin.test.Test
@@ -105,7 +105,7 @@ class FeatureTaskRuntimeImplementationContinuationTest {
       sequenceNumber = sequenceNumber,
       phaseId = "implement",
       attemptNumber = sequenceNumber,
-      agentId = "claude",
+      agentId = AgentId("claude"),
       status = FeatureTaskRuntimeImplementationAttemptStatus.INCOMPLETE,
       recordedAt = "2026-08-04T10:0$sequenceNumber:00Z",
       value = value,

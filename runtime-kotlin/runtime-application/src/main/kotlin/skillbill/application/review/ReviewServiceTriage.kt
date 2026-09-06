@@ -1,5 +1,4 @@
 package skillbill.application.review
-
 import skillbill.application.review.model.TriageResult
 import skillbill.application.review.model.TriageResultKind
 import skillbill.application.telemetry.feedbackTelemetryOptions
@@ -10,22 +9,22 @@ import skillbill.review.TriageDecisionParser
 import skillbill.review.model.FeedbackRequest
 import skillbill.review.model.NumberedFinding
 import skillbill.review.model.ReviewFinishedTelemetry
+import skillbill.review.model.ReviewRunId
 import skillbill.review.model.TriageDecision
 
 internal data class TriageReviewRequest(
   val database: DatabaseSessionFactory,
   val settingsProvider: TelemetrySettingsProvider,
-  val runId: String,
+  val runId: ReviewRunId,
   val decisions: List<String>,
   val listOnly: Boolean,
-  val dbOverride: String?,
   val listWhenNoDecisions: Boolean,
   val routedSkillPlatformSlugs: Map<String, String>,
 )
 
 internal fun triageReview(request: TriageReviewRequest): TriageResult =
   if (request.listOnly || (request.decisions.isEmpty() && request.listWhenNoDecisions)) {
-    request.database.read(request.dbOverride) { unitOfWork ->
+    request.database.read { unitOfWork ->
       val numberedFindings = unitOfWork.reviews.fetchNumberedFindings(request.runId)
       TriageResult(
         kind = TriageResultKind.LIST,
@@ -35,7 +34,7 @@ internal fun triageReview(request: TriageReviewRequest): TriageResult =
       )
     }
   } else {
-    request.database.transaction(request.dbOverride) { unitOfWork ->
+    request.database.transaction { unitOfWork ->
       val numberedFindings = unitOfWork.reviews.fetchNumberedFindings(request.runId)
       val applied = applyTriageDecisions(
         TriageDecisionsRequest(
@@ -60,7 +59,7 @@ internal fun triageReview(request: TriageReviewRequest): TriageResult =
 internal data class TriageDecisionsRequest(
   val settingsProvider: TelemetrySettingsProvider,
   val reviewRepository: ReviewRepository,
-  val runId: String,
+  val runId: ReviewRunId,
   val numberedFindings: List<NumberedFinding>,
   val decisions: List<String>,
   val routedSkillPlatformSlugs: Map<String, String>,

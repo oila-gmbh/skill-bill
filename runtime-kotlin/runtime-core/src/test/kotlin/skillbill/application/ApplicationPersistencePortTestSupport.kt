@@ -1,5 +1,4 @@
 package skillbill.application
-
 import skillbill.application.decomposition.DecompositionManifestWriter
 import skillbill.application.decomposition.loadDecompositionManifest
 import skillbill.application.featuretask.FeatureTaskRuntimePhaseRecorder
@@ -96,6 +95,10 @@ import skillbill.telemetry.model.TelemetryConfigDocument
 import skillbill.telemetry.model.TelemetryProxyCapabilities
 import skillbill.telemetry.model.TelemetryRemoteStatsResult
 import skillbill.telemetry.model.TelemetrySettings
+import skillbill.workflow.decomposition.model.IssueKey
+import skillbill.workflow.decomposition.model.SubtaskId
+import skillbill.workflow.engine.model.SessionId
+import skillbill.workflow.engine.model.WorkflowId
 import skillbill.workflow.goal.NoopGoalObservabilityEventValidator
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_GOAL_CONTINUATION_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_BRIEFINGS_ARTIFACT_KEY
@@ -201,18 +204,18 @@ internal class FakeDatabaseSessionFactory(
   val calls = mutableListOf<String>()
   private val dbPath = Path.of("/fake/metrics.db")
 
-  override fun resolveDbPath(dbOverride: String?): Path = dbPath
+  override fun resolveDbPath(): Path = dbPath
 
-  override fun databaseExists(dbOverride: String?): Boolean = true
+  override fun databaseExists(): Boolean = true
 
-  override fun <T> read(dbOverride: String?, block: (UnitOfWork) -> T): T {
+  override fun <T> read(block: (UnitOfWork) -> T): T {
     calls += "read"
     return block(fakeUnitOfWork())
   }
 
-  override fun <T> selfManagedWrite(dbOverride: String?, block: (UnitOfWork) -> T): T = transaction(dbOverride, block)
+  override fun <T> selfManagedWrite(block: (UnitOfWork) -> T): T = transaction(block)
 
-  override fun <T> transaction(dbOverride: String?, block: (UnitOfWork) -> T): T {
+  override fun <T> transaction(block: (UnitOfWork) -> T): T {
     calls += "transaction"
     return block(fakeUnitOfWork())
   }
@@ -268,9 +271,9 @@ internal object ThrowingTelemetryReconciliationRepository : TelemetryReconciliat
 }
 
 internal fun goalStartedRequest(): GoalStartedRequest = GoalStartedRequest(
-  issueKey = "SKILL-66",
+  issueKey = IssueKey("SKILL-66"),
   featureName = "goal telemetry",
-  workflowId = "wf-goal-1",
+  workflowId = WorkflowId("wf-goal-1"),
   subtaskTotal = 4,
   resumed = true,
   startedAt = "2026-06-04T10:00:00Z",
@@ -278,9 +281,9 @@ internal fun goalStartedRequest(): GoalStartedRequest = GoalStartedRequest(
 )
 
 internal fun goalSubtaskFinishedRequest(): GoalSubtaskFinishedRequest = GoalSubtaskFinishedRequest(
-  issueKey = "SKILL-66",
-  workflowId = "wf-goal-1",
-  subtaskId = 2,
+  issueKey = IssueKey("SKILL-66"),
+  workflowId = WorkflowId("wf-goal-1"),
+  subtaskId = SubtaskId(2),
   subtaskName = "persistence",
   status = "blocked",
   startedAt = "2026-06-04T10:05:00Z",
@@ -291,8 +294,8 @@ internal fun goalSubtaskFinishedRequest(): GoalSubtaskFinishedRequest = GoalSubt
 )
 
 internal fun goalFinishedRequest(): GoalFinishedRequest = GoalFinishedRequest(
-  issueKey = "SKILL-66",
-  workflowId = "wf-goal-1",
+  issueKey = IssueKey("SKILL-66"),
+  workflowId = WorkflowId("wf-goal-1"),
   status = "blocked",
   startedAt = "2026-06-04T10:00:00Z",
   finishedAt = "2026-06-04T10:20:00Z",
@@ -686,9 +689,9 @@ internal fun blockedGoalChildRetryFixture(): BlockedGoalChildRetryFixture {
   val childWorkflowId = (
     service.openTestFeatureTask(
       WorkflowFamilyKind.TASK_RUNTIME,
-      sessionId = "ftr-goal-child",
+      sessionId = SessionId("ftr-goal-child"),
       dbOverride = null,
-      issueKey = "SKILL-51",
+      issueKey = IssueKey("SKILL-51"),
     ) as WorkflowOpenResult.Ok
     ).workflowId
   service.update(
@@ -701,8 +704,8 @@ internal fun blockedGoalChildRetryFixture(): BlockedGoalChildRetryFixture {
       artifactsPatch = mapOf(
         FEATURE_TASK_RUNTIME_GOAL_CONTINUATION_ARTIFACT_KEY to
           FeatureTaskRuntimeGoalContinuationArtifact(
-            issueKey = "SKILL-51",
-            subtaskId = 1,
+            issueKey = IssueKey("SKILL-51"),
+            subtaskId = SubtaskId(1),
             suppressPr = true,
             goalBranch = "feat/SKILL-51-demo",
             parentWorkflowId = parentWorkflowId,
@@ -741,7 +744,12 @@ internal fun createDecompositionWorkflow(
   subtaskTwo: Path?,
   executionModel: String = "same_branch_commit_per_subtask",
 ): String {
-  val opened = service.openTestFeatureTask(WorkflowFamilyKind.TASK_RUNTIME, sessionId = "ftr-001", dbOverride = null)
+  val opened = service.openTestFeatureTask(
+    WorkflowFamilyKind.TASK_RUNTIME,
+    sessionId =
+    SessionId("ftr-001"),
+    dbOverride = null,
+  )
     as WorkflowOpenResult.Ok
   val workflowId = opened.workflowId
   service.update(
@@ -1145,7 +1153,7 @@ internal fun testPhaseRecorder(database: DatabaseSessionFactory) = featureTaskRu
 
 internal fun openTaskRuntimeWorkflow(database: DatabaseSessionFactory): String = (
   testWorkflowService(database)
-    .openTestFeatureTask(WorkflowFamilyKind.TASK_RUNTIME, sessionId = "ftr-envelope", dbOverride = null)
+    .openTestFeatureTask(WorkflowFamilyKind.TASK_RUNTIME, sessionId = SessionId("ftr-envelope"), dbOverride = null)
     as WorkflowOpenResult.Ok
   ).workflowId
 

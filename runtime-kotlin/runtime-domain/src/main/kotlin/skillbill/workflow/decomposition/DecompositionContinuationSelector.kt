@@ -6,6 +6,7 @@ import skillbill.workflow.decomposition.model.DecompositionDependency
 import skillbill.workflow.decomposition.model.DecompositionExecutionModel
 import skillbill.workflow.decomposition.model.DecompositionManifest
 import skillbill.workflow.decomposition.model.DecompositionSubtask
+import skillbill.workflow.decomposition.model.SubtaskId
 
 object DecompositionContinuationSelector {
   fun select(manifest: DecompositionManifest, requestedSubtaskId: Int? = null): DecompositionContinuationSelection {
@@ -15,13 +16,14 @@ object DecompositionContinuationSelector {
     val unconstrained = when {
       // Orphaned handoff: marked started but no durable workflow opened. Re-open fresh
       // rather than resuming a workflow that does not exist, which would block the goal.
-      inProgress != null && inProgress.workflowId.isNullOrBlank() -> DecompositionContinuationSelection.Start(
-        subtask = inProgress,
-        branchPlan = manifest.branchPlanFor(inProgress.id),
-      )
+      inProgress != null && inProgress.workflowId?.value.isNullOrBlank() ->
+        DecompositionContinuationSelection.Start(
+          subtask = inProgress,
+          branchPlan = manifest.branchPlanFor(inProgress.id),
+        )
       inProgress != null -> DecompositionContinuationSelection.Resume(
         subtask = inProgress,
-        workflowId = inProgress.workflowId.orEmpty(),
+        workflowId = inProgress.workflowId!!,
         resumeStepId = inProgress.lastResumableStep.orEmpty(),
       )
       firstPending != null -> DecompositionContinuationSelection.Start(
@@ -44,7 +46,7 @@ object DecompositionContinuationSelector {
     unconstrained: DecompositionContinuationSelection,
     requestedSubtaskId: Int,
   ): DecompositionContinuationSelection {
-    val requested = manifest.subtasks.firstOrNull { it.id == requestedSubtaskId }
+    val requested = manifest.subtasks.firstOrNull { it.id.toString().toInt() == requestedSubtaskId }
     val selectedSubtask = when (unconstrained) {
       is DecompositionContinuationSelection.Resume -> unconstrained.subtask
       is DecompositionContinuationSelection.Start -> unconstrained.subtask
@@ -60,7 +62,7 @@ object DecompositionContinuationSelector {
       requested.status in setOf("complete", "skipped") ->
         DecompositionContinuationSelection.TerminalSubtask(requested)
       unconstrained is DecompositionContinuationSelection.Done -> unconstrained
-      selectedSubtask?.id == requestedSubtaskId -> unconstrained
+      selectedSubtask?.id?.toString()?.toInt() == requestedSubtaskId -> unconstrained
       else -> DecompositionContinuationSelection.Blocked(
         subtask = requested,
         reason = "Requested subtask $requestedSubtaskId is not the next runnable subtask for ${manifest.issueKey}.",
@@ -80,12 +82,13 @@ object DecompositionContinuationSelector {
 
   private fun DecompositionDependency.isExplicitlySkipped(): Boolean = optional && skipped
 
-  private fun DecompositionManifest.branchPlanFor(subtaskId: Int): DecompositionBranchPlan = when (executionModel) {
-    DecompositionExecutionModel.SAME_BRANCH_COMMIT_PER_SUBTASK ->
-      DecompositionBranchPlan(branch = featureBranch.orEmpty(), baseBranch = baseBranch, validateBase = false)
-    DecompositionExecutionModel.STACKED_BRANCHES -> {
-      val stackBranch = stackBranches.first { it.subtaskId == subtaskId }
-      DecompositionBranchPlan(branch = stackBranch.branch, baseBranch = stackBranch.baseBranch, validateBase = true)
+  private fun DecompositionManifest.branchPlanFor(subtaskId: SubtaskId): DecompositionBranchPlan =
+    when (executionModel) {
+      DecompositionExecutionModel.SAME_BRANCH_COMMIT_PER_SUBTASK ->
+        DecompositionBranchPlan(branch = featureBranch.orEmpty(), baseBranch = baseBranch, validateBase = false)
+      DecompositionExecutionModel.STACKED_BRANCHES -> {
+        val stackBranch = stackBranches.first { it.subtaskId == subtaskId }
+        DecompositionBranchPlan(branch = stackBranch.branch, baseBranch = stackBranch.baseBranch, validateBase = true)
+      }
     }
-  }
 }

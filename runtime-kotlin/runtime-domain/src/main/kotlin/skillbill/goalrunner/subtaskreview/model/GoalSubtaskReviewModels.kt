@@ -4,6 +4,9 @@ import skillbill.review.model.ReviewClaimVerdict
 import skillbill.review.model.ReviewFindingCitation
 import skillbill.review.model.ReviewScopeDisposition
 import skillbill.review.model.ReviewSeverityAdjustment
+import skillbill.workflow.decomposition.model.IssueKey
+import skillbill.workflow.decomposition.model.SubtaskId
+import skillbill.workflow.engine.model.WorkflowId
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeVerdict
 
 data class StructuredGoalReviewFinding(
@@ -26,8 +29,8 @@ data class GoalSubtaskReviewOutputOutcome(
 )
 
 data class UnaddressedFindingLedgerScope(
-  val issueKey: String,
-  val subtaskId: Int,
-  val workflowId: String,
+  val issueKey: IssueKey,
+  val subtaskId: SubtaskId,
+  val workflowId: WorkflowId,
   val reviewPassNumber: Int,
 )

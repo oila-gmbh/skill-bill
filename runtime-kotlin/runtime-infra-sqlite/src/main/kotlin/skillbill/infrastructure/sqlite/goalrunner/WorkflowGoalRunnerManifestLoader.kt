@@ -20,7 +20,9 @@ import skillbill.ports.workflow.saveRecord
 import skillbill.ports.workflow.toRecord
 import skillbill.workflow.decomposition.DecompositionManifestValidator
 import skillbill.workflow.decomposition.model.DecompositionManifest
+import skillbill.workflow.decomposition.model.IssueKey
 import skillbill.workflow.engine.WorkflowEngine
+import skillbill.workflow.engine.model.WorkflowId
 import skillbill.workflow.engine.model.WorkflowUpdateInput
 import java.nio.file.Path
 
@@ -42,17 +44,15 @@ internal class WorkflowGoalRunnerManifestLoader(
 
   fun loadFromWorkflowStore(
     issueKey: String,
-    dbPathOverride: String?,
     currentProjectedManifest: DecompositionManifest? = null,
-  ): GoalRunnerManifestState? = database.read(dbPathOverride) { unitOfWork ->
+  ): GoalRunnerManifestState? = database.read { unitOfWork ->
     loadFromWorkflowUnitOfWork(unitOfWork, issueKey, currentProjectedManifest)
   }
 
   fun loadFromWorkflowStoreIfPresent(
     issueKey: String,
-    dbPathOverride: String?,
     currentProjectedManifest: DecompositionManifest? = null,
-  ): GoalRunnerManifestState? = database.readIfPresent(dbPathOverride) { unitOfWork ->
+  ): GoalRunnerManifestState? = database.readIfPresent { unitOfWork ->
     loadFromWorkflowUnitOfWork(unitOfWork, issueKey, currentProjectedManifest)
   }
 
@@ -76,55 +76,56 @@ internal class WorkflowGoalRunnerManifestLoader(
     )
   }
 
-  fun importFromManifestProjection(
-    manifest: DecompositionManifest,
-    dbPathOverride: String?,
-  ): GoalRunnerManifestState? = database.transaction(dbPathOverride) { unitOfWork ->
-    val existingRecord = unitOfWork.workflowStates.findDecomposedParentOrCorruptFallback(
-      manifest.issueKey,
-      decompositionManifestValidator,
-      manifest,
-    )
-    existingRecord?.requireRuntimeModeForEngineWrite()
-    val existing = existingRecord?.toSnapshot()
-    existing?.let { migrateLegacyGoalRunnerControls(unitOfWork, it) }
-    val base = existing ?: engine.openRecord(
-      WorkflowFamily.TASK_RUNTIME.definition,
-      generateWorkflowId(WorkflowFamily.TASK_RUNTIME.definition.workflowIdPrefix),
-      WorkflowFamily.TASK_RUNTIME.definition.defaultSessionPrefix,
-      "plan",
-    )
-    val imported = engine.updateRecord(
-      WorkflowFamily.TASK_RUNTIME.definition,
-      base,
-      WorkflowUpdateInput(
-        workflowStatus = "paused",
-        currentStepId = "plan",
-        stepUpdates = if (existing != null) {
-          null
-        } else {
-          listOf(
-            mapOf("step_id" to "preplan", "status" to "completed", "attempt_count" to 1),
-            mapOf("step_id" to "plan", "status" to "completed", "attempt_count" to 1),
-          )
-        },
-        artifactsPatch = parentProjection.artifacts(manifest, base.artifactsJson),
-        sessionId = base.sessionId.orEmpty(),
-        replaceArtifacts = true,
-      ),
-    )
-    WorkflowFamily.TASK_RUNTIME.saveRecord(
-      unitOfWork.workflowStates,
-      imported.toRecord().copy(issueKey = normalizeRequiredIssueKey(manifest.issueKey)),
-    )
-    val saved = WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, imported.workflowId) ?: imported
-    GoalRunnerManifestState(
-      parentWorkflowId = saved.workflowId,
-      dbPath = unitOfWork.dbPath.toString(),
-      manifest = saved.decompositionRuntime(decompositionManifestValidator) ?: manifest,
-      controlState = unitOfWork.goalRunnerControls.controlState(saved.workflowId),
-    )
-  }
+  fun importFromManifestProjection(manifest: DecompositionManifest): GoalRunnerManifestState? =
+    database.transaction { unitOfWork ->
+      val existingRecord = unitOfWork.workflowStates.findDecomposedParentOrCorruptFallback(
+        manifest.issueKey,
+        decompositionManifestValidator,
+        manifest,
+      )
+      existingRecord?.requireRuntimeModeForEngineWrite()
+      val existing = existingRecord?.toSnapshot()
+      existing?.let { migrateLegacyGoalRunnerControls(unitOfWork, it) }
+      val base = existing ?: engine.openRecord(
+        WorkflowFamily.TASK_RUNTIME.definition,
+        generateWorkflowId(WorkflowFamily.TASK_RUNTIME.definition.workflowIdPrefix),
+        WorkflowFamily.TASK_RUNTIME.definition.defaultSessionPrefix,
+        "plan",
+      )
+      val imported = engine.updateRecord(
+        WorkflowFamily.TASK_RUNTIME.definition,
+        base,
+        WorkflowUpdateInput(
+          workflowStatus = "paused",
+          currentStepId = "plan",
+          stepUpdates = if (existing != null) {
+            null
+          } else {
+            listOf(
+              mapOf("step_id" to "preplan", "status" to "completed", "attempt_count" to 1),
+              mapOf("step_id" to "plan", "status" to "completed", "attempt_count" to 1),
+            )
+          },
+          artifactsPatch = parentProjection.artifacts(manifest, base.artifactsJson),
+          sessionId = base.sessionId,
+          replaceArtifacts = true,
+        ),
+      )
+      WorkflowFamily.TASK_RUNTIME.saveRecord(
+        unitOfWork.workflowStates,
+        imported.toRecord().copy(issueKey = IssueKey(normalizeRequiredIssueKey(manifest.issueKey.value))),
+      )
+      val saved = WorkflowFamily.TASK_RUNTIME.get(
+        unitOfWork.workflowStates,
+        imported.workflowId,
+      ) ?: imported
+      GoalRunnerManifestState(
+        parentWorkflowId = saved.workflowId,
+        dbPath = unitOfWork.dbPath.toString(),
+        manifest = saved.decompositionRuntime(decompositionManifestValidator) ?: manifest,
+        controlState = unitOfWork.goalRunnerControls.controlState(saved.workflowId),
+      )
+    }
 
   fun readProjection(
     stored: GoalRunnerManifestState?,
@@ -137,7 +138,7 @@ internal class WorkflowGoalRunnerManifestLoader(
     )
     stored != null -> stored.copy(repoRoot = repoRoot)
     projected != null -> GoalRunnerManifestState(
-      parentWorkflowId = "",
+      parentWorkflowId = WorkflowId(""),
       dbPath = "",
       manifest = projected,
       repoRoot = repoRoot,

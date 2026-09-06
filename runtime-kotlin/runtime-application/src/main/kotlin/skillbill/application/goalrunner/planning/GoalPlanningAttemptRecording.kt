@@ -1,9 +1,12 @@
 package skillbill.application.goalrunner.planning
 
+import skillbill.workflow.engine.model.WorkflowId
+
 import skillbill.application.goalrunner.planning.model.GoalPlanningAttemptRecord
 import skillbill.application.goalrunner.planning.model.GoalPlanningPhaseProduction
 import skillbill.application.goalrunner.planning.model.GoalPlanningRejectionRecord
 import skillbill.workflow.decomposition.model.DecompositionSubtask
+import skillbill.workflow.decomposition.model.SubtaskId
 import skillbill.workflow.goal.model.GoalProgressEventKind
 import skillbill.workflow.goal.model.GoalProgressOutcome
 
@@ -28,9 +31,8 @@ internal fun recordPlanningRejection(sweep: DefaultGoalPlanningSweep, args: Goal
     GoalPlanningRejectionRecord(
       parentWorkflowId = scope.shared.parentWorkflowId,
       issueKey = scope.shared.issueKey,
-      dbPathOverride = scope.shared.dbPathOverride,
       phaseId = diagnosticPhaseId(scope.phaseId, scope.subtask),
-      subtaskId = scope.subtask?.id ?: 0,
+      subtaskId = scope.subtask?.id ?: SubtaskId(0),
       attempt = scope.attempt,
       rule = args.rule,
       reason = args.reason,
@@ -57,7 +59,12 @@ internal fun declineRetryStop(
   )
   if (declines >= GoalPlanningSweepConstants.MAX_RETRYABLE_PLANNING_DECLINES) {
     return GoalPlanningPhaseProduction.Stopped(
-      stopped(scope.shared, scope.subtask?.id ?: 0, exhaustedDeclineReason(production, declines), scope.phaseId),
+      stopped(
+        scope.shared,
+        scope.subtask?.id ?: SubtaskId(0),
+        exhaustedDeclineReason(production, declines),
+        scope.phaseId,
+      ),
     )
   }
   return backoffStop(sweep, scope)
@@ -69,7 +76,7 @@ internal fun backoffStop(
 ): GoalPlanningPhaseProduction.Stopped? = sweep.interruptibleWait(
   sweep.burstSchedule.emptyTurnBackoffAfterAttempt(scope.attempt),
   scope.shared,
-  scope.subtask?.id ?: 0,
+  scope.subtask?.id ?: SubtaskId(0),
   scope.phaseId,
 )?.let { stoppedOutcome -> GoalPlanningPhaseProduction.Stopped(stoppedOutcome) }
 
@@ -113,9 +120,8 @@ internal fun recordPlanningAttempt(sweep: DefaultGoalPlanningSweep, args: GoalPl
     GoalPlanningAttemptRecord(
       scope.shared.parentWorkflowId,
       scope.shared.issueKey,
-      scope.shared.dbPathOverride,
       scope.phaseId,
-      scope.subtask?.id ?: 0,
+      scope.subtask?.id ?: SubtaskId(0),
       scope.attempt,
       args.outcome,
       args.eventKind,

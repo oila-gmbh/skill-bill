@@ -1,5 +1,4 @@
 package skillbill.application
-
 import skillbill.application.workflow.WorkflowService
 import skillbill.application.workflow.WorkflowWireProjections
 import skillbill.application.workflow.model.WorkflowContinueResult
@@ -11,6 +10,7 @@ import skillbill.contracts.JsonCodec
 import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_PERSISTENCE_CONTRACT_VERSION
 import skillbill.ports.workflow.decomposition.UnavailableDecompositionManifestStore
 import skillbill.ports.workflow.gitops.NoopWorkflowGitOperations
+import skillbill.workflow.engine.model.SessionId
 import skillbill.workflow.goal.NoopGoalObservabilityEventValidator
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -205,7 +205,7 @@ private fun newBlockedImplementService(
 ): Pair<WorkflowService, WorkflowOpenResult.Ok> {
   val service = newService()
   val opened = assertIs<WorkflowOpenResult.Ok>(
-    service.open(WorkflowServiceOpenArgs(kind = WorkflowFamilyKind.TASK_RUNTIME, sessionId = "ftr-001")),
+    service.open(WorkflowServiceOpenArgs(kind = WorkflowFamilyKind.TASK_RUNTIME, sessionId = SessionId("ftr-001"))),
   )
   service.update(
     WorkflowFamilyKind.TASK_RUNTIME,

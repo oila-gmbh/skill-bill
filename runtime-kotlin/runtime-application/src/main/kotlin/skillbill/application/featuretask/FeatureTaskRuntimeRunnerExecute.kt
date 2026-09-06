@@ -1,5 +1,7 @@
 package skillbill.application.featuretask
 
+import skillbill.agent.model.AgentId
+
 import skillbill.application.featuretask.model.FeatureTaskRuntimeCrashReconciliationResult
 import skillbill.application.featuretask.model.FeatureTaskRuntimeRunEvent
 import skillbill.application.featuretask.model.FeatureTaskRuntimeRunReport
@@ -57,18 +59,18 @@ fun FeatureTaskRuntimeRunner.executePreparedRun(
 
 fun FeatureTaskRuntimeRunner.reopenCappedReviewOnChangedDelta(request: FeatureTaskRuntimeRunRequest) {
   if (!cappedReviewIsStale(request)) return
-  checkNotNull(recorder.persistReviewGenerationInvalidation(request.workflowId, request.dbPathOverride)) {
+  checkNotNull(recorder.persistReviewGenerationInvalidation(request.workflowId)) {
     "Could not durably reopen the stale capped review for workflow '${request.workflowId}'."
   }
 }
 
 fun FeatureTaskRuntimeRunner.cappedReviewIsStale(request: FeatureTaskRuntimeRunRequest): Boolean {
   val goalBranch = request.goalContinuation?.goalBranch ?: return false
-  val state = goalContinuationRecorder.reviewState(request.workflowId, request.dbPathOverride)
+  val state = goalContinuationRecorder.reviewState(request.workflowId)
     ?.takeIf { it.reviewCapReached || it.pausedForOperatorDecision }
     ?: return false
   val judgedDigest = state.reviewedDeltaDigest ?: return true
-  val resolved = recorder.loadResolvedBranch(request.workflowId, request.dbPathOverride)
+  val resolved = recorder.loadResolvedBranch(request.workflowId)
   val digests = listOfNotNull(state.remediationBaseSha, state.reviewBaseSha).distinct().mapNotNull { base ->
     phaseGates.gitOperations.buildGoalSubtaskReviewInput(
       request.repoRoot,
@@ -89,7 +91,7 @@ fun FeatureTaskRuntimeRunner.reviewBaseline(
   ?: GoalSubtaskReviewBaseline(reviewBaseSha, state.baselineUntrackedPaths)
 
 fun FeatureTaskRuntimeRunner.loadReviewFixIterationCount(request: FeatureTaskRuntimeRunRequest): Int =
-  recorder.loadPhaseLedger(request.workflowId, request.dbPathOverride)
+  recorder.loadPhaseLedger(request.workflowId)
     .orEmpty()
     .filter {
       it.action == FeatureTaskRuntimePhaseLedgerAction.LOOP_EDGE &&
@@ -102,7 +104,7 @@ fun FeatureTaskRuntimeRunner.loadReviewFixIterationCount(request: FeatureTaskRun
 fun FeatureTaskRuntimeRunner.loadAuditRepairProgress(
   request: FeatureTaskRuntimeRunRequest,
 ): FeatureTaskRuntimeAuditProgress = FeatureTaskRuntimeAuditConvergence.progressFrom(
-  auditRecord = recorder.loadPhaseRecords(request.workflowId, request.dbPathOverride)
+  auditRecord = recorder.loadPhaseRecords(request.workflowId)
     ?.get(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT),
   auditGapIterationCount = loadAuditGapIterationCount(request),
 )
@@ -110,7 +112,7 @@ fun FeatureTaskRuntimeRunner.loadAuditRepairProgress(
 fun FeatureTaskRuntimeRunner.loadFindingVerificationTelemetry(
   request: FeatureTaskRuntimeRunRequest,
 ): FeatureTaskRuntimeFindingVerificationTelemetry {
-  val verifyRecord = recorder.loadPhaseRecords(request.workflowId, request.dbPathOverride)
+  val verifyRecord = recorder.loadPhaseRecords(request.workflowId)
     ?.get(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VERIFY_FINDINGS)
     ?: return FeatureTaskRuntimeFindingVerificationTelemetry(
       reviewFixCapExhausted = loadReviewFixIterationCount(request) >= 1,
@@ -131,19 +133,19 @@ fun FeatureTaskRuntimeRunner.loadFindingVerificationTelemetry(
 
 fun FeatureTaskRuntimeRunner.loadAuditGapIterationCount(request: FeatureTaskRuntimeRunRequest): Int =
   FeatureTaskRuntimeAuditConvergence.auditGapIterationCount(
-    recorder.loadPhaseLedger(request.workflowId, request.dbPathOverride).orEmpty(),
+    recorder.loadPhaseLedger(request.workflowId).orEmpty(),
   )
 
 fun FeatureTaskRuntimeRunner.loadRegenerationTelemetry(
   request: FeatureTaskRuntimeRunRequest,
 ): FeatureTaskRuntimeRegenerationTelemetry {
-  val ledger = recorder.loadPhaseLedger(request.workflowId, request.dbPathOverride).orEmpty()
+  val ledger = recorder.loadPhaseLedger(request.workflowId).orEmpty()
   val regenFires = ledger.filter {
     it.action == FeatureTaskRuntimePhaseLedgerAction.LOOP_EDGE &&
       FeatureTaskRuntimePhaseWorkflowDefinition.isRegenerationLoopId(it.loopId.orEmpty())
   }
   val firedLoops = regenFires.mapNotNull { it.loopId }.toSet()
-  val blocked = recorder.loadPhaseRecords(request.workflowId, request.dbPathOverride)
+  val blocked = recorder.loadPhaseRecords(request.workflowId)
     .orEmpty()
     .values
     .filter { it.status == FEATURE_TASK_RUNTIME_PHASE_STATUS_BLOCKED }
@@ -171,8 +173,8 @@ fun FeatureTaskRuntimeRunner.loadRegenerationTelemetry(
   )
 }
 
-fun FeatureTaskRuntimeRunner.finalizingAgentId(request: FeatureTaskRuntimeRunRequest): String? =
-  agentAttributionFromPhaseState(recorder, request.workflowId, request.dbPathOverride).finalizingAgentId
+fun FeatureTaskRuntimeRunner.finalizingAgentId(request: FeatureTaskRuntimeRunRequest): AgentId? =
+  agentAttributionFromPhaseState(recorder, request.workflowId).finalizingAgentId
 
 val FeatureTaskRuntimeRunner.lifecycleTelemetry get() = phaseGates.lifecycleTelemetry
 val FeatureTaskRuntimeRunner.specSourceResolver get() = phaseGates.specGate.specSourceResolver

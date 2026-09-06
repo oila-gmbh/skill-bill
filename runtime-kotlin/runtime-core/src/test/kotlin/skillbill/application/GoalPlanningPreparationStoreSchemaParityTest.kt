@@ -1,5 +1,4 @@
 package skillbill.application
-
 import skillbill.contracts.workflow.GoalPlanningPreparationSchemaValidator
 import skillbill.db.core.DatabaseRuntime
 import skillbill.db.workflow.GoalPlanningPreparationStore
@@ -10,6 +9,7 @@ import skillbill.ports.goalrunner.model.GoalPlanningIdentity
 import skillbill.ports.goalrunner.model.GoalPlanningPreparationState
 import skillbill.ports.goalrunner.model.GoalSubtaskPlanCheckpoint
 import skillbill.ports.goalrunner.model.SharedGoalPreplanCheckpoint
+import skillbill.workflow.decomposition.model.SubtaskId
 import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.test.Test
@@ -41,7 +41,7 @@ class GoalPlanningPreparationStoreSchemaParityTest {
 
   @Test
   fun `normalized subtask id minimum is enforced by schema and store`() {
-    assertPlanRejected(planCheckpoint().copy(subtaskId = 0))
+    assertPlanRejected(planCheckpoint().copy(subtaskId = SubtaskId(0)))
   }
 
   @Test
@@ -163,7 +163,7 @@ class GoalPlanningPreparationStoreSchemaParityTest {
 
   private fun planCheckpoint(): GoalSubtaskPlanCheckpoint = GoalSubtaskPlanCheckpoint(
     identity = identity(),
-    subtaskId = 1,
+    subtaskId = SubtaskId(1),
     manifestOrder = 0,
     governedSubSpecPath = ".feature-specs/SKILL-128/spec_subtask_1.md",
     subSpecHash = "d".repeat(64),

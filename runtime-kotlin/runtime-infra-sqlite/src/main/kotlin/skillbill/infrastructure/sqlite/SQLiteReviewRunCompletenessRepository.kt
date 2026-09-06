@@ -23,6 +23,7 @@ import skillbill.review.model.ParallelReviewMergedFinding
 import skillbill.review.model.ReviewFindingVerdict
 import skillbill.review.model.ReviewLaneEffectivenessRow
 import skillbill.review.model.ReviewPassClaimSnapshot
+import skillbill.review.model.ReviewRunId
 import skillbill.review.model.ReviewRunLane
 import skillbill.review.model.ReviewSpecProjectionReference
 import skillbill.review.model.ReviewStageBoundary
@@ -31,50 +32,54 @@ import java.sql.Connection
 class SQLiteReviewRunLaneCompletenessRepository(
   private val connection: Connection,
 ) : ReviewRunLaneCompletenessRepository {
-  override fun replaceReviewRunLanes(runId: String, lanes: List<ReviewRunLane>) =
-    replaceReviewRunLanes(connection, runId, lanes)
+  override fun replaceReviewRunLanes(runId: ReviewRunId, lanes: List<ReviewRunLane>) =
+    replaceReviewRunLanes(connection, runId.value, lanes)
 
-  override fun fetchReviewRunLanes(runId: String): List<ReviewRunLane> = fetchReviewRunLanes(connection, runId)
+  override fun fetchReviewRunLanes(runId: ReviewRunId): List<ReviewRunLane> =
+    fetchReviewRunLanes(connection, runId.value)
 
-  override fun recordFindingLaneAttribution(runId: String, attribution: Map<String, String>) =
-    recordFindingLaneAttribution(connection, runId, attribution)
+  override fun recordFindingLaneAttribution(runId: ReviewRunId, attribution: Map<String, String>) =
+    recordFindingLaneAttribution(connection, runId.value, attribution)
 
-  override fun reviewLaneEffectiveness(runId: String?): List<ReviewLaneEffectivenessRow> =
-    queryReviewLaneEffectiveness(connection, runId)
+  override fun reviewLaneEffectiveness(runId: ReviewRunId?): List<ReviewLaneEffectivenessRow> =
+    queryReviewLaneEffectiveness(connection, runId?.value)
 
-  override fun ensureTerminalReviewState(runId: String, executionMode: String?) =
-    ensureTerminalReviewState(connection, runId, executionMode)
+  override fun ensureTerminalReviewState(runId: ReviewRunId, executionMode: String?) =
+    ensureTerminalReviewState(connection, runId.value, executionMode)
 
-  override fun recordIntegrationPass(runId: String, record: ReviewIntegrationPassRecord) =
-    recordIntegrationPass(connection, runId, record)
+  override fun recordIntegrationPass(runId: ReviewRunId, record: ReviewIntegrationPassRecord) =
+    recordIntegrationPass(connection, runId.value, record)
 
-  override fun fetchIntegrationPass(runId: String): ReviewIntegrationPassRecord? =
-    fetchIntegrationPass(connection, runId)
+  override fun fetchIntegrationPass(runId: ReviewRunId): ReviewIntegrationPassRecord? =
+    fetchIntegrationPass(connection, runId.value)
 }
 
 class SQLiteReviewRunStageCompletenessRepository(
   private val connection: Connection,
 ) : ReviewRunStageCompletenessRepository {
-  override fun recordFindingVerdicts(runId: String, verdicts: List<ReviewFindingVerdict>) =
-    recordFindingVerdicts(connection, runId, verdicts)
+  override fun recordFindingVerdicts(runId: ReviewRunId, verdicts: List<ReviewFindingVerdict>) =
+    recordFindingVerdicts(connection, runId.value, verdicts)
 
-  override fun fetchFindingVerdicts(runId: String): List<ReviewFindingVerdict> = fetchFindingVerdicts(connection, runId)
+  override fun fetchFindingVerdicts(runId: ReviewRunId): List<ReviewFindingVerdict> =
+    fetchFindingVerdicts(connection, runId.value)
 
-  override fun recordReviewPassClaims(runId: String, findings: List<ParallelReviewMergedFinding>) =
-    recordReviewPassClaims(connection, runId, findings)
+  override fun recordReviewPassClaims(runId: ReviewRunId, findings: List<ParallelReviewMergedFinding>) =
+    recordReviewPassClaims(connection, runId.value, findings)
 
-  override fun fetchReviewPassClaims(runId: String): ReviewPassClaimSnapshot? = fetchReviewPassClaims(connection, runId)
+  override fun fetchReviewPassClaims(runId: ReviewRunId): ReviewPassClaimSnapshot? =
+    fetchReviewPassClaims(connection, runId.value)
 
-  override fun recordStageBoundary(runId: String, boundary: ReviewStageBoundary) =
-    recordStageBoundary(connection, runId, boundary)
+  override fun recordStageBoundary(runId: ReviewRunId, boundary: ReviewStageBoundary) =
+    recordStageBoundary(connection, runId.value, boundary)
 
-  override fun fetchStageBoundaries(runId: String): List<ReviewStageBoundary> = fetchStageBoundaries(connection, runId)
+  override fun fetchStageBoundaries(runId: ReviewRunId): List<ReviewStageBoundary> =
+    fetchStageBoundaries(connection, runId.value)
 
-  override fun recordSpecProjectionReference(runId: String, reference: ReviewSpecProjectionReference) =
-    recordSpecProjectionReference(connection, runId, reference)
+  override fun recordSpecProjectionReference(runId: ReviewRunId, reference: ReviewSpecProjectionReference) =
+    recordSpecProjectionReference(connection, runId.value, reference)
 
-  override fun fetchSpecProjectionReference(runId: String): ReviewSpecProjectionReference? =
-    fetchSpecProjectionReference(connection, runId)
+  override fun fetchSpecProjectionReference(runId: ReviewRunId): ReviewSpecProjectionReference? =
+    fetchSpecProjectionReference(connection, runId.value)
 }
 
 class SQLiteReviewRunCompletenessRepository(

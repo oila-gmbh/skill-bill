@@ -1,4 +1,5 @@
 package skillbill.db.workflow
+
 import skillbill.db.decomposition.asStringAnyMapOrNull
 import skillbill.db.decomposition.decodeArtifacts
 import skillbill.db.decomposition.decodeDecompositionManifestMap
@@ -25,17 +26,17 @@ val IMPLEMENT_TERMINAL_STATUSES: Set<String> = setOf("completed", "failed", "aba
 fun WorkflowStateRepository.listFeatureTaskWorkflowsForParentDiscovery(): List<WorkflowStateRecord> {
   val byId = LinkedHashMap<String, WorkflowStateRecord>()
   listFeatureTaskWorkflows(FeatureTaskWorkflowMode.RUNTIME, Int.MAX_VALUE).forEach { row ->
-    byId[row.workflowId] = row
+    byId[row.workflowId.value] = row
   }
   listFeatureTaskWorkflows(FeatureTaskWorkflowMode.PROSE, Int.MAX_VALUE).forEach { row ->
-    byId.putIfAbsent(row.workflowId, row)
+    byId.putIfAbsent(row.workflowId.value, row)
   }
   return byId.values.toList()
 }
 
 fun WorkflowStateRecord.requireRuntimeModeForEngineWrite() {
   if (mode != FeatureTaskWorkflowMode.RUNTIME) {
-    throw LegacyProseWorkflowError(workflowId, issueKey)
+    throw LegacyProseWorkflowError(workflowId.value, issueKey?.value)
   }
 }
 
@@ -50,7 +51,7 @@ fun WorkflowStateRepository.findDecomposedParentWorkflow(
     if (snapshot.isGoalContinuationChildWorkflow()) return@mapNotNull null
     val manifest = snapshot.decompositionRuntime(validator) ?: return@mapNotNull null
     if (
-      (snapshot.hasDecompositionPlan() || row.issueKey?.trim() == normalizedIssueKey) &&
+      (snapshot.hasDecompositionPlan() || row.issueKey?.value?.trim() == normalizedIssueKey) &&
       manifest.issueKey == normalizedIssueKey
     ) {
       DecomposedParentLookupCandidate(row, manifest)
@@ -62,7 +63,7 @@ fun WorkflowStateRepository.findDecomposedParentWorkflow(
   if (activeCandidates.size > 1) {
     error(
       "Ambiguous decomposed parent workflows for '$normalizedIssueKey': " +
-        activeCandidates.joinToString { candidate -> candidate.record.workflowId } +
+        activeCandidates.joinToString { candidate -> candidate.record.workflowId.value } +
         ". Pass an explicit workflow or manifest selector before continuing.",
     )
   }

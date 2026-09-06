@@ -1,11 +1,13 @@
 package skillbill.workflow.taskruntime
-
 import skillbill.agentaddon.model.AgentAddonSelection
 import skillbill.agentaddon.model.PersistedAgentAddonSelectionEntry
 import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_PERSISTENCE_CONTRACT_VERSION
 import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_RUN_INVARIANTS_CONTRACT_VERSION
 import skillbill.error.InvalidWorkflowStateSchemaError
 import skillbill.review.context.model.CodeReviewExecutionMode
+import skillbill.workflow.decomposition.model.IssueKey
+import skillbill.workflow.decomposition.model.SubtaskId
+import skillbill.workflow.engine.model.WorkflowId
 import skillbill.workflow.goal.model.ValidationDepth
 import skillbill.workflow.goal.model.appendBoundedHistoryBySequence
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_LEDGER_LIMIT
@@ -631,8 +633,8 @@ class FeatureTaskRuntimeGoalContinuationPersistenceModelsTest {
   @Test
   fun `goal-continuation artifact retains the immutable review mode and optional parallel lane`() {
     val artifact = FeatureTaskRuntimeGoalContinuationArtifact(
-      issueKey = "SKILL-119",
-      subtaskId = 2,
+      issueKey = IssueKey("SKILL-119"),
+      subtaskId = SubtaskId(2),
       suppressPr = true,
       goalBranch = "feat/SKILL-119-subtask-2",
       parentWorkflowId = "wfl-parent",
@@ -655,8 +657,8 @@ class FeatureTaskRuntimeGoalContinuationPersistenceModelsTest {
   @Test
   fun `goal-continuation artifact round-trips explicit depths and preserves absent validation_depth`() {
     val full = FeatureTaskRuntimeGoalContinuationArtifact(
-      issueKey = "SKILL-173",
-      subtaskId = 1,
+      issueKey = IssueKey("SKILL-173"),
+      subtaskId = SubtaskId(1),
       suppressPr = true,
       goalBranch = "feat/SKILL-173",
       codeReviewMode = CodeReviewExecutionMode.INLINE,
@@ -690,8 +692,8 @@ class FeatureTaskRuntimeGoalContinuationPersistenceModelsTest {
   @Test
   fun `goal-continuation artifact rejects missing mode unknown fields and blank parallel lane`() {
     val complete = FeatureTaskRuntimeGoalContinuationArtifact(
-      issueKey = "SKILL-119",
-      subtaskId = 2,
+      issueKey = IssueKey("SKILL-119"),
+      subtaskId = SubtaskId(2),
       suppressPr = true,
       goalBranch = "feat/SKILL-119-subtask-2",
       codeReviewMode = CodeReviewExecutionMode.INLINE,
@@ -714,8 +716,8 @@ class FeatureTaskRuntimeGoalContinuationPersistenceModelsTest {
   @Test
   fun `goal-continuation artifact round-trips quality_gate_selection and absent decodes as validate`() {
     val build = FeatureTaskRuntimeGoalContinuationArtifact(
-      issueKey = "SKILL-204",
-      subtaskId = 1,
+      issueKey = IssueKey("SKILL-204"),
+      subtaskId = SubtaskId(1),
       suppressPr = true,
       goalBranch = "feat/SKILL-204",
       codeReviewMode = CodeReviewExecutionMode.INLINE,
@@ -728,8 +730,8 @@ class FeatureTaskRuntimeGoalContinuationPersistenceModelsTest {
     )
 
     val absent = FeatureTaskRuntimeGoalContinuationArtifact(
-      issueKey = "SKILL-204",
-      subtaskId = 2,
+      issueKey = IssueKey("SKILL-204"),
+      subtaskId = SubtaskId(2),
       suppressPr = true,
       goalBranch = "feat/SKILL-204",
       codeReviewMode = CodeReviewExecutionMode.INLINE,
@@ -746,10 +748,10 @@ class FeatureTaskRuntimeGoalContinuationPersistenceModelsTest {
   @Test
   fun `goal-continuation outcome round trips agent attribution through its artifact map`() {
     val outcome = FeatureTaskRuntimeGoalContinuationOutcome(
-      issueKey = "SKILL-89",
-      subtaskId = 4,
+      issueKey = IssueKey("SKILL-89"),
+      subtaskId = SubtaskId(4),
       status = "complete",
-      workflowId = "wf-4",
+      workflowId = WorkflowId("wf-4"),
       commitSha = "abc123",
       lastResumableStep = "commit_push",
       finalizingAgentId = "claude",
@@ -778,10 +780,10 @@ class FeatureTaskRuntimeGoalContinuationPersistenceModelsTest {
   @Test
   fun `goal-continuation outcome omits finalizing agent when null but always emits the participants list`() {
     val outcome = FeatureTaskRuntimeGoalContinuationOutcome(
-      issueKey = "SKILL-89",
-      subtaskId = 1,
+      issueKey = IssueKey("SKILL-89"),
+      subtaskId = SubtaskId(1),
       status = "complete",
-      workflowId = "wf-1",
+      workflowId = WorkflowId("wf-1"),
       lastResumableStep = "commit_push",
     )
     val map = outcome.toArtifactMap()

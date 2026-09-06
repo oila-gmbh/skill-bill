@@ -1,5 +1,5 @@
 package skillbill.launcher
-
+import skillbill.agent.model.AgentId
 import skillbill.contracts.time.JvmSystemClock
 import skillbill.install.model.InstallAgent
 import skillbill.launcher.agentrun.CodexAgentRunCommandBuilder
@@ -18,6 +18,8 @@ import skillbill.ports.agentrun.model.AgentRunProgressProbe
 import skillbill.ports.agentrun.model.ConversationIsolation
 import skillbill.ports.agentrun.model.SkillRunRequest
 import skillbill.ports.agentrun.model.UnsupportedAgentRunLaunch
+import skillbill.workflow.decomposition.model.IssueKey
+import skillbill.workflow.decomposition.model.SubtaskId
 import skillbill.workflow.goal.model.GoalProgressEventKind
 import java.nio.file.Path
 import kotlin.test.Test
@@ -90,17 +92,17 @@ internal class RecordingAgentRunProcessRunner(
 
 class HeadlessAgentRunAdapterTest {
   private fun phaseRunRequest(): SkillRunRequest = SkillRunRequest(
-    issueKey = "SKILL-88",
+    issueKey = IssueKey("SKILL-88"),
     repoRoot = Path.of("/tmp/skillbill-agent-run"),
-    subtaskId = 1,
+    subtaskId = SubtaskId(1),
     timeout = 10.seconds,
     goalContinuation = null,
   ).copy(promptOverride = "Phase: preplan")
 
   private fun skillRunRequest(): SkillRunRequest = SkillRunRequest(
-    issueKey = "SKILL-88",
+    issueKey = IssueKey("SKILL-88"),
     repoRoot = Path.of("/tmp/skillbill-agent-run"),
-    subtaskId = 1,
+    subtaskId = SubtaskId(1),
     timeout = 3.seconds,
     goalContinuation = null,
     promptOverride = "Test prompt",
@@ -152,7 +154,7 @@ class HeadlessAgentRunAdapterTest {
 
     val outcome = launcher.launch(
       AgentRunLaunchRequest(
-        agentId = "cursor",
+        agentId = AgentId("cursor"),
         skillRunRequest = skillRunRequest(),
       ),
     )

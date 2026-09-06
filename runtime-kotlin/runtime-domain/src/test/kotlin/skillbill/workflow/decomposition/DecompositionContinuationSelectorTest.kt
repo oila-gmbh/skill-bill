@@ -1,5 +1,4 @@
 package skillbill.workflow.decomposition
-
 import skillbill.workflow.decomposition.model.CurrentSubtaskIntent
 import skillbill.workflow.decomposition.model.DecompositionContinuationSelection
 import skillbill.workflow.decomposition.model.DecompositionDependency
@@ -7,6 +6,9 @@ import skillbill.workflow.decomposition.model.DecompositionExecutionModel
 import skillbill.workflow.decomposition.model.DecompositionManifest
 import skillbill.workflow.decomposition.model.DecompositionStackBranch
 import skillbill.workflow.decomposition.model.DecompositionSubtask
+import skillbill.workflow.decomposition.model.IssueKey
+import skillbill.workflow.decomposition.model.SubtaskId
+import skillbill.workflow.engine.model.WorkflowId
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
@@ -16,7 +18,7 @@ class DecompositionContinuationSelectorTest {
   fun `select resumes in-progress subtask at last resumable step`() {
     val selection = DecompositionContinuationSelector.select(
       manifest(
-        resumableSubtask(1, workflowId = "wfl-1", lastResumableStep = "validate"),
+        resumableSubtask(1, workflowId = WorkflowId("wfl-1"), lastResumableStep = "validate"),
         subtask(2, dependencies = listOf(DecompositionDependency(1))),
       ),
     )
@@ -161,14 +163,14 @@ class DecompositionContinuationSelectorTest {
     featureBranch: String? = "feat/SKILL-51-demo",
     stackBranches: List<DecompositionStackBranch> = emptyList(),
   ): DecompositionManifest = DecompositionManifest(
-    issueKey = "SKILL-51",
+    issueKey = IssueKey("SKILL-51"),
     featureName = "demo",
     parentSpecPath = ".feature-specs/SKILL-51-demo/spec.md",
     executionModel = executionModel,
     baseBranch = "main",
     featureBranch = featureBranch,
     stackBranches = stackBranches,
-    currentSubtaskIntent = CurrentSubtaskIntent(subtaskId = 1, action = "start"),
+    currentSubtaskIntent = CurrentSubtaskIntent(subtaskId = SubtaskId(1), action = "start"),
     subtasks = subtasks.toList(),
   )
 
@@ -177,7 +179,7 @@ class DecompositionContinuationSelectorTest {
     status: String = "pending",
     dependencies: List<DecompositionDependency> = emptyList(),
   ): DecompositionSubtask = DecompositionSubtask(
-    id = id,
+    id = SubtaskId(id),
     name = "subtask-$id",
     specPath = ".feature-specs/SKILL-51-demo/spec_subtask_$id.md",
     status = status,
@@ -186,7 +188,7 @@ class DecompositionContinuationSelectorTest {
 
   private fun resumableSubtask(id: Int, workflowId: String, lastResumableStep: String): DecompositionSubtask =
     subtask(id, status = "in_progress").copy(
-      workflowId = workflowId,
+      workflowId = WorkflowId(workflowId),
       lastResumableStep = lastResumableStep,
     )
 

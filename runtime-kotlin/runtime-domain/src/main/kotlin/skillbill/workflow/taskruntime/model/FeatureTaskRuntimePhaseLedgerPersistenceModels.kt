@@ -1,5 +1,7 @@
 package skillbill.workflow.taskruntime.model
 
+import skillbill.agent.model.AgentId
+
 import skillbill.boundary.OpenBoundaryMap
 import skillbill.error.InvalidWorkflowStateSchemaError
 
@@ -62,7 +64,7 @@ data class FeatureTaskRuntimePhaseLedgerEntry(
   val timestamp: String,
   val phaseId: String,
   val attemptCount: Int,
-  val resolvedAgentId: String? = null,
+  val resolvedAgentId: AgentId? = null,
   val executionOrigin: FeatureTaskRuntimePhaseExecutionOrigin =
     FeatureTaskRuntimePhaseExecutionOrigin.AGENT_EXECUTED,
   val fixLoopIteration: Int? = null,
@@ -100,7 +102,7 @@ data class FeatureTaskRuntimePhaseLedgerEntry(
     "phase_id" to phaseId,
     "attempt_count" to attemptCount,
   ).apply {
-    resolvedAgentId?.let { put("resolved_agent_id", it) }
+    resolvedAgentId?.let { put("resolved_agent_id", it.value) }
     put("execution_origin", executionOrigin.wireValue)
     fixLoopIteration?.let { put("fix_loop_iteration", it) }
     blockedReason?.let { put("blocked_reason", it) }
@@ -118,7 +120,7 @@ data class FeatureTaskRuntimePhaseLedgerEntry(
         timestamp = raw.requireStringField("timestamp"),
         phaseId = requireKnownFeatureTaskRuntimePhaseId(raw.requireStringField("phase_id"), "phase_id"),
         attemptCount = raw.requireIntField("attempt_count"),
-        resolvedAgentId = raw.optionalStringField("resolved_agent_id"),
+        resolvedAgentId = raw.optionalStringField("resolved_agent_id")?.let(::AgentId),
         executionOrigin = raw.optionalStringField("execution_origin")?.let(
           FeatureTaskRuntimePhaseExecutionOrigin::fromWireValue,
         ) ?: FeatureTaskRuntimePhaseExecutionOrigin.AGENT_EXECUTED,

@@ -1,5 +1,4 @@
 package skillbill.application
-
 import skillbill.application.goalplanning.GoalPlanningPreparationValidator
 import skillbill.application.goalplanning.sha256HexUtf8
 import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_CONTRACT_VERSION
@@ -12,6 +11,7 @@ import skillbill.infrastructure.fs.FeatureTaskRuntimePlanningProjectionValidator
 import skillbill.ports.goalrunner.model.GoalPlanningPreparationProvenance
 import skillbill.ports.goalrunner.model.GoalPlanningPreparationRecord
 import skillbill.ports.goalrunner.model.GoalPlanningPreparationState
+import skillbill.workflow.decomposition.model.SubtaskId
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
@@ -27,18 +27,18 @@ class GoalPlanningPreparationValidatorTest {
 
   @Test
   fun `a valid preplan and plan pair is accepted`() {
-    validator.validate(validRecord(parentGoalWorkflowId = "goal-1", subtaskId = 1))
+    validator.validate(validRecord(parentGoalWorkflowId = "goal-1", subtaskId = SubtaskId(1)))
   }
 
   @Test
   fun `a projection-valid pair still checkpoints unchanged after the producer gate is added`() {
     // Acceptance side of AC-004: the gate narrows nothing that was already valid.
-    validator.validate(validRecord(parentGoalWorkflowId = "goal-2", subtaskId = 3))
+    validator.validate(validRecord(parentGoalWorkflowId = "goal-2", subtaskId = SubtaskId(3)))
   }
 
   @Test
   fun `a plan payload missing value is rejected at write time`() {
-    val record = validRecord(parentGoalWorkflowId = "goal-1", subtaskId = 1).copy(
+    val record = validRecord(parentGoalWorkflowId = "goal-1", subtaskId = SubtaskId(1)).copy(
       planPayload = payloadJson(phaseId = "plan", producedOutputsJson = """{"prompt":"optional only"}"""),
     )
 
@@ -51,7 +51,7 @@ class GoalPlanningPreparationValidatorTest {
 
   @Test
   fun `a preplan payload missing value is rejected at write time`() {
-    val record = validRecord(parentGoalWorkflowId = "goal-1", subtaskId = 1).copy(
+    val record = validRecord(parentGoalWorkflowId = "goal-1", subtaskId = SubtaskId(1)).copy(
       preplanPayload = payloadJson(phaseId = "preplan", producedOutputsJson = """{"prompt":"optional only"}"""),
     )
 
@@ -60,7 +60,7 @@ class GoalPlanningPreparationValidatorTest {
 
   @Test
   fun `a plan payload in the preplan slot is rejected because phase_id must match the source label`() {
-    val record = validRecord(parentGoalWorkflowId = "goal-1", subtaskId = 1).copy(
+    val record = validRecord(parentGoalWorkflowId = "goal-1", subtaskId = SubtaskId(1)).copy(
       preplanPayload = payloadJson(phaseId = "plan"),
     )
 
@@ -69,7 +69,7 @@ class GoalPlanningPreparationValidatorTest {
 
   @Test
   fun `a payload with an incompatible phase output contract version is rejected`() {
-    val record = validRecord(parentGoalWorkflowId = "goal-1", subtaskId = 1).copy(
+    val record = validRecord(parentGoalWorkflowId = "goal-1", subtaskId = SubtaskId(1)).copy(
       preplanPayload = payloadJson(phaseId = "preplan", contractVersion = "9.9"),
     )
 
@@ -78,7 +78,7 @@ class GoalPlanningPreparationValidatorTest {
 
   @Test
   fun `a payload with an unsupported status is rejected`() {
-    val record = validRecord(parentGoalWorkflowId = "goal-1", subtaskId = 1).copy(
+    val record = validRecord(parentGoalWorkflowId = "goal-1", subtaskId = SubtaskId(1)).copy(
       planPayload = payloadJson(phaseId = "plan", status = "queued"),
     )
 
@@ -87,7 +87,7 @@ class GoalPlanningPreparationValidatorTest {
 
   @Test
   fun `a payload with empty produced_outputs is rejected`() {
-    val record = validRecord(parentGoalWorkflowId = "goal-1", subtaskId = 1).copy(
+    val record = validRecord(parentGoalWorkflowId = "goal-1", subtaskId = SubtaskId(1)).copy(
       planPayload = payloadJson(phaseId = "plan", producedOutputsJson = "{}"),
     )
 
@@ -96,7 +96,7 @@ class GoalPlanningPreparationValidatorTest {
 
   @Test
   fun `an envelope with an incompatible envelope contract version is rejected`() {
-    val record = validRecord(parentGoalWorkflowId = "goal-1", subtaskId = 1).copy(contractVersion = "0.2")
+    val record = validRecord(parentGoalWorkflowId = "goal-1", subtaskId = SubtaskId(1)).copy(contractVersion = "0.2")
 
     val error = assertFailsWith<InvalidGoalPlanningPreparationSchemaError> { validator.validate(record) }
     assertEquals("goal-1#1", error.sourceLabel)
@@ -104,7 +104,7 @@ class GoalPlanningPreparationValidatorTest {
 
   @Test
   fun `an envelope with pending status is rejected at the checkpoint seam`() {
-    val record = validRecord(parentGoalWorkflowId = "goal-1", subtaskId = 1).copy(
+    val record = validRecord(parentGoalWorkflowId = "goal-1", subtaskId = SubtaskId(1)).copy(
       preparationStatus = GoalPlanningPreparationState.PENDING,
     )
 

@@ -1,5 +1,7 @@
 package skillbill.application.goalplanning
 
+import skillbill.workflow.engine.model.WorkflowId
+import skillbill.workflow.decomposition.model.IssueKey
 import me.tatarka.inject.annotations.Inject
 import skillbill.application.planningprojection.producerProjectionGateReason
 import skillbill.application.planningprojection.requireValidPlanningProjection
@@ -15,6 +17,7 @@ import skillbill.ports.goalrunner.model.GoalPlanningPreparationRecord
 import skillbill.ports.goalrunner.model.GoalSubtaskPlanCheckpoint
 import skillbill.ports.goalrunner.model.GovernedGoalSubtaskDescriptor
 import skillbill.ports.goalrunner.model.SharedGoalPreplanCheckpoint
+import skillbill.workflow.decomposition.model.SubtaskId
 import skillbill.workflow.goal.GoalPlanningPreparationEnvelopeValidator
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseOutputValidator
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePlanningProjectionValidator
@@ -35,30 +38,30 @@ class GoalPlanningPreparationCheckpoint(
   private val preparationValidator =
     GoalPlanningPreparationValidator(phaseOutputValidator, planningProjectionValidator)
 
-  fun checkpoint(record: GoalPlanningPreparationRecord, dbOverride: String? = null) {
+  fun checkpoint(record: GoalPlanningPreparationRecord) {
     val canonical = preparationValidator.canonicalize(record)
-    envelopeValidator.validate(canonical.toEnvelopeMap(), "${canonical.parentGoalWorkflowId}#${canonical.subtaskId}")
-    database.selfManagedWrite(dbOverride) { unitOfWork ->
+    envelopeValidator.validate(canonical.toEnvelopeMap(), "${canonical.parentGoalWorkflowId.value}#${canonical.subtaskId.value}")
+    database.selfManagedWrite { unitOfWork ->
       unitOfWork.goalPlanningPreparations.markPrepared(canonical)
     }
   }
 
   fun validate(record: GoalPlanningPreparationRecord) {
-    val sourceLabel = "${record.parentGoalWorkflowId}#${record.subtaskId}"
+    val sourceLabel = "${record.parentGoalWorkflowId.value}#${record.subtaskId.value}"
     envelopeValidator.validate(record.toEnvelopeMap(), sourceLabel)
     preparationValidator.validate(record)
   }
 
-  fun checkpointSharedPreplan(checkpoint: SharedGoalPreplanCheckpoint, dbOverride: String? = null) {
+  fun checkpointSharedPreplan(checkpoint: SharedGoalPreplanCheckpoint) {
     val canonical = gate.canonicalizeSharedPreplan(checkpoint)
     gate.validateSharedPreplan(canonical)
-    database.selfManagedWrite(dbOverride) { it.goalPlanningPreparations.checkpointSharedPreplan(canonical) }
+    database.selfManagedWrite { it.goalPlanningPreparations.checkpointSharedPreplan(canonical) }
   }
 
-  fun checkpointSubtaskPlan(checkpoint: GoalSubtaskPlanCheckpoint, dbOverride: String? = null) {
+  fun checkpointSubtaskPlan(checkpoint: GoalSubtaskPlanCheckpoint) {
     val canonical = gate.canonicalizeSubtaskPlan(checkpoint)
     gate.validateSubtaskPlan(canonical)
-    database.selfManagedWrite(dbOverride) { it.goalPlanningPreparations.checkpointSubtaskPlan(canonical) }
+    database.selfManagedWrite { it.goalPlanningPreparations.checkpointSubtaskPlan(canonical) }
   }
 
   /**
@@ -67,18 +70,17 @@ class GoalPlanningPreparationCheckpoint(
    */
   fun recheckpointSharedPreplan(
     checkpoint: SharedGoalPreplanCheckpoint,
-    dbOverride: String? = null,
     cascadePlanSubtaskIds: List<Int> = emptyList(),
   ) {
     val canonical = gate.canonicalizeSharedPreplan(checkpoint)
     gate.validateSharedPreplan(canonical)
-    val stored = database.read(dbOverride) { it.goalPlanningPreparations.findSharedPreplan(canonical.identity) }
+    val stored = database.read { it.goalPlanningPreparations.findSharedPreplan(canonical.identity) }
     if (stored != null && gate.sharedPreplanIsRegenerable(stored)) {
-      database.selfManagedWrite(dbOverride) {
+      database.selfManagedWrite {
         it.goalPlanningPreparations.replaceSharedPreplan(canonical, stored.payloadSha256, cascadePlanSubtaskIds)
       }
     } else {
-      database.selfManagedWrite(dbOverride) { it.goalPlanningPreparations.checkpointSharedPreplan(canonical) }
+      database.selfManagedWrite { it.goalPlanningPreparations.checkpointSharedPreplan(canonical) }
     }
   }
 
@@ -90,46 +92,43 @@ class GoalPlanningPreparationCheckpoint(
    * Checkpoints a regenerated subtask plan, overwriting a stored record the projection gate rejects so the
    * regeneration actually lands. A stored record that still satisfies the gate keeps its immutable guard.
    */
-  fun recheckpointSubtaskPlan(checkpoint: GoalSubtaskPlanCheckpoint, dbOverride: String? = null) {
+  fun recheckpointSubtaskPlan(checkpoint: GoalSubtaskPlanCheckpoint) {
     val canonical = gate.canonicalizeSubtaskPlan(checkpoint)
     gate.validateSubtaskPlan(canonical)
     val stored = findStoredSubtaskPlan(
       canonical.identity,
       canonical.subtaskId,
       canonical.governedSubSpecPath,
-      dbOverride,
     )
     if (stored != null && gate.subtaskPlanIsRegenerable(stored)) {
-      database.selfManagedWrite(dbOverride) { it.goalPlanningPreparations.replaceSubtaskPlan(canonical) }
+      database.selfManagedWrite { it.goalPlanningPreparations.replaceSubtaskPlan(canonical) }
     } else {
-      database.selfManagedWrite(dbOverride) { it.goalPlanningPreparations.checkpointSubtaskPlan(canonical) }
+      database.selfManagedWrite { it.goalPlanningPreparations.checkpointSubtaskPlan(canonical) }
     }
   }
 
   /** The stored subtask plan as persisted, independent of the projection verdict. */
   fun findStoredSubtaskPlan(
     identity: GoalPlanningIdentity,
-    subtaskId: Int,
+    subtaskId: SubtaskId,
     governedSubSpecPath: String,
-    dbOverride: String? = null,
-  ): GoalSubtaskPlanCheckpoint? = database.read(dbOverride) {
+  ): GoalSubtaskPlanCheckpoint? = database.read {
     it.goalPlanningPreparations.findSubtaskPlan(identity, subtaskId, governedSubSpecPath)
   }
 
   // A stored record whose projection no longer satisfies the gate is regenerable, not fatal: reporting it
   // as missing lets the sweep re-produce it under the same gate and re-checkpoint it, where throwing here
   // would wedge the goal terminally with no in-band repair. Structural drift still throws.
-  fun findSharedPreplan(identity: GoalPlanningIdentity, dbOverride: String? = null): SharedGoalPreplanCheckpoint? =
-    database.read(dbOverride) { it.goalPlanningPreparations.findSharedPreplan(identity) }
+  fun findSharedPreplan(identity: GoalPlanningIdentity): SharedGoalPreplanCheckpoint? =
+    database.read { it.goalPlanningPreparations.findSharedPreplan(identity) }
       ?.takeIf { gate.sharedPreplanRejection(it) == null }
 
   fun findSubtaskPlan(
     identity: GoalPlanningIdentity,
-    subtaskId: Int,
+    subtaskId: SubtaskId,
     governedSubSpecPath: String,
     expectedDescriptor: GovernedGoalSubtaskDescriptor? = null,
-    dbOverride: String? = null,
-  ): GoalSubtaskPlanCheckpoint? = database.read(dbOverride) {
+  ): GoalSubtaskPlanCheckpoint? = database.read {
     it.goalPlanningPreparations.findSubtaskPlan(identity, subtaskId, governedSubSpecPath)
   }?.let { plan ->
     val projectionRejection = gate.subtaskPlanRejection(plan)
@@ -160,16 +159,14 @@ class GoalPlanningPreparationCheckpoint(
     identity: GoalPlanningIdentity,
     orderedDescriptors: List<GovernedGoalSubtaskDescriptor>,
     expectedProvenance: GoalPlanningContractProvenance,
-    dbOverride: String? = null,
   ): GoalPlanningPreparationProgress {
-    val sharedPrepared = findSharedPreplan(identity, dbOverride) != null
+    val sharedPrepared = findSharedPreplan(identity) != null
     val prepared = orderedDescriptors.mapNotNull { descriptor ->
       findSubtaskPlan(
         identity,
         descriptor.subtaskId,
         descriptor.governedSubSpecPath,
         descriptor,
-        dbOverride,
       )?.also { plan ->
         if (plan.provenance != expectedProvenance) {
           throw IncompatibleGoalPlanningPreparationRecoveryError(
@@ -211,10 +208,9 @@ class GoalPlanningSharedPreplanRefresh(
   private val gate: GoalPlanningPreparationProjectionGate,
 ) {
   /** Prepared plan subtask ids currently stored for [parentGoalWorkflowId], including orphans. */
-  fun listPreparedPlanSubtaskIds(parentGoalWorkflowId: String, dbOverride: String? = null): List<Int> =
-    database.read(dbOverride) {
-      it.goalPlanningPreparations.listPreparedPlanSubtaskIds(parentGoalWorkflowId)
-    }
+  fun listPreparedPlanSubtaskIds(parentGoalWorkflowId: WorkflowId): List<Int> = database.read {
+    it.goalPlanningPreparations.listPreparedPlanSubtaskIds(parentGoalWorkflowId)
+  }
 
   /**
    * Provenance-only refresh: advance shared + plan-row provenance to [provenance] while keeping the exact
@@ -224,9 +220,8 @@ class GoalPlanningSharedPreplanRefresh(
     identity: GoalPlanningIdentity,
     expectedPayloadSha256: String,
     provenance: GoalPlanningContractProvenance,
-    dbOverride: String? = null,
   ) {
-    database.selfManagedWrite(dbOverride) {
+    database.selfManagedWrite {
       it.goalPlanningPreparations.advanceSharedPreplanProvenance(identity, expectedPayloadSha256, provenance)
     }
   }
@@ -239,11 +234,10 @@ class GoalPlanningSharedPreplanRefresh(
     checkpoint: SharedGoalPreplanCheckpoint,
     expectedPayloadSha256: String,
     cascadePlanSubtaskIds: List<Int>,
-    dbOverride: String? = null,
   ): SharedGoalPreplanCheckpoint {
     val canonical = gate.canonicalizeSharedPreplan(checkpoint)
     gate.validateSharedPreplan(canonical)
-    database.selfManagedWrite(dbOverride) {
+    database.selfManagedWrite {
       it.goalPlanningPreparations.replaceSharedPreplan(canonical, expectedPayloadSha256, cascadePlanSubtaskIds)
     }
     return canonical
@@ -411,15 +405,15 @@ private fun SharedGoalPreplanCheckpoint.toEnvelopeMap(): Map<String, Any?> = lin
 
 private fun GoalSubtaskPlanCheckpoint.toEnvelopeMap(): Map<String, Any?> = linkedMapOf(
   "contract_version" to contractVersion, "record_type" to "subtask_plan", "identity" to identity.asMap(),
-  "subtask_id" to subtaskId, "manifest_order" to manifestOrder, "governed_sub_spec_path" to governedSubSpecPath,
+  "subtask_id" to subtaskId.value, "manifest_order" to manifestOrder, "governed_sub_spec_path" to governedSubSpecPath,
   "sub_spec_hash" to subSpecHash, "preparation_status" to preparationStatus.wireValue,
   "provenance" to provenance.asMap(), "payload_sha256" to payloadSha256, "plan_payload" to planPayload,
   "repair_evidence" to repairEvidence?.toArtifactMap(),
 ).filterValues { it != null }
 
 private fun GoalPlanningIdentity.asMap() = linkedMapOf(
-  "parent_goal_workflow_id" to parentGoalWorkflowId,
-  "normalized_issue_key" to normalizedIssueKey,
+  "parent_goal_workflow_id" to parentGoalWorkflowId.value,
+  "normalized_issue_key" to normalizedIssueKey.value,
   "repository_identity" to repositoryIdentity,
 )
 

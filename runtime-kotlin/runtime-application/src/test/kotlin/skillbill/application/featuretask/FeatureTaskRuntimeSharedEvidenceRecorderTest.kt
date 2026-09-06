@@ -1,5 +1,4 @@
 package skillbill.application.featuretask
-
 import skillbill.application.InMemoryRuntimeWorkflowRepository
 import skillbill.application.RecordingLifecycleTelemetryRepository
 import skillbill.application.RuntimeFakeDatabaseSessionFactory
@@ -7,6 +6,7 @@ import skillbill.application.featuretask.model.FeatureTaskRuntimePhaseLaunchBrie
 import skillbill.application.testHarnessClock
 import skillbill.ports.diagnostics.NoopRuntimeDiagnostics
 import skillbill.workflow.engine.WorkflowSnapshotValidator
+import skillbill.workflow.engine.model.WorkflowId
 import skillbill.workflow.engine.model.WorkflowStateSnapshot
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeHandoffEnvelope
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeSharedEvidenceMeasurement
@@ -30,7 +30,7 @@ class FeatureTaskRuntimeSharedEvidenceRecorderTest {
         FeatureTaskRuntimeSharedEvidenceOutcome.REUSE
       }
       recorder.recordPhaseBriefing(
-        workflowId = "wf-shared",
+        workflowId = WorkflowId("wf-shared"),
         briefing = emptyBriefing(phaseId),
         sharedEvidenceMeasurement = measurement(phaseId, fingerprint, outcome),
       )
@@ -49,7 +49,7 @@ class FeatureTaskRuntimeSharedEvidenceRecorderTest {
     recorder.ensureWorkflowOpen("wf-shared", "session-1")
 
     recorder.recordPhaseBriefing(
-      workflowId = "wf-shared",
+      workflowId = WorkflowId("wf-shared"),
       briefing = emptyBriefing("audit"),
       sharedEvidenceMeasurement = measurement(
         "audit",
@@ -58,7 +58,7 @@ class FeatureTaskRuntimeSharedEvidenceRecorderTest {
       ),
     )
     recorder.recordPhaseBriefing(
-      workflowId = "wf-shared",
+      workflowId = WorkflowId("wf-shared"),
       briefing = emptyBriefing("audit"),
       sharedEvidenceMeasurement = measurement(
         "audit",
@@ -105,7 +105,7 @@ class FeatureTaskRuntimeSharedEvidenceRecorderTest {
 
   private fun measurement(phaseId: String, fingerprint: String, outcome: FeatureTaskRuntimeSharedEvidenceOutcome) =
     FeatureTaskRuntimeSharedEvidenceMeasurement(
-      workflowId = "wf-shared",
+      workflowId = WorkflowId("wf-shared"),
       checkpointFingerprint = fingerprint,
       consumerPhaseId = phaseId,
       outcome = outcome,

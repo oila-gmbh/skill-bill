@@ -1,5 +1,7 @@
 package skillbill.review.context.model
 
+import skillbill.agent.model.AgentId
+
 const val REVIEW_CONTEXT_BUDGET_EXCEEDED: String = "review_context_budget_exceeded"
 const val REVIEW_ROUTING_ANALYSIS_PAIRS_BUDGET: String = "routing_analysis_pairs"
 
@@ -138,10 +140,10 @@ data class ReviewLaneIdentity(val lane: String, val packetDigest: String, val as
      * The dual-agent parallel runner has no packet; its lane identity is content-addressed over the
      * authoritative parent prompt it hands each agent, which is the only scope artifact that exists there.
      */
-    fun ofParallelLane(agentId: String, parentPrompt: String): ReviewLaneIdentity = ReviewLaneIdentity(
-      lane = agentId,
+    fun ofParallelLane(agentId: AgentId, parentPrompt: String): ReviewLaneIdentity = ReviewLaneIdentity(
+      lane = agentId.value,
       packetDigest = sha256(parentPrompt.replace("\r\n", "\n")),
-      assignmentDigest = sha256(agentId + "\u001f" + parentPrompt.replace("\r\n", "\n")),
+      assignmentDigest = sha256(agentId.value + "\u001f" + parentPrompt.replace("\r\n", "\n")),
     )
   }
 }

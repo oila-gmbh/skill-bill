@@ -1,5 +1,4 @@
 package skillbill.cli
-
 import skillbill.application.workflow.model.WorkflowContinueResult
 import skillbill.application.workflow.model.WorkflowGetResult
 import skillbill.application.workflow.model.WorkflowUpdateResult
@@ -11,6 +10,8 @@ import skillbill.contracts.workflow.GoalObservabilityEventSchemaValidator
 import skillbill.error.InvalidGoalObservabilityEventSchemaError
 import skillbill.workflow.engine.WorkflowEngine
 import skillbill.workflow.engine.WorkflowSnapshotValidator
+import skillbill.workflow.engine.model.SessionId
+import skillbill.workflow.engine.model.WorkflowId
 import skillbill.workflow.engine.model.WorkflowSnapshotView
 import skillbill.workflow.engine.model.WorkflowStateSnapshot
 import skillbill.workflow.engine.model.WorkflowStepState
@@ -30,11 +31,11 @@ class WorkflowCliResultMappersTest {
   @Test
   fun `workflow update mapper emits compact acknowledgement without full state`() {
     val mapped = WorkflowUpdateResult.Ok(
-      workflowId = "wfl-1",
+      workflowId = WorkflowId("wfl-1"),
       dbPath = "/tmp/metrics.db",
       acknowledgement = WorkflowUpdateAcknowledgementView(
         status = "ok",
-        workflowId = "wfl-1",
+        workflowId = WorkflowId("wfl-1"),
         workflowName = "bill-feature-task",
         workflowStatus = "running",
         currentStepId = "implement",
@@ -64,8 +65,8 @@ class WorkflowCliResultMappersTest {
     val definition = FeatureTaskRuntimePhaseWorkflowDefinition.definition
     val engine = WorkflowEngine(NoopWorkflowSnapshotValidator)
     val record = WorkflowStateSnapshot(
-      workflowId = "wftr-crashed",
-      sessionId = "ftr-001",
+      workflowId = WorkflowId("wftr-crashed"),
+      sessionId = SessionId("ftr-001"),
       workflowName = definition.workflowName,
       contractVersion = definition.contractVersion,
       workflowStatus = "running",
@@ -127,7 +128,7 @@ class WorkflowCliResultMappersTest {
   @Test
   fun `workflow mapper exposes compact goal observability summary without heavy fields`() {
     val mapped = WorkflowGetResult.Ok(
-      workflowId = "wfl-1",
+      workflowId = WorkflowId("wfl-1"),
       dbPath = "/tmp/metrics.db",
       snapshot = snapshotWithObservability(),
     ).toCliMap(testGoalObservabilityEventValidator)
@@ -143,7 +144,7 @@ class WorkflowCliResultMappersTest {
   fun `workflow mapper loud-fails malformed goal observability latest event`() {
     val error = assertFailsWith<InvalidGoalObservabilityEventSchemaError> {
       WorkflowGetResult.Ok(
-        workflowId = "wfl-1",
+        workflowId = WorkflowId("wfl-1"),
         dbPath = "/tmp/metrics.db",
         snapshot = snapshotWithObservability(
           event = mapOf(
@@ -167,7 +168,7 @@ class WorkflowCliResultMappersTest {
   fun `workflow mapper loud-fails schema-invalid extra goal observability field`() {
     val error = assertFailsWith<InvalidGoalObservabilityEventSchemaError> {
       WorkflowGetResult.Ok(
-        workflowId = "wfl-1",
+        workflowId = WorkflowId("wfl-1"),
         dbPath = "/tmp/metrics.db",
         snapshot = snapshotWithObservability(event = snapshotWithObservabilityEvent() + ("unknown" to true)),
       ).toCliMap(testGoalObservabilityEventValidator)
@@ -180,7 +181,7 @@ class WorkflowCliResultMappersTest {
   fun `workflow mapper loud-fails malformed optional goal observability summary`() {
     val error = assertFailsWith<InvalidGoalObservabilityEventSchemaError> {
       WorkflowGetResult.Ok(
-        workflowId = "wfl-1",
+        workflowId = WorkflowId("wfl-1"),
         dbPath = "/tmp/metrics.db",
         snapshot = snapshotWithObservability(
           event = snapshotWithObservabilityEvent() + ("changed_file_summary" to "not-an-object"),
@@ -195,7 +196,7 @@ class WorkflowCliResultMappersTest {
   fun `workflow mapper loud-fails malformed optional goal observability arrays`() {
     val changedFilesError = assertFailsWith<InvalidGoalObservabilityEventSchemaError> {
       WorkflowGetResult.Ok(
-        workflowId = "wfl-1",
+        workflowId = WorkflowId("wfl-1"),
         dbPath = "/tmp/metrics.db",
         snapshot = snapshotWithObservability(
           event = snapshotWithObservabilityEvent() + ("changed_files" to listOf(123)),
@@ -206,7 +207,7 @@ class WorkflowCliResultMappersTest {
 
     val samplePathsError = assertFailsWith<InvalidGoalObservabilityEventSchemaError> {
       WorkflowGetResult.Ok(
-        workflowId = "wfl-1",
+        workflowId = WorkflowId("wfl-1"),
         dbPath = "/tmp/metrics.db",
         snapshot = snapshotWithObservability(
           event = snapshotWithObservabilityEvent() + (
@@ -230,7 +231,7 @@ class WorkflowCliResultMappersTest {
   fun `workflow mapper loud-fails schema-invalid scalar coercion`() {
     val issueKeyError = assertFailsWith<InvalidGoalObservabilityEventSchemaError> {
       WorkflowGetResult.Ok(
-        workflowId = "wfl-1",
+        workflowId = WorkflowId("wfl-1"),
         dbPath = "/tmp/metrics.db",
         snapshot = snapshotWithObservability(event = snapshotWithObservabilityEvent() + ("issue_key" to 61)),
       ).toCliMap(testGoalObservabilityEventValidator)
@@ -239,7 +240,7 @@ class WorkflowCliResultMappersTest {
 
     val subtaskIdError = assertFailsWith<InvalidGoalObservabilityEventSchemaError> {
       WorkflowGetResult.Ok(
-        workflowId = "wfl-1",
+        workflowId = WorkflowId("wfl-1"),
         dbPath = "/tmp/metrics.db",
         snapshot = snapshotWithObservability(event = snapshotWithObservabilityEvent() + ("subtask_id" to "1")),
       ).toCliMap(testGoalObservabilityEventValidator)
@@ -248,7 +249,7 @@ class WorkflowCliResultMappersTest {
 
     val timestampError = assertFailsWith<InvalidGoalObservabilityEventSchemaError> {
       WorkflowGetResult.Ok(
-        workflowId = "wfl-1",
+        workflowId = WorkflowId("wfl-1"),
         dbPath = "/tmp/metrics.db",
         snapshot = snapshotWithObservability(event = snapshotWithObservabilityEvent() + ("timestamp" to 20260601)),
       ).toCliMap(testGoalObservabilityEventValidator)
@@ -260,7 +261,7 @@ class WorkflowCliResultMappersTest {
   fun `workflow mapper loud-fails schema-only invalid heavy goal observability fields`() {
     val error = assertFailsWith<InvalidGoalObservabilityEventSchemaError> {
       WorkflowGetResult.Ok(
-        workflowId = "wfl-1",
+        workflowId = WorkflowId("wfl-1"),
         dbPath = "/tmp/metrics.db",
         snapshot = snapshotWithObservability(
           event = snapshotWithObservabilityEvent() + ("changed_files" to List(501) { "file-$it.kt" }),
@@ -274,8 +275,8 @@ class WorkflowCliResultMappersTest {
   private fun snapshotWithObservability(
     event: Map<String, Any?> = snapshotWithObservabilityEvent(),
   ): WorkflowSnapshotView = WorkflowSnapshotView(
-    workflowId = "wfl-1",
-    sessionId = "fis-1",
+    workflowId = WorkflowId("wfl-1"),
+    sessionId = SessionId("fis-1"),
     workflowName = "bill-feature-task",
     contractVersion = "0.1",
     workflowStatus = "running",

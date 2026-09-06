@@ -1,20 +1,24 @@
 package skillbill.ports.goalrunner.persistence.model
+
 import skillbill.boundary.OpenBoundaryMap
 import skillbill.goalrunner.model.GoalContinuation
 import skillbill.goalrunner.model.GoalRunnerStoredOutcome
 import skillbill.goalrunner.model.GoalRunnerSupervisionEvent
 import skillbill.ports.workflow.WorkflowStateRepository
 import skillbill.ports.workflow.model.WorkflowFamily
+import skillbill.workflow.decomposition.model.IssueKey
+import skillbill.workflow.decomposition.model.SubtaskId
+import skillbill.workflow.engine.model.WorkflowId
 import skillbill.workflow.engine.model.WorkflowStateSnapshot
 
 data class GoalSubtaskIdentity(
-  val workflowId: String,
-  val issueKey: String,
-  val subtaskId: Int,
+  val workflowId: WorkflowId,
+  val issueKey: IssueKey,
+  val subtaskId: SubtaskId,
 )
 
 data class HistoryArtifactAppend(
-  val workflowId: String,
+  val workflowId: WorkflowId,
   val latestKey: String?,
   val historyKey: String,
   val retentionLimit: Int,

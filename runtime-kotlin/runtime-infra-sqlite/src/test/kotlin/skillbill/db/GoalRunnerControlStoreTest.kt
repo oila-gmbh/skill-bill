@@ -1,5 +1,4 @@
 package skillbill.db
-
 import skillbill.db.core.DatabaseRuntime
 import skillbill.db.workflow.GoalRunnerControlStore
 import skillbill.db.workflow.LEGACY_UNKNOWN_PAUSED_AT
@@ -13,6 +12,7 @@ import skillbill.ports.goalrunner.releaseExecutionLease
 import skillbill.ports.goalrunner.runner.model.GoalRunnerOutOfBandAcceptance
 import skillbill.ports.goalrunner.runner.model.GoalRunnerReviewPolicy
 import skillbill.review.context.model.CodeReviewExecutionMode
+import skillbill.workflow.decomposition.model.SubtaskId
 import java.nio.file.Files
 import java.sql.Connection
 import kotlin.test.Test
@@ -29,7 +29,7 @@ class GoalRunnerControlStoreTest {
       val store = GoalRunnerControlStore(connection)
       val policy = GoalRunnerReviewPolicy(CodeReviewExecutionMode.INLINE)
       val acceptance = GoalRunnerOutOfBandAcceptance(
-        subtaskId = 2,
+        subtaskId = SubtaskId(2),
         commitSha = "abc123",
         reason = "work was completed on the feature branch",
         acceptedAt = "2026-08-01T10:00:00Z",

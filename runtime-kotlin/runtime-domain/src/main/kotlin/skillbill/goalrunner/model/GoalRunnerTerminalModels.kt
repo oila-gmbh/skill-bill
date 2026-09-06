@@ -1,6 +1,9 @@
 package skillbill.goalrunner.model
 
 import skillbill.workflow.decomposition.model.DecompositionSubtask
+import skillbill.workflow.decomposition.model.IssueKey
+import skillbill.workflow.decomposition.model.SubtaskId
+import skillbill.workflow.engine.model.WorkflowId
 
 enum class GoalRunnerTerminalStatus {
   COMPLETE,
@@ -55,7 +58,7 @@ enum class GoalRunnerStopReason {
 
 data class GoalRunnerStoredOutcome(
   val status: GoalRunnerTerminalStatus,
-  val workflowId: String,
+  val workflowId: WorkflowId,
   val commitSha: String? = null,
   val blockedReason: String? = null,
   val lastResumableStep: String? = null,
@@ -64,7 +67,7 @@ data class GoalRunnerStoredOutcome(
 
 sealed interface GoalRunnerReconciledOutcome {
   data class Complete(
-    val workflowId: String,
+    val workflowId: WorkflowId,
     val commitSha: String,
     val lastResumableStep: String,
   ) : GoalRunnerReconciledOutcome
@@ -72,7 +75,7 @@ sealed interface GoalRunnerReconciledOutcome {
   data class Stop(
     val reason: GoalRunnerStopReason,
     val blockedReason: String,
-    val workflowId: String?,
+    val workflowId: WorkflowId?,
     val commitSha: String?,
     val lastResumableStep: String,
     val liveness: GoalRunnerLivenessSnapshot? = null,
@@ -96,20 +99,20 @@ sealed interface GoalRunnerSelection {
 }
 
 data class GoalRunnerStopReport(
-  val issueKey: String,
-  val subtaskId: Int,
+  val issueKey: IssueKey,
+  val subtaskId: SubtaskId,
   val reason: GoalRunnerStopReason,
   val blockedReason: String,
-  val workflowId: String?,
+  val workflowId: WorkflowId?,
   val lastResumableStep: String,
 )
 
 sealed interface GoalRunnerRunReport {
-  val issueKey: String
+  val issueKey: IssueKey
   val attemptedSubtasks: List<Int>
 
   data class Completed(
-    override val issueKey: String,
+    override val issueKey: IssueKey,
     override val attemptedSubtasks: List<Int>,
     val pullRequestUrl: String?,
     val pullRequestStatus: String,
@@ -122,7 +125,7 @@ sealed interface GoalRunnerRunReport {
   ) : GoalRunnerRunReport
 
   data class Stopped(
-    override val issueKey: String,
+    override val issueKey: IssueKey,
     override val attemptedSubtasks: List<Int>,
     val stop: GoalRunnerStopReport,
   ) : GoalRunnerRunReport

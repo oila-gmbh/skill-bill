@@ -1,5 +1,4 @@
 package skillbill.application.workflow
-
 import skillbill.application.decomposition.DECOMPOSITION_RUNTIME_ARTIFACT_KEY
 import skillbill.application.decomposition.encodeDecompositionManifestMap
 import skillbill.application.decomposition.model.DecompositionManifestRuntimeUpdate
@@ -9,6 +8,7 @@ import skillbill.ports.persistence.UnitOfWork
 import skillbill.ports.workflow.model.toSnapshot
 import skillbill.workflow.decomposition.DecompositionManifestValidator
 import skillbill.workflow.engine.WorkflowEngine
+import skillbill.workflow.engine.model.WorkflowId
 import skillbill.workflow.engine.model.WorkflowStateSnapshot
 import skillbill.workflow.engine.model.WorkflowUpdateInput
 
@@ -53,7 +53,7 @@ internal data class DecompositionRuntimeInput(
 fun WorkflowEngine.syncDecompositionParentRuntime(
   family: WorkflowFamily,
   updated: WorkflowStateSnapshot,
-  workflowId: String,
+  workflowId: WorkflowId,
   unitOfWork: UnitOfWork,
   validator: DecompositionManifestValidator,
 ) {

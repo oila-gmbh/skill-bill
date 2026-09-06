@@ -1,8 +1,8 @@
 package skillbill.application.review
-
 import skillbill.ports.goalrunner.runner.model.GoalRunnerSubtaskLaunchRequest
 import skillbill.review.context.model.CodeReviewExecutionMode
 import skillbill.review.model.ReviewClaimVerdict
+import skillbill.review.model.ReviewRunId
 import skillbill.review.model.ReviewStage
 import skillbill.review.model.ReviewStageReached
 import kotlin.test.Test
@@ -25,7 +25,13 @@ class ParallelCodeReviewClaimVerificationTest {
     )
     modes.forEach { (mode, config) ->
       val recorder = ReviewRecorder()
-      reviewHarness(config, recorder).run(harnessRequest(reviewRunId = "verify-$mode", codeReviewMode = mode))
+      reviewHarness(config, recorder).run(
+        harnessRequest(
+          reviewRunId =
+          ReviewRunId("verify-$mode"),
+          codeReviewMode = mode,
+        ),
+      )
       val findings = recorder.durableFindingVerdicts.filter { it.stage == ReviewStage.VERIFICATION }
       assertEquals(2, findings.size, "mode=$mode")
       assertEquals(setOf("F-001", "F-002"), findings.map { it.findingRef }.toSet())
@@ -120,7 +126,7 @@ class ParallelCodeReviewClaimVerificationTest {
   }
 
   private fun delegatedRequest() = harnessRequest(
-    reviewRunId = RUN_ID,
+    reviewRunId = ReviewRunId(RUN_ID),
     codeReviewMode = CodeReviewExecutionMode.DELEGATED,
   )
 

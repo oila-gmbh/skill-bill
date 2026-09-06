@@ -1,11 +1,11 @@
 package skillbill.application
-
 import skillbill.application.workflow.model.WorkflowFamilyKind
 import skillbill.application.workflow.model.WorkflowUpdateRequest
 import skillbill.application.workflow.model.WorkflowUpdateResult.Ok
 import skillbill.di.RuntimeComponent
 import skillbill.di.create
 import skillbill.model.RuntimeContext
+import skillbill.workflow.engine.model.SessionId
 import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.test.Test
@@ -29,7 +29,12 @@ class WorkflowServiceRuntimeComponentTest {
           userHome = tempDir,
         ),
       ).workflowService
-    val opened = service.openTestFeatureTask(WorkflowFamilyKind.TASK_RUNTIME, sessionId = "ftr-001", dbOverride = null)
+    val opened = service.openTestFeatureTask(
+      WorkflowFamilyKind.TASK_RUNTIME,
+      sessionId =
+      SessionId("ftr-001"),
+      dbOverride = null,
+    )
     val workflowId =
       (opened as WorkflowOpenResultOk).workflowId
 

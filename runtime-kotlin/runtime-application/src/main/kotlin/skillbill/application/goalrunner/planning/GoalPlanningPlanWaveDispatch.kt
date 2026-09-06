@@ -1,5 +1,4 @@
 package skillbill.application.goalrunner.planning
-
 import skillbill.application.goalrunner.ProduceMissingPlansArgs
 import skillbill.application.goalrunner.ProducePlanArgs
 import skillbill.application.goalrunner.planning.model.GoalPlanningSweepOutcome
@@ -9,6 +8,7 @@ import skillbill.ports.concurrency.BoundedWorkFanOutPort
 import skillbill.ports.goalrunner.model.GovernedGoalSubtaskDescriptor
 import skillbill.ports.goalrunner.planning.model.GoalPlanningResolvedBoundaryBodies
 import skillbill.workflow.decomposition.model.DecompositionSubtask
+import skillbill.workflow.decomposition.model.SubtaskId
 
 private data class MissingPlanSet(
   val subtaskIds: List<Int> = emptyList(),
@@ -43,7 +43,6 @@ private fun DefaultGoalPlanningSweep.missingPlanSet(
       args.identity,
       descriptors,
       args.provenance,
-      shared.dbPathOverride,
     ).missingSubtaskIds
   }
   val error = recovery.exceptionOrNull() ?: return MissingPlanSet(subtaskIds = recovery.getOrThrow())
@@ -103,7 +102,7 @@ private fun DefaultGoalPlanningSweep.runPlanWave(args: PlanWaveArgs): GoalPlanni
 
 private fun DefaultGoalPlanningSweep.producePlanUnit(
   args: PlanWaveArgs,
-  subtaskId: Int,
+  subtaskId: SubtaskId,
 ): GoalPlanningSweepOutcome.Stopped? {
   val produce = args.produce
   val shared = produce.shared
@@ -138,7 +137,7 @@ private fun DefaultGoalPlanningSweep.producePlanUnit(
 private class SubtaskAttributedOutputSink(
   private val fanOutPort: BoundedWorkFanOutPort,
   private val delegate: AgentRunOutputSink,
-  subtaskId: Int,
+  subtaskId: SubtaskId,
 ) : AgentRunOutputSink {
   private val attribution = "[subtask $subtaskId] "
   private val pending = mutableMapOf<AgentRunOutputStream, StringBuilder>()

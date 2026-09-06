@@ -55,6 +55,9 @@ import skillbill.review.model.GoalWorkflowStats
 import skillbill.review.model.ImportedReview
 import skillbill.review.model.NumberedFinding
 import skillbill.review.model.ReviewFinishedTelemetry
+import skillbill.review.model.ReviewRunId
+import skillbill.workflow.decomposition.model.IssueKey
+import skillbill.workflow.engine.model.WorkflowId
 import java.nio.file.Path
 import java.sql.Connection
 
@@ -90,23 +93,24 @@ class SQLiteUnitOfWork(
 class SQLiteUnaddressedFindingsRepository(connection: Connection) : UnaddressedFindingsRepository {
   private val runtime = UnaddressedFindingsRuntime(connection)
 
-  override fun replaceLedgerForPass(workflowId: String, reviewPassNumber: Int, findings: List<UnaddressedFinding>) =
-    runtime.replaceLedgerForPass(workflowId, reviewPassNumber, findings)
+  override fun replaceLedgerForPass(workflowId: WorkflowId, reviewPassNumber: Int, findings: List<UnaddressedFinding>) =
+    runtime.replaceLedgerForPass(workflowId.value, reviewPassNumber, findings)
 
-  override fun clearWorkflowLedger(workflowId: String) = runtime.clearWorkflowLedger(workflowId)
+  override fun clearWorkflowLedger(workflowId: WorkflowId) = runtime.clearWorkflowLedger(workflowId.value)
 
   override fun recordOutcomes(outcomes: List<ReviewFindingOutcomeRecord>) = runtime.recordOutcomes(outcomes)
 
-  override fun fetchOutcomes(workflowId: String): List<ReviewFindingOutcomeRecord> = runtime.fetchOutcomes(workflowId)
+  override fun fetchOutcomes(workflowId: WorkflowId): List<ReviewFindingOutcomeRecord> =
+    runtime.fetchOutcomes(workflowId.value)
 
-  override fun fetchLedger(issueKey: String): List<UnaddressedFinding> = runtime.fetchLedger(issueKey)
+  override fun fetchLedger(issueKey: IssueKey): List<UnaddressedFinding> = runtime.fetchLedger(issueKey.value)
 
-  override fun fetchWorkflowLedger(workflowId: String): List<UnaddressedFinding> =
-    runtime.fetchWorkflowLedger(workflowId)
+  override fun fetchWorkflowLedger(workflowId: WorkflowId): List<UnaddressedFinding> =
+    runtime.fetchWorkflowLedger(workflowId.value)
 
-  override fun workflowIdsForIssue(issueKey: String): List<String> = runtime.workflowIdsForIssue(issueKey)
+  override fun workflowIdsForIssue(issueKey: IssueKey): List<String> = runtime.workflowIdsForIssue(issueKey.value)
 
-  override fun issueExists(issueKey: String): Boolean = runtime.issueExists(issueKey)
+  override fun issueExists(issueKey: IssueKey): Boolean = runtime.issueExists(issueKey.value)
 }
 
 class SQLiteTelemetryReconciliationRepository(
@@ -145,23 +149,23 @@ class SQLiteReviewRepository(
   override fun saveImportedReview(review: ImportedReview, sourcePath: String?) =
     persistImportedReview(connection, review, sourcePath)
 
-  override fun markOrchestrated(runId: String) {
+  override fun markOrchestrated(runId: ReviewRunId) {
     connection.prepareStatement(
       "UPDATE review_runs SET orchestrated_run = 1 WHERE review_run_id = ?",
     ).use { statement ->
-      statement.setString(1, runId)
+      statement.setString(1, runId.value)
       statement.executeUpdate()
     }
   }
 
   override fun updateReviewFinishedTelemetryState(
-    runId: String,
+    runId: ReviewRunId,
     enabled: Boolean,
     level: String,
     routedSkillPlatformSlugs: Map<String, String>,
   ): ReviewFinishedTelemetry? = ReviewStatsRuntime.updateReviewFinishedTelemetryState(
     connection = connection,
-    reviewRunId = runId,
+    reviewRunId = runId.value,
     enabled = enabled,
     level = level,
     routedSkillPlatformSlugs = routedSkillPlatformSlugs,
@@ -177,13 +181,16 @@ class SQLiteReviewRepository(
     telemetryOptions.copy(routedSkillPlatformSlugs = routedSkillPlatformSlugs),
   )
 
-  override fun fetchNumberedFindings(runId: String): List<NumberedFinding> =
-    ReviewRuntime.fetchNumberedFindings(connection, runId)
+  override fun fetchNumberedFindings(runId: ReviewRunId): List<NumberedFinding> =
+    ReviewRuntime.fetchNumberedFindings(connection, runId.value)
 
-  override fun findingExists(runId: String, findingId: String): Boolean =
-    ReviewRuntime.findingExists(connection, runId, findingId)
+  override fun findingExists(runId: ReviewRunId, findingId: String): Boolean =
+    ReviewRuntime.findingExists(connection, runId.value, findingId)
 
-  override fun latestRejectedLearningSourceOutcome(runId: String, findingId: String): RejectedLearningSourceOutcome? {
+  override fun latestRejectedLearningSourceOutcome(
+    runId: ReviewRunId,
+    findingId: String,
+  ): RejectedLearningSourceOutcome? {
     val placeholders = LearningsRuntime.rejectedFindingOutcomeTypes.joinToString(", ") { "?" }
     return connection.prepareStatement(
       """
@@ -194,7 +201,7 @@ class SQLiteReviewRepository(
       LIMIT 1
       """.trimIndent(),
     ).use { statement ->
-      statement.setString(1, runId)
+      statement.setString(1, runId.value)
       statement.setString(2, findingId)
       LearningsRuntime.rejectedFindingOutcomeTypes.forEachIndexed { index, value ->
         statement.setString(index + REJECTED_OUTCOME_FIRST_PARAM_INDEX, value)
@@ -212,8 +219,8 @@ class SQLiteReviewRepository(
     }
   }
 
-  override fun reviewStats(runId: String?): ReviewRepositoryStatsSnapshot =
-    ReviewStatsRuntime.statsSnapshot(connection, runId)
+  override fun reviewStats(runId: ReviewRunId?): ReviewRepositoryStatsSnapshot =
+    ReviewStatsRuntime.statsSnapshot(connection, runId?.value)
 }
 
 class SQLiteLearningRepository(

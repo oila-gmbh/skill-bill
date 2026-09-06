@@ -1,5 +1,9 @@
 package skillbill.application.review.model
 
+import skillbill.workflow.engine.model.WorkflowId
+
+import skillbill.review.model.ReviewRunId
+import skillbill.agent.model.AgentId
 import skillbill.application.reviewevidence.model.ParallelReviewScope
 import skillbill.ports.review.model.ReviewIntegrationPassOutcome
 import skillbill.ports.review.model.ReviewLaneAccounting
@@ -23,9 +27,9 @@ data class ParallelCodeReviewRequest(
   val resolvedTier: CodeReviewExecutionMode? = null,
   val suppliedDiff: String? = null,
   val suppliedDiffPath: Path? = null,
-  val reviewRunId: String? = null,
-  val activityWorkflowId: String? = null,
-  val activityParentWorkflowId: String? = null,
+  val reviewRunId: ReviewRunId? = null,
+  val activityWorkflowId: WorkflowId? = null,
+  val activityParentWorkflowId: WorkflowId? = null,
   val baseRevision: String? = null,
   val headRevision: String? = null,
   val prelaunchExpansions: List<ReviewPrelaunchExpansion> = emptyList(),
@@ -35,12 +39,12 @@ data class ParallelCodeReviewRequest(
   val selectedAgentAddonsSection: String = "",
 ) {
   init {
-    reviewRunId?.let { require(it.isNotBlank()) { "reviewRunId must be non-blank when provided." } }
+    reviewRunId?.let { require(it.value.isNotBlank()) { "reviewRunId must be non-blank when provided." } }
     activityWorkflowId?.let {
-      require(it.isNotBlank()) { "activityWorkflowId must be non-blank when provided." }
+      require(it.value.isNotBlank()) { "activityWorkflowId must be non-blank when provided." }
     }
     activityParentWorkflowId?.let {
-      require(it.isNotBlank()) { "activityParentWorkflowId must be non-blank when provided." }
+      require(it.value.isNotBlank()) { "activityParentWorkflowId must be non-blank when provided." }
     }
     specPath?.let { require(it.toString().isNotBlank()) { "specPath must be non-blank when provided." } }
     baseRevision?.let { require(it.isNotBlank()) { "baseRevision must be non-blank when provided." } }
@@ -106,7 +110,7 @@ data class ParallelCodeReviewResult(
 }
 
 data class ParallelReviewLaneStatus(
-  val agentId: String,
+  val agentId: AgentId,
   val success: Boolean,
   val failureReason: String? = null,
   val droppedCandidateDiagnostic: String? = null,

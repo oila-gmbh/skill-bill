@@ -1,5 +1,4 @@
 package skillbill.application.goalrunner.findings
-
 import skillbill.application.InMemoryRuntimeWorkflowRepository
 import skillbill.application.RuntimeFakeDatabaseSessionFactory
 import skillbill.application.decomposition.decodeArtifacts
@@ -8,7 +7,11 @@ import skillbill.application.workflow.model.WorkflowFamily
 import skillbill.goalrunner.model.UnaddressedFinding
 import skillbill.ports.diagnostics.NoopRuntimeDiagnostics
 import skillbill.ports.workflow.toRecord
+import skillbill.workflow.decomposition.model.IssueKey
+import skillbill.workflow.decomposition.model.SubtaskId
 import skillbill.workflow.engine.WorkflowEngine
+import skillbill.workflow.engine.model.SessionId
+import skillbill.workflow.engine.model.WorkflowId
 import skillbill.workflow.engine.model.WorkflowUpdateInput
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_FINDING_VERIFICATION_DISPOSITIONS_ARTIFACT_KEY
 import kotlin.test.Test
@@ -18,7 +21,7 @@ class UnaddressedFindingsLedgerServiceVerificationProvenanceTest {
   @Test
   fun `verification dispositions expose selected heading ids and source paths for the issue key`() {
     val repository = InMemoryRuntimeWorkflowRepository()
-    val workflowId = "wftr-provenance"
+    val workflowId = WorkflowId("wftr-provenance")
     seedWorkflow(
       repository,
       workflowId,
@@ -42,8 +45,8 @@ class UnaddressedFindingsLedgerServiceVerificationProvenanceTest {
     val database = RuntimeFakeDatabaseSessionFactory(repository)
     database.ledgerRows.add(
       UnaddressedFinding(
-        issueKey = "SKILL-202",
-        subtaskId = 3,
+        issueKey = IssueKey("SKILL-202"),
+        subtaskId = SubtaskId(3),
         workflowId = workflowId,
         reviewPassNumber = 1,
         findingOrdinal = 1,
@@ -77,7 +80,7 @@ private fun seedWorkflow(repository: InMemoryRuntimeWorkflowRepository, workflow
       currentStepId = "verify_findings",
       stepUpdates = null,
       artifactsPatch = decodeArtifacts(artifactsJson),
-      sessionId = "ftr-provenance",
+      sessionId = SessionId("ftr-provenance"),
     ),
   ).toRecord()
   repository.saveFeatureTaskRuntimeWorkflow(seeded)

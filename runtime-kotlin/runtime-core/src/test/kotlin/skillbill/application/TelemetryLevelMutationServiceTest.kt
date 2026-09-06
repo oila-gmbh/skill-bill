@@ -1,5 +1,4 @@
 package skillbill.application
-
 import skillbill.application.telemetry.LifecycleTelemetryService
 import skillbill.application.telemetry.TelemetryLevelMutationService
 import skillbill.application.telemetry.model.FeatureTaskRuntimeStartedRequest
@@ -26,6 +25,7 @@ import skillbill.telemetry.config.TelemetryConfigMutations
 import skillbill.telemetry.model.TelemetryConfigDocument
 import skillbill.telemetry.model.TelemetrySettings
 import skillbill.telemetry.settings.DefaultTelemetrySettingsProvider
+import skillbill.workflow.decomposition.model.IssueKey
 import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.test.Test
@@ -224,7 +224,12 @@ class TelemetryLevelMutationServiceTest {
     )
 
     val result = service.featureTaskRuntimeStarted(
-      FeatureTaskRuntimeStartedRequest(featureSize = "MEDIUM", issueKey = "SKILL-163", featureName = "telemetry"),
+      FeatureTaskRuntimeStartedRequest(
+        featureSize = "MEDIUM",
+        issueKey =
+        IssueKey("SKILL-163"),
+        featureName = "telemetry",
+      ),
     )
 
     assertEquals("skipped", result["status"], "level off must skip lifecycle emission")
@@ -271,18 +276,18 @@ private class FakeTelemetryDatabaseSessionFactory(
   val calls = mutableListOf<String>()
   private val dbPath = Path.of("/fake/metrics.db")
 
-  override fun resolveDbPath(dbOverride: String?): Path = dbPath
+  override fun resolveDbPath(): Path = dbPath
 
-  override fun databaseExists(dbOverride: String?): Boolean = true
+  override fun databaseExists(): Boolean = true
 
-  override fun <T> read(dbOverride: String?, block: (UnitOfWork) -> T): T {
+  override fun <T> read(block: (UnitOfWork) -> T): T {
     calls += "read"
     return block(fakeUnitOfWork())
   }
 
-  override fun <T> selfManagedWrite(dbOverride: String?, block: (UnitOfWork) -> T): T = transaction(dbOverride, block)
+  override fun <T> selfManagedWrite(block: (UnitOfWork) -> T): T = transaction(block)
 
-  override fun <T> transaction(dbOverride: String?, block: (UnitOfWork) -> T): T {
+  override fun <T> transaction(block: (UnitOfWork) -> T): T {
     calls += "transaction"
     return block(fakeUnitOfWork())
   }

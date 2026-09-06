@@ -1,5 +1,4 @@
 package skillbill.application
-
 import skillbill.application.decomposition.DECOMPOSITION_RUNTIME_ARTIFACT_KEY
 import skillbill.application.decomposition.encodeDecompositionManifestMap
 import skillbill.application.decomposition.encodeDecompositionManifestYaml
@@ -105,9 +104,13 @@ import skillbill.workflow.decomposition.model.CurrentSubtaskIntent
 import skillbill.workflow.decomposition.model.DecompositionExecutionModel
 import skillbill.workflow.decomposition.model.DecompositionManifest
 import skillbill.workflow.decomposition.model.DecompositionSubtask
+import skillbill.workflow.decomposition.model.IssueKey
+import skillbill.workflow.decomposition.model.SubtaskId
 import skillbill.workflow.engine.WorkflowEngine
 import skillbill.workflow.engine.WorkflowSnapshotValidator
+import skillbill.workflow.engine.model.SessionId
 import skillbill.workflow.engine.model.WorkflowDefinition
+import skillbill.workflow.engine.model.WorkflowId
 import skillbill.workflow.engine.model.WorkflowStateSnapshot
 import skillbill.workflow.engine.model.WorkflowUpdateInput
 import skillbill.workflow.goal.GoalObservabilityEventValidator
@@ -140,7 +143,7 @@ private fun WorkflowService.openTestRuntime(sessionId: String = "", currentStepI
       kind = WorkflowFamilyKind.TASK_RUNTIME,
       sessionId = sessionId,
       currentStepId = currentStepId,
-      issueKey = "SKILL-120",
+      issueKey = IssueKey("SKILL-120"),
       repositoryIdentity = "repo-root-realpath-v1:/test/repository",
       governedSpecPath = ".feature-specs/SKILL-120/spec.md",
     ),
@@ -175,7 +178,7 @@ class WorkflowServiceTest {
       service.openFeatureTask(
         WorkflowServiceOpenFeatureTaskArgs(
           kind = WorkflowFamilyKind.TASK_RUNTIME,
-          issueKey = "SKILL-120",
+          issueKey = IssueKey("SKILL-120"),
           repositoryIdentity = "repo-root-realpath-v1:/test/repository",
           governedSpecPath = ".feature-specs/SKILL-120/spec.md",
         ),
@@ -185,7 +188,7 @@ class WorkflowServiceTest {
       service.openFeatureTask(
         WorkflowServiceOpenFeatureTaskArgs(
           kind = WorkflowFamilyKind.TASK_RUNTIME,
-          issueKey = "SKILL-120",
+          issueKey = IssueKey("SKILL-120"),
           repositoryIdentity = "repo-root-realpath-v1:/test/repository",
           governedSpecPath = ".feature-specs/SKILL-120/spec.md",
         ),
@@ -216,7 +219,7 @@ class WorkflowServiceTest {
       service.openFeatureTask(
         WorkflowServiceOpenFeatureTaskArgs(
           kind = WorkflowFamilyKind.TASK_RUNTIME,
-          issueKey = "SKILL-120",
+          issueKey = IssueKey("SKILL-120"),
           repositoryIdentity = "repo-root-realpath-v1:/test/repository",
           governedSpecPath = ".feature-specs/SKILL-120/spec.md",
         ),
@@ -256,8 +259,8 @@ class WorkflowServiceTest {
     val historyArtifact = """{"plan":{"mode":"decompose"},"history_note":"retain-me"}"""
     workflows.saveFeatureImplementWorkflow(
       WorkflowStateRecord(
-        workflowId = "wfl-legacy-prose-parent",
-        sessionId = "fis-legacy-prose-parent",
+        workflowId = WorkflowId("wfl-legacy-prose-parent"),
+        sessionId = SessionId("fis-legacy-prose-parent"),
         workflowName = "bill-feature-task",
         contractVersion = "0.1",
         workflowStatus = "paused",
@@ -269,7 +272,7 @@ class WorkflowServiceTest {
         finishedAt = null,
         mode = FeatureTaskWorkflowMode.PROSE,
         implementationSkill = "bill-feature-task-prose",
-        issueKey = "SKILL-179",
+        issueKey = IssueKey("SKILL-179"),
       ),
     )
 
@@ -312,7 +315,7 @@ class WorkflowServiceTest {
       service.openFeatureTask(
         WorkflowServiceOpenFeatureTaskArgs(
           kind = WorkflowFamilyKind.TASK_RUNTIME,
-          issueKey = "SKILL-141",
+          issueKey = IssueKey("SKILL-141"),
           repositoryIdentity = "repo-root-realpath-v1:/test/repository",
           governedSpecPath = ".feature-specs/SKILL-141/spec.md",
         ),
@@ -349,7 +352,7 @@ class WorkflowServiceTest {
       service.openFeatureTask(
         WorkflowServiceOpenFeatureTaskArgs(
           kind = WorkflowFamilyKind.TASK_RUNTIME,
-          issueKey = "SKILL-120",
+          issueKey = IssueKey("SKILL-120"),
           repositoryIdentity = "repo-root-realpath-v1:/test/repository",
           governedSpecPath = ".feature-specs/SKILL-120/spec.md",
         ),
@@ -360,7 +363,7 @@ class WorkflowServiceTest {
       service.repairFeatureTaskRuntimeIdentity(
         RepairFeatureTaskRuntimeIdentityArgs(
           workflowId = opened.workflowId,
-          issueKey = "SKILL-999",
+          issueKey = IssueKey("SKILL-999"),
           repositoryIdentity = "repo-root-realpath-v1:/test/repository",
           governedSpecPath = ".feature-specs/SKILL-120/spec.md",
           reason = "Repair a legacy identity.",
@@ -374,7 +377,7 @@ class WorkflowServiceTest {
       service.repairFeatureTaskRuntimeIdentity(
         RepairFeatureTaskRuntimeIdentityArgs(
           workflowId = opened.workflowId,
-          issueKey = "SKILL-120",
+          issueKey = IssueKey("SKILL-120"),
           repositoryIdentity = "repo-root-realpath-v1:/test/repository",
           governedSpecPath = ".feature-specs/SKILL-120/spec.md",
           reason = "Repair a legacy identity.",
@@ -404,7 +407,7 @@ class WorkflowServiceTest {
       service.openFeatureTask(
         WorkflowServiceOpenFeatureTaskArgs(
           kind = WorkflowFamilyKind.TASK_RUNTIME,
-          issueKey = "SKILL-120",
+          issueKey = IssueKey("SKILL-120"),
           repositoryIdentity = "repo-root-realpath-v1:/test/repository",
           governedSpecPath = ".feature-specs/SKILL-120/spec.md",
         ),
@@ -418,7 +421,7 @@ class WorkflowServiceTest {
       service.repairFeatureTaskRuntimeIdentity(
         RepairFeatureTaskRuntimeIdentityArgs(
           workflowId = opened.workflowId,
-          issueKey = "SKILL-120",
+          issueKey = IssueKey("SKILL-120"),
           repositoryIdentity = "repo-root-realpath-v1:/test/repository",
           governedSpecPath = ".feature-specs/SKILL-120/spec.md",
           reason = "Repair a legacy identity.",
@@ -446,10 +449,10 @@ class WorkflowServiceTest {
     val result = service.update(
       WorkflowFamilyKind.TASK_RUNTIME,
       WorkflowUpdateRequest(
-        workflowId = "irrelevant",
+        workflowId = WorkflowId("irrelevant"),
         workflowStatus = "not-a-status",
         currentStepId = "preplan",
-        sessionId = "",
+        sessionId = SessionId(""),
       ),
     )
     val error = assertIs<WorkflowUpdateResult.Error>(result)
@@ -470,10 +473,10 @@ class WorkflowServiceTest {
     val result = service.update(
       WorkflowFamilyKind.TASK_RUNTIME,
       WorkflowUpdateRequest(
-        workflowId = "missing",
+        workflowId = WorkflowId("missing"),
         workflowStatus = "running",
         currentStepId = "preplan",
-        sessionId = "",
+        sessionId = SessionId(""),
       ),
     )
     val error = assertIs<WorkflowUpdateResult.Error>(result)
@@ -623,12 +626,12 @@ class WorkflowServiceTest {
       service.update(
         WorkflowFamilyKind.TASK_RUNTIME,
         WorkflowUpdateRequest(
-          workflowId = "wftr-update-loud",
+          workflowId = WorkflowId("wftr-update-loud"),
           workflowStatus = "running",
           currentStepId = "preplan",
           stepUpdates = listOf(mapOf("step_id" to "preplan", "status" to "running", "attempt_count" to 1)),
           artifactsPatch = mapOf("assessment" to mapOf("ok" to true), "branch" to mapOf("ok" to true)),
-          sessionId = "",
+          sessionId = SessionId(""),
         ),
       )
     }
@@ -672,7 +675,7 @@ class WorkflowServiceTest {
             "timestamp" to "2026-06-01T00:00:00Z",
           ),
         ),
-        sessionId = "ftr-001",
+        sessionId = SessionId("ftr-001"),
       ),
     )
 
@@ -707,7 +710,7 @@ class WorkflowServiceDecomposedParentTest {
     val parentRuntime = decompositionRuntime(status = "in_progress")
     workflows.saveFeatureImplementWorkflow(
       workflowRecord(
-        workflowId = "wfl-child",
+        workflowId = WorkflowId("wfl-child"),
         artifactsPatch = mapOf(
           DECOMPOSITION_RUNTIME_ARTIFACT_KEY to
             encodeDecompositionManifestMap(childRuntime, testDecompositionManifestValidator),
@@ -716,7 +719,7 @@ class WorkflowServiceDecomposedParentTest {
     )
     workflows.saveFeatureTaskRuntimeWorkflow(
       workflowRecord(
-        workflowId = "wfl-parent",
+        workflowId = WorkflowId("wfl-parent"),
         artifactsPatch = mapOf(
           "plan" to mapOf("mode" to "decompose"),
           DECOMPOSITION_RUNTIME_ARTIFACT_KEY to
@@ -735,7 +738,7 @@ class WorkflowServiceDecomposedParentTest {
     val workflows = InMemoryWorkflowStates()
     workflows.saveFeatureImplementWorkflow(
       workflowRecord(
-        workflowId = "wfl-child",
+        workflowId = WorkflowId("wfl-child"),
         artifactsPatch = mapOf(
           "plan" to mapOf("mode" to "decompose"),
           "goal_continuation" to mapOf(
@@ -754,7 +757,7 @@ class WorkflowServiceDecomposedParentTest {
     )
     workflows.saveFeatureTaskRuntimeWorkflow(
       workflowRecord(
-        workflowId = "wfl-parent",
+        workflowId = WorkflowId("wfl-parent"),
         artifactsPatch = mapOf(
           "plan" to mapOf("mode" to "decompose"),
           DECOMPOSITION_RUNTIME_ARTIFACT_KEY to
@@ -776,7 +779,7 @@ class WorkflowServiceDecomposedParentTest {
     val workflows = InMemoryWorkflowStates()
     workflows.saveFeatureTaskRuntimeWorkflow(
       workflowRecord(
-        workflowId = "wfl-completed-discovery",
+        workflowId = WorkflowId("wfl-completed-discovery"),
         artifactsPatch = mapOf(
           "plan" to mapOf("mode" to "decompose"),
           DECOMPOSITION_RUNTIME_ARTIFACT_KEY to
@@ -789,7 +792,7 @@ class WorkflowServiceDecomposedParentTest {
     )
     workflows.saveFeatureTaskRuntimeWorkflow(
       workflowRecord(
-        workflowId = "wfl-active-implementation",
+        workflowId = WorkflowId("wfl-active-implementation"),
         artifactsPatch = mapOf(
           "plan" to mapOf("mode" to "decompose"),
           DECOMPOSITION_RUNTIME_ARTIFACT_KEY to
@@ -821,7 +824,7 @@ class WorkflowServiceDecomposedParentTest {
     )
     workflows.saveFeatureTaskRuntimeWorkflow(
       workflowRecord(
-        workflowId = "wfl-abandoned-stale",
+        workflowId = WorkflowId("wfl-abandoned-stale"),
         artifactsPatch = mapOf(
           "plan" to mapOf("mode" to "decompose"),
           DECOMPOSITION_RUNTIME_ARTIFACT_KEY to
@@ -874,7 +877,7 @@ class WorkflowServiceDecomposedParentTest {
     )
     workflows.saveFeatureTaskRuntimeWorkflow(
       workflowRecord(
-        workflowId = "wfl-abandoned-progressed",
+        workflowId = WorkflowId("wfl-abandoned-progressed"),
         artifactsPatch = mapOf(
           "plan" to mapOf("mode" to "decompose"),
           DECOMPOSITION_RUNTIME_ARTIFACT_KEY to
@@ -923,7 +926,7 @@ class WorkflowServiceDecomposedParentTest {
     )
     workflows.saveFeatureTaskRuntimeWorkflow(
       workflowRecord(
-        workflowId = "wfl-paused-parent",
+        workflowId = WorkflowId("wfl-paused-parent"),
         artifactsPatch = mapOf(
           "plan" to mapOf("mode" to "decompose"),
           DECOMPOSITION_RUNTIME_ARTIFACT_KEY to
@@ -1043,7 +1046,7 @@ class WorkflowServiceGoalManifestStoreTest {
     Files.writeString(
       activePath,
       encodeDecompositionManifestYaml(
-        decompositionRuntime(status = "blocked").copy(issueKey = "SKILL-8"),
+        decompositionRuntime(status = "blocked").copy(issueKey = IssueKey("SKILL-8")),
         testDecompositionManifestValidator,
         TestDecompositionManifestStore,
       ),
@@ -1131,7 +1134,7 @@ class WorkflowServiceGoalManifestStoreTest {
     val workflows = InMemoryWorkflowStates()
     workflows.saveFeatureTaskRuntimeWorkflow(
       workflowRecord(
-        workflowId = "wfl-parent",
+        workflowId = WorkflowId("wfl-parent"),
         artifactsPatch = mapOf(
           "plan" to mapOf("mode" to "decompose"),
           DECOMPOSITION_RUNTIME_ARTIFACT_KEY to
@@ -1212,19 +1215,19 @@ class WorkflowServiceGoalManifestStoreTest {
   fun `scoped replan deletes the replanned subtask's hydrated child and preserves completed siblings`() {
     val workflows = RecordingGoalChildDeletionWorkflowStates(childStatus = "paused")
     val before = decompositionRuntime(status = "in_progress").copy(
-      currentSubtaskIntent = CurrentSubtaskIntent(subtaskId = 2, action = "start"),
+      currentSubtaskIntent = CurrentSubtaskIntent(subtaskId = SubtaskId(2), action = "start"),
       subtasks = listOf(
         decompositionRuntime(status = "complete").subtasks.single().copy(
           id = 1,
           status = "complete",
           commitSha = "sha-done",
-          workflowId = "wfl-child-1",
+          workflowId = WorkflowId("wfl-child-1"),
           lastResumableStep = "commit_push",
         ),
         decompositionRuntime(status = "blocked").subtasks.single().copy(
           id = 2,
           status = "blocked",
-          workflowId = "wfl-child-2",
+          workflowId = WorkflowId("wfl-child-2"),
           blockedReason = "planning import conflicts",
           lastResumableStep = "audit",
         ),
@@ -1232,7 +1235,7 @@ class WorkflowServiceGoalManifestStoreTest {
     )
     val result = scopedReplanStore(workflows, before).saveScopedReplan(
       state = scopedReplanState(before, "skillbill-scoped-replan-child"),
-      subtaskId = 2,
+      subtaskId = SubtaskId(2),
       dbPathOverride = null,
       options = GoalRunnerScopedReplanOptions(),
     )
@@ -1249,7 +1252,7 @@ class WorkflowServiceGoalManifestStoreTest {
     assertEquals("sha-done", completed.commitSha, "Scoped replan must preserve completed commit mappings.")
     assertEquals("wfl-child-1", completed.workflowId)
     assertEquals(
-      CurrentSubtaskIntent(subtaskId = 2, action = "start"),
+      CurrentSubtaskIntent(subtaskId = SubtaskId(2), action = "start"),
       result.state.manifest.currentSubtaskIntent,
       "Child deletion must not retarget the intent the replan already set.",
     )
@@ -1259,19 +1262,19 @@ class WorkflowServiceGoalManifestStoreTest {
   fun `scoped replan keeps a live child that scoped deletion refuses to remove`() {
     val workflows = RecordingGoalChildDeletionWorkflowStates(childStatus = "running")
     val before = decompositionRuntime(status = "in_progress").copy(
-      currentSubtaskIntent = CurrentSubtaskIntent(subtaskId = 1, action = "resume"),
+      currentSubtaskIntent = CurrentSubtaskIntent(subtaskId = SubtaskId(1), action = "resume"),
       subtasks = listOf(
         decompositionRuntime(status = "in_progress").subtasks.single().copy(
           id = 1,
           status = "in_progress",
-          workflowId = "wfl-child-1",
+          workflowId = WorkflowId("wfl-child-1"),
           lastResumableStep = "implement",
         ),
       ),
     )
     val result = scopedReplanStore(workflows, before).saveScopedReplan(
       state = scopedReplanState(before, "skillbill-scoped-replan-live-child"),
-      subtaskId = 1,
+      subtaskId = SubtaskId(1),
       dbPathOverride = null,
       options = GoalRunnerScopedReplanOptions(),
     )
@@ -1285,12 +1288,12 @@ class WorkflowServiceGoalManifestStoreTest {
   fun `goal completion boundary persists terminal child state into the parent workflow`() {
     val workflows = InMemoryWorkflowStates()
     val pending = decompositionRuntime(status = "in_progress").copy(
-      currentSubtaskIntent = CurrentSubtaskIntent(subtaskId = 1, action = "resume"),
+      currentSubtaskIntent = CurrentSubtaskIntent(subtaskId = SubtaskId(1), action = "resume"),
       subtasks = decompositionRuntime(status = "in_progress").subtasks.map { it.copy(status = "pending") },
     )
     workflows.saveFeatureTaskRuntimeWorkflow(
       workflowRecord(
-        workflowId = "wfl-parent",
+        workflowId = WorkflowId("wfl-parent"),
         artifactsPatch = mapOf(
           "plan" to mapOf("mode" to "decompose"),
           DECOMPOSITION_RUNTIME_ARTIFACT_KEY to
@@ -1305,15 +1308,15 @@ class WorkflowServiceGoalManifestStoreTest {
     )
     val completed = pending.copy(
       status = "complete",
-      currentSubtaskIntent = CurrentSubtaskIntent(subtaskId = 0, action = "complete"),
+      currentSubtaskIntent = CurrentSubtaskIntent(subtaskId = SubtaskId(0), action = "complete"),
       subtasks = pending.subtasks.map {
-        it.copy(status = "complete", workflowId = "wfl-child", commitSha = "sha-child")
+        it.copy(status = "complete", workflowId = WorkflowId("wfl-child"), commitSha = "sha-child")
       },
     )
 
     val result = store.saveCompletedSubtaskAtBoundary(
       GoalRunnerManifestState("wfl-parent", "/fake/metrics.db", completed),
-      subtaskId = 1,
+      subtaskId = SubtaskId(1),
     )
 
     assertEquals("complete", result.state.manifest.status)
@@ -1371,7 +1374,7 @@ class WorkflowGoalStatusProjectionTest {
 
     val projection = newGoalStatusService(workflows).status(
       GoalRunnerStatusRequest(
-        issueKey = "SKILL-52.1",
+        issueKey = IssueKey("SKILL-52.1"),
         invokedAgentId = "codex",
         repoRoot = Path.of("").toAbsolutePath(),
       ),
@@ -1395,8 +1398,8 @@ class WorkflowGoalStatusProjectionTest {
     val manifest = decompositionRuntime(status = "in_progress")
     workflows.saveFeatureImplementWorkflow(
       WorkflowStateRecord(
-        workflowId = "wfl-prose-parent",
-        sessionId = "fis-prose-parent",
+        workflowId = WorkflowId("wfl-prose-parent"),
+        sessionId = SessionId("fis-prose-parent"),
         workflowName = "bill-feature-task",
         contractVersion = "0.1",
         workflowStatus = "paused",
@@ -1414,7 +1417,7 @@ class WorkflowGoalStatusProjectionTest {
         finishedAt = null,
         mode = FeatureTaskWorkflowMode.PROSE,
         implementationSkill = "bill-feature-task-prose",
-        issueKey = "SKILL-52.1",
+        issueKey = IssueKey("SKILL-52.1"),
       ),
     )
     controls.persistControlState(
@@ -1430,7 +1433,7 @@ class WorkflowGoalStatusProjectionTest {
 
     val projection = newGoalStatusService(workflows, controls).status(
       GoalRunnerStatusRequest(
-        issueKey = "SKILL-52.1",
+        issueKey = IssueKey("SKILL-52.1"),
         invokedAgentId = "codex",
         repoRoot = Path.of("").toAbsolutePath(),
       ),
@@ -1444,14 +1447,14 @@ class WorkflowGoalStatusProjectionTest {
 
   private fun saveCompleteGoalParent(workflows: InMemoryWorkflowStates) {
     val manifest = decompositionRuntime(status = "complete").copy(
-      currentSubtaskIntent = CurrentSubtaskIntent(subtaskId = 0, action = "complete"),
+      currentSubtaskIntent = CurrentSubtaskIntent(subtaskId = SubtaskId(0), action = "complete"),
       subtasks = listOf(
         DecompositionSubtask(
           id = 1,
           name = "install-policy-foundation",
           specPath = ".feature-specs/SKILL-52.1/spec_subtask_1.md",
           status = "complete",
-          workflowId = "wfl-authoritative",
+          workflowId = WorkflowId("wfl-authoritative"),
           commitSha = "sha-1",
           lastResumableStep = "commit_push",
         ),
@@ -1459,7 +1462,7 @@ class WorkflowGoalStatusProjectionTest {
     )
     workflows.saveFeatureTaskRuntimeWorkflow(
       workflowRecord(
-        workflowId = "wfl-parent",
+        workflowId = WorkflowId("wfl-parent"),
         artifactsPatch = mapOf(
           "plan" to mapOf("mode" to "decompose"),
           DECOMPOSITION_RUNTIME_ARTIFACT_KEY to
@@ -1484,7 +1487,7 @@ class WorkflowGoalStatusProjectionTest {
         currentStepId = "implement",
         stepUpdates = listOf(mapOf("step_id" to "implement", "status" to "running", "attempt_count" to 1)),
         artifactsPatch = goalContinuationArtifact() + staleObservabilityArtifact(),
-        sessionId = "ftr-stale",
+        sessionId = SessionId("ftr-stale"),
       ),
     )
     workflows.saveFeatureImplementWorkflow(running.toRecord())
@@ -1505,7 +1508,7 @@ class WorkflowGoalStatusProjectionTest {
         currentStepId = "commit_push",
         stepUpdates = listOf(mapOf("step_id" to "commit_push", "status" to "completed", "attempt_count" to 1)),
         artifactsPatch = goalContinuationArtifact() + completeOutcomeArtifact(),
-        sessionId = "ftr-done",
+        sessionId = SessionId("ftr-done"),
       ),
     )
     workflows.saveFeatureImplementWorkflow(complete.toRecord())
@@ -1710,7 +1713,7 @@ class GoalRunnerCommitShaRecoveryTest {
     val workflows = InMemoryWorkflowStates()
     workflows.saveFeatureImplementWorkflow(
       workflowRecord(
-        workflowId = "wfl-child",
+        workflowId = WorkflowId("wfl-child"),
         artifactsPatch = mapOf(
           "goal_continuation" to mapOf(
             "issue_key" to "SKILL-52.1",
@@ -1726,9 +1729,9 @@ class GoalRunnerCommitShaRecoveryTest {
     )
 
     val outcome = store.recoverMissingResultPrefixOutput(
-      workflowId = "wfl-child",
-      issueKey = "SKILL-52.1",
-      subtaskId = 1,
+      workflowId = WorkflowId("wfl-child"),
+      issueKey = IssueKey("SKILL-52.1"),
+      subtaskId = SubtaskId(1),
       output = mapOf(
         "status" to "blocked",
         "workflow_id" to "wfl-child",
@@ -1759,7 +1762,7 @@ class GoalRunnerCommitShaRecoveryTest {
       gitOperations = HeadShaGitOperations,
     )
 
-    val reconciled = store.reconcileAuthoritativeOutcomes(issueKey = "SKILL-52.1", repoRoot = Path.of("."))
+    val reconciled = store.reconcileAuthoritativeOutcomes(issueKey = IssueKey("SKILL-52.1"), repoRoot = Path.of("."))
 
     val outcome = requireNotNull(reconciled[1])
     assertEquals(GoalRunnerTerminalStatus.COMPLETE, outcome.status)
@@ -1781,7 +1784,7 @@ class GoalRunnerCommitShaRecoveryTest {
       gitOperations = HeadShaGitOperations,
     )
 
-    store.reconcileAuthoritativeOutcomes(issueKey = "SKILL-52.1")
+    store.reconcileAuthoritativeOutcomes(issueKey = IssueKey("SKILL-52.1"))
     val durable = requireNotNull(store.terminalOutcome("wfl-child", "SKILL-52.1", 1))
 
     assertNull(durable.commitSha, "a read-only reconciliation must not backfill a measured SHA")
@@ -1808,7 +1811,7 @@ class GoalRunnerCommitShaRecoveryTest {
             "suppress_pr" to true,
           ),
         ),
-        sessionId = "ftr-no-sha",
+        sessionId = SessionId("ftr-no-sha"),
       ),
     )
     return completed.toRecord()
@@ -1845,7 +1848,7 @@ class GoalRunnerCommitShaRecoveryTest {
           ),
           "blocked_reason" to "remote branch diverged",
         ),
-        sessionId = "ftr-blocked-push",
+        sessionId = SessionId("ftr-blocked-push"),
       ),
     ).toRecord()
   }
@@ -1880,7 +1883,7 @@ class GoalRunnerCommitShaRecoveryTest {
             "last_resumable_step" to "commit_push",
           ),
         ),
-        sessionId = "ftr-stale-complete",
+        sessionId = SessionId("ftr-stale-complete"),
       ),
     )
     return completed.toRecord()
@@ -1913,7 +1916,7 @@ class WorkflowUpdateAcknowledgementBudgetTest {
           "plan" to mapOf("mode" to "implement", "body" to "x".repeat(12000)),
           "preplan_digest" to mapOf("risk" to "low", "notes" to "y".repeat(8000)),
         ),
-        sessionId = "ftr-001",
+        sessionId = SessionId("ftr-001"),
       ),
     )
 
@@ -1978,7 +1981,7 @@ class WorkflowGoalRunnerOutcomeStoreTest {
     val workflows = InMemoryWorkflowStates()
     workflows.saveFeatureImplementWorkflow(
       workflowRecord(
-        workflowId = "wfl-child",
+        workflowId = WorkflowId("wfl-child"),
         artifactsPatch = mapOf(
           "goal_continuation" to mapOf(
             "issue_key" to "SKILL-52.1",
@@ -2057,7 +2060,7 @@ class WorkflowGoalRunnerReconciliationTest {
             "suppress_pr" to true,
           ),
         ),
-        sessionId = "ftr-001",
+        sessionId = SessionId("ftr-001"),
       ),
     )
     workflows.saveFeatureImplementWorkflow(running.toRecord())
@@ -2097,7 +2100,7 @@ class WorkflowGoalRunnerReconciliationTest {
             "suppress_pr" to true,
           ),
         ),
-        sessionId = "ftr-001",
+        sessionId = SessionId("ftr-001"),
       ),
     )
     workflows.saveFeatureImplementWorkflow(running.toRecord())
@@ -2160,7 +2163,7 @@ class WorkflowGoalRunnerReconciliationTest {
             "suppress_pr" to true,
           ),
         ),
-        sessionId = "ftr-001",
+        sessionId = SessionId("ftr-001"),
       ),
     )
     workflows.saveFeatureImplementWorkflow(running.toRecord())
@@ -2217,7 +2220,7 @@ class WorkflowGoalRunnerReconciliationTest {
             ),
           ),
         ),
-        sessionId = "ftr-001",
+        sessionId = SessionId("ftr-001"),
       ),
     )
     workflows.saveFeatureTaskRuntimeWorkflow(crashed.toRecord())
@@ -2267,7 +2270,7 @@ class WorkflowGoalRunnerReconciliationTest {
             "suppress_pr" to true,
           ),
         ),
-        sessionId = "ftr-002",
+        sessionId = SessionId("ftr-002"),
       ),
     )
     workflows.saveFeatureTaskRuntimeWorkflow(crashed.toRecord())
@@ -2317,7 +2320,7 @@ class WorkflowGoalRunnerReconciliationTest {
             "suppress_pr" to true,
           ),
         ),
-        sessionId = "ftr-003",
+        sessionId = SessionId("ftr-003"),
       ),
     )
     workflows.saveFeatureTaskRuntimeWorkflow(crashed.toRecord())
@@ -2381,7 +2384,7 @@ private fun staleRunningChildRecord(definition: WorkflowDefinition) = testWorkfl
         "suppress_pr" to true,
       ),
     ),
-    sessionId = "ftr-001",
+    sessionId = SessionId("ftr-001"),
   ),
 )
 
@@ -2409,7 +2412,7 @@ private fun authoritativeCompleteChildRecord(definition: WorkflowDefinition) = t
         "last_resumable_step" to "commit_push",
       ),
     ),
-    sessionId = "ftr-002",
+    sessionId = SessionId("ftr-002"),
   ),
 )
 
@@ -2429,7 +2432,7 @@ private fun blockedSiblingChildRecord(definition: WorkflowDefinition) = testWork
         "suppress_pr" to true,
       ),
     ),
-    sessionId = "ftr-001",
+    sessionId = SessionId("ftr-001"),
   ),
 )
 
@@ -2449,7 +2452,7 @@ private fun activeRetryChildRecord(definition: WorkflowDefinition) = testWorkflo
         "suppress_pr" to true,
       ),
     ),
-    sessionId = "ftr-002",
+    sessionId = SessionId("ftr-002"),
   ),
 )
 
@@ -2467,7 +2470,7 @@ class WorkflowGoalRunnerProgressStoreTest {
     val workflows = InMemoryWorkflowStates()
     workflows.saveFeatureImplementWorkflow(
       workflowRecord(
-        workflowId = "wfl-child",
+        workflowId = WorkflowId("wfl-child"),
         artifactsPatch = mapOf(
           "goal_observability_latest_event" to mapOf(
             "contract_version" to "0.1",
@@ -2475,7 +2478,7 @@ class WorkflowGoalRunnerProgressStoreTest {
           ),
           GoalProgressEvent(
             eventKind = GoalProgressEventKind.OPERATION_HEARTBEAT,
-            workflowId = "wfl-child",
+            workflowId = WorkflowId("wfl-child"),
             workflowPhase = "validate",
             processAlive = true,
             sequenceNumber = 5,
@@ -2513,14 +2516,14 @@ class WorkflowGoalRunnerProgressStoreTest {
     val workflows = InMemoryWorkflowStates()
     workflows.saveFeatureImplementWorkflow(
       workflowRecord(
-        workflowId = "wfl-child",
+        workflowId = WorkflowId("wfl-child"),
         artifactsPatch = mapOf(
           "feature_task_runtime_delivered_projections" to mapOf(
             "validate|1" to "z".repeat(1_500_000),
           ),
           GoalProgressEvent(
             eventKind = GoalProgressEventKind.OPERATION_HEARTBEAT,
-            workflowId = "wfl-child",
+            workflowId = WorkflowId("wfl-child"),
             workflowPhase = "validate",
             processAlive = true,
             sequenceNumber = 9,
@@ -2567,7 +2570,7 @@ class WorkflowGoalRunnerProgressStoreTest {
     )
 
     val recorded = store.recordWorkerSubtaskRequestOutcomes(
-      workflowId = "wfl-child",
+      workflowId = WorkflowId("wfl-child"),
       outcomes = listOf(
         GoalRunnerWorkerSubtaskRequestOutcome.Accepted(
           request = acceptedRequest,
@@ -2779,7 +2782,7 @@ class WorkflowGoalRunnerProgressStoreTest {
           mapOf("step_id" to "implement", "status" to "running", "attempt_count" to 1),
         ),
         artifactsPatch = null,
-        sessionId = "ftr-001",
+        sessionId = SessionId("ftr-001"),
       ),
     )
     workflows.saveFeatureImplementWorkflow(running.toRecord())
@@ -2807,7 +2810,7 @@ class WorkflowGoalRunnerProgressStoreTest {
       "accepted_at" to "2026-08-01T12:00:00Z",
     )
     val parent = workflowRecord(
-      workflowId = "wfl-legacy-parent",
+      workflowId = WorkflowId("wfl-legacy-parent"),
       artifactsPatch = mapOf(
         "plan" to mapOf("mode" to "decompose"),
         DECOMPOSITION_RUNTIME_ARTIFACT_KEY to
@@ -2834,7 +2837,7 @@ class WorkflowGoalRunnerProgressStoreTest {
     assertEquals(GoalRunnerReviewPolicy(CodeReviewExecutionMode.INLINE), controls.reviewPolicy("wfl-legacy-parent"))
     assertEquals(
       GoalRunnerOutOfBandAcceptance(
-        subtaskId = 1,
+        subtaskId = SubtaskId(1),
         commitSha = "abc1234",
         reason = "implemented outside the runtime",
         acceptedAt = "2026-08-01T12:00:00Z",
@@ -2950,7 +2953,7 @@ private fun workflowRecord(
       currentStepId = "plan",
       stepUpdates = null,
       artifactsPatch = artifactsPatch,
-      sessionId = "ftr-001",
+      sessionId = SessionId("ftr-001"),
     ),
   ).toRecord()
 }
@@ -2991,7 +2994,7 @@ private fun scopedReplanStore(
 ): GoalRunnerManifestStore {
   workflows.saveFeatureTaskRuntimeWorkflow(
     workflowRecord(
-      workflowId = "wfl-parent",
+      workflowId = WorkflowId("wfl-parent"),
       artifactsPatch = mapOf(
         "plan" to mapOf("mode" to "decompose"),
         DECOMPOSITION_RUNTIME_ARTIFACT_KEY to
@@ -3015,34 +3018,34 @@ private fun scopedReplanState(manifest: DecompositionManifest, tempPrefix: Strin
 )
 
 private fun decompositionRuntime(status: String): DecompositionManifest = DecompositionManifest(
-  issueKey = "SKILL-52.1",
+  issueKey = IssueKey("SKILL-52.1"),
   featureName = "install-policy-extraction",
   parentSpecPath = ".feature-specs/SKILL-52.1-hexagonal-runtime-hardening/spec_subtask_3_install-policy.md",
   status = status,
   executionModel = DecompositionExecutionModel.SAME_BRANCH_COMMIT_PER_SUBTASK,
   baseBranch = "main",
   featureBranch = "feat/SKILL-52.1-hexagonal-runtime-hardening",
-  currentSubtaskIntent = CurrentSubtaskIntent(subtaskId = 1, action = "resume"),
+  currentSubtaskIntent = CurrentSubtaskIntent(subtaskId = SubtaskId(1), action = "resume"),
   subtasks = listOf(
     DecompositionSubtask(
       id = 1,
       name = "install-policy-foundation",
       specPath = ".feature-specs/SKILL-52.1-hexagonal-runtime-hardening/install-policy/spec_subtask_1.md",
       status = status,
-      workflowId = "wfl-child",
+      workflowId = WorkflowId("wfl-child"),
     ),
   ),
 )
 
 private fun completeDecompositionRuntime(): DecompositionManifest = decompositionRuntime(status = "complete").copy(
-  currentSubtaskIntent = CurrentSubtaskIntent(subtaskId = 0, action = "complete"),
+  currentSubtaskIntent = CurrentSubtaskIntent(subtaskId = SubtaskId(0), action = "complete"),
   subtasks = listOf(
     DecompositionSubtask(
       id = 1,
       name = "install-policy-foundation",
       specPath = ".feature-specs/SKILL-52.1-hexagonal-runtime-hardening/install-policy/spec_subtask_1.md",
       status = "complete",
-      workflowId = "wfl-child",
+      workflowId = WorkflowId("wfl-child"),
       commitSha = "sha-complete",
       lastResumableStep = "commit_push",
     ),
@@ -3391,7 +3394,7 @@ class GoalChildPlanningHydrationTransactionIntegrationTest {
     val opened = service.openFeatureTask(
       WorkflowServiceOpenFeatureTaskArgs(
         kind = WorkflowFamilyKind.TASK_RUNTIME,
-        issueKey = "SKILL-128",
+        issueKey = IssueKey("SKILL-128"),
         repositoryIdentity = REPOSITORY_IDENTITY,
         governedSpecPath = ".feature-specs/SKILL-128/spec.md",
       ),
@@ -3645,7 +3648,7 @@ class GoalChildPlanningHydrationTransactionIntegrationTest {
       )
     }
     fun hydrationManifest(twoSubtasks: Boolean) = DecompositionManifest(
-      issueKey = "SKILL-128", featureName = "hydration", parentSpecPath = ".feature-specs/SKILL-128/spec.md",
+      issueKey = IssueKey("SKILL-128"), featureName = "hydration", parentSpecPath = ".feature-specs/SKILL-128/spec.md",
       status = "pending", executionModel = DecompositionExecutionModel.SAME_BRANCH_COMMIT_PER_SUBTASK,
       baseBranch = "main", featureBranch = "feat/SKILL-128",
       currentSubtaskIntent = CurrentSubtaskIntent(1, "resume"),
@@ -3700,12 +3703,12 @@ internal class FakeDatabaseSessionFactory(
   private val goalRunnerControls: GoalRunnerControlRepository =
     EmptyGoalRunnerControlRepository,
 ) : DatabaseSessionFactory {
-  override fun resolveDbPath(dbOverride: String?): Path = fakeDbPath
-  override fun databaseExists(dbOverride: String?): Boolean = true
-  override fun <T> read(dbOverride: String?, block: (UnitOfWork) -> T): T = block(unit())
-  override fun <T> selfManagedWrite(dbOverride: String?, block: (UnitOfWork) -> T): T = transaction(dbOverride, block)
+  override fun resolveDbPath(): Path = fakeDbPath
+  override fun databaseExists(): Boolean = true
+  override fun <T> read(block: (UnitOfWork) -> T): T = block(unit())
+  override fun <T> selfManagedWrite(block: (UnitOfWork) -> T): T = transaction(block)
 
-  override fun <T> transaction(dbOverride: String?, block: (UnitOfWork) -> T): T = block(unit())
+  override fun <T> transaction(block: (UnitOfWork) -> T): T = block(unit())
 
   private fun unit(): UnitOfWork = object : UnitOfWorkDefaults() {
     override val dbPath: Path = fakeDbPath
@@ -3982,7 +3985,7 @@ class DecompositionDiskBootstrapTest {
       executionModel = DecompositionExecutionModel.SAME_BRANCH_COMMIT_PER_SUBTASK,
       baseBranch = "main",
       featureBranch = "feat/invalid-issue-key",
-      currentSubtaskIntent = CurrentSubtaskIntent(subtaskId = 1, action = "implement"),
+      currentSubtaskIntent = CurrentSubtaskIntent(subtaskId = SubtaskId(1), action = "implement"),
       subtasks = listOf(
         DecompositionSubtask(
           id = 1,
@@ -3995,7 +3998,7 @@ class DecompositionDiskBootstrapTest {
     val workflows = InMemoryWorkflowStates()
     workflows.saveFeatureTaskRuntimeWorkflow(
       workflowRecord(
-        workflowId = "wfl-invalid-issue-key",
+        workflowId = WorkflowId("wfl-invalid-issue-key"),
         artifactsPatch = mapOf(
           "plan" to mapOf("mode" to "decompose"),
           DECOMPOSITION_RUNTIME_ARTIFACT_KEY to
@@ -4027,14 +4030,14 @@ class DecompositionDiskBootstrapTest {
     val manifestPath = repoRoot.resolve(".feature-specs/SKILL-TEST-feature/decomposition-manifest.yaml")
     Files.createDirectories(manifestPath.parent)
     val manifest = DecompositionManifest(
-      issueKey = "SKILL-TEST",
+      issueKey = IssueKey("SKILL-TEST"),
       featureName = "test-feature",
       parentSpecPath = ".feature-specs/SKILL-TEST-feature/spec.md",
       status = "in_progress",
       executionModel = DecompositionExecutionModel.SAME_BRANCH_COMMIT_PER_SUBTASK,
       baseBranch = "main",
       featureBranch = "",
-      currentSubtaskIntent = CurrentSubtaskIntent(subtaskId = 1, action = "implement"),
+      currentSubtaskIntent = CurrentSubtaskIntent(subtaskId = SubtaskId(1), action = "implement"),
       subtasks = listOf(
         DecompositionSubtask(
           id = 1,
@@ -4079,14 +4082,14 @@ class DecompositionDiskBootstrapTest {
     val manifestPath = repoRoot.resolve(".feature-specs/SKILL-TEST-feature/decomposition-manifest.yaml")
     Files.createDirectories(manifestPath.parent)
     val manifest = DecompositionManifest(
-      issueKey = "SKILL-TEST",
+      issueKey = IssueKey("SKILL-TEST"),
       featureName = "test-feature",
       parentSpecPath = ".feature-specs/SKILL-TEST-feature/spec.md",
       status = "in_progress",
       executionModel = DecompositionExecutionModel.SAME_BRANCH_COMMIT_PER_SUBTASK,
       baseBranch = "main",
       featureBranch = "",
-      currentSubtaskIntent = CurrentSubtaskIntent(subtaskId = 1, action = "implement"),
+      currentSubtaskIntent = CurrentSubtaskIntent(subtaskId = SubtaskId(1), action = "implement"),
       subtasks = listOf(
         DecompositionSubtask(
           id = 1,
@@ -4129,14 +4132,14 @@ class DecompositionDiskBootstrapTest {
     val manifestPath = repoRoot.resolve(".feature-specs/SKILL-TEST-feature/decomposition-manifest.yaml")
     Files.createDirectories(manifestPath.parent)
     val manifest = DecompositionManifest(
-      issueKey = "SKILL-TEST",
+      issueKey = IssueKey("SKILL-TEST"),
       featureName = "test-feature",
       parentSpecPath = ".feature-specs/SKILL-TEST-feature/spec.md",
       status = "in_progress",
       executionModel = DecompositionExecutionModel.SAME_BRANCH_COMMIT_PER_SUBTASK,
       baseBranch = "main",
       featureBranch = "",
-      currentSubtaskIntent = CurrentSubtaskIntent(subtaskId = 1, action = "implement"),
+      currentSubtaskIntent = CurrentSubtaskIntent(subtaskId = SubtaskId(1), action = "implement"),
       subtasks = listOf(
         DecompositionSubtask(
           id = 1,
@@ -4188,14 +4191,14 @@ class DecompositionDiskBootstrapTest {
     val manifestPath = repoRoot.resolve(".feature-specs/SKILL-TEST-feature/decomposition-manifest.yaml")
     Files.createDirectories(manifestPath.parent)
     val manifest = DecompositionManifest(
-      issueKey = "SKILL-TEST",
+      issueKey = IssueKey("SKILL-TEST"),
       featureName = "test-feature",
       parentSpecPath = ".feature-specs/SKILL-TEST-feature/spec.md",
       status = "in_progress",
       executionModel = DecompositionExecutionModel.SAME_BRANCH_COMMIT_PER_SUBTASK,
       baseBranch = "main",
       featureBranch = "",
-      currentSubtaskIntent = CurrentSubtaskIntent(subtaskId = 1, action = "implement"),
+      currentSubtaskIntent = CurrentSubtaskIntent(subtaskId = SubtaskId(1), action = "implement"),
       subtasks = listOf(
         DecompositionSubtask(
           id = 1,
@@ -4215,12 +4218,12 @@ class DecompositionDiskBootstrapTest {
     // search must find it so no second parent id is minted.
     workflows.saveFeatureTaskRuntimeWorkflow(
       workflowRecord(
-        workflowId = "wfl-corrupt-parent",
+        workflowId = WorkflowId("wfl-corrupt-parent"),
         artifactsPatch = mapOf(
           "plan" to mapOf("mode" to "decompose"),
           DECOMPOSITION_RUNTIME_ARTIFACT_KEY to "not-a-map",
         ),
-      ).copy(issueKey = "SKILL-TEST"),
+      ).copy(issueKey = IssueKey("SKILL-TEST")),
     )
     val db = FakeDatabaseSessionFactory(workflows)
     val continuation = DecompositionWorkflowContinuation(
@@ -4257,14 +4260,14 @@ class DecompositionDiskBootstrapTest {
     val manifestPath = repoRoot.resolve(".feature-specs/SKILL-TEST-feature/decomposition-manifest.yaml")
     Files.createDirectories(manifestPath.parent)
     val manifest = DecompositionManifest(
-      issueKey = "SKILL-TEST",
+      issueKey = IssueKey("SKILL-TEST"),
       featureName = "test-feature",
       parentSpecPath = ".feature-specs/SKILL-TEST-feature/spec.md",
       status = "in_progress",
       executionModel = DecompositionExecutionModel.SAME_BRANCH_COMMIT_PER_SUBTASK,
       baseBranch = "main",
       featureBranch = "",
-      currentSubtaskIntent = CurrentSubtaskIntent(subtaskId = 1, action = "implement"),
+      currentSubtaskIntent = CurrentSubtaskIntent(subtaskId = SubtaskId(1), action = "implement"),
       subtasks = listOf(
         DecompositionSubtask(
           id = 1,
@@ -4320,14 +4323,14 @@ class DecompositionDiskBootstrapTest {
     val manifestPath = repoRoot.resolve(".feature-specs/SKILL-TEST-feature/decomposition-manifest.yaml")
     Files.createDirectories(manifestPath.parent)
     val manifest = DecompositionManifest(
-      issueKey = "SKILL-TEST",
+      issueKey = IssueKey("SKILL-TEST"),
       featureName = "test-feature",
       parentSpecPath = ".feature-specs/SKILL-TEST-feature/spec.md",
       status = "in_progress",
       executionModel = DecompositionExecutionModel.SAME_BRANCH_COMMIT_PER_SUBTASK,
       baseBranch = "main",
       featureBranch = "",
-      currentSubtaskIntent = CurrentSubtaskIntent(subtaskId = 1, action = "implement"),
+      currentSubtaskIntent = CurrentSubtaskIntent(subtaskId = SubtaskId(1), action = "implement"),
       subtasks = listOf(
         DecompositionSubtask(
           id = 1,
@@ -4344,12 +4347,12 @@ class DecompositionDiskBootstrapTest {
     val workflows = InMemoryWorkflowStates()
     workflows.saveFeatureTaskRuntimeWorkflow(
       workflowRecord(
-        workflowId = "wfl-corrupt-idempotent",
+        workflowId = WorkflowId("wfl-corrupt-idempotent"),
         artifactsPatch = mapOf(
           "plan" to mapOf("mode" to "decompose"),
           DECOMPOSITION_RUNTIME_ARTIFACT_KEY to "not-a-map",
         ),
-      ).copy(issueKey = "SKILL-TEST"),
+      ).copy(issueKey = IssueKey("SKILL-TEST")),
     )
     val db = FakeDatabaseSessionFactory(workflows)
     val continuation = DecompositionWorkflowContinuation(
@@ -4382,14 +4385,14 @@ class DecompositionDiskBootstrapTest {
     val manifestPath = repoRoot.resolve(".feature-specs/SKILL-TEST-feature/decomposition-manifest.yaml")
     Files.createDirectories(manifestPath.parent)
     val manifest = DecompositionManifest(
-      issueKey = "SKILL-TEST",
+      issueKey = IssueKey("SKILL-TEST"),
       featureName = "test-feature",
       parentSpecPath = ".feature-specs/SKILL-TEST-feature/spec.md",
       status = "in_progress",
       executionModel = DecompositionExecutionModel.SAME_BRANCH_COMMIT_PER_SUBTASK,
       baseBranch = "main",
       featureBranch = "",
-      currentSubtaskIntent = CurrentSubtaskIntent(subtaskId = 1, action = "implement"),
+      currentSubtaskIntent = CurrentSubtaskIntent(subtaskId = SubtaskId(1), action = "implement"),
       subtasks = listOf(
         DecompositionSubtask(
           id = 1,
@@ -4406,13 +4409,13 @@ class DecompositionDiskBootstrapTest {
     val workflows = InMemoryWorkflowStates()
     workflows.saveFeatureImplementWorkflow(
       workflowRecord(
-        workflowId = "wfl-abandoned-corrupt",
+        workflowId = WorkflowId("wfl-abandoned-corrupt"),
         workflowStatus = "abandoned",
         artifactsPatch = mapOf(
           "plan" to mapOf("mode" to "decompose"),
           DECOMPOSITION_RUNTIME_ARTIFACT_KEY to "not-a-map",
         ),
-      ).copy(issueKey = "SKILL-TEST"),
+      ).copy(issueKey = IssueKey("SKILL-TEST")),
     )
     val db = FakeDatabaseSessionFactory(workflows)
     val continuation = DecompositionWorkflowContinuation(

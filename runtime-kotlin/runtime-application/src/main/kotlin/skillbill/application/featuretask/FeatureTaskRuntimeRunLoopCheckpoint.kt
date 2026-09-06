@@ -22,7 +22,7 @@ object FeatureTaskRuntimeRunLoopCheckpoint {
   ): FeatureTaskRuntimeCheckpointDecision? {
     val preparation = prepareCheckpointScope(runLoop, precedingPhaseId, branch, blockedReason) ?: return null
     val ownedInventory = checkpointOwnedInventory(runLoop, preparation)
-    val resolved = runLoop.recorder.loadResolvedBranch(runLoop.request.workflowId, runLoop.request.dbPathOverride)
+    val resolved = runLoop.recorder.loadResolvedBranch(runLoop.request.workflowId)
     persistOwnedInventory(runLoop, ownedInventory, resolved?.workflowOwnedPaths.orEmpty())
     runLoop.session.checkpointOwnershipDecided = true
     return FeatureTaskRuntimeCheckpointScope.decide(
@@ -64,7 +64,6 @@ object FeatureTaskRuntimeRunLoopCheckpoint {
   fun writingPhaseIntroducedPaths(runLoop: FeatureTaskRuntimeRunLoop, worktreeDelta: List<String>): List<String> {
     val records = runLoop.recorder.loadPhaseRecords(
       runLoop.request.workflowId,
-      runLoop.request.dbPathOverride,
     ).orEmpty()
     val writingRecords = INVENTORY_EXTENDING_PHASES.mapNotNull { records[it] }
     if (writingRecords.isEmpty()) {
@@ -90,7 +89,6 @@ object FeatureTaskRuntimeRunLoopCheckpoint {
   ): List<String> {
     val record = runLoop.recorder.loadPhaseRecords(
       runLoop.request.workflowId,
-      runLoop.request.dbPathOverride,
     )?.get(phaseId)
     if (record == null) {
       if (worktreeDelta.isNotEmpty()) {
@@ -111,7 +109,7 @@ object FeatureTaskRuntimeRunLoopCheckpoint {
 
   fun persistOwnedInventory(runLoop: FeatureTaskRuntimeRunLoop, inventory: List<String>, persisted: List<String>) {
     if (inventory.sorted() == persisted.sorted()) return
-    runLoop.recorder.recordWorkflowOwnedPaths(runLoop.request.workflowId, inventory, runLoop.request.dbPathOverride)
+    runLoop.recorder.recordWorkflowOwnedPaths(runLoop.request.workflowId, inventory)
   }
 
   private fun stagedCheckpointPaths(
@@ -142,7 +140,7 @@ object FeatureTaskRuntimeRunLoopCheckpoint {
     branch: String,
     blockedReason: (String, String) -> String,
   ): CheckpointScopePreparation? {
-    val resolved = runLoop.recorder.loadResolvedBranch(runLoop.request.workflowId, runLoop.request.dbPathOverride)
+    val resolved = runLoop.recorder.loadResolvedBranch(runLoop.request.workflowId)
     val worktreeDelta = FeatureTaskRuntimeRunLoopCheckpointRemediation.checkpointWorktreeDelta(
       runLoop,
       resolved?.baselineOwnedPathsForCheckpoint().orEmpty(),
@@ -269,7 +267,7 @@ object FeatureTaskRuntimeRunLoopCheckpoint {
     val subtaskId = runLoop.request.goalContinuation?.subtaskId?.toString()
       ?: FEATURE_TASK_RUNTIME_STANDALONE_SUBTASK_ID
     return runCatching {
-      runLoop.recorder.loadCheckpointIdentities(runLoop.request.workflowId, runLoop.request.dbPathOverride)
+      runLoop.recorder.loadCheckpointIdentities(runLoop.request.workflowId)
     }.fold(
       onSuccess = { loaded -> loaded.orEmpty() },
       onFailure = { error ->
@@ -329,7 +327,6 @@ object FeatureTaskRuntimeRunLoopCheckpoint {
     val read = runCatching {
       runLoop.recorder.loadCheckpointIdentities(
         runLoop.request.workflowId,
-        runLoop.request.dbPathOverride,
       )
     }
     val identities = read.getOrNull()
@@ -439,7 +436,6 @@ object FeatureTaskRuntimeRunLoopCheckpoint {
           parentSha = parentSha,
           ownedPaths = ownedPaths,
           commitSha = commitSha,
-          dbOverride = runLoop.request.dbPathOverride,
         ),
       )
     }

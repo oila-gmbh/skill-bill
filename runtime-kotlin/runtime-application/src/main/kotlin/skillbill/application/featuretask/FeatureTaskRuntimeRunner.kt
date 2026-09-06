@@ -27,7 +27,7 @@ class FeatureTaskRuntimeRunner(
   val activityStampWriter: AgentActivityStampWriter,
 ) {
   fun run(request: FeatureTaskRuntimeRunRequest): FeatureTaskRuntimeRunReport {
-    val reconciliation = crashReconciler.reconcile(request.dbPathOverride)
+    val reconciliation = crashReconciler.reconcile()
     return when (val preparation = prepareRun(request)) {
       is FeatureTaskRuntimePreparation.PreparationBlocked -> preparation.report
       is FeatureTaskRuntimePreparation.Prepared -> executePreparedRun(preparation.request, reconciliation)
@@ -43,7 +43,7 @@ class FeatureTaskRuntimeRunner(
       ).prepare(request)
 
   private fun foreignModeWorkflowBlock(request: FeatureTaskRuntimeRunRequest): FeatureTaskRuntimeRunReport.Blocked? {
-    val existingMode = recorder.existingWorkflowMode(request.workflowId, request.dbPathOverride)
+    val existingMode = recorder.existingWorkflowMode(request.workflowId)
     if (existingMode == null || existingMode == FeatureTaskWorkflowMode.RUNTIME) {
       return null
     }

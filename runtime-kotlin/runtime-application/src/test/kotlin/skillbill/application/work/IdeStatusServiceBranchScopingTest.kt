@@ -1,5 +1,4 @@
 package skillbill.application.work
-
 import skillbill.application.goalrunner.goalRepositoryIdentity
 import skillbill.application.idestatus.model.IdeStatusCurrentPhaseExecutionKind
 import skillbill.application.idestatus.model.IdeStatusFreshness
@@ -17,6 +16,8 @@ import skillbill.ports.goalrunner.runner.model.GoalRunnerWorkflowProgress
 import skillbill.ports.work.model.WorkItemKind
 import skillbill.ports.workflow.model.FeatureTaskRouteScope
 import skillbill.workflow.decomposition.model.CurrentSubtaskIntent
+import skillbill.workflow.decomposition.model.SubtaskId
+import skillbill.workflow.engine.model.WorkflowId
 import java.nio.file.Path
 import java.time.Instant
 import kotlin.test.Test
@@ -94,7 +95,7 @@ class IdeStatusServiceBranchScopingTest {
       ),
     )
     val staleProgress = GoalRunnerWorkflowProgress(
-      workflowId = "w-child",
+      workflowId = WorkflowId("w-child"),
       workflowStatus = "running",
       currentStepId = "verify_findings",
       progressToken = "stale-verify-findings",
@@ -363,7 +364,7 @@ class IdeStatusServiceBranchScopingTest {
     val base = goalManifestState(fixture, identity, childWorkflowId = "w-child")
     return base.copy(
       manifest = base.manifest.copy(
-        currentSubtaskIntent = CurrentSubtaskIntent(subtaskId = 0, action = "complete"),
+        currentSubtaskIntent = CurrentSubtaskIntent(subtaskId = SubtaskId(0), action = "complete"),
         subtasks = base.manifest.subtasks.map { it.copy(status = "complete", lastResumableStep = null) },
       ),
     )

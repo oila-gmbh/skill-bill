@@ -47,7 +47,7 @@ data class ReviewLaneEffectivenessRow(
 )
 
 data class ImportedReview(
-  val reviewRunId: String,
+  val reviewRunId: ReviewRunId,
   val reviewSessionId: String,
   val rawText: String,
   val routedSkill: String?,
@@ -65,7 +65,7 @@ data class ImportedReview(
 )
 
 data class ReviewSummary(
-  val reviewRunId: String,
+  val reviewRunId: ReviewRunId,
   val reviewSessionId: String?,
   val routedSkill: String?,
   val detectedScope: String?,
@@ -115,7 +115,7 @@ data class TriageDecision(
 )
 
 data class FeedbackRequest(
-  val reviewRunId: String,
+  val reviewRunId: ReviewRunId,
   val findingIds: List<String>,
   val eventType: String,
   val note: String,
@@ -128,7 +128,7 @@ data class FeedbackTelemetryOptions(
 )
 
 data class FindingOutcomeRow(
-  val reviewRunId: String,
+  val reviewRunId: ReviewRunId,
   val findingId: String,
   val severity: String,
   val confidence: String,

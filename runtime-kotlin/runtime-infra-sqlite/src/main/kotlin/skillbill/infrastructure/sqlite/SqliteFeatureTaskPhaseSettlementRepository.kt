@@ -1,14 +1,17 @@
 package skillbill.infrastructure.sqlite
-
 import me.tatarka.inject.annotations.Inject
 import skillbill.db.core.DatabaseRuntime
+import skillbill.model.EnvironmentContext
 import skillbill.ports.featuretask.FeatureTaskPhaseSettlementRepository
 import skillbill.ports.featuretask.model.FeatureTaskPhaseSettlement
+import skillbill.workflow.engine.model.WorkflowId
 
 @Inject
-class SqliteFeatureTaskPhaseSettlementRepository : FeatureTaskPhaseSettlementRepository {
-  override fun upsert(settlement: FeatureTaskPhaseSettlement, dbPathOverride: String?) {
-    DatabaseRuntime.openDb(cliValue = dbPathOverride).use { database ->
+class SqliteFeatureTaskPhaseSettlementRepository(
+  private val context: EnvironmentContext,
+) : FeatureTaskPhaseSettlementRepository {
+  override fun upsert(settlement: FeatureTaskPhaseSettlement) {
+    DatabaseRuntime.openDb(cliValue = context.dbPathOverride).use { database ->
       database.connection.prepareStatement(
         """
         INSERT INTO feature_task_phase_settlements (
@@ -31,13 +34,8 @@ class SqliteFeatureTaskPhaseSettlementRepository : FeatureTaskPhaseSettlementRep
     }
   }
 
-  override fun find(
-    workflowId: String,
-    phaseId: String,
-    attempt: Int,
-    dbPathOverride: String?,
-  ): FeatureTaskPhaseSettlement? {
-    DatabaseRuntime.openDb(cliValue = dbPathOverride).use { database ->
+  override fun find(workflowId: WorkflowId, phaseId: String, attempt: Int): FeatureTaskPhaseSettlement? {
+    DatabaseRuntime.openDb(cliValue = context.dbPathOverride).use { database ->
       database.connection.prepareStatement(
         """
         SELECT workflow_id, phase_id, attempt, kind, envelope_json, recorded_at
@@ -51,7 +49,7 @@ class SqliteFeatureTaskPhaseSettlementRepository : FeatureTaskPhaseSettlementRep
         statement.executeQuery().use { rows ->
           if (!rows.next()) return null
           return FeatureTaskPhaseSettlement(
-            workflowId = rows.getString(PARAM_ONE),
+            workflowId = WorkflowId(rows.getString(PARAM_ONE)),
             phaseId = rows.getString(PARAM_TWO),
             attempt = rows.getInt(PARAM_THREE),
             kind = rows.getString(PARAM_FOUR),
@@ -63,8 +61,8 @@ class SqliteFeatureTaskPhaseSettlementRepository : FeatureTaskPhaseSettlementRep
     }
   }
 
-  override fun delete(workflowId: String, phaseId: String, attempt: Int, dbPathOverride: String?): Boolean {
-    DatabaseRuntime.openDb(cliValue = dbPathOverride).use { database ->
+  override fun delete(workflowId: WorkflowId, phaseId: String, attempt: Int): Boolean {
+    DatabaseRuntime.openDb(cliValue = context.dbPathOverride).use { database ->
       database.connection.prepareStatement(
         """
         DELETE FROM feature_task_phase_settlements

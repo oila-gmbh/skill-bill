@@ -1,9 +1,9 @@
 package skillbill.learnings
-
 import skillbill.learnings.model.LearningScope
 import skillbill.learnings.model.LearningSourceReference
 import skillbill.learnings.model.LearningSourceValidation
 import skillbill.learnings.model.RejectedLearningSourceOutcome
+import skillbill.review.model.ReviewRunId
 
 object LearningsRuntime {
   val learningStatuses: List<String> = listOf("active", "disabled")
@@ -17,7 +17,7 @@ object LearningsRuntime {
       "Learnings must be derived from a rejected review finding. Provide both --from-run and --from-finding."
     }
     return LearningSourceReference(
-      reviewRunId = sourceReviewRunId.trim(),
+      reviewRunId = ReviewRunId(sourceReviewRunId.trim()),
       findingId = sourceFindingId.trim(),
     )
   }
@@ -39,11 +39,11 @@ object LearningsRuntime {
     latestRejectedOutcome: RejectedLearningSourceOutcome?,
   ): LearningSourceValidation {
     require(sourceFindingExists) {
-      "Unknown learning source '${sourceReference.reviewRunId}:${sourceReference.findingId}'. " +
+      "Unknown learning source '${sourceReference.reviewRunId.value}:${sourceReference.findingId}'. " +
         "Import the review and finding first."
     }
     require(latestRejectedOutcome != null) {
-      "Finding '${sourceReference.findingId}' in run '${sourceReference.reviewRunId}' has no rejected outcome. " +
+      "Finding '${sourceReference.findingId}' in run '${sourceReference.reviewRunId.value}' has no rejected outcome. " +
         "Learnings can only be created from findings the user rejected " +
         "(fix_rejected or false_positive)."
     }

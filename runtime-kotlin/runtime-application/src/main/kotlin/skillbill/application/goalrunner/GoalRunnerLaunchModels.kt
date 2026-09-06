@@ -1,5 +1,4 @@
 package skillbill.application.goalrunner
-
 import skillbill.contracts.JsonCodec
 import skillbill.goalrunner.model.GoalRunnerReconciledOutcome
 import skillbill.goalrunner.model.GoalRunnerStopReason
@@ -7,6 +6,7 @@ import skillbill.goalrunner.model.GoalRunnerStoredOutcome
 import skillbill.ports.agentrun.model.AgentRunLaunchFacts
 import skillbill.ports.agentrun.model.AgentRunLaunchOutcome
 import skillbill.ports.goalrunner.runner.model.GoalRunnerManifestState
+import skillbill.workflow.engine.model.WorkflowId
 
 internal data class GoalRunnerLaunchReconciliation(
   val refreshed: GoalRunnerManifestState,
@@ -29,7 +29,7 @@ internal data class GoalRunnerMissingResultPrefixRecovery(
 internal data class GoalRunnerMissingResultPrefixCandidate(
   val output: Map<String, Any?>,
   val lastResumableStep: String?,
-  val workflowId: String?,
+  val workflowId: WorkflowId?,
 )
 
 internal fun missingResultPrefixDiagnostics(lastResumableStep: String?): GoalRunnerLaunchDiagnostics =
@@ -54,7 +54,7 @@ internal fun missingPrefixRecoveryCandidate(
         GoalRunnerMissingResultPrefixCandidate(
           output = output,
           lastResumableStep = stop.lastResumableStep,
-          workflowId = facts.liveness?.workflowId?.takeIf(String::isNotBlank),
+          workflowId = facts.liveness?.workflowId?.takeIf { it.value.isNotBlank() },
         )
       }
     }

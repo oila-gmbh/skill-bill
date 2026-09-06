@@ -1,5 +1,4 @@
 package skillbill.application
-
 import skillbill.application.decomposition.decodeDecompositionManifestMap
 import skillbill.application.decomposition.encodeDecompositionManifestYaml
 import skillbill.contracts.JsonCodec
@@ -14,6 +13,8 @@ import skillbill.workflow.decomposition.model.DecompositionExecutionModel
 import skillbill.workflow.decomposition.model.DecompositionManifest
 import skillbill.workflow.decomposition.model.DecompositionStackBranch
 import skillbill.workflow.decomposition.model.DecompositionSubtask
+import skillbill.workflow.decomposition.model.IssueKey
+import skillbill.workflow.decomposition.model.SubtaskId
 import skillbill.workflow.decomposition.toWireMap
 import kotlin.test.Test
 import kotlin.test.assertContains
@@ -85,9 +86,14 @@ class DecompositionManifestValidationTest {
       featureBranch = null,
       stackBranches =
       listOf(
-        DecompositionStackBranch(subtaskId = 1, branch = "feature/SKILL-51-01-foundation", baseBranch = "main"),
         DecompositionStackBranch(
-          subtaskId = 2,
+          subtaskId =
+          SubtaskId(1),
+          branch = "feature/SKILL-51-01-foundation",
+          baseBranch = "main",
+        ),
+        DecompositionStackBranch(
+          subtaskId = SubtaskId(2),
           branch = "feature/SKILL-51-02-runtime",
           baseBranch = "feature/SKILL-51-01-foundation",
         ),
@@ -212,8 +218,18 @@ class DecompositionManifestValidationTest {
       featureBranch = null,
       stackBranches =
       listOf(
-        DecompositionStackBranch(subtaskId = 2, branch = "feature/SKILL-51-02-runtime", baseBranch = "main"),
-        DecompositionStackBranch(subtaskId = 1, branch = "feature/SKILL-51-01-foundation", baseBranch = "main"),
+        DecompositionStackBranch(
+          subtaskId =
+          SubtaskId(2),
+          branch = "feature/SKILL-51-02-runtime",
+          baseBranch = "main",
+        ),
+        DecompositionStackBranch(
+          subtaskId =
+          SubtaskId(1),
+          branch = "feature/SKILL-51-01-foundation",
+          baseBranch = "main",
+        ),
       ),
     )
 
@@ -232,7 +248,7 @@ class DecompositionManifestValidationTest {
           id = 1,
           name = "Foundation",
           specPath = ".feature-specs/SKILL-51-decomposition/spec_subtask_1_foundation.md",
-          dependencies = listOf(DecompositionDependency(subtaskId = 2)),
+          dependencies = listOf(DecompositionDependency(subtaskId = SubtaskId(2))),
         ),
         DecompositionSubtask(
           id = 2,
@@ -264,7 +280,7 @@ class DecompositionManifestValidationTest {
           id = 2,
           name = "Runtime",
           specPath = ".feature-specs/SKILL-51-decomposition/spec_subtask_1_foundation.md",
-          dependencies = listOf(DecompositionDependency(subtaskId = 1)),
+          dependencies = listOf(DecompositionDependency(subtaskId = SubtaskId(1))),
         ),
       ),
     )
@@ -277,12 +293,12 @@ class DecompositionManifestValidationTest {
   }
 
   private fun validSameBranchManifest(): DecompositionManifest = DecompositionManifest(
-    issueKey = "SKILL-51",
+    issueKey = IssueKey("SKILL-51"),
     featureName = "decomposition",
     parentSpecPath = ".feature-specs/SKILL-51-decomposition/spec.md",
     baseBranch = "main",
     featureBranch = "feature/SKILL-51-decomposition",
-    currentSubtaskIntent = CurrentSubtaskIntent(subtaskId = 1, action = "start"),
+    currentSubtaskIntent = CurrentSubtaskIntent(subtaskId = SubtaskId(1), action = "start"),
     subtasks =
     listOf(
       DecompositionSubtask(
@@ -295,7 +311,7 @@ class DecompositionManifestValidationTest {
         id = 2,
         name = "Runtime",
         specPath = ".feature-specs/SKILL-51-decomposition/spec_subtask_2_runtime.md",
-        dependencies = listOf(DecompositionDependency(subtaskId = 1)),
+        dependencies = listOf(DecompositionDependency(subtaskId = SubtaskId(1))),
       ),
     ),
   )

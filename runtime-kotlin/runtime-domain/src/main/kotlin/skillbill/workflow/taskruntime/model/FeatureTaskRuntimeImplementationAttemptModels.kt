@@ -1,5 +1,5 @@
 package skillbill.workflow.taskruntime.model
-
+import skillbill.agent.model.AgentId
 import skillbill.boundary.OpenBoundaryMap
 import skillbill.contracts.JsonCodec
 import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_IMPLEMENTATION_ATTEMPT_CONTRACT_VERSION
@@ -10,7 +10,7 @@ data class FeatureTaskRuntimeImplementationAttempt(
   val sequenceNumber: Int,
   val phaseId: String,
   val attemptNumber: Int,
-  val agentId: String,
+  val agentId: AgentId,
   val status: FeatureTaskRuntimeImplementationAttemptStatus,
   val recordedAt: String,
   val value: String,
@@ -27,7 +27,7 @@ data class FeatureTaskRuntimeImplementationAttempt(
     require(attemptNumber >= 1) {
       "FeatureTaskRuntimeImplementationAttempt.attemptNumber must be >= 1, was $attemptNumber."
     }
-    require(agentId.isNotBlank()) { "FeatureTaskRuntimeImplementationAttempt.agentId must be non-blank." }
+    require(agentId.value.isNotBlank()) { "FeatureTaskRuntimeImplementationAttempt.agentId must be non-blank." }
     require(recordedAt.isNotBlank()) { "FeatureTaskRuntimeImplementationAttempt.recordedAt must be non-blank." }
     require(value.isNotBlank()) { "FeatureTaskRuntimeImplementationAttempt.value must be non-blank." }
     edgeIteration?.let { iteration ->
@@ -45,7 +45,7 @@ data class FeatureTaskRuntimeImplementationAttempt(
     "sequence_number" to sequenceNumber,
     "phase_id" to phaseId,
     "attempt_number" to attemptNumber,
-    "agent_id" to agentId,
+    "agent_id" to agentId.value,
     "status" to status.wireValue,
     "recorded_at" to recordedAt,
     "value" to value,
@@ -71,7 +71,7 @@ data class FeatureTaskRuntimeImplementationAttempt(
           sequenceNumber = raw.requireIntField("sequence_number"),
           phaseId = raw.requireStringField("phase_id"),
           attemptNumber = raw.requireIntField("attempt_number"),
-          agentId = raw.requireStringField("agent_id"),
+          agentId = AgentId(raw.requireStringField("agent_id")),
           status = FeatureTaskRuntimeImplementationAttemptStatus.fromWireValue(raw.requireStringField("status")),
           recordedAt = raw.requireStringField("recorded_at"),
           value = raw.requireStringField("value"),

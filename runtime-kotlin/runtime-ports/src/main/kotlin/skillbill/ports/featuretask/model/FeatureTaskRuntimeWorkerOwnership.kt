@@ -1,9 +1,10 @@
 package skillbill.ports.featuretask.model
 
 import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_WORKER_OWNERSHIP_CONTRACT_VERSION
+import skillbill.workflow.engine.model.WorkflowId
 
 data class FeatureTaskRuntimeWorkerOwnership(
-  val workflowId: String,
+  val workflowId: WorkflowId,
   val generation: Long,
   val ownerToken: String,
   val hostIdentity: String,
@@ -42,5 +43,5 @@ sealed interface FeatureTaskRuntimeWorkerAcquisition {
   data object Contended : FeatureTaskRuntimeWorkerAcquisition
   data class OwnershipMismatch(val reason: String) : FeatureTaskRuntimeWorkerAcquisition
   data class UnsupportedProcessEvidence(val reason: String) : FeatureTaskRuntimeWorkerAcquisition
-  data class StaleSelector(val workflowId: String) : FeatureTaskRuntimeWorkerAcquisition
+  data class StaleSelector(val workflowId: WorkflowId) : FeatureTaskRuntimeWorkerAcquisition
 }

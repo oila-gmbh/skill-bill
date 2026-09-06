@@ -8,6 +8,9 @@ import skillbill.ports.agentrun.model.AgentRunLaunchOutcome
 import skillbill.ports.diagnostics.RuntimeDiagnostics
 import skillbill.ports.goalrunner.runner.GoalRunnerWorkflowOutcomeStore
 import skillbill.ports.goalrunner.runner.model.GoalRunnerWorkflowProgress
+import skillbill.workflow.decomposition.model.IssueKey
+import skillbill.workflow.decomposition.model.SubtaskId
+import skillbill.workflow.engine.model.WorkflowId
 import java.time.Clock
 
 class GoalRunnerObservabilityEmitter(
@@ -16,7 +19,6 @@ class GoalRunnerObservabilityEmitter(
   private val diagnostics: RuntimeDiagnostics,
   request: GoalRunnerRunRequest,
 ) {
-  private val dbPathOverride: String? = request.dbPathOverride
   private var sequence: Int = request.observabilitySequenceStart
 
   internal fun recordLaunchLifecycle(
@@ -47,7 +49,6 @@ class GoalRunnerObservabilityEmitter(
           sequenceNumber = sequence++,
           timestamp = clock.instant().toString(),
         ),
-        dbPathOverride = dbPathOverride,
       )
     }.onFailure { error ->
       diagnostics.warning(
@@ -143,9 +144,9 @@ class GoalRunnerObservabilityEmitter(
 }
 
 internal data class GoalRunnerObservabilitySubject(
-  val workflowId: String,
-  val issueKey: String,
-  val subtaskId: Int,
+  val workflowId: WorkflowId,
+  val issueKey: IssueKey,
+  val subtaskId: SubtaskId,
 )
 
 internal data class GoalRunnerObservabilitySignal(

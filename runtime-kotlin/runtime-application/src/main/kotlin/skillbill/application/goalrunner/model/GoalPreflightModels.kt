@@ -1,16 +1,19 @@
 package skillbill.application.goalrunner.model
 
+import skillbill.agent.model.AgentId
 import skillbill.application.continuation.model.GoalContinuationCandidate
 import skillbill.application.featuretask.model.FeatureTaskContinuationCandidate
 import skillbill.application.featuretask.model.FeatureTaskContinuationLookupResult
 import skillbill.ports.goalrunner.runner.model.GoalRunnerManifestState
 import skillbill.review.context.model.CodeReviewExecutionMode
 import skillbill.workflow.decomposition.model.DecompositionManifest
+import skillbill.workflow.decomposition.model.IssueKey
+import skillbill.workflow.decomposition.model.SubtaskId
 import java.nio.file.Path
 
 data class GoalPreflightLookupInput(
   val lookup: FeatureTaskContinuationLookupResult,
-  val normalizedIssueKey: String,
+  val normalizedIssueKey: IssueKey,
   val manifest: DecompositionManifest?,
   val manifestState: GoalRunnerManifestState?,
   val request: GoalPreflightRequest,
@@ -18,20 +21,19 @@ data class GoalPreflightLookupInput(
 )
 
 data class GoalPreflightRequest(
-  val issueKey: String,
+  val issueKey: IssueKey,
   val repoRoot: Path,
-  val invokedAgentId: String,
+  val invokedAgentId: AgentId,
   val agentOverrideId: String? = null,
   val requestedReviewMode: CodeReviewExecutionMode? = null,
   val requestedAgentAddonSlugs: List<String> = emptyList(),
-  val dbPathOverride: String? = null,
   val userHome: Path = Path.of("."),
   val environment: Map<String, String> = emptyMap(),
 )
 
 data class GoalPreflightResult(
   val verdict: String,
-  val issueKey: String,
+  val issueKey: IssueKey,
   val candidate: FeatureTaskContinuationCandidate? = null,
   val candidates: List<FeatureTaskContinuationCandidate> = emptyList(),
   val goal: GoalContinuationCandidate? = null,
@@ -41,7 +43,7 @@ data class GoalPreflightResult(
 )
 
 data class GoalPreflightGateBlock(
-  val issueKey: String,
+  val issueKey: IssueKey,
   val featureName: String,
   val subtasks: List<GoalPreflightSubtask>,
   val expectedFirstRunnableSubtask: Int?,
@@ -59,7 +61,7 @@ data class GoalPreflightSubtask(
 )
 
 data class GoalPreflightDependency(
-  val subtaskId: Int,
+  val subtaskId: SubtaskId,
   val optional: Boolean,
   val skipped: Boolean,
   val note: String,
@@ -71,7 +73,7 @@ data class GoalPreflightAgentAddon(
 )
 
 data class GoalPreflightRehydrateTarget(
-  val issueKey: String,
+  val issueKey: IssueKey,
   val linearIssueId: String?,
   val targetPath: String,
 )

@@ -1,5 +1,5 @@
 package skillbill.launcher
-
+import skillbill.agent.model.AgentId
 import skillbill.contracts.time.JvmSystemClock
 import skillbill.install.model.InstallAgent
 import skillbill.launcher.agentrun.FileSystemAgentRunLauncher
@@ -8,6 +8,7 @@ import skillbill.launcher.process.AgentRunProcessResult
 import skillbill.launcher.process.JvmAgentRunProcessRunner
 import skillbill.ports.agentrun.model.AgentRunLaunchRequest
 import skillbill.ports.agentrun.model.AgentRunOutputStream
+import skillbill.workflow.decomposition.model.IssueKey
 import java.nio.file.Path
 import kotlin.test.Test
 import kotlin.test.assertContains
@@ -53,7 +54,7 @@ class AgentRunLauncherProcessTest {
     assertFailsWith<IllegalArgumentException> {
       launcher.launch(
         AgentRunLaunchRequest(
-          agentId = "not-an-agent",
+          agentId = AgentId("not-an-agent"),
           skillRunRequest = skillRunRequest(),
         ),
       )
@@ -145,11 +146,11 @@ class AgentRunLauncherProcessTest {
     val adapter = requireNotNull(headlessAgentRunAdapters(runner, ALL_EXECUTABLES_AVAILABLE)[InstallAgent.CODEX])
 
     adapter.launch(
-      skillRunRequest(issueKey = "SKILL-56", goalContinuation = null)
+      skillRunRequest(issueKey = IssueKey("SKILL-56"), goalContinuation = null)
         .copy(promptOverride = "$AGENT_RUN_LAUNCHER_PHASE_PROMPT\nIssue key: SKILL-56"),
     )
     adapter.launch(
-      skillRunRequest(issueKey = "SKILL-57", goalContinuation = null)
+      skillRunRequest(issueKey = IssueKey("SKILL-57"), goalContinuation = null)
         .copy(promptOverride = "$AGENT_RUN_LAUNCHER_PHASE_PROMPT\nIssue key: SKILL-57"),
     )
 

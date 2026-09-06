@@ -1,5 +1,7 @@
 package skillbill.application.review
 
+import skillbill.review.model.ReviewRunId
+import skillbill.agent.model.AgentId
 import skillbill.application.goalplanning.sha256HexUtf8
 import skillbill.application.review.model.ParallelCodeReviewResult
 import skillbill.application.review.model.ParallelReviewLaneStatus
@@ -144,7 +146,7 @@ class ParallelCodeReviewRunnerResultAssembly(
     ) { unitOfWork -> unitOfWork.reviews.replaceReviewRunLanes(reviewRunId, updated) }
   }
 
-  fun recordMergedFindingLanes(reviewRunId: String?) {
+  fun recordMergedFindingLanes(reviewRunId: ReviewRunId?) {
     if (reviewRunId == null) return
     val claims = runtimeOwnedPersistence.requiredRead(
       seam = "ParallelCodeReviewRunner.recordMergedFindingLanes.read",
@@ -163,7 +165,7 @@ class ParallelCodeReviewRunnerResultAssembly(
     ) { unitOfWork -> unitOfWork.reviews.recordFindingLaneAttribution(reviewRunId, attribution) }
   }
 
-  fun emitReviewStageDegradations(reviewRunId: String?, outcomes: ParallelReviewLaneRunResult) {
+  fun emitReviewStageDegradations(reviewRunId: ReviewRunId?, outcomes: ParallelReviewLaneRunResult) {
     if (reviewRunId == null) return
     val evidenceBoundaries = evidenceBoundaryAccountings(outcomes)
     val selected = runtimeOwnedPersistence.optionalRead(
@@ -192,7 +194,7 @@ class ParallelCodeReviewRunnerResultAssembly(
   }
 
   fun persistReviewPassClaims(
-    reviewRunId: String?,
+    reviewRunId: ReviewRunId?,
     findings: List<ParallelReviewMergedFinding>,
     persistEmpty: Boolean,
   ) {
@@ -212,7 +214,7 @@ class ParallelCodeReviewRunnerResultAssembly(
   }
 
   fun recordReviewStageBoundary(
-    reviewRunId: String?,
+    reviewRunId: ReviewRunId?,
     integration: ReviewIntegrationPassOutcome,
     findings: List<ParallelReviewMergedFinding>,
   ) {
@@ -241,7 +243,7 @@ class ParallelCodeReviewRunnerResultAssembly(
     }
   }
 
-  fun stageResumeReport(reviewRunId: String?): ReviewStageResumeReport? {
+  fun stageResumeReport(reviewRunId: ReviewRunId?): ReviewStageResumeReport? {
     if (reviewRunId == null) return null
     return runtimeOwnedPersistence.optionalRead(
       seam = "ParallelCodeReviewRunner.stageResumeReport",
@@ -284,7 +286,7 @@ class ParallelCodeReviewRunnerResultAssembly(
   }
 }
 
-private fun ParallelReviewLaneOutcome.toParallelReviewLaneStatus(agentId: String) = ParallelReviewLaneStatus(
+private fun ParallelReviewLaneOutcome.toParallelReviewLaneStatus(agentId: AgentId) = ParallelReviewLaneStatus(
   agentId,
   success,
   failureReason,
@@ -295,7 +297,7 @@ private fun ParallelReviewLaneOutcome.toParallelReviewLaneStatus(agentId: String
 )
 
 internal fun ParallelCodeReviewRunnerResultAssembly.durableIntegrationOutcome(
-  reviewRunId: String?,
+  reviewRunId: ReviewRunId?,
   commitSequenceDigest: String,
 ): ReviewIntegrationPassOutcome? {
   if (reviewRunId == null) return null
@@ -318,7 +320,7 @@ internal fun ParallelCodeReviewRunnerResultAssembly.durableIntegrationOutcome(
 }
 
 internal fun ParallelCodeReviewRunnerResultAssembly.recordIntegrationBoundary(
-  reviewRunId: String?,
+  reviewRunId: ReviewRunId?,
   outcome: ReviewIntegrationPassOutcome,
 ) {
   if (reviewRunId == null) return

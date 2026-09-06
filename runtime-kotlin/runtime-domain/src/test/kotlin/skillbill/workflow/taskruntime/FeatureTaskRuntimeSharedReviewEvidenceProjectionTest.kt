@@ -1,5 +1,5 @@
 package skillbill.workflow.taskruntime
-
+import skillbill.workflow.engine.model.WorkflowId
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFeatureSize
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeHandoffProjectionInputs
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeHandoffProjectionValue
@@ -87,7 +87,7 @@ class FeatureTaskRuntimeSharedReviewEvidenceProjectionTest {
       ),
       resolvedCheckpoint = FeatureTaskRuntimeRepositoryCheckpoint(fingerprint = "fp"),
       sharedReviewEvidence = evidence,
-      workflowId = "wftr-1",
+      workflowId = WorkflowId("wftr-1"),
       planningProjectionValidator = NoopFeatureTaskRuntimePlanningProjectionValidator,
     )
 }

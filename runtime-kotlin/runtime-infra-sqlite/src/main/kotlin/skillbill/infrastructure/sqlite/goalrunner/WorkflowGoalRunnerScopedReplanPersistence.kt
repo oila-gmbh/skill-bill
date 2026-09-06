@@ -1,5 +1,4 @@
 package skillbill.infrastructure.sqlite.goalrunner
-
 import skillbill.db.decomposition.withParentStatus
 import skillbill.goalrunner.planning.cascadeEligiblePlanSubtaskIds
 import skillbill.ports.goalrunner.GoalPlanningPreparationRepository
@@ -10,6 +9,8 @@ import skillbill.ports.persistence.UnitOfWork
 import skillbill.ports.workflow.model.GoalChildWorkflowDeletionScope
 import skillbill.workflow.decomposition.model.CurrentSubtaskIntent
 import skillbill.workflow.decomposition.model.DecompositionManifest
+import skillbill.workflow.decomposition.model.SubtaskId
+import skillbill.workflow.engine.model.WorkflowId
 
 internal class WorkflowGoalRunnerScopedReplanPersistence(
   private val projectionPersistence: WorkflowGoalRunnerManifestProjectionPersistence,
@@ -64,7 +65,7 @@ internal class WorkflowGoalRunnerScopedReplanPersistence(
     if (!options.includeSharedPreplan) {
       return ScopedReplanDiscard(
         cascadedIds = emptyList(),
-        deleted = preparations.deleteSubtaskPlan(state.parentWorkflowId, subtaskId),
+        deleted = preparations.deleteSubtaskPlan(state.parentWorkflowId, SubtaskId(subtaskId)),
       )
     }
     val cascadedIds = cascadeEligiblePlanSubtaskIds(
@@ -82,12 +83,12 @@ internal class WorkflowGoalRunnerScopedReplanPersistence(
         if (subtaskId in plannedBefore) 1 else 0
       } else {
         preparations.invalidateSharedPreplan(identity, expectedDigest)
-        cascadedIds.forEach { id -> preparations.deleteSubtaskPlan(state.parentWorkflowId, id) }
-        preparations.deleteSubtaskPlan(state.parentWorkflowId, subtaskId)
+        cascadedIds.forEach { id -> preparations.deleteSubtaskPlan(state.parentWorkflowId, SubtaskId(id)) }
+        preparations.deleteSubtaskPlan(state.parentWorkflowId, SubtaskId(subtaskId))
       }
     } else {
-      cascadedIds.forEach { id -> preparations.deleteSubtaskPlan(state.parentWorkflowId, id) }
-      preparations.deleteSubtaskPlan(state.parentWorkflowId, subtaskId)
+      cascadedIds.forEach { id -> preparations.deleteSubtaskPlan(state.parentWorkflowId, SubtaskId(id)) }
+      preparations.deleteSubtaskPlan(state.parentWorkflowId, SubtaskId(subtaskId))
     }
     return ScopedReplanDiscard(cascadedIds = cascadedIds, deleted = deleted)
   }
@@ -117,13 +118,13 @@ internal fun deleteStaleReplanChildren(
   subtaskIds: List<Int>,
 ): List<Int> = subtaskIds.distinct().sorted().filter { id ->
   val subtask = state.manifest.subtasks.singleOrNull { it.id == id }
-  val childWorkflowId = subtask?.workflowId?.takeIf(String::isNotBlank)
+  val childWorkflowId = subtask?.workflowId?.takeIf { it.value.isNotBlank() }
   if (subtask == null || childWorkflowId == null || subtask.status in setOf("complete", "skipped")) {
     false
   } else {
     unitOfWork.workflowStates.deleteGoalChildWorkflow(
       state.parentWorkflowId,
-      id,
+      SubtaskId(id),
       childWorkflowId,
       GoalChildWorkflowDeletionScope.TERMINAL_OR_RESUMABLE,
     ) == 1

@@ -1,6 +1,6 @@
 package skillbill.application.featuretask.model
-
 import skillbill.ports.workflow.gitops.WorkflowGitOperations
+import skillbill.workflow.engine.model.WorkflowId
 import skillbill.workflow.goal.model.GoalSubtaskReviewState
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeCheckpointIdentity
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeGoalContinuationArtifact
@@ -9,10 +9,9 @@ import java.nio.file.Path
 data class RemediationReconciliationApplyRequest(
   val reconciliation: RemediationReconciliationDecision,
   val snapshot: RemediationReconcileSnapshot,
-  val workflowId: String,
+  val workflowId: WorkflowId,
   val gitOperations: WorkflowGitOperations,
   val repoRoot: Path,
-  val dbOverride: String?,
   val latestRemediationResolved: ResolvedReviewFixCheckpoint?,
 )
 
@@ -22,22 +21,20 @@ data class RemediationBaseHealRequest(
   val storedResolves: Boolean,
   val state: GoalSubtaskReviewState,
   val continuation: FeatureTaskRuntimeGoalContinuationArtifact,
-  val workflowId: String,
+  val workflowId: WorkflowId,
   val gitOperations: WorkflowGitOperations,
   val repoRoot: Path,
-  val dbOverride: String?,
   val latestRemediationResolved: ResolvedReviewFixCheckpoint?,
 )
 
 data class PersistHealedRemediationBaseRequest(
-  val workflowId: String,
+  val workflowId: WorkflowId,
   val target: String,
   val stored: String?,
   val reason: String,
   val continuation: FeatureTaskRuntimeGoalContinuationArtifact,
   val gitOperations: WorkflowGitOperations,
   val repoRoot: Path,
-  val dbOverride: String?,
 )
 
 data class RemediationReconcileSnapshot(

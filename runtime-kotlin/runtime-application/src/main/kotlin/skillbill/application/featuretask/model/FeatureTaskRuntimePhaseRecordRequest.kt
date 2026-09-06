@@ -1,5 +1,9 @@
 package skillbill.application.featuretask.model
 
+import skillbill.agent.model.AgentId
+
+import skillbill.review.model.ReviewRunId
+import skillbill.workflow.engine.model.WorkflowId
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFailureDisposition
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFindingVerificationDisposition
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerAction
@@ -11,11 +15,11 @@ import skillbill.workflow.taskruntime.model.NormalizedFeatureTaskRuntimePhaseOut
  * output artifact; the recorder mints timestamps and duration, so none ever crosses from an agent.
  */
 data class FeatureTaskRuntimePhaseStateRequest(
-  val workflowId: String,
+  val workflowId: WorkflowId,
   val phaseId: String,
   val status: String,
   val attemptCount: Int,
-  val resolvedAgentId: String,
+  val resolvedAgentId: AgentId,
   val finished: Boolean,
   val outputArtifact: String? = null,
   val rejectedOutput: String? = null,
@@ -59,7 +63,7 @@ data class FeatureTaskRuntimePhaseStateRequest(
    * run cannot erase or half-overwrite it.
    */
   val launchOutcomeKnown: Boolean = false,
-  val reviewRunId: String? = null,
+  val reviewRunId: ReviewRunId? = null,
   val findingVerificationCheckpoint: List<FeatureTaskRuntimeFindingVerificationDisposition>? = null,
 )
 
@@ -68,11 +72,11 @@ data class FeatureTaskRuntimePhaseStateRequest(
  * sequence, so the caller never supplies time or ordering.
  */
 data class FeatureTaskRuntimePhaseLedgerRequest(
-  val workflowId: String,
+  val workflowId: WorkflowId,
   val action: FeatureTaskRuntimePhaseLedgerAction,
   val phaseId: String,
   val attemptCount: Int,
-  val resolvedAgentId: String? = null,
+  val resolvedAgentId: AgentId? = null,
   val fixLoopIteration: Int? = null,
   val blockedReason: String? = null,
   /** Runtime-minted backward-edge trail, distinct from attempt_count; never agent-reported. */

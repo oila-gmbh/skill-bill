@@ -1,5 +1,4 @@
 package skillbill.application.work
-
 import me.tatarka.inject.annotations.Inject
 import skillbill.application.featuretask.FeatureTaskRuntimeBranchSetup
 import skillbill.application.goalrunner.goalRepositoryIdentity
@@ -19,6 +18,7 @@ import skillbill.ports.system.CheckedOutBranchSource
 import skillbill.ports.work.model.WorkItem
 import skillbill.ports.work.model.WorkItemKind
 import skillbill.ports.workflow.model.FeatureTaskRouteScope
+import skillbill.workflow.decomposition.model.IssueKey
 import java.nio.file.Path
 import java.time.Clock
 
@@ -50,13 +50,13 @@ class IdeStatusService(
     val repositoryIdentity = (identityResult as IdeStatusRepositoryResolution.Ok).identity
     val repoRoot = identityResult.repoRoot
 
-    if (!database.databaseExists(request.dbOverride)) {
+    if (!database.databaseExists()) {
       return emit(IdeStatusProblemSnapshots.absentDatabase(repositoryIdentity, observedAt))
     }
 
     val currentBranch = branchSource.checkedOutBranch(repoRoot)
     return try {
-      database.read(request.dbOverride) { unitOfWork ->
+      database.read { unitOfWork ->
         val candidates = scopeToBranch(collectCandidates(unitOfWork, repositoryIdentity), currentBranch)
         val selected = IdeStatusSelectionPolicy.select(candidates, observedAt)
           ?: return@read emit(IdeStatusProblemSnapshots.noMatchingWork(repositoryIdentity, observedAt, currentBranch))
@@ -66,7 +66,6 @@ class IdeStatusService(
             unitOfWork = unitOfWork,
             repositoryIdentity = repositoryIdentity,
             observedAt = observedAt,
-            dbOverride = request.dbOverride,
             repoRoot = repoRoot,
           ),
         )
@@ -114,7 +113,7 @@ class IdeStatusService(
     val work = unitOfWork.workList.list(limit = null)
     val issueKeysWithGoals = work
       .filter { it.workflowKind == WorkItemKind.FEATURE_GOAL }
-      .mapNotNull { it.issueKey?.uppercase() }
+      .mapNotNull { it.issueKey?.toString()?.uppercase() }
       .toSet()
     val repositoryCorrelation = IdeStatusRepositoryCorrelation(unitOfWork, repositoryIdentity)
     val livenessAnchors = IdeStatusLivenessAnchors(unitOfWork, repositoryIdentity)
@@ -166,9 +165,9 @@ class IdeStatusService(
 
   private fun isExcludedGoalChild(
     routeScope: FeatureTaskRouteScope?,
-    issueKey: String?,
+    issueKey: IssueKey?,
     issueKeysWithGoals: Set<String>,
-  ): Boolean = routeScope == FeatureTaskRouteScope.GOAL_CHILD && issueKey?.uppercase() in issueKeysWithGoals
+  ): Boolean = routeScope == FeatureTaskRouteScope.GOAL_CHILD && issueKey?.toString()?.uppercase() in issueKeysWithGoals
 
   private fun emit(snapshot: IdeStatusSnapshot): IdeStatusResult {
     val wire = snapshot.toStatusWireMap()

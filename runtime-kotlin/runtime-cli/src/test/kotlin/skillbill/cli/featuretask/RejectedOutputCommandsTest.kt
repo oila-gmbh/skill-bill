@@ -1,5 +1,5 @@
 package skillbill.cli.featuretask
-
+import skillbill.agent.model.AgentId
 import skillbill.application.diagnostics.RejectedOutputDiagnosticService
 import skillbill.application.diagnostics.model.RejectedOutputDiagnosticRequest
 import skillbill.ports.diagnostics.RejectedOutputDiagnosticRepository
@@ -7,6 +7,7 @@ import skillbill.ports.diagnostics.model.RejectedOutputDiagnostic
 import skillbill.ports.diagnostics.model.RejectedOutputDiagnosticError
 import skillbill.ports.diagnostics.model.RejectedOutputDiagnosticRecord
 import skillbill.ports.diagnostics.model.RejectedOutputDiagnosticSelector
+import skillbill.workflow.engine.model.WorkflowId
 import java.io.ByteArrayOutputStream
 import java.time.Clock
 import java.time.Instant
@@ -70,13 +71,13 @@ class RejectedOutputCommandsTest {
   }
 
   private fun request(raw: ByteArray, attempt: Int = 1) = RejectedOutputDiagnosticRequest(
-    workflowId = "workflow-1",
+    workflowId = WorkflowId("workflow-1"),
     phaseId = "implement",
     attempt = attempt,
     rule = "schema",
     path = "$.status",
     reason = "invalid",
-    agentId = "codex",
+    agentId = AgentId("codex"),
     model = "gpt",
     rawResponse = raw,
   )

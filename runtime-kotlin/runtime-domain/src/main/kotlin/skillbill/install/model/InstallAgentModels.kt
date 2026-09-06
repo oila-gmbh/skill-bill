@@ -1,5 +1,6 @@
 package skillbill.install.model
 
+import skillbill.agent.model.AgentId
 import skillbill.model.FileLocation
 
 data class AgentTarget(
@@ -73,8 +74,8 @@ val AGENT_LAUNCHER_CLIS: Map<InstallAgent, AgentLauncherCli> = mapOf(
  * [onPath], or null when the agent is unknown, has no declared launcher, or is available. [onPath]
  * is supplied by the caller so this stays effect-free and testable.
  */
-fun unavailableAgentLauncherReason(agentId: String?, onPath: (String) -> Boolean): String? {
-  val normalized = agentId?.trim()?.lowercase()?.takeIf(String::isNotBlank) ?: return null
+fun unavailableAgentLauncherReason(agentId: AgentId?, onPath: (String) -> Boolean): String? {
+  val normalized = agentId?.value?.trim()?.lowercase()?.takeIf(String::isNotBlank) ?: return null
   val agent = InstallAgent.entries.firstOrNull { candidate -> candidate.id == normalized }
   val launcher = agent?.let(AGENT_LAUNCHER_CLIS::get) ?: return null
   if (launcher.executables.any(onPath)) return null
@@ -92,9 +93,9 @@ val MODEL_DIRECTIVE_CAPABLE_AGENTS: Set<InstallAgent> = setOf(
   InstallAgent.CURSOR,
 )
 
-fun supportsModelDirective(agentId: String?): Boolean {
+fun supportsModelDirective(agentId: AgentId?): Boolean {
   if (agentId == null) return false
-  val normalized = agentId.trim().lowercase()
+  val normalized = agentId.value.trim().lowercase()
   return MODEL_DIRECTIVE_CAPABLE_AGENTS.any { capable -> capable.id == normalized }
 }
 

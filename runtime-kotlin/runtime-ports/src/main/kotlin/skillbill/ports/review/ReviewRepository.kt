@@ -13,6 +13,7 @@ import skillbill.review.model.ReviewFindingDetail
 import skillbill.review.model.ReviewFinishedFindingStats
 import skillbill.review.model.ReviewFinishedTelemetry
 import skillbill.review.model.ReviewLearningsSummary
+import skillbill.review.model.ReviewRunId
 import skillbill.review.model.ReviewStageMetrics
 import skillbill.review.model.ReviewStageVerdictDistribution
 
@@ -26,10 +27,10 @@ interface ReviewRepository :
 
   fun saveImportedReview(review: ImportedReview, sourcePath: String?)
 
-  fun markOrchestrated(runId: String)
+  fun markOrchestrated(runId: ReviewRunId)
 
   fun updateReviewFinishedTelemetryState(
-    runId: String,
+    runId: ReviewRunId,
     enabled: Boolean,
     level: String,
     routedSkillPlatformSlugs: Map<String, String> = emptyMap(),
@@ -41,13 +42,13 @@ interface ReviewRepository :
     routedSkillPlatformSlugs: Map<String, String> = emptyMap(),
   ): ReviewFinishedTelemetry?
 
-  fun fetchNumberedFindings(runId: String): List<NumberedFinding>
+  fun fetchNumberedFindings(runId: ReviewRunId): List<NumberedFinding>
 
-  fun findingExists(runId: String, findingId: String): Boolean
+  fun findingExists(runId: ReviewRunId, findingId: String): Boolean
 
-  fun latestRejectedLearningSourceOutcome(runId: String, findingId: String): RejectedLearningSourceOutcome?
+  fun latestRejectedLearningSourceOutcome(runId: ReviewRunId, findingId: String): RejectedLearningSourceOutcome?
 
-  fun reviewStats(runId: String?): ReviewRepositoryStatsSnapshot
+  fun reviewStats(runId: ReviewRunId?): ReviewRepositoryStatsSnapshot
 }
 
 fun ReviewFinishedTelemetry.toReviewFinishedTelemetryPayload(): JsonPayloadContract =
@@ -58,7 +59,7 @@ private class ReviewFinishedTelemetryPayloadContract(
 ) : JsonPayloadContract {
   override fun toPayload(): Map<String, Any?> = LinkedHashMap<String, Any?>().apply {
     putAll(telemetry.findingStats.toPayload())
-    put("review_run_id", telemetry.reviewRunId)
+    put("review_run_id", telemetry.reviewRunId.value)
     put("review_session_id", telemetry.reviewSessionId)
     put("routed_skill", telemetry.routedSkill)
     put("review_subskills", telemetry.reviewSubskills)

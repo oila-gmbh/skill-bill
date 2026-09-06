@@ -1,10 +1,13 @@
 package skillbill.ports.workflow.model
 
+import skillbill.workflow.decomposition.model.IssueKey
+
 import skillbill.contracts.workflow.FEATURE_TASK_EXECUTION_IDENTITY_CONTRACT_VERSION
+import skillbill.workflow.engine.model.WorkflowId
 
 data class FeatureTaskExecutionIdentity(
-  val workflowId: String,
-  val normalizedIssueKey: String,
+  val workflowId: WorkflowId,
+  val normalizedIssueKey: IssueKey,
   val repositoryIdentity: String,
   val governedSpecPath: String,
   val mode: FeatureTaskWorkflowMode,

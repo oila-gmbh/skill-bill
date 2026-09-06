@@ -1,5 +1,9 @@
 package skillbill.application.goalrunner.planning
 
+import skillbill.workflow.engine.model.WorkflowId
+import skillbill.workflow.decomposition.model.IssueKey
+import skillbill.agent.model.AgentId
+
 import skillbill.application.decomposition.DECOMPOSITION_MANIFEST_FILENAME
 import skillbill.application.goalplanning.sha256HexUtf8
 import skillbill.application.goalrunner.model.GoalRunnerRunRequest
@@ -17,7 +21,7 @@ internal fun produceSharedPreplan(
   provenance: GoalPlanningContractProvenance,
 ): Result<SharedGoalPreplanCheckpoint> =
   produceSharedPreplanCheckpoint(sweep, shared, request, provenance).mapCatching { produced ->
-    produced.also { sweep.checkpoint.recheckpointSharedPreplan(it, shared.dbPathOverride) }
+    produced.also { sweep.checkpoint.recheckpointSharedPreplan(it) }
   }
 
 internal fun produceSharedPreplanCheckpoint(
@@ -101,7 +105,7 @@ internal fun gatherSharedContext(
       val packet = linkedMapOf<String, Any?>(
         "packet_version" to GoalPlanningSharedContextPacket.VERSION,
         "repository_identity" to repositoryIdentity,
-        "normalized_issue_key" to state.manifest.issueKey.trim().uppercase(),
+        "normalized_issue_key" to state.manifest.issueKey.value.trim().uppercase(),
         "parent_spec_path" to parentSpecGoverningPath,
         "parent_spec" to parentSpec.take(GoalPlanningSharedContextPacket.MAX_GOVERNED_CONTEXT_CHARS),
         "decomposition_manifest" to decomposition.take(GoalPlanningSharedContextPacket.MAX_GOVERNED_CONTEXT_CHARS),
@@ -116,13 +120,13 @@ internal fun gatherSharedContext(
   GoalPlanningSharedContextPacket.validate(
     packet = planningPacket,
     repositoryIdentity = repositoryIdentity,
-    normalizedIssueKey = state.manifest.issueKey.trim().uppercase(),
+    normalizedIssueKey = state.manifest.issueKey.value.trim().uppercase(),
     parentSpecPath = parentSpecGoverningPath,
     subtasks = state.manifest.subtasks,
   )
   return GoalPlanningSharedContext(
     issueKey = request.issueKey,
-    normalizedIssueKey = state.manifest.issueKey.trim().uppercase(),
+    normalizedIssueKey = state.manifest.issueKey.value.trim().uppercase(),
     parentWorkflowId = state.parentWorkflowId,
     manifest = state.manifest,
     controlState = state.controlState,
@@ -130,7 +134,6 @@ internal fun gatherSharedContext(
     parentSpec = parentSpec,
     parentSpecHash = parentSpecHash,
     decompositionManifestHash = decompositionManifestHash,
-    dbPathOverride = request.dbPathOverride,
     repoRoot = canonicalRepository,
     invokedAgentId = request.invokedAgentId,
     configuredAgentOverrideId = request.configuredAgentOverrideId,

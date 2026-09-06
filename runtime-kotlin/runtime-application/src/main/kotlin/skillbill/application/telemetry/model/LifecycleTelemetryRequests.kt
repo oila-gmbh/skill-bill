@@ -1,14 +1,20 @@
 package skillbill.application.telemetry.model
 
+import skillbill.agent.model.AgentId
+import skillbill.workflow.decomposition.model.IssueKey
+import skillbill.workflow.decomposition.model.SubtaskId
+import skillbill.workflow.engine.model.SessionId
+import skillbill.workflow.engine.model.WorkflowId
+
 data class FeatureTaskRuntimeStartedRequest(
   val featureSize: String,
-  val issueKey: String,
+  val issueKey: IssueKey,
   val featureName: String,
-  val sessionId: String = "",
+  val sessionId: SessionId = SessionId(""),
 )
 
 data class FeatureTaskRuntimeFinishedRequest(
-  val sessionId: String,
+  val sessionId: SessionId,
   val completionStatus: String,
   val completedPhaseIds: List<String>,
   val phaseOutcomes: Map<String, String>,
@@ -75,7 +81,7 @@ data class QualityCheckFinishedRequest(
   val finalFailureCount: Int,
   val iterations: Int,
   val result: String,
-  val sessionId: String,
+  val sessionId: SessionId,
   val failingCheckNames: List<String>,
   val unsupportedReason: String,
   val orchestrated: Boolean,
@@ -102,7 +108,7 @@ data class FeatureVerifyFinishedRequest(
   val completionStatus: String,
   val historyRelevance: String,
   val historyHelpfulness: String,
-  val sessionId: String,
+  val sessionId: SessionId,
   val gapsFound: List<String>,
   val orchestrated: Boolean,
   val acceptanceCriteriaCount: Int,
@@ -123,21 +129,21 @@ data class PrDescriptionGeneratedRequest(
 )
 
 data class GoalStartedRequest(
-  val issueKey: String,
+  val issueKey: IssueKey,
   val featureName: String,
-  val workflowId: String,
+  val workflowId: WorkflowId,
   val subtaskTotal: Int,
   val resumed: Boolean,
   val startedAt: String,
   val status: String = "running",
   val mode: String,
-  val parentWorkflowId: String? = null,
+  val parentWorkflowId: WorkflowId? = null,
 )
 
 data class GoalSubtaskFinishedRequest(
-  val issueKey: String,
-  val workflowId: String,
-  val subtaskId: Int,
+  val issueKey: IssueKey,
+  val workflowId: WorkflowId,
+  val subtaskId: SubtaskId,
   val subtaskName: String,
   val status: String,
   val startedAt: String,
@@ -145,13 +151,13 @@ data class GoalSubtaskFinishedRequest(
   val durationMs: Long,
   val attemptCount: Int,
   val blockedReason: String?,
-  val finalizingAgentId: String? = null,
-  val participatingAgentIds: List<String> = emptyList(),
+  val finalizingAgentId: AgentId? = null,
+  val participatingAgentIds: List<AgentId> = emptyList(),
 )
 
 data class GoalFinishedRequest(
-  val issueKey: String,
-  val workflowId: String,
+  val issueKey: IssueKey,
+  val workflowId: WorkflowId,
   val status: String,
   val startedAt: String,
   val finishedAt: String,
@@ -161,12 +167,12 @@ data class GoalFinishedRequest(
   val subtasksSkipped: Int,
   val mode: String,
   val stopReason: String? = null,
-  val parentWorkflowId: String? = null,
+  val parentWorkflowId: WorkflowId? = null,
 )
 
 data class GoalIssueFinishedRequest(
-  val issueKey: String,
-  val parentWorkflowId: String,
+  val issueKey: IssueKey,
+  val parentWorkflowId: WorkflowId,
   val status: String,
   val subtasksComplete: Int,
   val subtasksBlocked: Int,

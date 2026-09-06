@@ -1,5 +1,4 @@
 package skillbill.application.goalrunner
-
 import me.tatarka.inject.annotations.Inject
 import skillbill.ports.goalrunner.persistence.GoalRunnerChildRepairRunnerPort
 import skillbill.ports.goalrunner.persistence.model.GoalRunnerChildRepairApplyRequest
@@ -8,8 +7,11 @@ import skillbill.ports.goalrunner.persistence.model.GoalRunnerChildWedgeDiagnosi
 import skillbill.ports.workflow.WorkflowStateRepository
 import skillbill.ports.workflow.gitops.WorkflowGitOperations
 import skillbill.workflow.decomposition.DecompositionManifestValidator
+import skillbill.workflow.decomposition.model.IssueKey
+import skillbill.workflow.decomposition.model.SubtaskId
 import skillbill.workflow.engine.WorkflowEngine
 import skillbill.workflow.engine.WorkflowSnapshotValidator
+import skillbill.workflow.engine.model.WorkflowId
 import java.nio.file.Path
 import java.time.Clock
 
@@ -34,9 +36,9 @@ class GoalRunnerChildRepairOperations(
 
   override fun diagnose(
     workflowStates: WorkflowStateRepository,
-    workflowId: String,
-    issueKey: String,
-    subtaskId: Int,
+    workflowId: WorkflowId,
+    issueKey: IssueKey,
+    subtaskId: SubtaskId,
     repoRoot: Path,
   ): GoalRunnerChildWedgeDiagnosis = wedgeDiagnosis.diagnose(workflowStates, workflowId, issueKey, subtaskId, repoRoot)
 

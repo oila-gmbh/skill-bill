@@ -1,5 +1,7 @@
 package skillbill.application.goalrunner.planning
 
+import skillbill.workflow.engine.model.WorkflowId
+import skillbill.workflow.decomposition.model.IssueKey
 import me.tatarka.inject.annotations.Inject
 import skillbill.application.diagnostics.RejectedOutputDiagnosticService
 import skillbill.application.goalrunner.planning.model.GoalPlanningLog
@@ -11,6 +13,7 @@ import skillbill.ports.diagnostics.model.RejectedOutputDiagnostic
 import skillbill.ports.diagnostics.model.RejectedOutputDiagnosticSelector
 import skillbill.ports.goalrunner.runner.GoalRunnerManifestStore
 import skillbill.ports.goalrunner.runner.GoalRunnerWorkflowOutcomeStore
+import skillbill.workflow.decomposition.model.SubtaskId
 import java.time.Clock
 import java.time.Instant
 
@@ -34,13 +37,13 @@ class GoalPlanningLogService(
 ) {
   fun log(request: GoalPlanningLogRequest): GoalPlanningLog {
     val parentWorkflowId = manifestStore
-      .readByIssueKey(request.issueKey, request.dbPathOverride, request.repoRoot)
+      .readByIssueKey(request.issueKey, request.repoRoot)
       ?.parentWorkflowId
       ?: return GoalPlanningLog(request.issueKey, null)
 
-    val events = outcomeStore.progressEvents(parentWorkflowId, request.dbPathOverride)
+    val events = outcomeStore.progressEvents(parentWorkflowId)
       .filter { event -> event["workflow_phase"] == GOAL_PLANNING_WORKFLOW_PHASE }
-    val rejections = readRejections(parentWorkflowId, request.dbPathOverride)
+    val rejections = readRejections(parentWorkflowId)
 
     val attempts = assembleAttempts(events, rejections)
       .filter { attempt -> request.subtaskId == null || attempt.subtaskId == request.subtaskId }
@@ -58,11 +61,8 @@ class GoalPlanningLogService(
    * which is not enumerable from the store, so the whole workflow's diagnostics are read once and
    * joined in memory rather than issued as one query per observed phase.
    */
-  private fun readRejections(
-    parentWorkflowId: String,
-    dbPathOverride: String?,
-  ): Map<String, RejectedOutputDiagnostic> = runCatching {
-    database.transaction(dbPathOverride) { unitOfWork ->
+  private fun readRejections(parentWorkflowId: WorkflowId): Map<String, RejectedOutputDiagnostic> = runCatching {
+    database.transaction { unitOfWork ->
       val repository = unitOfWork.rejectedOutputDiagnostics ?: return@transaction emptyList()
       val permissions = unitOfWork.rejectedOutputDiagnosticPermissions ?: return@transaction emptyList()
       RejectedOutputDiagnosticService(repository, permissions, diagnosticMetadataValidator, clock = clock)
@@ -154,7 +154,7 @@ class GoalPlanningLogService(
   private fun timestamp(event: Map<String, Any?>): Instant? =
     (event["timestamp"] as? String)?.let { raw -> runCatching { Instant.parse(raw) }.getOrNull() }
 
-  private data class ParsedOperation(val diagnosticPhaseId: String, val subtaskId: Int, val attempt: Int)
+  private data class ParsedOperation(val diagnosticPhaseId: String, val subtaskId: SubtaskId, val attempt: Int)
 
   /** Operation names are minted as `<phase>:<subtask>:attempt:<n>` by the planning attempt recorder. */
   private fun parseOperation(operation: String): ParsedOperation? {
@@ -163,7 +163,7 @@ class GoalPlanningLogService(
     val subtaskId = parts[OPERATION_SUBTASK_INDEX].toIntOrNull() ?: return null
     val attempt = parts[OPERATION_ATTEMPT_INDEX].toIntOrNull() ?: return null
     val phase = parts[OPERATION_PHASE_INDEX]
-    return ParsedOperation(if (subtaskId == 0) phase else "$phase:$subtaskId", subtaskId, attempt)
+    return ParsedOperation(if (subtaskId == 0) phase else "$phase:$subtaskId", SubtaskId(subtaskId), attempt)
   }
 
   private fun rejectionKey(phaseId: String, attempt: Int): String = "$phaseId#$attempt"

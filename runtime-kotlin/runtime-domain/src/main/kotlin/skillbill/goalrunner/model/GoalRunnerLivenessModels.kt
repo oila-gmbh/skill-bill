@@ -1,5 +1,7 @@
 package skillbill.goalrunner.model
 
+import skillbill.workflow.engine.model.WorkflowId
+
 data class GoalRunnerLaunchFacts(
   val timedOut: Boolean = false,
   val interrupted: Boolean = false,
@@ -94,7 +96,7 @@ data class GoalRunnerLivenessSnapshot(
   val phase: String,
   val reason: String,
   val processState: String,
-  val workflowId: String? = null,
+  val workflowId: WorkflowId? = null,
   val workflowStep: String? = null,
   val lastDurableProgressAt: String? = null,
   val lastDurableProgressLabel: String? = null,
@@ -112,7 +114,7 @@ data class GoalRunnerSupervisionEvent(
   val reason: String,
   val continuationMode: String,
   val processState: String,
-  val workflowId: String?,
+  val workflowId: WorkflowId?,
   val stepId: String?,
   val lastDurableProgress: String?,
   val lastWorkflowSnapshotAt: String?,

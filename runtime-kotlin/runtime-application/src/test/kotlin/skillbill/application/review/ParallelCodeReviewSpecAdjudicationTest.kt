@@ -1,8 +1,8 @@
 package skillbill.application.review
-
 import skillbill.ports.goalrunner.runner.model.GoalRunnerSubtaskLaunchRequest
 import skillbill.review.context.model.CodeReviewExecutionMode
 import skillbill.review.model.ReviewClaimVerdict
+import skillbill.review.model.ReviewRunId
 import skillbill.review.model.ReviewStage
 import skillbill.review.model.ReviewStageReached
 import java.nio.file.Files
@@ -26,7 +26,7 @@ class ParallelCodeReviewSpecAdjudicationTest {
     reviewHarness(adjudicationConfig(), recorder).run(
       harnessRequest(
         repoRoot = repo,
-        reviewRunId = "adj-wired",
+        reviewRunId = ReviewRunId("adj-wired"),
         codeReviewMode = CodeReviewExecutionMode.DELEGATED,
       ).copy(specPath = repo.resolve("spec.md")),
     )
@@ -48,7 +48,7 @@ class ParallelCodeReviewSpecAdjudicationTest {
     reviewHarness(refutedConfig(), recorder).run(
       harnessRequest(
         repoRoot = repo,
-        reviewRunId = "adj-refuted",
+        reviewRunId = ReviewRunId("adj-refuted"),
         codeReviewMode = CodeReviewExecutionMode.DELEGATED,
       ).copy(specPath = repo.resolve("spec.md")),
     )
@@ -70,7 +70,7 @@ class ParallelCodeReviewSpecAdjudicationTest {
     val repo = specRepo()
     val request = harnessRequest(
       repoRoot = repo,
-      reviewRunId = "adj-resume",
+      reviewRunId = ReviewRunId("adj-resume"),
       codeReviewMode = CodeReviewExecutionMode.DELEGATED,
     ).copy(specPath = repo.resolve("spec.md"))
     val first = reviewHarness(adjudicationConfig(), recorder).run(request)

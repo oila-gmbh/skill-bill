@@ -1,6 +1,9 @@
 package skillbill.workflow.taskruntime.model
 
 import skillbill.boundary.OpenBoundaryMap
+import skillbill.workflow.decomposition.model.SubtaskId
+import skillbill.workflow.decomposition.model.IssueKey
+import skillbill.workflow.engine.model.WorkflowId
 
 /**
  * One silent heal of a goal-continuation field on resume: the launcher value was adopted because the
@@ -43,8 +46,8 @@ data class FeatureTaskRuntimeGoalContinuationFieldAdoption(
 }
 
 data class FeatureTaskRuntimeGoalPlanningImport(
-  val parentGoalWorkflowId: String,
-  val normalizedIssueKey: String,
+  val parentGoalWorkflowId: WorkflowId,
+  val normalizedIssueKey: IssueKey,
   val repositoryIdentity: String,
   val parentSpecHash: String,
   val decompositionManifestHash: String,
@@ -52,7 +55,7 @@ data class FeatureTaskRuntimeGoalPlanningImport(
   val planningContractVersion: String,
   val phaseOutputContractId: String,
   val phaseOutputContractVersion: String,
-  val subtaskId: Int,
+  val subtaskId: SubtaskId,
   val manifestOrder: Int,
   val governedSubSpecPath: String,
   val subSpecHash: String,
@@ -62,8 +65,8 @@ data class FeatureTaskRuntimeGoalPlanningImport(
   @OpenBoundaryMap("Validated goal-planning import provenance at the durable workflow-artifact seam")
   fun toArtifactMap(): Map<String, Any?> = linkedMapOf(
     "source_kind" to "imported_goal_planning",
-    "parent_goal_workflow_id" to parentGoalWorkflowId,
-    "normalized_issue_key" to normalizedIssueKey,
+    "parent_goal_workflow_id" to parentGoalWorkflowId.value,
+    "normalized_issue_key" to normalizedIssueKey.value,
     "repository_identity" to repositoryIdentity,
     "parent_spec_hash" to parentSpecHash,
     "decomposition_manifest_hash" to decompositionManifestHash,
@@ -71,7 +74,7 @@ data class FeatureTaskRuntimeGoalPlanningImport(
     "planning_contract_version" to planningContractVersion,
     "phase_output_contract_id" to phaseOutputContractId,
     "phase_output_contract_version" to phaseOutputContractVersion,
-    "subtask_id" to subtaskId,
+    "subtask_id" to subtaskId.value,
     "manifest_order" to manifestOrder,
     "governed_sub_spec_path" to governedSubSpecPath,
     "sub_spec_hash" to subSpecHash,

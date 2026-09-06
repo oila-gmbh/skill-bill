@@ -1,7 +1,5 @@
 package skillbill.application.goalrunner
-
 import me.tatarka.inject.annotations.Inject
-import skillbill.application.goalrunner.model.GoalRunnerRunRequest
 import skillbill.goalrunner.GoalRunnerWorkerSubtaskRequestParser
 import skillbill.goalrunner.GoalRunnerWorkerSubtaskScheduler
 import skillbill.goalrunner.model.GoalRunnerReconciledOutcome
@@ -13,6 +11,8 @@ import skillbill.ports.goalrunner.runner.GoalRunnerManifestStore
 import skillbill.ports.goalrunner.runner.GoalRunnerWorkflowOutcomeStore
 import skillbill.ports.goalrunner.runner.model.GoalRunnerManifestState
 import skillbill.workflow.decomposition.model.DecompositionManifest
+import skillbill.workflow.decomposition.model.SubtaskId
+import skillbill.workflow.engine.model.WorkflowId
 
 @Inject
 public class GoalRunnerWorkerRequestHandler(
@@ -22,22 +22,20 @@ public class GoalRunnerWorkerRequestHandler(
   internal fun handle(
     state: GoalRunnerManifestState,
     launchOutcome: AgentRunLaunchOutcome,
-    subtaskId: Int,
-    request: GoalRunnerRunRequest,
+    subtaskId: SubtaskId,
   ): GoalRunnerWorkerRequestHandlingResult {
     val output = launchOutcome.workerOutput()
     return if (output == null) {
       GoalRunnerWorkerRequestHandlingResult(state)
     } else {
-      handleOutput(state, output, subtaskId, request)
+      handleOutput(state, output, subtaskId)
     }
   }
 
   private fun handleOutput(
     state: GoalRunnerManifestState,
     output: WorkerLaunchOutput,
-    subtaskId: Int,
-    request: GoalRunnerRunRequest,
+    subtaskId: SubtaskId,
   ): GoalRunnerWorkerRequestHandlingResult {
     val parsed = GoalRunnerWorkerSubtaskRequestParser.parse(
       stdout = output.stdout,
@@ -47,15 +45,14 @@ public class GoalRunnerWorkerRequestHandler(
     return if (parsed.isEmpty()) {
       GoalRunnerWorkerRequestHandlingResult(state)
     } else {
-      persistParsedOutcomes(state, parsed, subtaskId, request)
+      persistParsedOutcomes(state, parsed, subtaskId)
     }
   }
 
   private fun persistParsedOutcomes(
     state: GoalRunnerManifestState,
     parsed: List<GoalRunnerWorkerSubtaskRequestOutcome>,
-    subtaskId: Int,
-    request: GoalRunnerRunRequest,
+    subtaskId: SubtaskId,
   ): GoalRunnerWorkerRequestHandlingResult {
     val scheduled = GoalRunnerWorkerSubtaskScheduler.scheduleQueuedRequests(state.manifest, parsed)
     val workflowId = state.manifest.workflowIdFor(subtaskId)
@@ -64,7 +61,6 @@ public class GoalRunnerWorkerRequestHandler(
         outcomeStore.recordWorkerSubtaskRequestOutcomes(
           workflowId = it,
           outcomes = scheduled.outcomes,
-          dbPathOverride = request.dbPathOverride,
         )
       }.getOrDefault(false)
     } ?: false
@@ -77,7 +73,7 @@ public class GoalRunnerWorkerRequestHandler(
     val saved = if (scheduled.manifest == state.manifest) {
       state
     } else {
-      manifestStore.save(state.copy(manifest = scheduled.manifest), request.dbPathOverride)
+      manifestStore.save(state.copy(manifest = scheduled.manifest))
     }
     return GoalRunnerWorkerRequestHandlingResult(
       state = saved,
@@ -87,8 +83,8 @@ public class GoalRunnerWorkerRequestHandler(
 
   private fun workerRequestAuditFailureStop(
     manifest: DecompositionManifest,
-    subtaskId: Int,
-    workflowId: String?,
+    subtaskId: SubtaskId,
+    workflowId: WorkflowId?,
   ): GoalRunnerReconciledOutcome.Stop = GoalRunnerReconciledOutcome.Stop(
     reason = GoalRunnerStopReason.BLOCKED,
     blockedReason = "Worker subtask request outcome audit could not be recorded; " +
@@ -108,8 +104,8 @@ internal data class GoalRunnerWorkerRequestHandlingResult(
   val operatorConfirmationStop: GoalRunnerReconciledOutcome.Stop? = null,
 )
 
-fun DecompositionManifest.workflowIdFor(subtaskId: Int): String? =
-  subtasks.firstOrNull { subtask -> subtask.id == subtaskId }?.workflowId?.takeIf(String::isNotBlank)
+fun DecompositionManifest.workflowIdFor(subtaskId: SubtaskId): WorkflowId? =
+  subtasks.firstOrNull { subtask -> subtask.id == subtaskId }?.workflowId
 
 private data class WorkerLaunchOutput(
   val stdout: String,
@@ -121,7 +117,7 @@ private fun AgentRunLaunchOutcome.workerOutput(): WorkerLaunchOutput? = (this as
 
 private fun List<GoalRunnerWorkerSubtaskRequestOutcome>.operatorConfirmationStop(
   manifest: DecompositionManifest,
-  subtaskId: Int,
+  subtaskId: SubtaskId,
 ): GoalRunnerReconciledOutcome.Stop? =
   filterIsInstance<GoalRunnerWorkerSubtaskRequestOutcome.RequiresOperatorConfirmation>()
     .firstOrNull()

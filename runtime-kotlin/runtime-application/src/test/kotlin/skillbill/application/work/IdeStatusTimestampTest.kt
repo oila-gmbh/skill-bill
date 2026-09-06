@@ -1,5 +1,4 @@
 package skillbill.application.work
-
 import skillbill.application.idestatus.model.IdeStatusCurrentSubtask
 import skillbill.application.idestatus.model.IdeStatusFreshness
 import skillbill.application.idestatus.model.IdeStatusLifecycleState
@@ -8,6 +7,8 @@ import skillbill.application.idestatus.model.IdeStatusStep
 import skillbill.application.idestatus.model.IdeStatusWorkflowFamily
 import skillbill.contracts.JsonCodec
 import skillbill.contracts.workflow.IDE_STATUS_CONTRACT_VERSION
+import skillbill.workflow.decomposition.model.IssueKey
+import skillbill.workflow.engine.model.WorkflowId
 import java.time.Instant
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -62,8 +63,8 @@ class IdeStatusTimestampTest {
     currentSubtask: IdeStatusCurrentSubtask? = null,
   ): IdeStatusSnapshot = IdeStatusSnapshot(
     repositoryIdentity = "repo-root-realpath-v1:/repo",
-    issueKey = "SKILL-148",
-    workflowId = "goal-1",
+    issueKey = IssueKey("SKILL-148"),
+    workflowId = WorkflowId("goal-1"),
     workflowFamily = IdeStatusWorkflowFamily.FEATURE_GOAL,
     lifecycleState = IdeStatusLifecycleState.ACTIVE,
     currentStep = IdeStatusStep(id = "implement", label = "Implement"),

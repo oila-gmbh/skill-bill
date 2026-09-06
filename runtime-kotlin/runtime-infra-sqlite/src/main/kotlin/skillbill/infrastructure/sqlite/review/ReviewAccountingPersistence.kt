@@ -1,4 +1,5 @@
 package skillbill.infrastructure.sqlite.review
+
 import skillbill.contracts.JsonCodec
 import skillbill.contracts.review.REVIEW_CONTEXT_CONTRACT_VERSION
 import skillbill.db.PARAM_FOUR

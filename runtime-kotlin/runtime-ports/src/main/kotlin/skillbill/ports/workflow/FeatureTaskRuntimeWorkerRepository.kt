@@ -2,10 +2,11 @@ package skillbill.ports.workflow
 
 import skillbill.ports.featuretask.model.FeatureTaskRuntimeCrashReconciliationCandidate
 import skillbill.ports.featuretask.model.FeatureTaskRuntimeWorkerOwnership
+import skillbill.workflow.engine.model.WorkflowId
 
 interface FeatureTaskRuntimeWorkerRepository {
 
-  fun getFeatureTaskRuntimeWorkerOwnership(workflowId: String): FeatureTaskRuntimeWorkerOwnership? = null
+  fun getFeatureTaskRuntimeWorkerOwnership(workflowId: WorkflowId): FeatureTaskRuntimeWorkerOwnership? = null
 
   fun acquireFeatureTaskRuntimeWorker(
     ownership: FeatureTaskRuntimeWorkerOwnership,
@@ -13,7 +14,7 @@ interface FeatureTaskRuntimeWorkerRepository {
   ): Boolean = error("Feature-task runtime worker acquisition is not implemented by this persistence adapter.")
 
   fun reserveFeatureTaskRuntimeWorkerTakeover(
-    workflowId: String,
+    workflowId: WorkflowId,
     expectedOwnerToken: String,
     expectedGeneration: Long,
   ): Boolean = error("Feature-task runtime worker takeover is not implemented by this persistence adapter.")
@@ -27,7 +28,7 @@ interface FeatureTaskRuntimeWorkerRepository {
   fun heartbeatFeatureTaskRuntimeWorker(ownership: FeatureTaskRuntimeWorkerOwnership): Boolean =
     error("Feature-task runtime worker heartbeat is not implemented by this persistence adapter.")
 
-  fun releaseFeatureTaskRuntimeWorker(workflowId: String, ownerToken: String, generation: Long): Boolean =
+  fun releaseFeatureTaskRuntimeWorker(workflowId: WorkflowId, ownerToken: String, generation: Long): Boolean =
     error("Feature-task runtime worker release is not implemented by this persistence adapter.")
 
   /**
@@ -48,7 +49,7 @@ interface FeatureTaskRuntimeWorkerRepository {
    * can skip rather than fail; the write never partially applies.
    */
   fun reconcileFeatureTaskRuntimeCrashedWorker(
-    workflowId: String,
+    workflowId: WorkflowId,
     ownerToken: String,
     generation: Long,
     interruptionReason: String,

@@ -1,8 +1,9 @@
 package skillbill.goalrunner
-
 import skillbill.goalrunner.model.GoalAttemptLedger
 import skillbill.goalrunner.model.GoalAttemptLedgerAction
 import skillbill.goalrunner.model.GoalAttemptLedgerEntry
+import skillbill.workflow.decomposition.model.IssueKey
+import skillbill.workflow.decomposition.model.SubtaskId
 import kotlin.test.Test
 import kotlin.test.assertEquals
 
@@ -29,8 +30,8 @@ class GoalRunnerAccountingModelsTest {
       action = GoalAttemptLedgerAction.TIMEOUT,
       sequenceNumber = 7,
       timestamp = "2026-06-02T10:00:00Z",
-      issueKey = "SKILL-64",
-      subtaskId = 2,
+      issueKey = IssueKey("SKILL-64"),
+      subtaskId = SubtaskId(2),
       stopReason = "timeout",
     )
     val map = entry.toArtifactMap()

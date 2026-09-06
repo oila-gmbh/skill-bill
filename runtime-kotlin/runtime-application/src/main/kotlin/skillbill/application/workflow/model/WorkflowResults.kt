@@ -1,6 +1,8 @@
 package skillbill.application.workflow.model
-
+import skillbill.workflow.decomposition.model.IssueKey
+import skillbill.workflow.decomposition.model.SubtaskId
 import skillbill.workflow.engine.model.WorkflowContinueView
+import skillbill.workflow.engine.model.WorkflowId
 import skillbill.workflow.engine.model.WorkflowInputProjection
 import skillbill.workflow.engine.model.WorkflowResumeView
 import skillbill.workflow.engine.model.WorkflowSnapshotView
@@ -26,31 +28,31 @@ import skillbill.workflow.engine.model.WorkflowUpdateAcknowledgementView
  */
 sealed interface WorkflowOpenResult {
   data class Ok(
-    val workflowId: String,
+    val workflowId: WorkflowId,
     val dbPath: String,
     val snapshot: WorkflowSnapshotView,
     val launchProjection: WorkflowInputProjection? = null,
   ) : WorkflowOpenResult
-  data class Error(val workflowId: String, val error: String) : WorkflowOpenResult
+  data class Error(val workflowId: WorkflowId, val error: String) : WorkflowOpenResult
 }
 
 sealed interface WorkflowUpdateResult {
   data class Ok(
-    val workflowId: String,
+    val workflowId: WorkflowId,
     val dbPath: String,
     val acknowledgement: WorkflowUpdateAcknowledgementView,
     val launchProjection: WorkflowInputProjection? = null,
   ) : WorkflowUpdateResult
-  data class Error(val workflowId: String, val error: String, val dbPath: String? = null) : WorkflowUpdateResult
+  data class Error(val workflowId: WorkflowId, val error: String, val dbPath: String? = null) : WorkflowUpdateResult
 }
 
 sealed interface WorkflowGetResult {
   data class Ok(
-    val workflowId: String,
+    val workflowId: WorkflowId,
     val dbPath: String,
     val snapshot: WorkflowSnapshotView,
   ) : WorkflowGetResult
-  data class Error(val workflowId: String, val error: String, val dbPath: String) : WorkflowGetResult
+  data class Error(val workflowId: WorkflowId, val error: String, val dbPath: String) : WorkflowGetResult
 }
 
 data class WorkflowListResult(
@@ -60,11 +62,11 @@ data class WorkflowListResult(
 )
 
 data class GoalContinuationOutcome(
-  val issueKey: String,
-  val subtaskId: Int,
+  val issueKey: IssueKey,
+  val subtaskId: SubtaskId,
   val status: String,
   val commitSha: String?,
-  val workflowId: String,
+  val workflowId: WorkflowId,
   val blockedReason: String?,
   val lastResumableStep: String?,
 )
@@ -76,11 +78,11 @@ sealed interface WorkflowLatestResult {
 
 sealed interface WorkflowResumeResult {
   data class Ok(
-    val workflowId: String,
+    val workflowId: WorkflowId,
     val dbPath: String,
     val resume: WorkflowResumeView,
   ) : WorkflowResumeResult
-  data class Error(val workflowId: String, val error: String, val dbPath: String) : WorkflowResumeResult
+  data class Error(val workflowId: WorkflowId, val error: String, val dbPath: String) : WorkflowResumeResult
 }
 
 /**
@@ -108,51 +110,51 @@ sealed interface WorkflowContinueResult {
 
   data class UnknownWorkflow(
     override val dbPath: String,
-    val workflowId: String,
+    val workflowId: WorkflowId,
   ) : WorkflowContinueResult
 
   data class DecompositionMissingSubtaskWorkflow(
     override val dbPath: String,
-    val subtaskId: Int,
+    val subtaskId: SubtaskId,
     val blockedReason: String,
   ) : WorkflowContinueResult
 
   data class DecompositionBlockedSubtask(
     override val dbPath: String,
-    val workflowId: String,
-    val issueKey: String,
-    val subtaskId: Int,
+    val workflowId: WorkflowId,
+    val issueKey: IssueKey,
+    val subtaskId: SubtaskId,
     val subtaskSpecPath: String,
     val blockedReason: String,
   ) : WorkflowContinueResult
 
   data class DecompositionBlockedBranchStart(
     override val dbPath: String,
-    val workflowId: String,
-    val issueKey: String,
+    val workflowId: WorkflowId,
+    val issueKey: IssueKey,
     val blockedReason: String,
   ) : WorkflowContinueResult
 
   data class DecompositionDone(
     override val dbPath: String,
-    val workflowId: String,
-    val issueKey: String,
+    val workflowId: WorkflowId,
+    val issueKey: IssueKey,
     val decompositionStatus: String,
   ) : WorkflowContinueResult
 
   data class DecompositionSubtaskOutcome(
     override val dbPath: String,
-    val workflowId: String,
-    val issueKey: String,
-    val subtaskId: Int,
+    val workflowId: WorkflowId,
+    val issueKey: IssueKey,
+    val subtaskId: SubtaskId,
     val subtaskSpecPath: String,
     val outcome: GoalContinuationOutcome,
   ) : WorkflowContinueResult
 
   data class DecompositionBlockedGit(
     override val dbPath: String,
-    val workflowId: String,
-    val issueKey: String,
+    val workflowId: WorkflowId,
+    val issueKey: IssueKey,
     val blockedReason: String,
   ) : WorkflowContinueResult
 
@@ -167,10 +169,10 @@ sealed interface WorkflowContinueResult {
     val view: WorkflowContinueView,
     val decompositionSubtaskId: Int,
     val decompositionSubtaskSpecPath: String,
-    val issueKey: String = "",
+    val issueKey: IssueKey = IssueKey(""),
     val outcome: GoalContinuationOutcome? = null,
   ) : WorkflowContinueResult
 
   /** Generic error wrapper (unused except for upstream framework errors). */
-  data class Error(override val dbPath: String, val workflowId: String, val error: String) : WorkflowContinueResult
+  data class Error(override val dbPath: String, val workflowId: WorkflowId, val error: String) : WorkflowContinueResult
 }

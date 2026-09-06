@@ -1,5 +1,5 @@
 package skillbill.application.review
-
+import skillbill.agent.model.AgentId
 import skillbill.application.review.model.ReviewSpecialistLaunchRequest
 import skillbill.application.review.model.ReviewWorkerKind
 import skillbill.review.context.model.ResolvedReviewExecutionMode
@@ -11,7 +11,7 @@ object ParallelCodeReviewRunnerParentPrompt {
     selected: List<ReviewSpecialistLaunchRequest>,
     routedManifests: List<PlatformManifest>,
     resolvedMode: ResolvedReviewExecutionMode,
-    agentId: String,
+    agentId: AgentId,
   ): String {
     val inline = resolvedMode == ResolvedReviewExecutionMode.INLINE
     return buildString {
@@ -68,7 +68,7 @@ object ParallelCodeReviewRunnerParentPrompt {
   private fun StringBuilder.appendCursorDelegatedFanOut(
     selected: List<ReviewSpecialistLaunchRequest>,
     resolvedMode: ResolvedReviewExecutionMode,
-    agentId: String,
+    agentId: AgentId,
   ) {
     if (agentId != "cursor" || resolvedMode != ResolvedReviewExecutionMode.DELEGATED) return
     val nativeLanes = selected

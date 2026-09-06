@@ -1,5 +1,4 @@
 package skillbill.launcher
-
 import skillbill.config.model.PhaseCompactionDirective
 import skillbill.error.GovernedReviewLaunchCapabilityError
 import skillbill.install.model.InstallAgent
@@ -14,6 +13,8 @@ import skillbill.ports.review.ReviewEvidenceBroker
 import skillbill.ports.review.model.GovernedReviewEvidenceEndpointDescriptor
 import skillbill.ports.review.model.ReviewEvidenceBatchRequest
 import skillbill.ports.review.model.ReviewToolCall
+import skillbill.workflow.decomposition.model.IssueKey
+import skillbill.workflow.decomposition.model.SubtaskId
 import java.nio.file.Path
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
@@ -98,9 +99,9 @@ internal fun request(
   effort: String? = null,
   compaction: PhaseCompactionDirective? = null,
 ): SkillRunRequest = SkillRunRequest(
-  issueKey = "SKILL-113",
+  issueKey = IssueKey("SKILL-113"),
   repoRoot = Path.of("/tmp/skillbill-agent-run"),
-  subtaskId = 1,
+  subtaskId = SubtaskId(1),
   timeout = 3.seconds,
   promptOverride = "Phase: implement",
   modelOverride = model,

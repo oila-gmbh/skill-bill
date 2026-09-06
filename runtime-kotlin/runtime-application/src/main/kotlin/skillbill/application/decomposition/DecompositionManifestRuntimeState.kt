@@ -1,5 +1,4 @@
 package skillbill.application.decomposition
-
 import skillbill.application.decomposition.model.DecompositionManifestFileCandidate
 import skillbill.application.decomposition.model.DecompositionManifestRuntimeUpdate
 import skillbill.boundary.OpenBoundaryMap
@@ -9,6 +8,7 @@ import skillbill.ports.workflow.decomposition.DecompositionManifestStore
 import skillbill.workflow.decomposition.DecompositionManifestValidator
 import skillbill.workflow.decomposition.model.DecompositionManifest
 import skillbill.workflow.decomposition.model.DecompositionSubtask
+import skillbill.workflow.decomposition.model.IssueKey
 import skillbill.workflow.decomposition.runtime.invalidManifest
 import skillbill.workflow.decomposition.runtime.isActiveGoalRuntime
 import java.nio.file.NoSuchFileException
@@ -40,12 +40,12 @@ fun loadManifestOrNull(
 
 fun findMatchingDecompositionManifests(
   repoRoot: Path,
-  issueKey: String,
+  issueKey: IssueKey,
   fileStore: DecompositionManifestStore,
   validator: DecompositionManifestValidator,
   recoverPending: Boolean = true,
 ): List<DecompositionManifestFileCandidate> {
-  val normalizedIssueKey = issueKey.trim().uppercase()
+  val normalizedIssueKey = issueKey.value.trim().uppercase()
   val issueKeyInPath = Regex("(?<![A-Za-z0-9])${Regex.escape(normalizedIssueKey)}(?![A-Za-z0-9])")
   val manifestFiles = if (recoverPending) {
     fileStore.findDecompositionManifestFiles(repoRoot)
@@ -72,7 +72,7 @@ fun findMatchingDecompositionManifests(
           cause = error,
         )
       }
-      if (manifest.issueKey != normalizedIssueKey) {
+      if (manifest.issueKey.value != normalizedIssueKey) {
         throw InvalidDecompositionManifestSchemaError(
           sourceLabel = path.toString(),
           reason = "manifest issue_key '${manifest.issueKey}' does not match the requested issue key " +
@@ -88,7 +88,7 @@ fun findMatchingDecompositionManifests(
 
 fun resolveDecompositionManifest(
   repoRoot: Path,
-  issueKey: String,
+  issueKey: IssueKey,
   fileStore: DecompositionManifestStore,
   validator: DecompositionManifestValidator,
   recoverPending: Boolean = true,

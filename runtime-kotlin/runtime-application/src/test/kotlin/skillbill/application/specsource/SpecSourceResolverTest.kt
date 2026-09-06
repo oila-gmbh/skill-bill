@@ -1,5 +1,4 @@
 package skillbill.application.specsource
-
 import skillbill.application.TestDecompositionManifestStore
 import skillbill.application.decomposition.encodeDecompositionManifestYaml
 import skillbill.application.decomposition.parentSpecPath
@@ -8,7 +7,9 @@ import skillbill.application.testDecompositionManifestValidator
 import skillbill.workflow.decomposition.model.CurrentSubtaskIntent
 import skillbill.workflow.decomposition.model.DecompositionManifest
 import skillbill.workflow.decomposition.model.DecompositionSubtask
+import skillbill.workflow.decomposition.model.IssueKey
 import skillbill.workflow.decomposition.model.SpecSource
+import skillbill.workflow.decomposition.model.SubtaskId
 import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.test.Test
@@ -95,13 +96,13 @@ class SpecSourceResolverTest {
 
   private fun writeManifest(repoRoot: Path, specSource: SpecSource) {
     val manifest = DecompositionManifest(
-      issueKey = "SKILL-71",
+      issueKey = IssueKey("SKILL-71"),
       featureName = "local-config",
       parentSpecPath = ".feature-specs/SKILL-71/spec.md",
       specSource = specSource,
       baseBranch = "main",
       featureBranch = "feat/SKILL-71",
-      currentSubtaskIntent = CurrentSubtaskIntent(subtaskId = 1, action = "resume"),
+      currentSubtaskIntent = CurrentSubtaskIntent(subtaskId = SubtaskId(1), action = "resume"),
       subtasks = listOf(
         DecompositionSubtask(id = 1, name = "subtask", specPath = ".feature-specs/SKILL-71/spec_subtask_1.md"),
       ),

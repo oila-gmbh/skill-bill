@@ -1,8 +1,8 @@
 package skillbill.infrastructure.fs
-
 import skillbill.ports.taskruntime.FeatureTaskRuntimeSharedEvidenceDeriver
 import skillbill.ports.taskruntime.model.FeatureTaskRuntimeSharedEvidenceDerivation
 import skillbill.ports.taskruntime.model.FeatureTaskRuntimeSharedEvidenceRequest
+import skillbill.workflow.engine.model.WorkflowId
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepositoryCheckpoint
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeSharedEvidenceFileEntry
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeSharedEvidenceHunkEntry
@@ -80,7 +80,7 @@ class FeatureTaskRuntimeSharedEvidenceResolveOutcomeTest {
 
   private fun request(fingerprint: String) = FeatureTaskRuntimeSharedEvidenceRequest(
     repoRoot = repoRoot,
-    workflowId = "wf-1",
+    workflowId = WorkflowId("wf-1"),
     checkpoint = FeatureTaskRuntimeRepositoryCheckpoint(fingerprint),
   )
 }

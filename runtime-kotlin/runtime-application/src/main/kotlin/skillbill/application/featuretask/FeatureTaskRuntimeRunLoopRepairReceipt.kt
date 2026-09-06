@@ -15,7 +15,6 @@ object FeatureTaskRuntimeRunLoopRepairReceipt {
   ): String? = runCatching {
     runLoop.goalContinuationRecorder.updateReviewState(
       runLoop.request.workflowId,
-      runLoop.request.dbPathOverride,
     ) { state ->
       state.upsertRepairReceipt(receipt)
     }
@@ -107,7 +106,7 @@ object FeatureTaskRuntimeRunLoopRepairReceipt {
   fun refutedCarriedFindingIds(runLoop: FeatureTaskRuntimeRunLoop, reviewState: GoalSubtaskReviewState): Set<String> {
     val passNumber = reviewState.passResults.lastOrNull()?.passNumber ?: return emptySet()
     return runCatching {
-      runLoop.recorder.fetchUnaddressedLedger(runLoop.request.workflowId, runLoop.request.dbPathOverride)
+      runLoop.recorder.fetchUnaddressedLedger(runLoop.request.workflowId)
         .asSequence()
         .filter { finding -> finding.reviewPassNumber == passNumber }
         .filter { finding -> finding.verificationDisposition == UNADDRESSED_FINDING_REJECTED_DISPOSITION }

@@ -1,5 +1,7 @@
 package skillbill.review.model
 
+import skillbill.agent.model.AgentId
+
 data class ReviewLaneFindingVerdict(
   val laneId: String,
   val claimVerdict: ReviewClaimVerdict? = null,
@@ -32,7 +34,7 @@ data class ParallelReviewRawFinding(
 )
 
 data class ParallelReviewLaneResult(
-  val agentId: String,
+  val agentId: AgentId,
   val findings: List<ParallelReviewRawFinding>,
 )
 

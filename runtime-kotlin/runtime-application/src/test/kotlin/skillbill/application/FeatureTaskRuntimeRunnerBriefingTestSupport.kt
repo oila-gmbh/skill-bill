@@ -1,5 +1,4 @@
 package skillbill.application
-
 import skillbill.application.featuretask.FeatureTaskRuntimePhaseBriefingAssembler
 import skillbill.application.featuretask.GoalContinuationStateRecordRequest
 import skillbill.application.featuretask.model.FeatureTaskRuntimePhaseLaunchBriefing
@@ -11,6 +10,9 @@ import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewInput
 import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewInputFailureReason
 import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewInputResult
 import skillbill.review.context.model.CodeReviewExecutionMode
+import skillbill.workflow.decomposition.model.IssueKey
+import skillbill.workflow.decomposition.model.SubtaskId
+import skillbill.workflow.engine.model.WorkflowId
 import skillbill.workflow.goal.model.GoalSubtaskReviewCompactFinding
 import skillbill.workflow.goal.model.GoalSubtaskReviewDisposition
 import skillbill.workflow.goal.model.GoalSubtaskReviewState
@@ -117,10 +119,10 @@ private fun inlineGoalContinuationHarness(
   check(
     harness.goalContinuationRecorder.recordGoalContinuationState(
       GoalContinuationStateRecordRequest(
-        workflowId = WORKFLOW_ID,
+        workflowId = WorkflowId(WORKFLOW_ID),
         continuation = FeatureTaskRuntimeGoalContinuationArtifact(
-          issueKey = RUNNER_BRIEFING_ISSUE_KEY,
-          subtaskId = 5,
+          issueKey = IssueKey(RUNNER_BRIEFING_ISSUE_KEY),
+          subtaskId = SubtaskId(5),
           suppressPr = true,
           goalBranch = "feat/existing-runtime-branch",
           parentWorkflowId = "wfl-parent",

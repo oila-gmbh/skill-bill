@@ -1,5 +1,6 @@
 package skillbill.application.telemetry
 
+import skillbill.workflow.engine.model.WorkflowId
 import skillbill.application.telemetry.model.FeatureTaskRuntimeFinishedRequest
 import skillbill.application.telemetry.model.GoalFinishedRequest
 import skillbill.application.telemetry.model.GoalIssueFinishedRequest
@@ -12,39 +13,40 @@ import skillbill.ports.telemetry.TelemetrySettingsProvider
 import skillbill.review.normalizeRoutedSkill
 import skillbill.review.normalizeStackLabel
 import skillbill.telemetry.model.TelemetrySettings
+import skillbill.workflow.engine.model.SessionId
 
 class LifecycleTelemetryGoalEmission(
   private val database: DatabaseSessionFactory,
   private val settingsProvider: TelemetrySettingsProvider,
 ) : GoalLifecycleTelemetryEmitter {
-  override fun goalStarted(request: GoalStartedRequest, dbOverride: String?) {
+  override fun goalStarted(request: GoalStartedRequest) {
     enabledStandaloneResult(settingsProvider, request.workflowId) { settings ->
-      database.transaction(dbOverride) { unitOfWork ->
+      database.transaction { unitOfWork ->
         unitOfWork.lifecycleTelemetry.goalStarted(request.toRecord(), settings.level)
       }
     }
   }
 
-  override fun goalSubtaskFinished(request: GoalSubtaskFinishedRequest, dbOverride: String?) {
+  override fun goalSubtaskFinished(request: GoalSubtaskFinishedRequest) {
     enabledStandaloneResult(settingsProvider, request.workflowId) { settings ->
       val reconciledRequest = request.reconcileBlockedReason()
-      database.transaction(dbOverride) { unitOfWork ->
+      database.transaction { unitOfWork ->
         unitOfWork.lifecycleTelemetry.goalSubtaskFinished(reconciledRequest.toRecord(), settings.level)
       }
     }
   }
 
-  override fun goalFinished(request: GoalFinishedRequest, dbOverride: String?) {
+  override fun goalFinished(request: GoalFinishedRequest) {
     enabledStandaloneResult(settingsProvider, request.workflowId) { settings ->
-      database.transaction(dbOverride) { unitOfWork ->
+      database.transaction { unitOfWork ->
         unitOfWork.lifecycleTelemetry.goalFinished(request.toRecord(), settings.level)
       }
     }
   }
 
-  override fun goalIssueFinished(request: GoalIssueFinishedRequest, dbOverride: String?) {
+  override fun goalIssueFinished(request: GoalIssueFinishedRequest) {
     enabledStandaloneResult(settingsProvider, request.parentWorkflowId) { settings ->
-      database.transaction(dbOverride) { unitOfWork ->
+      database.transaction { unitOfWork ->
         unitOfWork.lifecycleTelemetry.goalIssueFinished(request.toRecord(), settings.level)
       }
     }
@@ -53,7 +55,7 @@ class LifecycleTelemetryGoalEmission(
 
 internal fun enabledStandaloneResult(
   settingsProvider: TelemetrySettingsProvider,
-  sessionId: String,
+  sessionId: SessionId,
   action: (TelemetrySettings) -> Unit,
 ): Map<String, Any?> {
   val settings = telemetrySettingsOrNull(settingsProvider)

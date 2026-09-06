@@ -1,5 +1,7 @@
 package skillbill.ports.goalrunner
 
+import skillbill.workflow.engine.model.WorkflowId
+
 import skillbill.goalrunner.model.GOAL_ACTIVE_HEARTBEAT_GAP_LIMIT_MS
 import skillbill.goalrunner.model.GoalRunnerControlState
 import skillbill.goalrunner.model.GoalRunnerExecutionLease
@@ -9,31 +11,31 @@ import java.time.Duration
 import java.time.Instant
 
 interface GoalRunnerControlRepository {
-  fun controlState(parentWorkflowId: String): GoalRunnerControlState
+  fun controlState(parentWorkflowId: WorkflowId): GoalRunnerControlState
 
-  fun persistControlState(parentWorkflowId: String, state: GoalRunnerControlState): GoalRunnerControlState
+  fun persistControlState(parentWorkflowId: WorkflowId, state: GoalRunnerControlState): GoalRunnerControlState
 
-  fun clearControlState(parentWorkflowId: String)
+  fun clearControlState(parentWorkflowId: WorkflowId)
 
-  fun reviewPolicy(parentWorkflowId: String): GoalRunnerReviewPolicy?
+  fun reviewPolicy(parentWorkflowId: WorkflowId): GoalRunnerReviewPolicy?
 
-  fun persistReviewPolicy(parentWorkflowId: String, policy: GoalRunnerReviewPolicy): GoalRunnerReviewPolicy
+  fun persistReviewPolicy(parentWorkflowId: WorkflowId, policy: GoalRunnerReviewPolicy): GoalRunnerReviewPolicy
 
-  fun outOfBandAcceptances(parentWorkflowId: String): Map<Int, GoalRunnerOutOfBandAcceptance>
+  fun outOfBandAcceptances(parentWorkflowId: WorkflowId): Map<Int, GoalRunnerOutOfBandAcceptance>
 
   fun persistOutOfBandAcceptance(
-    parentWorkflowId: String,
+    parentWorkflowId: WorkflowId,
     acceptance: GoalRunnerOutOfBandAcceptance,
   ): GoalRunnerOutOfBandAcceptance
 
-  fun clearOutOfBandAcceptances(parentWorkflowId: String)
+  fun clearOutOfBandAcceptances(parentWorkflowId: WorkflowId)
 }
 
-fun GoalRunnerControlRepository.executionLease(parentWorkflowId: String): GoalRunnerExecutionLease? =
+fun GoalRunnerControlRepository.executionLease(parentWorkflowId: WorkflowId): GoalRunnerExecutionLease? =
   controlState(parentWorkflowId).executionLease
 
 fun GoalRunnerControlRepository.acquireExecutionLease(
-  parentWorkflowId: String,
+  parentWorkflowId: WorkflowId,
   lease: GoalRunnerExecutionLease,
   expectedOwnerToken: String? = null,
 ): Boolean {
@@ -51,7 +53,7 @@ fun GoalRunnerControlRepository.acquireExecutionLease(
 }
 
 fun GoalRunnerControlRepository.heartbeatExecutionLease(
-  parentWorkflowId: String,
+  parentWorkflowId: WorkflowId,
   lease: GoalRunnerExecutionLease,
 ): Boolean {
   val state = controlState(parentWorkflowId)
@@ -62,7 +64,7 @@ fun GoalRunnerControlRepository.heartbeatExecutionLease(
 }
 
 fun GoalRunnerControlRepository.releaseExecutionLease(
-  parentWorkflowId: String,
+  parentWorkflowId: WorkflowId,
   ownerToken: String,
   generation: Long,
 ): Boolean {

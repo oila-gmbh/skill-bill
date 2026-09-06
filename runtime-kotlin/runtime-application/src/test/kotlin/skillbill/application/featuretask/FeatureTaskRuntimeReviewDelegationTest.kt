@@ -1,5 +1,4 @@
 package skillbill.application.featuretask
-
 import skillbill.agentaddon.model.AgentAddonPromptFormatter
 import skillbill.agentaddon.model.HydratedAgentAddonSelection
 import skillbill.agentaddon.model.HydratedAgentAddonSelectionEntry
@@ -21,6 +20,7 @@ import skillbill.review.model.ParallelReviewMergeResult
 import skillbill.review.model.ParallelReviewMergedFinding
 import skillbill.review.model.ParallelReviewSeverity
 import skillbill.review.model.ReviewClaimVerdict
+import skillbill.review.model.ReviewRunId
 import skillbill.review.model.ReviewScopeDisposition
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFeatureSize
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRunInvariants
@@ -159,7 +159,7 @@ class FeatureTaskRuntimeReviewDelegationTest {
     )
     val output = FeatureTaskRuntimeReviewEnvelope.assemble(
       result = result,
-      reviewRunId = "rvw-191-empty-register",
+      reviewRunId = ReviewRunId("rvw-191-empty-register"),
       cycle = FeatureTaskRuntimeReviewCycleContext(
         passNumber = 1,
         resolvedTier = CodeReviewExecutionMode.INLINE,
@@ -219,7 +219,7 @@ class FeatureTaskRuntimeReviewDelegationTest {
       timeout = mapped.timeout,
       codeReviewMode = CodeReviewExecutionMode.INLINE,
       suppliedDiff = delta,
-      reviewRunId = "parity-standalone",
+      reviewRunId = ReviewRunId("parity-standalone"),
       baseRevision = mapped.baseRevision,
       headRevision = mapped.headRevision,
       specPath = mapped.specPath,

@@ -1,5 +1,4 @@
 package skillbill.application
-
 import skillbill.application.featuretask.model.FeatureTaskRuntimePhaseLaunchBriefing
 import skillbill.application.featuretask.model.FeatureTaskRuntimeRunReport
 import skillbill.ports.diff.DiffResolverPort
@@ -9,6 +8,7 @@ import skillbill.ports.taskruntime.model.FeatureTaskRuntimeSharedEvidenceDerivat
 import skillbill.ports.taskruntime.model.FeatureTaskRuntimeSharedEvidenceRequest
 import skillbill.ports.taskruntime.model.FeatureTaskRuntimeSharedEvidenceResolution
 import skillbill.ports.taskruntime.model.FeatureTaskRuntimeSharedEvidenceResolveOutcome
+import skillbill.workflow.engine.model.WorkflowId
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeHandoffProjectionValue
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepositoryCheckpoint
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeSharedEvidenceArtifact
@@ -238,7 +238,7 @@ class FeatureTaskRuntimeSharedEvidenceEndToEndTest {
 
   private fun request(fingerprint: String) = FeatureTaskRuntimeSharedEvidenceRequest(
     repoRoot = Path.of("."),
-    workflowId = WORKFLOW_ID,
+    workflowId = WorkflowId(WORKFLOW_ID),
     checkpoint = FeatureTaskRuntimeRepositoryCheckpoint(fingerprint),
   )
 

@@ -1,5 +1,4 @@
 package skillbill.application
-
 import skillbill.application.decomposition.decodeArtifacts
 import skillbill.application.goalrunner.OutcomeStoreTestArtifactPorts
 import skillbill.application.goalrunner.testWorkflowGoalRunnerOutcomeStore
@@ -13,6 +12,9 @@ import skillbill.ports.goalrunner.runner.model.GoalRunnerAttemptLedgerRecordRequ
 import skillbill.ports.goalrunner.runner.model.GoalRunnerReconcileGate
 import skillbill.ports.workflow.model.toSnapshot
 import skillbill.review.context.model.CodeReviewExecutionMode
+import skillbill.workflow.decomposition.model.IssueKey
+import skillbill.workflow.decomposition.model.SubtaskId
+import skillbill.workflow.engine.model.WorkflowId
 import skillbill.workflow.goal.model.GoalSubtaskReviewState
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeVerdict
 import skillbill.workflow.taskruntime.phaseartifacts.phaseRecordsFrom
@@ -54,7 +56,7 @@ class WorkflowGoalRunnerOutcomeStoreTaskRuntimeTest {
 
     val recorded = store.recordAttemptLedgerEntry(
       GoalRunnerAttemptLedgerRecordRequest(
-        workflowId = "wftr-task-runtime",
+        workflowId = WorkflowId("wftr-task-runtime"),
         entry = GoalAttemptLedgerEntry(
           action = GoalAttemptLedgerAction.FINAL_RECONCILED_OUTCOME,
           sequenceNumber = 1,
@@ -84,7 +86,7 @@ class WorkflowGoalRunnerOutcomeStoreTaskRuntimeTest {
     )
 
     val recorded = store.recordWorkerSubtaskRequestOutcomes(
-      workflowId = "wftr-task-runtime",
+      workflowId = WorkflowId("wftr-task-runtime"),
       outcomes = listOf(
         GoalRunnerWorkerSubtaskRequestOutcome.Rejected(
           sourceStream = "stdout",
@@ -119,7 +121,7 @@ class WorkflowGoalRunnerOutcomeStoreTaskRuntimeTest {
     )
     workflows.saveFeatureTaskRuntimeWorkflow(
       goalReviewWorkflowRecord(
-        workflowId = "wftr-goal-review",
+        workflowId = WorkflowId("wftr-goal-review"),
         state = state,
         rawReviewResult = """
           {"verdict":"changes_requested","produced_outputs":{}}
@@ -156,7 +158,7 @@ class WorkflowGoalRunnerOutcomeStoreTaskRuntimeTest {
     )
     workflows.saveFeatureTaskRuntimeWorkflow(
       goalReviewWorkflowRecord(
-        workflowId = "wftr-goal-review-prose",
+        workflowId = WorkflowId("wftr-goal-review-prose"),
         state = state,
         rawReviewResult = """
           [F-001] Major | path="runtime-kotlin/Example.kt" | line=10 | description=example finding in prose.
@@ -188,7 +190,7 @@ class WorkflowGoalRunnerOutcomeStoreTaskRuntimeTest {
     )
 
     val outcomes = store.reconcileAuthoritativeOutcomes(
-      issueKey = "SKILL-87.1",
+      issueKey = IssueKey("SKILL-87.1"),
       activeWorkflowIds = emptySet(),
       gate = GoalRunnerReconcileGate(requireStalenessEvidence = true),
     )
@@ -215,7 +217,7 @@ class WorkflowGoalRunnerOutcomeStoreTaskRuntimeTest {
     )
 
     val outcomes = store.reconcileAuthoritativeOutcomes(
-      issueKey = "SKILL-87.1",
+      issueKey = IssueKey("SKILL-87.1"),
       activeWorkflowIds = emptySet(),
       gate = GoalRunnerReconcileGate(requireStalenessEvidence = true),
     )
@@ -246,7 +248,7 @@ class WorkflowGoalRunnerOutcomeStoreTaskRuntimeTest {
     )
 
     val outcomes = store.reconcileAuthoritativeOutcomes(
-      issueKey = "SKILL-87.1",
+      issueKey = IssueKey("SKILL-87.1"),
       activeWorkflowIds = emptySet(),
       gate = GoalRunnerReconcileGate(requireStalenessEvidence = true),
     )
@@ -275,7 +277,7 @@ class WorkflowGoalRunnerOutcomeStoreTaskRuntimeTest {
     )
 
     val outcomes = store.reconcileAuthoritativeOutcomes(
-      issueKey = "SKILL-87.1",
+      issueKey = IssueKey("SKILL-87.1"),
       activeWorkflowIds = emptySet(),
       gate = GoalRunnerReconcileGate(requireStalenessEvidence = true),
     )
@@ -300,7 +302,7 @@ class WorkflowGoalRunnerOutcomeStoreTaskRuntimeTest {
     )
 
     val outcomes = store.reconcileAuthoritativeOutcomes(
-      issueKey = "SKILL-87.1",
+      issueKey = IssueKey("SKILL-87.1"),
       activeWorkflowIds = emptySet(),
       gate = GoalRunnerReconcileGate(requireStalenessEvidence = true),
     )
@@ -325,9 +327,9 @@ class WorkflowGoalRunnerOutcomeStoreTaskRuntimeTest {
     )
 
     val outcome = store.recoverAndPersistTerminalOutcome(
-      workflowId = "wftr-crashed-child",
-      issueKey = "SKILL-87.1",
-      subtaskId = 1,
+      workflowId = WorkflowId("wftr-crashed-child"),
+      issueKey = IssueKey("SKILL-87.1"),
+      subtaskId = SubtaskId(1),
       repoRoot = Path.of("."),
       dbPathOverride = null,
     )
@@ -353,7 +355,7 @@ class WorkflowGoalRunnerOutcomeStoreTaskRuntimeTest {
 
     assertTrue(
       store.reopenBlockedPhaseForOperatorResume(
-        workflowId = "wftr-torn-review",
+        workflowId = WorkflowId("wftr-torn-review"),
         preferredPhaseId = "review",
         reason = "Operator resumed the goal after a blocked stop at subtask 9.",
       ),

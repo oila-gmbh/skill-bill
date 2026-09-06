@@ -81,7 +81,7 @@ internal fun rejectFeatureTaskRuntimeHandoffProjection(
   reason: String,
 ): Nothing = throw InvalidFeatureTaskRuntimeHandoffProjectionError(
   context = InvalidFeatureTaskRuntimeHandoffProjectionContext(
-    workflowId = inputs.workflowId,
+    workflowId = inputs.workflowId?.value,
     consumerPhaseId = inputs.consumerPhaseId,
     projectionName = declaration.projectionName,
     projectionContractId = declaration.projectionContractId,

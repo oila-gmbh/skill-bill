@@ -1,5 +1,4 @@
 package skillbill.application
-
 import skillbill.application.diagnostics.RejectedOutputDiagnosticService
 import skillbill.application.featuretask.FeatureTaskRuntimeRunState
 import skillbill.application.featuretask.REVIEW_INVALIDATION_AGENT_ID
@@ -10,6 +9,8 @@ import skillbill.application.featuretask.transitionsFor
 import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_CONTRACT_VERSION
 import skillbill.ports.diagnostics.model.ProducerOutputEvidence
 import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewBaseline
+import skillbill.workflow.decomposition.model.SubtaskId
+import skillbill.workflow.engine.model.WorkflowId
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_REVIEW_GENERATION_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerAction
@@ -160,7 +161,7 @@ class FeatureTaskRuntimeAuditEntryGateTest {
     seedThroughImplement(harness)
     harness.recorder.recordPhaseState(
       FeatureTaskRuntimePhaseStateRequest(
-        workflowId = WORKFLOW_ID,
+        workflowId = WorkflowId(WORKFLOW_ID),
         phaseId = "review",
         status = "completed",
         attemptCount = 2,
@@ -418,7 +419,7 @@ class FeatureTaskRuntimeAuditEntryGateTest {
         RuntimeHarnessConfig(
           goalContinuation = FeatureTaskRuntimeGoalContinuationContext(
             parentIssueKey = "SKILL-0",
-            subtaskId = 1,
+            subtaskId = SubtaskId(1),
             goalBranch = "feat/goal-branch",
             suppressPr = true,
             parentWorkflowId = "wfl-parent",
@@ -529,7 +530,7 @@ class FeatureTaskRuntimeAuditEntryGateTest {
   private fun seedReviewEvidence(harness: RunnerHarness, attempt: Int, payload: ByteArray) {
     harness.io.database.retainProducerEvidence(
       ProducerOutputEvidence(
-        workflowId = WORKFLOW_ID,
+        workflowId = WorkflowId(WORKFLOW_ID),
         phaseId = "review",
         attempt = attempt,
         agentId = phaseAgent("review"),

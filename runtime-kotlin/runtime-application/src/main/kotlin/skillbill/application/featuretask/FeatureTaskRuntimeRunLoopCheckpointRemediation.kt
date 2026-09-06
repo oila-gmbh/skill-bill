@@ -70,7 +70,6 @@ object FeatureTaskRuntimeRunLoopCheckpointRemediation {
     return runCatching {
       runLoop.goalContinuationRecorder.updateReviewState(
         runLoop.request.workflowId,
-        runLoop.request.dbPathOverride,
       ) { state ->
         state.copy(remediationBaseSha = baseSha)
       }
@@ -246,7 +245,6 @@ object FeatureTaskRuntimeRunLoopCheckpointRemediation {
         valueExpected = valueExpected,
         cause = cause,
       ),
-      dbOverride = runLoop.request.dbPathOverride,
     )
   }
 

@@ -5,6 +5,7 @@ import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_DIAGNOSTIC_DEGRADATION_
 import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_PROJECTION_MEASUREMENT_CONTRACT_VERSION
 import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_REJECTION_MEASUREMENT_CONTRACT_VERSION
 import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_SHARED_EVIDENCE_PROJECTION_CONTRACT_VERSION
+import skillbill.workflow.engine.model.WorkflowId
 
 const val FEATURE_TASK_RUNTIME_INCOMPATIBLE_RECORD_GUIDANCE: String =
   "restart the active run or use the documented out-of-band migration procedure"
@@ -28,7 +29,7 @@ data class FeatureTaskRuntimeProducerIteration(
  * receipt, diff, log, or arbitrary metadata field.
  */
 data class FeatureTaskRuntimeProjectionMeasurement(
-  val workflowId: String,
+  val workflowId: WorkflowId,
   val consumerPhaseId: String,
   val projectionContractId: String,
   val producerIteration: FeatureTaskRuntimeProducerIteration,
@@ -41,7 +42,9 @@ data class FeatureTaskRuntimeProjectionMeasurement(
   val failureClassification: FeatureTaskRuntimeProjectionFailureClassification? = null,
 ) {
   init {
-    require(workflowId.isNotBlank()) { "FeatureTaskRuntimeProjectionMeasurement.workflowId must be non-blank." }
+    require(workflowId.value.isNotBlank()) {
+      "FeatureTaskRuntimeProjectionMeasurement.workflowId must be non-blank."
+    }
     require(consumerPhaseId.isNotBlank()) {
       "FeatureTaskRuntimeProjectionMeasurement.consumerPhaseId must be non-blank."
     }
@@ -65,7 +68,7 @@ data class FeatureTaskRuntimeProjectionMeasurement(
   @OpenBoundaryMap("Content-free feature-task-runtime projection measurement telemetry seam")
   fun toTelemetryMap(): Map<String, Any?> = linkedMapOf(
     "contract_version" to FEATURE_TASK_RUNTIME_PROJECTION_MEASUREMENT_CONTRACT_VERSION,
-    "workflow_id" to workflowId,
+    "workflow_id" to workflowId.value,
     "consumer_phase_id" to consumerPhaseId,
     "projection_contract_id" to projectionContractId,
     "producer_iteration" to mapOf(
@@ -89,7 +92,7 @@ data class FeatureTaskRuntimeProjectionMeasurement(
  * computable from the emitted fields alone.
  */
 data class FeatureTaskRuntimeSharedEvidenceMeasurement(
-  val workflowId: String,
+  val workflowId: WorkflowId,
   val checkpointFingerprint: String,
   val consumerPhaseId: String,
   val outcome: FeatureTaskRuntimeSharedEvidenceOutcome,
@@ -97,7 +100,7 @@ data class FeatureTaskRuntimeSharedEvidenceMeasurement(
   val hunkIndexCount: Int,
 ) {
   init {
-    require(workflowId.isNotBlank()) {
+    require(workflowId.value.isNotBlank()) {
       "FeatureTaskRuntimeSharedEvidenceMeasurement.workflowId must be non-blank."
     }
     require(checkpointFingerprint.isNotBlank()) {
@@ -114,7 +117,7 @@ data class FeatureTaskRuntimeSharedEvidenceMeasurement(
   @OpenBoundaryMap("Content-free feature-task-runtime shared-evidence measurement telemetry seam")
   fun toTelemetryMap(): Map<String, Any?> = linkedMapOf(
     "contract_version" to FEATURE_TASK_RUNTIME_SHARED_EVIDENCE_PROJECTION_CONTRACT_VERSION,
-    "workflow_id" to workflowId,
+    "workflow_id" to workflowId.value,
     "checkpoint_fingerprint" to checkpointFingerprint,
     "consumer_phase_id" to consumerPhaseId,
     "outcome" to outcome.wireValue,
@@ -139,7 +142,7 @@ enum class FeatureTaskRuntimeSharedEvidenceOutcome(val wireValue: String) {
  * classification are emitted, never the offending value. [observedLength] is a length, not content.
  */
 data class FeatureTaskRuntimeRejectionMeasurement(
-  val workflowId: String,
+  val workflowId: WorkflowId,
   val phaseId: String,
   val iteration: Int,
   val rule: String,
@@ -150,7 +153,9 @@ data class FeatureTaskRuntimeRejectionMeasurement(
   val exhaustedFixLoop: Boolean = false,
 ) {
   init {
-    require(workflowId.isNotBlank()) { "FeatureTaskRuntimeRejectionMeasurement.workflowId must be non-blank." }
+    require(workflowId.value.isNotBlank()) {
+      "FeatureTaskRuntimeRejectionMeasurement.workflowId must be non-blank."
+    }
     require(phaseId.isNotBlank()) { "FeatureTaskRuntimeRejectionMeasurement.phaseId must be non-blank." }
     require(iteration >= 1) { "FeatureTaskRuntimeRejectionMeasurement.iteration must be >= 1." }
     require(rule.isNotBlank()) { "FeatureTaskRuntimeRejectionMeasurement.rule must be non-blank." }
@@ -168,7 +173,7 @@ data class FeatureTaskRuntimeRejectionMeasurement(
   @OpenBoundaryMap("Content-free feature-task-runtime rejection measurement telemetry seam")
   fun toTelemetryMap(): Map<String, Any?> = linkedMapOf(
     "contract_version" to FEATURE_TASK_RUNTIME_REJECTION_MEASUREMENT_CONTRACT_VERSION,
-    "workflow_id" to workflowId,
+    "workflow_id" to workflowId.value,
     "phase_id" to phaseId,
     "iteration" to iteration,
     "rule" to rule,
@@ -190,7 +195,7 @@ data class FeatureTaskRuntimeRejectionMeasurement(
  * newest-turn read path. [attempt] is the phase attempt, not a projection iteration.
  */
 data class FeatureTaskRuntimeDiagnosticDegradationMeasurement(
-  val workflowId: String,
+  val workflowId: WorkflowId,
   val phaseId: String,
   val attempt: Int,
   val repairTurn: Int? = null,
@@ -200,7 +205,7 @@ data class FeatureTaskRuntimeDiagnosticDegradationMeasurement(
   val conflictingKey: String,
 ) {
   init {
-    require(workflowId.isNotBlank()) {
+    require(workflowId.value.isNotBlank()) {
       "FeatureTaskRuntimeDiagnosticDegradationMeasurement.workflowId must be non-blank."
     }
     require(phaseId.isNotBlank()) {
@@ -224,7 +229,7 @@ data class FeatureTaskRuntimeDiagnosticDegradationMeasurement(
   @OpenBoundaryMap("Content-free feature-task-runtime diagnostic-degradation measurement telemetry seam")
   fun toTelemetryMap(): Map<String, Any?> = linkedMapOf(
     "contract_version" to FEATURE_TASK_RUNTIME_DIAGNOSTIC_DEGRADATION_MEASUREMENT_CONTRACT_VERSION,
-    "workflow_id" to workflowId,
+    "workflow_id" to workflowId.value,
     "phase_id" to phaseId,
     "attempt" to attempt,
     "generation" to generation,

@@ -1,5 +1,4 @@
 package skillbill.infrastructure.fs.featuretask
-
 import skillbill.application.featuretask.featureTaskRuntimeSubtaskCheckpointRefPrefix
 import skillbill.application.featuretask.model.FeatureTaskRuntimeCheckpointRefPruneRequest
 import skillbill.application.featuretask.parseCheckpointRefListing
@@ -14,6 +13,8 @@ import skillbill.ports.workflow.gitops.updateCheckpointRef
 import skillbill.workflow.decomposition.model.CurrentSubtaskIntent
 import skillbill.workflow.decomposition.model.DecompositionManifest
 import skillbill.workflow.decomposition.model.DecompositionSubtask
+import skillbill.workflow.decomposition.model.IssueKey
+import skillbill.workflow.decomposition.model.SubtaskId
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_CHECKPOINT_REF_NAMESPACE
 import skillbill.workflow.taskruntime.model.featureTaskRuntimeCheckpointRefName
 import java.nio.file.Files
@@ -50,8 +51,8 @@ class FeatureTaskRuntimeCheckpointRefPruneTest {
 
   @Test
   fun `prune with blank manifest commit_sha leaves every checkpoint ref intact`() {
-    val issueKey = "SKILL-190"
-    val subtaskId = "1"
+    val issueKey = IssueKey("SKILL-190")
+    val subtaskId = SubtaskId("1".toInt())
     seedRefs(issueKey, subtaskId, count = 2)
 
     val result = git.pruneSubtaskCheckpointRefs(
@@ -70,8 +71,8 @@ class FeatureTaskRuntimeCheckpointRefPruneTest {
 
   @Test
   fun `prune run twice succeeds and leaves no checkpoint ref for the subtask`() {
-    val issueKey = "SKILL-190"
-    val subtaskId = "2"
+    val issueKey = IssueKey("SKILL-190")
+    val subtaskId = SubtaskId("2".toInt())
     seedRefs(issueKey, subtaskId, count = 3)
     val request = FeatureTaskRuntimeCheckpointRefPruneRequest(
       issueKey = issueKey,
@@ -91,8 +92,8 @@ class FeatureTaskRuntimeCheckpointRefPruneTest {
 
   @Test
   fun `interrupted prune resumes and completes without manual intervention`() {
-    val issueKey = "SKILL-190"
-    val subtaskId = "3"
+    val issueKey = IssueKey("SKILL-190")
+    val subtaskId = SubtaskId("3".toInt())
     seedRefs(issueKey, subtaskId, count = 3)
     val refs = (0 until 3).map { sequence ->
       featureTaskRuntimeCheckpointRefName(issueKey, subtaskId, sequence)
@@ -113,7 +114,7 @@ class FeatureTaskRuntimeCheckpointRefPruneTest {
 
   @Test
   fun `blocked subtask retention leaves checkpoint refs when manifest row is not complete`() {
-    val issueKey = "SKILL-190"
+    val issueKey = IssueKey("SKILL-190")
     seedRefs(issueKey, "5", count = 2)
     val manifest = DecompositionManifest(
       issueKey = issueKey,
@@ -122,7 +123,7 @@ class FeatureTaskRuntimeCheckpointRefPruneTest {
       baseBranch = "main",
       featureBranch = "feat/skill-190",
       status = "blocked",
-      currentSubtaskIntent = CurrentSubtaskIntent(subtaskId = 5, action = "blocked"),
+      currentSubtaskIntent = CurrentSubtaskIntent(subtaskId = SubtaskId(5), action = "blocked"),
       subtasks = listOf(
         DecompositionSubtask(
           id = 5,
@@ -142,7 +143,7 @@ class FeatureTaskRuntimeCheckpointRefPruneTest {
 
   @Test
   fun `two consecutive reset prunes do not grow the checkpoint namespace`() {
-    val issueKey = "SKILL-190"
+    val issueKey = IssueKey("SKILL-190")
     seedRefs(issueKey, "1", count = 2)
     seedRefs(issueKey, "2", count = 2)
 
@@ -157,8 +158,8 @@ class FeatureTaskRuntimeCheckpointRefPruneTest {
 
   @Test
   fun `prune with recorded sha but no remote reachability leaves checkpoint refs intact`() {
-    val issueKey = "SKILL-190"
-    val subtaskId = "6"
+    val issueKey = IssueKey("SKILL-190")
+    val subtaskId = SubtaskId("6".toInt())
     seedRefs(issueKey, subtaskId, count = 2)
     val localOnlySha = head()
 
@@ -179,8 +180,8 @@ class FeatureTaskRuntimeCheckpointRefPruneTest {
 
   @Test
   fun `prune with superseded recorded sha on published branch deletes checkpoint refs`() {
-    val issueKey = "SKILL-201"
-    val subtaskId = "2"
+    val issueKey = IssueKey("SKILL-201")
+    val subtaskId = SubtaskId("2".toInt())
     val base = head()
     gitCommand("checkout", "-B", "feat/skill-201", base)
     write("owned/Subtask2.kt", "v1\n")
@@ -213,8 +214,8 @@ class FeatureTaskRuntimeCheckpointRefPruneTest {
 
   @Test
   fun `reset-driven prune bypasses the manifest commit_sha gate`() {
-    val issueKey = "SKILL-190"
-    val subtaskId = "4"
+    val issueKey = IssueKey("SKILL-190")
+    val subtaskId = SubtaskId("4".toInt())
     seedRefs(issueKey, subtaskId, count = 1)
 
     val result = git.pruneSubtaskCheckpointRefs(

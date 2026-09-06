@@ -30,7 +30,7 @@ class FeatureTaskRuntimeGoalContinuationArtifactPatcher(
         currentStepId = record.currentStepId,
         stepUpdates = null,
         artifactsPatch = patch,
-        sessionId = record.sessionId.orEmpty(),
+        sessionId = record.sessionId,
       ),
     )
     WorkflowFamily.TASK_RUNTIME.save(workflowStates, updated)

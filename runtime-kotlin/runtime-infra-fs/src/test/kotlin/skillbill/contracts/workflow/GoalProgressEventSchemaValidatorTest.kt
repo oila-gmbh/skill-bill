@@ -1,6 +1,6 @@
 package skillbill.contracts.workflow
-
 import skillbill.error.InvalidGoalProgressEventSchemaError
+import skillbill.workflow.engine.model.WorkflowId
 import skillbill.workflow.goal.model.GoalProgressEvent
 import skillbill.workflow.goal.model.GoalProgressEventKind
 import skillbill.workflow.goal.model.GoalProgressOutcome
@@ -12,7 +12,7 @@ class GoalProgressEventSchemaValidatorTest {
   fun `valid phase event artifact map passes`() {
     val event = GoalProgressEvent(
       eventKind = GoalProgressEventKind.PHASE_STARTED,
-      workflowId = "wfl-child",
+      workflowId = WorkflowId("wfl-child"),
       workflowPhase = "implement",
       processAlive = true,
       sequenceNumber = 1,
@@ -25,7 +25,7 @@ class GoalProgressEventSchemaValidatorTest {
   fun `valid operation event artifact map passes`() {
     val event = GoalProgressEvent(
       eventKind = GoalProgressEventKind.OPERATION_STARTED,
-      workflowId = "wfl-child",
+      workflowId = WorkflowId("wfl-child"),
       workflowPhase = "validate",
       processAlive = true,
       sequenceNumber = 2,

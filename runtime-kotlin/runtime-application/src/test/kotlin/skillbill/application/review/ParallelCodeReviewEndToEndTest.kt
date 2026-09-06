@@ -1,7 +1,7 @@
 package skillbill.application.review
-
 import skillbill.application.review.model.ParallelCodeReviewResult
 import skillbill.ports.goalrunner.runner.model.GoalRunnerSubtaskLaunchRequest
+import skillbill.review.model.ReviewRunId
 import java.nio.file.Files
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -157,7 +157,7 @@ class ParallelCodeReviewEndToEndTest {
 
   @Test fun `durable accounting is keyed by the caller review run id telemetry resolves`() {
     val recorder = ReviewRecorder()
-    val reviewRunId = "rvw-20260722-101500-ab12"
+    val reviewRunId = ReviewRunId("rvw-20260722-101500-ab12")
 
     reviewHarness(kotlinConfig { RecordedWorkerResponse() }, recorder)
       .run(harnessRequest(reviewRunId = reviewRunId))

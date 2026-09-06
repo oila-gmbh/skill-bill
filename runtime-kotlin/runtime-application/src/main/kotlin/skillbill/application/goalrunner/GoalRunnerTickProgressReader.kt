@@ -1,11 +1,13 @@
 package skillbill.application.goalrunner
-
 import skillbill.application.goalrunner.model.GoalRunnerRunRequest
 import skillbill.application.workflow.model.WorkflowFamily
 import skillbill.goalrunner.model.GoalRunnerStopReason
 import skillbill.ports.goalrunner.runner.GoalRunnerManifestStore
 import skillbill.ports.goalrunner.runner.model.GoalRunnerWorkflowProgress
 import skillbill.workflow.decomposition.model.DecompositionSubtask
+import skillbill.workflow.decomposition.model.IssueKey
+import skillbill.workflow.decomposition.model.SubtaskId
+import skillbill.workflow.engine.model.WorkflowId
 import skillbill.workflow.gitops.ProtectedBranches
 
 val RUNTIME_WORKFLOW_ID_PREFIX: String = WorkflowFamily.TASK_RUNTIME.definition.workflowIdPrefix
@@ -50,8 +52,8 @@ internal data class GoalRunnerProgressState(
 class GoalRunnerTickProgressReader(
   private val manifestStore: GoalRunnerManifestStore,
   private val progressReader: GoalRunnerProgressReader,
-  private val issueKey: String,
-  private val subtaskId: Int,
+  private val issueKey: IssueKey,
+  private val subtaskId: SubtaskId,
   private val request: GoalRunnerRunRequest,
   private val clockNanos: () -> Long = System::nanoTime,
 ) {
@@ -71,7 +73,7 @@ class GoalRunnerTickProgressReader(
   }
 
   private fun resolve(): GoalRunnerProgressState? {
-    val subtask = manifestStore.loadByIssueKey(issueKey, request.dbPathOverride, request.repoRoot)
+    val subtask = manifestStore.loadByIssueKey(issueKey, request.repoRoot)
       ?.manifest
       ?.subtasks
       ?.firstOrNull { subtask -> subtask.id == subtaskId }
@@ -82,8 +84,8 @@ class GoalRunnerTickProgressReader(
     return GoalRunnerProgressState(subtask, childProgress)
   }
 
-  private fun readChildProgress(workflowId: String): GoalRunnerWorkflowProgress? =
-    when (val read = progressReader.read(workflowId, request)) {
+  private fun readChildProgress(workflowId: WorkflowId): GoalRunnerWorkflowProgress? =
+    when (val read = progressReader.read(workflowId)) {
       is GoalRunnerChildProgressRead.Present -> read.progress
       is GoalRunnerChildProgressRead.Absent -> null
       is GoalRunnerChildProgressRead.Failed -> null

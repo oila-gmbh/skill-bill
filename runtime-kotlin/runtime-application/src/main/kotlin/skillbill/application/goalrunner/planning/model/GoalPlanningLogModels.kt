@@ -1,14 +1,17 @@
 package skillbill.application.goalrunner.planning.model
 
+import skillbill.workflow.engine.model.WorkflowId
+import skillbill.agent.model.AgentId
+import skillbill.workflow.decomposition.model.IssueKey
+import skillbill.workflow.decomposition.model.SubtaskId
 import java.nio.file.Path
 import java.time.Duration
 import java.time.Instant
 
 data class GoalPlanningLogRequest(
-  val issueKey: String,
+  val issueKey: IssueKey,
   val repoRoot: Path? = null,
-  val dbPathOverride: String? = null,
-  val subtaskId: Int? = null,
+  val subtaskId: SubtaskId? = null,
   val failuresOnly: Boolean = false,
 )
 
@@ -19,14 +22,14 @@ data class GoalPlanningLogRequest(
  */
 data class GoalPlanningLogAttempt(
   val phaseId: String,
-  val subtaskId: Int,
+  val subtaskId: SubtaskId,
   val attempt: Int,
   val startedAt: Instant?,
   val finishedAt: Instant?,
   val outcome: String,
   val rule: String? = null,
   val reason: String? = null,
-  val agentId: String? = null,
+  val agentId: AgentId? = null,
   val rejectedOutputIdentity: String? = null,
   val rejectedOutputBytes: Long? = null,
 ) {
@@ -52,8 +55,8 @@ data class GoalPlanningLogAttempt(
 }
 
 data class GoalPlanningLog(
-  val issueKey: String,
-  val parentWorkflowId: String?,
+  val issueKey: IssueKey,
+  val parentWorkflowId: WorkflowId?,
   val attempts: List<GoalPlanningLogAttempt> = emptyList(),
 ) {
   val totalAttempts: Int get() = attempts.size

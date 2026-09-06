@@ -74,7 +74,7 @@ class FeatureTaskRuntimeBuildGateCoordinator(
     declaration: ValidationGateDeclaration,
     onGateRunCount: (Int) -> Unit,
   ): ValidationGateCycleResult {
-    val loaded = progressStore.load(cycle.request.workflowId, cycle.request.dbPathOverride)
+    val loaded = progressStore.load(cycle.request.workflowId)
     val measurements = loaded?.gateRuns?.toMutableList() ?: mutableListOf()
     val state = BuildGateCycleState(cycle, measurements, onGateRunCount)
 
@@ -276,7 +276,7 @@ class FeatureTaskRuntimeBuildGateCoordinator(
       repairsUsed = write.repairsUsed,
       capturedTriagePlan = write.capturedTriagePlan,
     )
-    progressStore.persist(state.cycle.request.workflowId, progress, state.cycle.request.dbPathOverride)
+    progressStore.persist(state.cycle.request.workflowId, progress)
     emitFeatureTaskRuntimeEventSafely(
       diagnostics = diagnostics,
       seam = "BuildGateProgress event-sink emission",

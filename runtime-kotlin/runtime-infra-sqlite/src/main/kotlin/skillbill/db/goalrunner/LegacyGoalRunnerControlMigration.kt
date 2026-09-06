@@ -8,6 +8,7 @@ import skillbill.ports.goalrunner.GoalRunnerPersistenceSession
 import skillbill.ports.goalrunner.runner.model.GoalRunnerOutOfBandAcceptance
 import skillbill.ports.goalrunner.runner.model.GoalRunnerReviewPolicy
 import skillbill.review.context.model.CodeReviewExecutionMode
+import skillbill.workflow.decomposition.model.SubtaskId
 import skillbill.workflow.engine.model.WorkflowStateSnapshot
 
 fun migrateLegacyGoalRunnerControls(unitOfWork: GoalRunnerPersistenceSession, existing: WorkflowStateSnapshot) {
@@ -57,8 +58,10 @@ fun outOfBandAcceptancesFromLegacyArtifacts(artifacts: Map<String, Any?>): Map<I
     val entry = JsonCodec.anyToStringAnyMap(element)
       ?: error("Goal acceptance artifact '$GOAL_OUT_OF_BAND_ACCEPTANCE_ARTIFACT_KEY' entries must be maps.")
     val acceptance = GoalRunnerOutOfBandAcceptance(
-      subtaskId = (entry["subtask_id"] as? Number)?.toInt()
-        ?: error("Goal acceptance artifact entry is missing a numeric subtask_id."),
+      subtaskId = SubtaskId(
+        (entry["subtask_id"] as? Number)?.toInt()
+          ?: error("Goal acceptance artifact entry is missing a numeric subtask_id."),
+      ),
       commitSha = entry["commit_sha"] as? String
         ?: error("Goal acceptance artifact entry is missing commit_sha."),
       reason = entry["reason"] as? String
@@ -66,6 +69,6 @@ fun outOfBandAcceptancesFromLegacyArtifacts(artifacts: Map<String, Any?>): Map<I
       acceptedAt = entry["accepted_at"] as? String
         ?: error("Goal acceptance artifact entry is missing accepted_at."),
     )
-    acceptance.subtaskId to acceptance
+    acceptance.subtaskId.value to acceptance
   }
 }

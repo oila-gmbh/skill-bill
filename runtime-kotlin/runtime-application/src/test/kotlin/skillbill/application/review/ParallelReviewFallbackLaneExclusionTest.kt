@@ -1,6 +1,6 @@
 package skillbill.application.review
-
 import skillbill.review.context.model.CodeReviewExecutionMode
+import skillbill.review.model.ReviewRunId
 import skillbill.review.plan.ReviewCrossRootLaneReconciliation
 import skillbill.review.plan.ReviewLaunchPlanPolicy
 import skillbill.review.plan.ReviewStackRouting
@@ -117,7 +117,7 @@ class ParallelReviewFallbackLaneExclusionTest {
     reviewHarness(ReviewHarnessConfig(manifests = packs, diff = diff), recorder)
       .run(
         harnessRequest(
-          reviewRunId = "fallback-lane-exclusion",
+          reviewRunId = ReviewRunId("fallback-lane-exclusion"),
           codeReviewMode = CodeReviewExecutionMode.DELEGATED,
         ),
       )

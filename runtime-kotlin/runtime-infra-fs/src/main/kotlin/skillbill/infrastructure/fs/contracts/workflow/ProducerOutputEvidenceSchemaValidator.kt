@@ -19,12 +19,12 @@ object ProducerOutputEvidenceSchemaValidator {
   fun validate(evidence: ProducerOutputEvidence) {
     val instance = mapper.createObjectNode().apply {
       put("contract_version", PRODUCER_OUTPUT_EVIDENCE_CONTRACT_VERSION)
-      put("workflow_id", evidence.workflowId)
+      put("workflow_id", evidence.workflowId.value)
       put("phase_id", evidence.phaseId)
       put("generation", evidence.generation)
       put("attempt", evidence.attempt)
       put("repair_turn", evidence.repairTurn)
-      put("agent_id", evidence.agentId)
+      put("agent_id", evidence.agentId.value)
       put("model", evidence.model)
       put("recorded_at", evidence.recordedAt.toString())
       put("byte_size", evidence.byteSize)

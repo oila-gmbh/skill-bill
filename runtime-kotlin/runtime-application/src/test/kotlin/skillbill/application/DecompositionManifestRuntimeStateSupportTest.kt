@@ -1,5 +1,4 @@
 package skillbill.application
-
 import skillbill.application.decomposition.intentFor
 import skillbill.application.decomposition.model.DecompositionManifestRuntimeUpdate
 import skillbill.application.decomposition.statusFromUpdate
@@ -7,6 +6,9 @@ import skillbill.application.decomposition.withRuntimeFields
 import skillbill.workflow.decomposition.model.CurrentSubtaskIntent
 import skillbill.workflow.decomposition.model.DecompositionManifest
 import skillbill.workflow.decomposition.model.DecompositionSubtask
+import skillbill.workflow.decomposition.model.IssueKey
+import skillbill.workflow.decomposition.model.SubtaskId
+import skillbill.workflow.engine.model.WorkflowId
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
@@ -27,7 +29,14 @@ class DecompositionManifestRuntimeStateSupportTest {
     )
 
     assertEquals("complete", statusFromUpdate(update))
-    assertEquals(CurrentSubtaskIntent(subtaskId = 0, action = "complete"), intentFor(5, statusFromUpdate(update)))
+    assertEquals(
+      CurrentSubtaskIntent(
+        subtaskId =
+        SubtaskId(0),
+        action = "complete",
+      ),
+      intentFor(5, statusFromUpdate(update)),
+    )
   }
 
   @Test
@@ -35,7 +44,14 @@ class DecompositionManifestRuntimeStateSupportTest {
     val update = commitPushUpdate(commitPushResult = mapOf("commit_sha" to "commit-sha"))
 
     assertEquals("complete", statusFromUpdate(update))
-    assertEquals(CurrentSubtaskIntent(subtaskId = 0, action = "complete"), intentFor(5, statusFromUpdate(update)))
+    assertEquals(
+      CurrentSubtaskIntent(
+        subtaskId =
+        SubtaskId(0),
+        action = "complete",
+      ),
+      intentFor(5, statusFromUpdate(update)),
+    )
   }
 
   @Test
@@ -60,7 +76,7 @@ class DecompositionManifestRuntimeStateSupportTest {
     val updated = baseSubtask().withRuntimeFields(
       manifest = baseManifest(),
       update = DecompositionManifestRuntimeUpdate(
-        workflowId = "wfl-subtask-5",
+        workflowId = WorkflowId("wfl-subtask-5"),
         workflowStatus = "blocked",
         currentStepId = "validate",
         artifactsPatch = mapOf("blocked_reason" to "validation: schema gate failed"),
@@ -76,7 +92,7 @@ class DecompositionManifestRuntimeStateSupportTest {
     val updated = baseSubtask().withRuntimeFields(
       manifest = baseManifest(),
       update = DecompositionManifestRuntimeUpdate(
-        workflowId = "wfl-subtask-5",
+        workflowId = WorkflowId("wfl-subtask-5"),
         workflowStatus = "blocked",
         currentStepId = "review",
         artifactsPatch = mapOf("blocked_reason" to "review failed"),
@@ -106,7 +122,7 @@ class DecompositionManifestRuntimeStateSupportTest {
     val updated = baseSubtask().withRuntimeFields(
       manifest = baseManifest(),
       update = DecompositionManifestRuntimeUpdate(
-        workflowId = "wfl-subtask-5",
+        workflowId = WorkflowId("wfl-subtask-5"),
         workflowStatus = "blocked",
         currentStepId = "audit",
       ),
@@ -120,7 +136,7 @@ class DecompositionManifestRuntimeStateSupportTest {
     commitPushResult: Map<String, Any?>? = null,
     goalContinuationOutcome: Map<String, Any?>? = null,
   ): DecompositionManifestRuntimeUpdate = DecompositionManifestRuntimeUpdate(
-    workflowId = "wfl-subtask-5",
+    workflowId = WorkflowId("wfl-subtask-5"),
     workflowStatus = "running",
     currentStepId = "commit_push",
     stepUpdates = listOf(mapOf("step_id" to "commit_push", "status" to "completed", "attempt_count" to 1)),
@@ -132,12 +148,12 @@ class DecompositionManifestRuntimeStateSupportTest {
   )
 
   private fun baseManifest(): DecompositionManifest = DecompositionManifest(
-    issueKey = "SKILL-68",
+    issueKey = IssueKey("SKILL-68"),
     featureName = "feature",
     parentSpecPath = ".feature-specs/SKILL-68/spec.md",
     baseBranch = "main",
     featureBranch = "feature/SKILL-68",
-    currentSubtaskIntent = CurrentSubtaskIntent(subtaskId = 5, action = "start"),
+    currentSubtaskIntent = CurrentSubtaskIntent(subtaskId = SubtaskId(5), action = "start"),
     subtasks = listOf(baseSubtask()),
   )
 

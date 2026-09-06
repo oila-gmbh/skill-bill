@@ -1,5 +1,7 @@
 package skillbill.application.review
 
+import skillbill.review.model.ReviewRunId
+
 import skillbill.application.review.model.ParallelCodeReviewResult
 import skillbill.application.review.model.ReviewClaimVerificationOutcome
 import skillbill.application.review.model.ReviewClaimVerificationRunRequest
@@ -23,7 +25,7 @@ class ParallelCodeReviewRunnerVerificationStages(
   val runtimeOwnedPersistence: RuntimeOwnedPersistenceBoundary,
   val clock: Clock,
 ) {
-  fun recordedFindingVerdicts(reviewRunId: String?, inMemory: List<ReviewFindingVerdict>): List<ReviewFindingVerdict> {
+  fun recordedFindingVerdicts(reviewRunId: ReviewRunId?, inMemory: List<ReviewFindingVerdict>): List<ReviewFindingVerdict> {
     if (reviewRunId == null) return inMemory
     return runtimeOwnedPersistence.requiredRead(
       seam = "ParallelCodeReviewRunner.recordedFindingVerdicts",
@@ -101,7 +103,7 @@ class ParallelCodeReviewRunnerVerificationStages(
     return persistAdjudication(reviewRunId, outcome)
   }
 
-  fun recordAdjudicationBoundary(reviewRunId: String) {
+  fun recordAdjudicationBoundary(reviewRunId: ReviewRunId) {
     runtimeOwnedPersistence.requiredWrite(
       seam = "ParallelCodeReviewRunner.recordAdjudicationBoundary",
       expected = "runtime-owned adjudication stage boundary",
@@ -120,7 +122,7 @@ class ParallelCodeReviewRunnerVerificationStages(
 }
 
 internal fun ParallelCodeReviewRunnerVerificationStages.reviewStageBoundaries(
-  reviewRunId: String?,
+  reviewRunId: ReviewRunId?,
 ): List<ReviewStageBoundary> = if (reviewRunId == null) {
   emptyList()
 } else {
@@ -131,7 +133,7 @@ internal fun ParallelCodeReviewRunnerVerificationStages.reviewStageBoundaries(
 }
 
 internal fun ParallelCodeReviewRunnerVerificationStages.claimVerificationClaims(
-  reviewRunId: String?,
+  reviewRunId: ReviewRunId?,
   boundaries: List<ReviewStageBoundary>,
   mergedFindings: List<ParallelReviewMergedFinding>,
 ): List<ParallelReviewMergedFinding> = if (reviewRunId == null) {
@@ -153,7 +155,7 @@ internal fun ParallelCodeReviewRunnerVerificationStages.claimVerificationClaims(
 }
 
 internal fun ParallelCodeReviewRunnerVerificationStages.reviewFindingVerdicts(
-  reviewRunId: String?,
+  reviewRunId: ReviewRunId?,
 ): List<ReviewFindingVerdict> = if (reviewRunId == null) {
   emptyList()
 } else {
@@ -164,7 +166,7 @@ internal fun ParallelCodeReviewRunnerVerificationStages.reviewFindingVerdicts(
 }
 
 internal fun ParallelCodeReviewRunnerVerificationStages.emptyClaimsVerificationShortCircuit(
-  reviewRunId: String?,
+  reviewRunId: ReviewRunId?,
   boundaries: List<ReviewStageBoundary>,
   verificationInput: String,
   existing: List<ReviewFindingVerdict>,
@@ -183,7 +185,7 @@ internal fun ParallelCodeReviewRunnerVerificationStages.emptyClaimsVerificationS
 }
 
 internal fun ParallelCodeReviewRunnerVerificationStages.persistClaimVerificationOutcome(
-  reviewRunId: String?,
+  reviewRunId: ReviewRunId?,
   claims: List<ParallelReviewMergedFinding>,
   existing: List<ReviewFindingVerdict>,
   outcome: ReviewClaimVerificationOutcome,
@@ -209,7 +211,7 @@ internal fun ParallelCodeReviewRunnerVerificationStages.persistClaimVerification
   return existing + outcome.verdicts
 }
 
-internal fun ParallelCodeReviewRunnerVerificationStages.recordVerificationBoundary(reviewRunId: String) {
+internal fun ParallelCodeReviewRunnerVerificationStages.recordVerificationBoundary(reviewRunId: ReviewRunId) {
   runtimeOwnedPersistence.requiredWrite(
     seam = "ParallelCodeReviewRunner.recordVerificationBoundary",
     expected = "runtime-owned verification stage boundary",
@@ -227,7 +229,7 @@ internal fun ParallelCodeReviewRunnerVerificationStages.recordVerificationBounda
 }
 
 internal fun ParallelCodeReviewRunnerVerificationStages.durableAdjudication(
-  reviewRunId: String?,
+  reviewRunId: ReviewRunId?,
 ): List<ReviewFindingVerdict>? {
   if (reviewRunId == null) return null
   val boundaries = runtimeOwnedPersistence.requiredRead(
@@ -251,7 +253,7 @@ internal fun ParallelCodeReviewRunnerVerificationStages.durableAdjudication(
 }
 
 internal fun ParallelCodeReviewRunnerVerificationStages.persistAdjudication(
-  reviewRunId: String?,
+  reviewRunId: ReviewRunId?,
   outcome: ReviewSpecAdjudicationOutcome,
 ): List<ReviewFindingVerdict> {
   if (reviewRunId == null) return outcome.verdicts

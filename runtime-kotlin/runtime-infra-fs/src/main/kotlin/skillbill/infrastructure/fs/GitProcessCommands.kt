@@ -134,7 +134,9 @@ internal fun closeInputAndJoin(process: Process, outputThread: Thread) {
   }
 }
 
-internal fun WorkflowGitOperationResult.withValue(value: String): WorkflowGitOperationResult =
-  if (ok) copy(value = value) else this
+internal fun WorkflowGitOperationResult.withValue(value: String): WorkflowGitOperationResult = when (this) {
+  is WorkflowGitOperationResult.Ok -> copy(value = value)
+  is WorkflowGitOperationResult.Failed -> this
+}
 
 private const val GIT_OUTPUT_THREAD_JOIN_MILLIS = 1_000L

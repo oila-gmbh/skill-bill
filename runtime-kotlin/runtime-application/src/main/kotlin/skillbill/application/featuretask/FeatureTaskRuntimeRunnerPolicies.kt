@@ -1,5 +1,6 @@
 package skillbill.application.featuretask
 
+import skillbill.agent.model.AgentId
 import skillbill.application.featuretask.model.FeatureTaskRuntimeRunRequest
 import skillbill.contracts.JsonCodec
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
@@ -15,7 +16,7 @@ const val STATUS_PAUSED = "paused"
 
 // The operator's abandon_subtask decision ends the subtask without repairing it.
 const val STATUS_ABANDONED = "abandoned"
-const val BRANCH_SETUP_AGENT_ID = "branch-setup"
+val BRANCH_SETUP_AGENT_ID = AgentId("branch-setup")
 const val SCHEMA_GATE_DETAIL_MAX_CHARS = 500
 
 // The phase-output envelope's own status vocabulary, distinct from the durable phase-row status above.

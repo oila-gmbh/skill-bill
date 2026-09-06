@@ -41,7 +41,6 @@ internal fun applyTelemetryIntent(
   val existedBefore = Files.exists(configPath)
   return runCatching {
     val clearedEvents = applyInstallTelemetryLevel(
-      environmentContext,
       plan.telemetryLevel.id,
       telemetryLevelMutator,
       telemetryConfigStore,
@@ -77,13 +76,12 @@ internal fun applyTelemetryIntent(
 }
 
 private fun applyInstallTelemetryLevel(
-  context: EnvironmentContext,
   level: String,
   telemetryLevelMutator: TelemetryLevelMutator?,
   telemetryConfigStore: TelemetryConfigStore?,
 ): Int {
   telemetryLevelMutator?.let { mutator ->
-    return mutator.setLevel(level, context.dbPathOverride).clearedEvents
+    return mutator.setLevel(level).clearedEvents
   }
   require(level in telemetryLevels) {
     "Telemetry level must be one of: ${telemetryLevels.joinToString(", ")}."

@@ -1,5 +1,4 @@
 package skillbill.application
-
 import skillbill.application.agentrun.model.AgentRunStartRequest
 import skillbill.di.RuntimeComponent
 import skillbill.di.create
@@ -7,6 +6,8 @@ import skillbill.install.model.InstallAgent
 import skillbill.model.RuntimeContext
 import skillbill.ports.agentrun.model.AgentRunLaunchFacts
 import skillbill.ports.agentrun.model.SkillRunRequest
+import skillbill.workflow.decomposition.model.IssueKey
+import skillbill.workflow.decomposition.model.SubtaskId
 import java.nio.file.Files
 import kotlin.test.Test
 import kotlin.test.assertContains
@@ -30,9 +31,9 @@ class AgentRunServiceRuntimeComponentTest {
       AgentRunStartRequest(
         invokedAgentId = "junie",
         skillRunRequest = SkillRunRequest(
-          issueKey = "SKILL-56",
+          issueKey = IssueKey("SKILL-56"),
           repoRoot = tempDir,
-          subtaskId = 2,
+          subtaskId = SubtaskId(2),
           promptOverride = "Phase: validate",
         ),
       ),

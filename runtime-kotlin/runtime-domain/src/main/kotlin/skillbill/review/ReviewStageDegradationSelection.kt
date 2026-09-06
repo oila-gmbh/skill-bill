@@ -3,6 +3,7 @@ package skillbill.review
 import skillbill.review.model.ReviewEvidenceBoundaryAccounting
 import skillbill.review.model.ReviewFindingVerdict
 import skillbill.review.model.ReviewPassClaimSnapshot
+import skillbill.review.model.ReviewRunId
 import skillbill.review.model.ReviewSpecProjectionReference
 import skillbill.review.model.ReviewStage
 import skillbill.review.model.ReviewStageBoundary
@@ -39,7 +40,7 @@ object ReviewStageDegradationSelection {
   }
 
   private fun specAbsence(
-    reviewRunId: String,
+    reviewRunId: ReviewRunId,
     spec: ReviewSpecProjectionReference?,
   ): ReviewStageDegradationMeasurement? {
     val absenceReason = spec?.absenceReason ?: return null
@@ -58,7 +59,7 @@ object ReviewStageDegradationSelection {
     return specNone || (!verificationReached && !adjudicationReached)
   }
 
-  private fun adjudicationSkip(reviewRunId: String, specNone: Boolean): ReviewStageDegradationMeasurement =
+  private fun adjudicationSkip(reviewRunId: ReviewRunId, specNone: Boolean): ReviewStageDegradationMeasurement =
     ReviewStageDegradationMeasurement(
       reviewRunId = reviewRunId,
       seam = "review.adjudication",
@@ -68,7 +69,7 @@ object ReviewStageDegradationSelection {
     )
 
   private fun workerFailure(
-    reviewRunId: String,
+    reviewRunId: ReviewRunId,
     verdicts: List<ReviewFindingVerdict>,
   ): ReviewStageDegradationMeasurement? {
     val failedWorker = verdicts.firstOrNull { verdict ->
@@ -87,7 +88,7 @@ object ReviewStageDegradationSelection {
   }
 
   private fun unreachedBoundaries(
-    reviewRunId: String,
+    reviewRunId: ReviewRunId,
     specNone: Boolean,
     byStage: Map<ReviewStage, ReviewStageBoundary>,
     claims: ReviewPassClaimSnapshot?,
@@ -126,7 +127,7 @@ object ReviewStageDegradationSelection {
   ): Boolean = stage == ReviewStage.ADJUDICATION && verificationReached && !specNone && boundary == null
 
   private fun evidenceBoundaryRecords(
-    reviewRunId: String,
+    reviewRunId: ReviewRunId,
     accounting: ReviewEvidenceBoundaryAccounting,
   ): List<ReviewStageDegradationMeasurement> = buildList {
     evidenceBoundaryUnboundRecord(reviewRunId, accounting)?.let(::add)

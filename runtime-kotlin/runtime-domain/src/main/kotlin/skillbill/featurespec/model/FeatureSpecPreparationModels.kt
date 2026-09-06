@@ -1,6 +1,7 @@
 package skillbill.featurespec.model
 
 import skillbill.workflow.decomposition.model.DecompositionManifestRepairEvidence
+import skillbill.workflow.decomposition.model.IssueKey
 import skillbill.workflow.decomposition.model.SpecSource
 
 enum class FeatureSpecPreparationMode(val wireValue: String) {
@@ -15,7 +16,7 @@ enum class FeatureSpecPreparationMode(val wireValue: String) {
 }
 
 data class FeatureSpecPreparationIntake(
-  val issueKey: String,
+  val issueKey: IssueKey,
   val intendedOutcome: String,
   val acceptanceCriteria: List<String>,
   val constraints: List<String>,
@@ -23,7 +24,7 @@ data class FeatureSpecPreparationIntake(
 )
 
 data class FeatureSpecPreparationDecision(
-  val issueKey: String,
+  val issueKey: IssueKey,
   val intendedOutcome: String,
   val acceptanceCriteria: List<String>,
   val constraints: List<String>,

@@ -1,9 +1,10 @@
 package skillbill.workflow.taskruntime
-
 import skillbill.error.InvalidWorkflowStateSchemaError
 import skillbill.workflow.engine.WorkflowEngine
 import skillbill.workflow.engine.WorkflowSnapshotValidator
+import skillbill.workflow.engine.model.SessionId
 import skillbill.workflow.engine.model.WorkflowDefinition
+import skillbill.workflow.engine.model.WorkflowId
 import skillbill.workflow.engine.model.WorkflowStateSnapshot
 import skillbill.workflow.verify.FeatureVerifyWorkflowDefinition
 import kotlin.test.Test
@@ -175,8 +176,8 @@ class FeatureTaskRuntimeResumeGateTest {
         """{"phase_id":"preplan","status":"completed","attempt_count":1,""" +
         """"started_at":"2026-06-18T10:00:00Z"}}}"""
     val record = WorkflowStateSnapshot(
-      workflowId = "wftr-test",
-      sessionId = "ftr-test",
+      workflowId = WorkflowId("wftr-test"),
+      sessionId = SessionId("ftr-test"),
       workflowName = runtimeDefinition.workflowName,
       contractVersion = runtimeDefinition.contractVersion,
       workflowStatus = "running",
@@ -201,8 +202,8 @@ class FeatureTaskRuntimeResumeGateTest {
     phaseRecordOutputs: Map<String, String> = emptyMap(),
     workflowStatus: String = "running",
   ): WorkflowStateSnapshot = WorkflowStateSnapshot(
-    workflowId = "wftr-test",
-    sessionId = "ftr-test",
+    workflowId = WorkflowId("wftr-test"),
+    sessionId = SessionId("ftr-test"),
     workflowName = runtimeDefinition.workflowName,
     contractVersion = runtimeDefinition.contractVersion,
     workflowStatus = workflowStatus,
@@ -220,8 +221,8 @@ class FeatureTaskRuntimeResumeGateTest {
     currentStepId: String,
     stepsJson: String,
   ): WorkflowStateSnapshot = WorkflowStateSnapshot(
-    workflowId = "wfi-test",
-    sessionId = "impl-test",
+    workflowId = WorkflowId("wfi-test"),
+    sessionId = SessionId("impl-test"),
     workflowName = definition.workflowName,
     contractVersion = definition.contractVersion,
     workflowStatus = "running",

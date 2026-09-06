@@ -1,5 +1,4 @@
 package skillbill.application.goalrunner
-
 import skillbill.application.decomposition.decodeArtifacts
 import skillbill.application.featuretask.diagnoseUnsettledCompletedUpstreamPhaseId
 import skillbill.application.featuretask.featureSizeFromArtifacts
@@ -12,6 +11,9 @@ import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_CONTRACT_VERSION
 import skillbill.ports.workflow.WorkflowStateRepository
 import skillbill.ports.workflow.get
 import skillbill.ports.workflow.gitops.WorkflowGitOperations
+import skillbill.workflow.decomposition.model.IssueKey
+import skillbill.workflow.decomposition.model.SubtaskId
+import skillbill.workflow.engine.model.WorkflowId
 import skillbill.workflow.goal.model.GoalSubtaskReviewArtifactDecoder
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_GOAL_CONTINUATION_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_GOAL_PLANNING_IMPORT_ARTIFACT_KEY
@@ -33,9 +35,9 @@ class GoalRunnerChildRepairWedgeDiagnosis(
 ) {
   fun diagnose(
     workflowStates: WorkflowStateRepository,
-    workflowId: String,
-    issueKey: String,
-    subtaskId: Int,
+    workflowId: WorkflowId,
+    issueKey: IssueKey,
+    subtaskId: SubtaskId,
     repoRoot: Path,
   ): GoalRunnerChildWedgeDiagnosis {
     val record = WorkflowFamily.TASK_RUNTIME.get(workflowStates, workflowId)
@@ -70,7 +72,7 @@ class GoalRunnerChildRepairWedgeDiagnosis(
     return ancestry.ok && ancestry.value != "true"
   }
 
-  private fun healthyDiagnosis(subtaskId: Int, workflowId: String) = GoalRunnerChildWedgeDiagnosis(
+  private fun healthyDiagnosis(subtaskId: SubtaskId, workflowId: WorkflowId) = GoalRunnerChildWedgeDiagnosis(
     subtaskId = subtaskId,
     workflowId = workflowId,
     passedChecks = listOf(

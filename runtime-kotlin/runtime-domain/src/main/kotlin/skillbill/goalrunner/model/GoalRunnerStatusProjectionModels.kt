@@ -2,6 +2,8 @@ package skillbill.goalrunner.model
 
 import skillbill.boundary.OpenBoundaryMap
 import skillbill.workflow.decomposition.model.DecompositionManifest
+import skillbill.workflow.decomposition.model.IssueKey
+import skillbill.workflow.decomposition.model.SubtaskId
 import skillbill.workflow.goal.model.GoalObservabilityDiffStat
 import skillbill.workflow.goal.model.GoalObservabilitySelectedDiffHunks
 
@@ -52,7 +54,7 @@ data class GoalPlanningStatusSnapshot(
 }
 
 data class GoalRunnerStatusProjection(
-  val issueKey: String,
+  val issueKey: IssueKey,
   val completeCount: Int,
   val pendingCount: Int,
   val blockedCount: Int,
@@ -94,7 +96,7 @@ data class GoalRunnerStatusProjection(
  * where a human sees which commit an accepted subtask actually points at.
  */
 data class GoalRunnerAcceptedSubtask(
-  val subtaskId: Int,
+  val subtaskId: SubtaskId,
   val commitSha: String,
   val reason: String,
   val acceptedAt: String,

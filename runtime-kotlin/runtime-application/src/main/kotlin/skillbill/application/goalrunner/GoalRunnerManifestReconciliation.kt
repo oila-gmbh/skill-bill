@@ -1,5 +1,4 @@
 package skillbill.application.goalrunner
-
 import skillbill.application.decomposition.withParentStatus
 import skillbill.application.featuretask.model.FeatureTaskRuntimeCheckpointRefPruneRequest
 import skillbill.application.featuretask.pruneCompletedSubtaskCheckpointRefs
@@ -11,18 +10,18 @@ import skillbill.ports.workflow.gitops.WorkflowGitOperations
 import skillbill.workflow.decomposition.model.CurrentSubtaskIntent
 import skillbill.workflow.decomposition.model.DecompositionManifest
 import skillbill.workflow.decomposition.model.DecompositionSubtask
+import skillbill.workflow.decomposition.model.IssueKey
+import skillbill.workflow.engine.model.WorkflowId
 import java.nio.file.Path
 
 fun reconcileGoalManifest(
   manifest: DecompositionManifest,
-  dbPathOverride: String?,
   authoritativeOutcomes: Map<Int, GoalRunnerStoredOutcome>,
   acceptances: Map<Int, GoalRunnerOutOfBandAcceptance>,
   outcomeStore: GoalRunnerWorkflowOutcomeStore,
 ): DecompositionManifest {
   val context = GoalManifestReconciliationContext(
     issueKey = manifest.issueKey,
-    dbPathOverride = dbPathOverride,
     authoritativeOutcomes = authoritativeOutcomes,
     acceptances = acceptances,
     outcomeStore = outcomeStore,
@@ -56,14 +55,13 @@ fun pruneEligibleCheckpointRefsForManifest(
 }
 
 private data class GoalManifestReconciliationContext(
-  val issueKey: String,
-  val dbPathOverride: String?,
+  val issueKey: IssueKey,
   val authoritativeOutcomes: Map<Int, GoalRunnerStoredOutcome>,
   val acceptances: Map<Int, GoalRunnerOutOfBandAcceptance>,
   val outcomeStore: GoalRunnerWorkflowOutcomeStore,
 ) {
   fun reconcile(subtask: DecompositionSubtask): DecompositionSubtask {
-    val workflowId = subtask.workflowId?.takeIf(String::isNotBlank)
+    val workflowId = subtask.workflowId?.takeIf { it.value.isNotBlank() }
     val outcome = workflowId?.let { id -> preferredOutcome(subtask, id) }
     // Runtime evidence wins: an acceptance only speaks for a subtask the runtime never carried to
     // completion itself, so it can never downgrade or overwrite a genuine COMPLETE outcome.
@@ -81,7 +79,7 @@ private data class GoalManifestReconciliationContext(
     val staleRetryOutcome = workflowId != null &&
       outcome?.workflowId == workflowId &&
       outcome.status != GoalRunnerTerminalStatus.COMPLETE &&
-      outcomeStore.progress(workflowId, dbPathOverride)?.workflowStatus == "running"
+      outcomeStore.progress(workflowId)?.workflowStatus == "running"
     return if (staleRetryOutcome) {
       subtask.copy(status = "in_progress", blockedReason = null)
     } else if (outcome == null || shouldPreserveCompletedSubtask(subtask, outcome)) {
@@ -90,7 +88,7 @@ private data class GoalManifestReconciliationContext(
       val status = outcome.toManifestStatus()
       subtask.copy(
         status = status,
-        workflowId = outcome.workflowId.takeIf(String::isNotBlank) ?: subtask.workflowId,
+        workflowId = outcome.workflowId ?: subtask.workflowId,
         commitSha = outcome.commitSha ?: subtask.commitSha,
         blockedReason = outcome.blockedReason
           ?.takeIf { status == "blocked" }
@@ -100,23 +98,22 @@ private data class GoalManifestReconciliationContext(
     }
   }
 
-  private fun preferredOutcome(subtask: DecompositionSubtask, workflowId: String): GoalRunnerStoredOutcome? =
+  private fun preferredOutcome(subtask: DecompositionSubtask, workflowId: WorkflowId): GoalRunnerStoredOutcome? =
     authoritativeOutcomes[subtask.id]
       ?.takeIf { outcome -> canApplyAuthoritativeOutcome(subtask, workflowId, outcome) }
       ?: outcomeStore.terminalOutcome(
         workflowId = workflowId,
         issueKey = issueKey,
         subtaskId = subtask.id,
-        dbPathOverride = dbPathOverride,
       )
 }
 
 private fun canApplyAuthoritativeOutcome(
   subtask: DecompositionSubtask,
-  workflowId: String,
+  workflowId: WorkflowId,
   outcome: GoalRunnerStoredOutcome,
 ): Boolean {
-  val resetPendingSubtask = subtask.status == "pending" && subtask.workflowId.isNullOrBlank()
+  val resetPendingSubtask = subtask.status == "pending" && subtask.workflowId?.value.isNullOrBlank()
   if (resetPendingSubtask && outcome.status != GoalRunnerTerminalStatus.COMPLETE) {
     return false
   }

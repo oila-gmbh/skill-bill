@@ -4,6 +4,9 @@ import skillbill.goalrunner.model.UnaddressedFinding
 import skillbill.goalrunner.model.toOutcomeRecord
 import skillbill.goalrunner.subtaskreview.GoalSubtaskReviewSummaryReducer
 import skillbill.goalrunner.subtaskreview.model.UnaddressedFindingLedgerScope
+import skillbill.workflow.decomposition.model.IssueKey
+import skillbill.workflow.decomposition.model.SubtaskId
+import skillbill.workflow.engine.model.WorkflowId
 import skillbill.workflow.goal.model.GoalSubtaskBlockerDisposition
 import skillbill.workflow.goal.model.GoalSubtaskBlockerDispositionVerdict
 import kotlin.test.Test
@@ -224,9 +227,9 @@ class ReviewFindingOutcomeDerivationTest {
   }
 
   private fun finding(ordinal: Int, findingId: String?) = UnaddressedFinding(
-    issueKey = "SKILL-136",
-    subtaskId = 6,
-    workflowId = "wf-1",
+    issueKey = IssueKey("SKILL-136"),
+    subtaskId = SubtaskId(6),
+    workflowId = WorkflowId("wf-1"),
     reviewPassNumber = 1,
     findingOrdinal = ordinal,
     severity = "major",

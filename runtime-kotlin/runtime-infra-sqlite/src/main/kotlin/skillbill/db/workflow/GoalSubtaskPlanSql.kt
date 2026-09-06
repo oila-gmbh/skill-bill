@@ -1,5 +1,4 @@
 package skillbill.db.workflow
-
 import skillbill.db.core.inImmediateTransaction
 import skillbill.error.IncompatibleGoalPlanningPreparationRecoveryError
 import skillbill.error.InvalidGoalPlanningPreparationSchemaError
@@ -8,6 +7,7 @@ import skillbill.ports.goalrunner.model.GoalPlanningIdentity
 import skillbill.ports.goalrunner.model.GoalPlanningPreparationState
 import skillbill.ports.goalrunner.model.GoalSubtaskPlanCheckpoint
 import skillbill.ports.goalrunner.model.GovernedGoalSubtaskDescriptor
+import skillbill.workflow.decomposition.model.SubtaskId
 import java.sql.Connection
 import java.sql.ResultSet
 
@@ -20,7 +20,7 @@ internal class GoalSubtaskPlanSql(
     connection.inImmediateTransaction {
       requireGoverningSharedPreplan(checkpoint)
       val inserted = connection.insertSubtaskPlanRow(checkpoint)
-      val stored = findSubtaskPlan(checkpoint.identity, checkpoint.subtaskId, checkpoint.governedSubSpecPath)
+      val stored = findSubtaskPlan(checkpoint.identity, checkpoint.subtaskId.value, checkpoint.governedSubSpecPath)
       requireImmutableSubtaskPlanInsert(checkpoint, inserted, stored)
     }
   }
@@ -33,7 +33,7 @@ internal class GoalSubtaskPlanSql(
         "DELETE FROM goal_subtask_plans WHERE parent_goal_workflow_id = ? AND subtask_id = ?",
       ).use { s ->
         s.setString(1, checkpoint.identity.parentGoalWorkflowId)
-        s.setInt(2, checkpoint.subtaskId)
+        s.setInt(2, checkpoint.subtaskId.value)
         s.executeUpdate()
       }
       connection.insertSubtaskPlanRow(checkpoint)
@@ -108,7 +108,7 @@ internal class GoalSubtaskPlanSql(
     if (shared.provenance != checkpoint.provenance) {
       throw IncompatibleGoalPlanningPreparationRecoveryError(
         checkpoint.identity.parentGoalWorkflowId,
-        checkpoint.subtaskId,
+        checkpoint.subtaskId.value,
         "subtask plan provenance must exactly match the governing shared preplan",
       )
     }
@@ -122,7 +122,7 @@ internal class GoalSubtaskPlanSql(
     if (!inserted && stored != checkpoint.copy(createdAt = stored?.createdAt.orEmpty())) {
       throw IncompatibleGoalPlanningPreparationRecoveryError(
         checkpoint.identity.parentGoalWorkflowId,
-        checkpoint.subtaskId,
+        checkpoint.subtaskId.value,
         "subtask plan checkpoint is immutable",
       )
     }
@@ -133,7 +133,7 @@ private fun uniqueDescriptorsBySubtaskId(
   parentGoalWorkflowId: String,
   orderedDescriptors: List<GovernedGoalSubtaskDescriptor>,
 ): Map<Int, GovernedGoalSubtaskDescriptor> {
-  val descriptors = orderedDescriptors.associateBy { it.subtaskId }
+  val descriptors = orderedDescriptors.associateBy { it.subtaskId.value }
   if (descriptors.size != orderedDescriptors.size) {
     throw InvalidGoalPlanningPreparationSchemaError(
       parentGoalWorkflowId,
@@ -180,7 +180,7 @@ internal fun Connection.insertSubtaskPlanRow(checkpoint: GoalSubtaskPlanCheckpoi
 ).use { s ->
   val values = listOf(
     checkpoint.identity.parentGoalWorkflowId, checkpoint.identity.normalizedIssueKey,
-    checkpoint.identity.repositoryIdentity, checkpoint.subtaskId, checkpoint.manifestOrder,
+    checkpoint.identity.repositoryIdentity, checkpoint.subtaskId.value, checkpoint.manifestOrder,
     checkpoint.governedSubSpecPath, checkpoint.subSpecHash, checkpoint.preparationStatus.wireValue,
     checkpoint.contractVersion,
     checkpoint.provenance.parentSpecHash,
@@ -206,7 +206,7 @@ private fun requireNormalizedSubtaskPlan(checkpoint: GoalSubtaskPlanCheckpoint) 
       checkpoint.planPayload,
     )
     ?: when {
-      checkpoint.subtaskId < 1 -> "subtask_id" to "subtask_id must be a positive integer"
+      checkpoint.subtaskId.value < 1 -> "subtask_id" to "subtask_id must be a positive integer"
       checkpoint.manifestOrder < 0 -> "manifest_order" to "manifest_order must be non-negative"
       checkpoint.governedSubSpecPath.isBlank() ->
         "governed_sub_spec_path" to "governed_sub_spec_path is required"
@@ -228,7 +228,7 @@ private fun requireHydratedSubtaskPlan(checkpoint: GoalSubtaskPlanCheckpoint) {
       checkpoint.planPayload,
     )
     ?: when {
-      checkpoint.subtaskId < 1 -> "subtask_id" to "subtask_id must be a positive integer"
+      checkpoint.subtaskId.value < 1 -> "subtask_id" to "subtask_id must be a positive integer"
       checkpoint.manifestOrder < 0 -> "manifest_order" to "manifest_order must be non-negative"
       checkpoint.governedSubSpecPath.isBlank() ->
         "governed_sub_spec_path" to "governed_sub_spec_path is required"
@@ -265,7 +265,9 @@ private fun ResultSet.toPlan(expected: GoalPlanningIdentity, expectedPath: Strin
     )
   }
   return GoalSubtaskPlanCheckpoint(
-    identity = identity, subtaskId = subtaskId, manifestOrder = requireNonNegativeInt(this, label, "manifest_order"),
+    identity = identity,
+    subtaskId = SubtaskId(subtaskId),
+    manifestOrder = requireNonNegativeInt(this, label, "manifest_order"),
     governedSubSpecPath = path, subSpecHash = requireColumn(this, label, "sub_spec_hash"),
     preparationStatus = status,
     provenance = GoalPlanningContractProvenance(

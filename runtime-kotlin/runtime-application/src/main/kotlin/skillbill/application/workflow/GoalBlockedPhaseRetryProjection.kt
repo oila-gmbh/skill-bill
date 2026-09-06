@@ -1,5 +1,7 @@
 package skillbill.application.workflow
 
+import skillbill.workflow.engine.model.WorkflowId
+
 import skillbill.application.decomposition.DECOMPOSITION_RUNTIME_ARTIFACT_KEY
 import skillbill.application.decomposition.encodeDecompositionManifestMap
 import skillbill.application.decomposition.withRetriedSubtask
@@ -17,7 +19,7 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeGoalContinuationAr
 
 fun WorkflowEngine.updateGoalParentForBlockedPhaseRetry(
   unitOfWork: GoalRunnerPersistenceSession,
-  childWorkflowId: String,
+  childWorkflowId: WorkflowId,
   childArtifacts: Map<String, Any?>,
   phaseId: String,
   validator: DecompositionManifestValidator,
@@ -60,7 +62,7 @@ fun WorkflowEngine.updateGoalParentForBlockedPhaseRetry(
         DECOMPOSITION_RUNTIME_ARTIFACT_KEY,
       ),
     ),
-    sessionId = parent.sessionId.orEmpty(),
+    sessionId = parent.sessionId,
     replaceArtifacts = true,
   )
   migrateLegacyGoalRunnerControls(unitOfWork, parent)

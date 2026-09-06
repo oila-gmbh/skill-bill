@@ -1,5 +1,4 @@
 package skillbill.mcp
-
 import skillbill.application.workflow.model.WorkflowFamilyKind
 import skillbill.application.workflow.model.WorkflowUpdateRequest
 import skillbill.mcp.shared.McpRuntimeContext
@@ -13,6 +12,8 @@ import skillbill.ports.workflow.gitops.model.WorkflowSelectedDiffHunksRequest
 import skillbill.ports.workflow.gitops.model.WorkflowSelectedDiffHunksResult
 import skillbill.ports.workflow.gitops.model.WorkflowWorktreeActivityResult
 import skillbill.telemetry.CONFIG_ENVIRONMENT_KEY
+import skillbill.workflow.decomposition.model.SubtaskId
+import skillbill.workflow.engine.model.SessionId
 import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.test.Test
@@ -27,7 +28,7 @@ class McpWorkflowContinuationRuntimeTest {
     val opened = McpWorkflowRuntime.open(
       McpWorkflowOpenArgs(
         kind = WorkflowFamilyKind.TASK_RUNTIME,
-        sessionId = "ftr-mcp-decomp",
+        sessionId = SessionId("ftr-mcp-decomp"),
         context = fixture.context,
       ),
     )
@@ -38,7 +39,7 @@ class McpWorkflowContinuationRuntimeTest {
       WorkflowFamilyKind.TASK_RUNTIME,
       "SKILL-51",
       fixture.context,
-      subtaskId = 1,
+      subtaskId = SubtaskId(1),
     )
 
     assertEquals("ok", continued["status"])
@@ -61,7 +62,7 @@ class McpWorkflowContinuationRuntimeTest {
     val opened = McpWorkflowRuntime.open(
       McpWorkflowOpenArgs(
         kind = WorkflowFamilyKind.TASK_RUNTIME,
-        sessionId = "ftr-mcp-decomp",
+        sessionId = SessionId("ftr-mcp-decomp"),
         context = fixture.context,
       ),
     )

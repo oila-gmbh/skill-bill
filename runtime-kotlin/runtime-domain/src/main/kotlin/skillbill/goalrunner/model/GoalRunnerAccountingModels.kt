@@ -1,6 +1,9 @@
 package skillbill.goalrunner.model
 
 import skillbill.boundary.OpenBoundaryMap
+import skillbill.workflow.decomposition.model.IssueKey
+import skillbill.workflow.decomposition.model.SubtaskId
+import skillbill.workflow.engine.model.WorkflowId
 
 const val GOAL_ATTEMPT_LEDGER_ARTIFACT_KEY: String = "goal_attempt_ledger"
 const val GOAL_ATTEMPT_LEDGER_LIMIT: Int = 200
@@ -37,9 +40,9 @@ data class GoalAttemptLedgerEntry(
   val action: GoalAttemptLedgerAction,
   val sequenceNumber: Int,
   val timestamp: String,
-  val issueKey: String? = null,
-  val subtaskId: Int? = null,
-  val previousWorkflowId: String? = null,
+  val issueKey: IssueKey? = null,
+  val subtaskId: SubtaskId? = null,
+  val previousWorkflowId: WorkflowId? = null,
   val previousStatus: String? = null,
   val previousStep: String? = null,
   val blockedReason: String? = null,
@@ -71,9 +74,9 @@ data class GoalAttemptLedgerEntry(
   @OpenBoundaryMap("Goal attempt ledger entry artifact map at durable workflow-artifact/schema seams")
   fun toArtifactMap(): Map<String, Any?> {
     val optional = linkedMapOf<String, Any?>(
-      "issue_key" to issueKey,
-      "subtask_id" to subtaskId,
-      "previous_workflow_id" to previousWorkflowId,
+      "issue_key" to issueKey?.value,
+      "subtask_id" to subtaskId?.value,
+      "previous_workflow_id" to previousWorkflowId?.value,
       "previous_status" to previousStatus,
       "previous_step" to previousStep,
       "blocked_reason" to blockedReason,

@@ -1,5 +1,4 @@
 package skillbill.infrastructure.fs.featuretask
-
 import skillbill.application.featuretask.FeatureTaskRuntimeGoalContinuationRecorder
 import skillbill.application.featuretask.model.RemediationBaseBlocked
 import skillbill.application.featuretask.model.RemediationBaseCoherent
@@ -11,7 +10,11 @@ import skillbill.ports.workflow.gitops.WorkflowGitOperations
 import skillbill.ports.workflow.gitops.model.WorkflowGitOperationResult
 import skillbill.ports.workflow.toRecord
 import skillbill.review.context.model.CodeReviewExecutionMode
+import skillbill.workflow.decomposition.model.IssueKey
+import skillbill.workflow.decomposition.model.SubtaskId
 import skillbill.workflow.engine.WorkflowEngine
+import skillbill.workflow.engine.model.SessionId
+import skillbill.workflow.engine.model.WorkflowId
 import skillbill.workflow.engine.model.WorkflowUpdateInput
 import skillbill.workflow.goal.model.GOAL_REVIEW_BASE_RECOVERIES_ARTIFACT_KEY
 import skillbill.workflow.goal.model.GOAL_SUBTASK_REVIEW_RESULTS_ARTIFACT_KEY
@@ -38,9 +41,9 @@ import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
 class RemediationBaseReconciliationUnderAmendTest {
-  private val workflowId = "wftr-skill190-reconcile"
-  private val issueKey = "SKILL-190"
-  private val subtaskId = "4"
+  private val workflowId = WorkflowId("wftr-skill190-reconcile")
+  private val issueKey = IssueKey("SKILL-190")
+  private val subtaskId = SubtaskId("4".toInt())
   private val goalBranch = "feat/skill-190"
 
   @Test
@@ -312,7 +315,7 @@ class RemediationBaseReconciliationUnderAmendTest {
     val artifactsPatch = linkedMapOf<String, Any?>(
       FEATURE_TASK_RUNTIME_GOAL_CONTINUATION_ARTIFACT_KEY to FeatureTaskRuntimeGoalContinuationArtifact(
         issueKey = issueKey,
-        subtaskId = 4,
+        subtaskId = SubtaskId(4),
         suppressPr = true,
         goalBranch = goalBranch,
         codeReviewMode = CodeReviewExecutionMode.INLINE,
@@ -335,7 +338,7 @@ class RemediationBaseReconciliationUnderAmendTest {
         currentStepId = "review",
         stepUpdates = null,
         artifactsPatch = artifactsPatch,
-        sessionId = "fis-001",
+        sessionId = SessionId("fis-001"),
       ),
     ).toRecord()
     repository.saveFeatureTaskRuntimeWorkflow(seeded)

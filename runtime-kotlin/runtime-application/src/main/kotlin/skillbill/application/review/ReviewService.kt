@@ -1,5 +1,4 @@
 package skillbill.application.review
-
 import me.tatarka.inject.annotations.Inject
 import skillbill.application.review.model.FeatureTaskRuntimeStatsResult
 import skillbill.application.review.model.FeatureVerifyStatsResult
@@ -21,6 +20,7 @@ import skillbill.ports.telemetry.TelemetrySettingsProvider
 import skillbill.review.ReviewParser
 import skillbill.review.model.FeedbackRequest
 import skillbill.review.model.ReviewFinishedTelemetry
+import skillbill.review.model.ReviewRunId
 import skillbill.review.withCanonicalAttribution
 
 @Inject
@@ -38,11 +38,7 @@ class ReviewService(
     return review.toReviewPreviewResult()
   }
 
-  fun importReview(
-    input: String,
-    dbOverride: String?,
-    finishZeroFindingTelemetry: Boolean = true,
-  ): ImportedReviewResult {
+  fun importReview(input: String, finishZeroFindingTelemetry: Boolean = true): ImportedReviewResult {
     val (text, sourcePath) = reviewInputSource.readInput(input, context.stdinText)
     val (knownPackSkillNames, knownPlatformSlugs) = canonicalAttributionPorts(reviewAttributionPort)
     val parsed = ReviewParser.parseReview(text).withCanonicalAttribution(
@@ -50,7 +46,7 @@ class ReviewService(
       knownPlatformSlugs = knownPlatformSlugs,
     )
     val review = parsed.copy(planLanes = composedRunLanes(parsed, reviewAttributionPort, diagnostics))
-    return database.transaction(dbOverride) { unitOfWork ->
+    return database.transaction { unitOfWork ->
       unitOfWork.reviews.saveImportedReview(review, sourcePath)
       if (finishZeroFindingTelemetry && review.findings.isEmpty()) {
         val settings = telemetrySettingsOrNull(settingsProvider)
@@ -66,14 +62,14 @@ class ReviewService(
     }
   }
 
-  fun markOrchestrated(runId: String, dbOverride: String?) {
-    database.transaction(dbOverride) { unitOfWork ->
+  fun markOrchestrated(runId: ReviewRunId) {
+    database.transaction { unitOfWork ->
       unitOfWork.reviews.markOrchestrated(runId)
     }
   }
 
-  fun reviewFinishedTelemetryPayload(runId: String, dbOverride: String?): ReviewFinishedTelemetry? =
-    database.transaction(dbOverride) { unitOfWork ->
+  fun reviewFinishedTelemetryPayload(runId: ReviewRunId): ReviewFinishedTelemetry? =
+    database.transaction { unitOfWork ->
       val settings = telemetrySettingsOrNull(settingsProvider)
       unitOfWork.reviews.updateReviewFinishedTelemetryState(
         runId = runId,
@@ -83,31 +79,25 @@ class ReviewService(
       )
     }
 
-  fun recordFeedback(
-    runId: String,
-    event: String,
-    findings: List<String>,
-    note: String,
-    dbOverride: String?,
-  ): ReviewFeedbackResult = database.transaction(dbOverride) { unitOfWork ->
-    unitOfWork.reviews.recordFeedback(
-      FeedbackRequest(runId, findings, event, note),
-      feedbackTelemetryOptions(settingsProvider),
-      routedSkillPlatformSlugs = reviewAttributionPort.routedSkillPlatformSlugs(),
-    )
-    ReviewFeedbackResult(
-      dbPath = unitOfWork.dbPath.toString(),
-      reviewRunId = runId,
-      outcomeType = event,
-      recordedFindings = findings.size,
-    )
-  }
+  fun recordFeedback(runId: ReviewRunId, event: String, findings: List<String>, note: String): ReviewFeedbackResult =
+    database.transaction { unitOfWork ->
+      unitOfWork.reviews.recordFeedback(
+        FeedbackRequest(runId, findings, event, note),
+        feedbackTelemetryOptions(settingsProvider),
+        routedSkillPlatformSlugs = reviewAttributionPort.routedSkillPlatformSlugs(),
+      )
+      ReviewFeedbackResult(
+        dbPath = unitOfWork.dbPath.toString(),
+        reviewRunId = runId,
+        outcomeType = event,
+        recordedFindings = findings.size,
+      )
+    }
 
   fun triage(
-    runId: String,
+    runId: ReviewRunId,
     decisions: List<String>,
     listOnly: Boolean,
-    dbOverride: String?,
     listWhenNoDecisions: Boolean = true,
   ): TriageResult = triageReview(
     TriageReviewRequest(
@@ -116,21 +106,19 @@ class ReviewService(
       runId = runId,
       decisions = decisions,
       listOnly = listOnly,
-      dbOverride = dbOverride,
       listWhenNoDecisions = listWhenNoDecisions,
       routedSkillPlatformSlugs = reviewAttributionPort.routedSkillPlatformSlugs(),
     ),
   )
 
-  fun reviewStats(runId: String?, dbOverride: String?): ReviewStatsResult =
-    reviewStatsResult(database, dbOverride) { reviewRepository -> reviewRepository.reviewStats(runId) }
+  fun reviewStats(runId: ReviewRunId?): ReviewStatsResult =
+    reviewStatsResult(database) { reviewRepository -> reviewRepository.reviewStats(runId) }
 
-  fun featureVerifyStats(dbOverride: String?): FeatureVerifyStatsResult =
-    featureVerifyStatsResult(database, dbOverride, ReviewRepository::featureVerifyStats)
+  fun featureVerifyStats(): FeatureVerifyStatsResult =
+    featureVerifyStatsResult(database, ReviewRepository::featureVerifyStats)
 
-  fun featureTaskRuntimeStats(dbOverride: String?): FeatureTaskRuntimeStatsResult =
-    featureTaskRuntimeStatsResult(database, dbOverride, ReviewRepository::featureTaskRuntimeStats)
+  fun featureTaskRuntimeStats(): FeatureTaskRuntimeStatsResult =
+    featureTaskRuntimeStatsResult(database, ReviewRepository::featureTaskRuntimeStats)
 
-  fun goalStats(dbOverride: String?): GoalStatsResult =
-    goalStatsResult(database, dbOverride, ReviewRepository::goalStats)
+  fun goalStats(): GoalStatsResult = goalStatsResult(database, ReviewRepository::goalStats)
 }

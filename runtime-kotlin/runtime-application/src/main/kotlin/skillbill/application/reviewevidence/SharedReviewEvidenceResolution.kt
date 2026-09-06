@@ -1,11 +1,11 @@
 package skillbill.application.reviewevidence
-
 import skillbill.application.goalplanning.sha256HexUtf8
 import skillbill.application.reviewevidence.model.ParallelReviewScope
 import skillbill.ports.diff.DiffResolverPort
 import skillbill.ports.taskruntime.FeatureTaskRuntimeSharedEvidenceResolverPort
 import skillbill.ports.taskruntime.model.FeatureTaskRuntimeSharedEvidenceDerivation
 import skillbill.ports.taskruntime.model.FeatureTaskRuntimeSharedEvidenceRequest
+import skillbill.workflow.engine.model.WorkflowId
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepositoryCheckpoint
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeSharedEvidenceFileEntry
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeSharedEvidenceHunkEntry
@@ -20,7 +20,7 @@ private const val KEY_SEPARATOR: String = "\u0000"
 /** The repository-scoped question one resolve answers, and the whole basis of the checkpoint key. */
 internal data class SharedReviewEvidenceQuery(
   val repoRoot: Path,
-  val workflowId: String,
+  val workflowId: WorkflowId,
   val scope: ParallelReviewScope,
   val range: ReviewCommitRange,
   val suppliedDiff: Boolean,

@@ -1,4 +1,5 @@
 package skillbill.application.featuretask.model
+import skillbill.workflow.decomposition.model.IssueKey
 
 /**
  * SKILL-150: what a checkpoint is allowed to do with the tree it finds.
@@ -46,7 +47,7 @@ sealed interface FeatureTaskRuntimeCheckpointDecision {
  * introductions: they are adopted into the owned inventory so a package move can stage both halves.
  */
 data class FeatureTaskRuntimeCheckpointScopeInput(
-  val issueKey: String,
+  val issueKey: IssueKey,
   val ownedPaths: List<String>,
   val phaseIntroducedPaths: List<String>,
   val worktreeDeltaPaths: List<String>,

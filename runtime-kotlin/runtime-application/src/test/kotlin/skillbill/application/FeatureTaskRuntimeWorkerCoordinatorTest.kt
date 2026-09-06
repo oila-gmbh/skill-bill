@@ -1,5 +1,4 @@
 package skillbill.application
-
 import skillbill.application.featuretask.FeatureTaskRuntimeWorkerCoordinator
 import skillbill.ports.db.DatabaseSessionFactory
 import skillbill.ports.featuretask.model.FeatureTaskRuntimeWorkerLeaseState
@@ -13,6 +12,8 @@ import skillbill.ports.taskruntime.model.FeatureTaskRuntimeProcessIdentity
 import skillbill.ports.taskruntime.model.FeatureTaskRuntimeProcessInspection
 import skillbill.ports.workflow.model.FeatureTaskWorkflowMode
 import skillbill.ports.workflow.model.WorkflowStateRecord
+import skillbill.workflow.engine.model.SessionId
+import skillbill.workflow.engine.model.WorkflowId
 import java.time.Duration
 import java.time.Instant
 import kotlin.test.Test
@@ -241,25 +242,24 @@ private class BumpUpdatedAtAfterReadDatabase(
 ) : DatabaseSessionFactory {
   private val inner = RuntimeFakeDatabaseSessionFactory(workflows)
 
-  override fun resolveDbPath(dbOverride: String?) = inner.resolveDbPath(dbOverride)
+  override fun resolveDbPath() = inner.resolveDbPath()
 
-  override fun databaseExists(dbOverride: String?) = inner.databaseExists(dbOverride)
+  override fun databaseExists() = inner.databaseExists()
 
-  override fun <T> read(dbOverride: String?, block: (UnitOfWork) -> T): T {
-    val result = inner.read(dbOverride, block)
+  override fun <T> read(block: (UnitOfWork) -> T): T {
+    val result = inner.read(block)
     workflows.bumpUpdatedAt(WORKFLOW_ID)
     return result
   }
 
-  override fun <T> transaction(dbOverride: String?, block: (UnitOfWork) -> T): T = inner.transaction(dbOverride, block)
+  override fun <T> transaction(block: (UnitOfWork) -> T): T = inner.transaction(block)
 
-  override fun <T> selfManagedWrite(dbOverride: String?, block: (UnitOfWork) -> T): T =
-    inner.selfManagedWrite(dbOverride, block)
+  override fun <T> selfManagedWrite(block: (UnitOfWork) -> T): T = inner.selfManagedWrite(block)
 }
 
 private fun unownedRuntimeRow(updatedAt: String) = WorkflowStateRecord(
-  workflowId = WORKFLOW_ID,
-  sessionId = "ftr-unowned",
+  workflowId = WorkflowId(WORKFLOW_ID),
+  sessionId = SessionId("ftr-unowned"),
   workflowName = "bill-feature-task",
   contractVersion = "0.1",
   workflowStatus = "pending",
@@ -277,7 +277,7 @@ private fun ownership(
   ownerToken: String = "old-owner-token-0001",
   generation: Long = 1,
 ) = FeatureTaskRuntimeWorkerOwnership(
-  workflowId = WORKFLOW_ID,
+  workflowId = WorkflowId(WORKFLOW_ID),
   generation = generation,
   ownerToken = ownerToken,
   hostIdentity = "host",

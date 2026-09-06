@@ -1,4 +1,5 @@
 package skillbill.application.work
+import skillbill.workflow.decomposition.model.IssueKey
 
 /**
  * SKILL-167 follow-up: the IDE status surface reports work for the checked-out branch,
@@ -12,9 +13,9 @@ object IdeStatusBranchScope {
    * Case-insensitive whole-token containment: `SKILL-16` must not match
    * `feat/skill-167-x`, so both neighbors of a hit must be non-alphanumeric.
    */
-  fun branchReferencesIssueKey(branch: String, issueKey: String): Boolean {
+  fun branchReferencesIssueKey(branch: String, issueKey: IssueKey): Boolean {
     val haystack = branch.lowercase()
-    val needle = issueKey.trim().lowercase()
+    val needle = issueKey.value.trim().lowercase()
     if (needle.isEmpty()) return false
     var index = haystack.indexOf(needle)
     while (index >= 0) {

@@ -1,6 +1,7 @@
 package skillbill.workflow.taskruntime.model
 
 import skillbill.review.model.ReviewFindingVerdict
+import skillbill.workflow.engine.model.WorkflowId
 import skillbill.workflow.goal.model.ValidationDepth
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePlanningProjectionValidator
 
@@ -32,7 +33,7 @@ data class FeatureTaskRuntimeHandoffProjectionInputs(
   val branchIdentity: String? = null,
   val baseBranch: String = "main",
   val addonContentBySlug: Map<String, String> = emptyMap(),
-  val workflowId: String? = null,
+  val workflowId: WorkflowId? = null,
   /**
    * Goal-continuation validate depth used when projecting [VALIDATION_REQUEST] required_checks.
    * Defaults to [ValidationDepth.FULL] so absent/non-goal launches keep today's merge of plan

@@ -1,5 +1,6 @@
 package skillbill.application.featuretask
 
+import skillbill.agent.model.AgentId
 import skillbill.application.decomposition.decodeArtifacts
 import skillbill.application.featuretask.model.AppendCheckpointIdentityArgs
 import skillbill.application.featuretask.model.FeatureTaskRuntimePhaseLedgerRequest
@@ -9,6 +10,7 @@ import skillbill.error.InvalidFeatureTaskRuntimeCheckpointIdentityVersionError
 import skillbill.error.InvalidWorkflowStateSchemaError
 import skillbill.ports.db.DatabaseSessionFactory
 import skillbill.ports.workflow.get
+import skillbill.workflow.engine.model.WorkflowId
 import skillbill.workflow.goal.model.appendBoundedHistoryBySequence
 import skillbill.workflow.taskruntime.FeatureTaskRuntimeQuarantineValidator
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_CHECKPOINT_IDENTITIES_ARTIFACT_KEY
@@ -36,8 +38,8 @@ class FeatureTaskRuntimePhaseEvidenceRecorder(
   val quarantineValidator: FeatureTaskRuntimeQuarantineValidator,
   val clock: Clock,
 ) : FeatureTaskRuntimePhaseEvidenceApi {
-  override fun appendLedgerEntry(request: FeatureTaskRuntimePhaseLedgerRequest, dbOverride: String?): Boolean =
-    database.transaction(dbOverride) { unitOfWork ->
+  override fun appendLedgerEntry(request: FeatureTaskRuntimePhaseLedgerRequest): Boolean =
+    database.transaction { unitOfWork ->
       val record = WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, request.workflowId)
         ?: return@transaction false
       val artifacts = decodeArtifacts(record.artifactsJson)
@@ -67,97 +69,86 @@ class FeatureTaskRuntimePhaseEvidenceRecorder(
       )
       true
     }
-  override fun appendQuarantineEntry(
-    workflowId: String,
-    entry: FeatureTaskRuntimeQuarantineEntry,
-    dbOverride: String?,
-  ): Boolean = database.transaction(dbOverride) { unitOfWork ->
-    val record = WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, workflowId)
-      ?: return@transaction false
-    val artifacts = decodeArtifacts(record.artifactsJson)
-    val existing = quarantineEntriesFrom(artifacts)
-    val alreadyRecorded = existing.any {
-      it.producingPhaseId == entry.producingPhaseId &&
-        it.producingIteration == entry.producingIteration &&
-        it.regenerationAttempt == entry.regenerationAttempt
+  override fun appendQuarantineEntry(workflowId: WorkflowId, entry: FeatureTaskRuntimeQuarantineEntry): Boolean =
+    database.transaction { unitOfWork ->
+      val record = WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, workflowId)
+        ?: return@transaction false
+      val artifacts = decodeArtifacts(record.artifactsJson)
+      val existing = quarantineEntriesFrom(artifacts)
+      val alreadyRecorded = existing.any {
+        it.producingPhaseId == entry.producingPhaseId &&
+          it.producingIteration == entry.producingIteration &&
+          it.regenerationAttempt == entry.regenerationAttempt
+      }
+      if (alreadyRecorded) {
+        return@transaction true
+      }
+      val wire = featureTaskRuntimeQuarantineRecordToWire(existing + entry)
+      quarantineValidator.validateQuarantineRecord(wire, FEATURE_TASK_RUNTIME_QUARANTINED_RECORDS_ARTIFACT_KEY)
+      workflowPersistence.persistPatch(
+        unitOfWork.workflowStates,
+        record,
+        mapOf(FEATURE_TASK_RUNTIME_QUARANTINED_RECORDS_ARTIFACT_KEY to wire),
+      )
+      true
     }
-    if (alreadyRecorded) {
-      return@transaction true
+  override fun loadQuarantinedRecords(workflowId: WorkflowId): List<FeatureTaskRuntimeQuarantineEntry>? =
+    database.read { unitOfWork ->
+      val record = WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, workflowId)
+        ?: return@read null
+      quarantineEntriesFrom(decodeArtifacts(record.artifactsJson))
     }
-    val wire = featureTaskRuntimeQuarantineRecordToWire(existing + entry)
-    quarantineValidator.validateQuarantineRecord(wire, FEATURE_TASK_RUNTIME_QUARANTINED_RECORDS_ARTIFACT_KEY)
-    workflowPersistence.persistPatch(
-      unitOfWork.workflowStates,
-      record,
-      mapOf(FEATURE_TASK_RUNTIME_QUARANTINED_RECORDS_ARTIFACT_KEY to wire),
-    )
-    true
-  }
-  override fun loadQuarantinedRecords(
-    workflowId: String,
-    dbOverride: String?,
-  ): List<FeatureTaskRuntimeQuarantineEntry>? = database.read(dbOverride) { unitOfWork ->
-    val record = WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, workflowId)
-      ?: return@read null
-    quarantineEntriesFrom(decodeArtifacts(record.artifactsJson))
-  }
 
-  override fun recordResolvedBranch(
-    workflowId: String,
-    resolvedBranch: FeatureTaskRuntimeResolvedBranch,
-    dbOverride: String?,
-  ): Boolean = database.transaction(dbOverride) { unitOfWork ->
-    val record = WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, workflowId)
-      ?: return@transaction false
-    val artifacts = decodeArtifacts(record.artifactsJson)
-    if (resolvedBranchFrom(artifacts) != null) {
-      return@transaction true
+  override fun recordResolvedBranch(workflowId: WorkflowId, resolvedBranch: FeatureTaskRuntimeResolvedBranch): Boolean =
+    database.transaction { unitOfWork ->
+      val record = WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, workflowId)
+        ?: return@transaction false
+      val artifacts = decodeArtifacts(record.artifactsJson)
+      if (resolvedBranchFrom(artifacts) != null) {
+        return@transaction true
+      }
+      workflowPersistence.persistPatch(
+        unitOfWork.workflowStates,
+        record,
+        mapOf(FEATURE_TASK_RUNTIME_RESOLVED_BRANCH_ARTIFACT_KEY to resolvedBranch.toArtifactMap()),
+      )
+      true
     }
-    workflowPersistence.persistPatch(
-      unitOfWork.workflowStates,
-      record,
-      mapOf(FEATURE_TASK_RUNTIME_RESOLVED_BRANCH_ARTIFACT_KEY to resolvedBranch.toArtifactMap()),
-    )
-    true
-  }
 
-  override fun loadResolvedBranch(workflowId: String, dbOverride: String?): FeatureTaskRuntimeResolvedBranch? =
-    database.read(dbOverride) { unitOfWork ->
+  override fun loadResolvedBranch(workflowId: WorkflowId): FeatureTaskRuntimeResolvedBranch? =
+    database.read { unitOfWork ->
       val record = WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, workflowId)
         ?: return@read null
       resolvedBranchFrom(decodeArtifacts(record.artifactsJson))
     }
 
   override fun appendCheckpointIdentity(args: AppendCheckpointIdentityArgs): Boolean {
-    quarantineCheckpointIdentitiesOnVersionDrift(args.workflowId, args.phaseId, args.generation, args.dbOverride)
+    quarantineCheckpointIdentitiesOnVersionDrift(args.workflowId, args.phaseId, args.generation)
     return appendCheckpointIdentityAtCurrentVersion(args)
   }
 
-  override fun loadCheckpointIdentities(
-    workflowId: String,
-    dbOverride: String?,
-  ): List<FeatureTaskRuntimeCheckpointIdentity>? = database.read(dbOverride) { unitOfWork ->
-    val record = WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, workflowId)
-      ?: return@read null
-    checkpointIdentitiesFrom(decodeArtifacts(record.artifactsJson))
-  }
-  override fun quarantineCheckpointIdentities(workflowId: String, dbOverride: String?): Boolean =
-    database.transaction(dbOverride) { unitOfWork ->
+  override fun loadCheckpointIdentities(workflowId: WorkflowId): List<FeatureTaskRuntimeCheckpointIdentity>? =
+    database.read { unitOfWork ->
       val record = WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, workflowId)
-        ?: return@transaction false
-      workflowPersistence.persistPatch(
-        unitOfWork.workflowStates,
-        record,
-        mapOf(
-          FEATURE_TASK_RUNTIME_CHECKPOINT_IDENTITIES_ARTIFACT_KEY to
-            featureTaskRuntimeCheckpointIdentitiesToArtifact(emptyList()),
-        ),
-      )
-      true
+        ?: return@read null
+      checkpointIdentitiesFrom(decodeArtifacts(record.artifactsJson))
     }
+  override fun quarantineCheckpointIdentities(workflowId: WorkflowId): Boolean = database.transaction { unitOfWork ->
+    val record = WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, workflowId)
+      ?: return@transaction false
+    workflowPersistence.persistPatch(
+      unitOfWork.workflowStates,
+      record,
+      mapOf(
+        FEATURE_TASK_RUNTIME_CHECKPOINT_IDENTITIES_ARTIFACT_KEY to
+          featureTaskRuntimeCheckpointIdentitiesToArtifact(emptyList()),
+      ),
+    )
+    true
+  }
 
-  override fun recordWorkflowOwnedPaths(workflowId: String, ownedPaths: List<String>, dbOverride: String?): Boolean =
-    database.transaction(dbOverride) { unitOfWork ->
+  override fun recordWorkflowOwnedPaths(workflowId: WorkflowId, ownedPaths: List<String>): Boolean =
+    database.transaction { unitOfWork ->
       val record = WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, workflowId)
         ?: return@transaction false
       val resolved = resolvedBranchFrom(decodeArtifacts(record.artifactsJson)) ?: return@transaction false
@@ -189,7 +180,7 @@ fun FeatureTaskRuntimePhaseEvidenceRecorder.checkpointIdentitiesFrom(
 
 fun FeatureTaskRuntimePhaseEvidenceRecorder.appendCheckpointIdentityAtCurrentVersion(
   args: AppendCheckpointIdentityArgs,
-): Boolean = database.transaction(args.dbOverride) { unitOfWork ->
+): Boolean = database.transaction { unitOfWork ->
   val record = WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, args.workflowId)
     ?: return@transaction false
   val artifacts = decodeArtifacts(record.artifactsJson)
@@ -223,12 +214,11 @@ fun FeatureTaskRuntimePhaseEvidenceRecorder.appendCheckpointIdentityAtCurrentVer
 }
 
 fun FeatureTaskRuntimePhaseEvidenceRecorder.quarantineCheckpointIdentitiesOnVersionDrift(
-  workflowId: String,
+  workflowId: WorkflowId,
   phaseId: String,
   generation: Int,
-  dbOverride: String?,
 ) {
-  val rejected = database.read(dbOverride) { unitOfWork ->
+  val rejected = database.read { unitOfWork ->
     val record = WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, workflowId)
       ?: return@read null
     val artifacts = decodeArtifacts(record.artifactsJson)
@@ -258,7 +248,6 @@ fun FeatureTaskRuntimePhaseEvidenceRecorder.quarantineCheckpointIdentitiesOnVers
       rejectedRecordSha256 = sha256Hex(rejectedPayload),
       diagnosticDegraded = true,
     ),
-    dbOverride,
   )
-  quarantineCheckpointIdentities(workflowId, dbOverride)
+  quarantineCheckpointIdentities(workflowId)
 }

@@ -1,5 +1,8 @@
 package skillbill.application.featuretask
 
+import skillbill.workflow.decomposition.model.IssueKey
+import skillbill.agent.model.AgentId
+
 import skillbill.application.agentoutput.agentFailureExcerpt
 import skillbill.application.featuretask.model.FeatureTaskRuntimeGoalContinuationContext
 import skillbill.application.featuretask.model.FeatureTaskRuntimeRunReport
@@ -68,7 +71,7 @@ fun persistGoalContinuationOutcome(
 ): FeatureTaskRuntimeRunReport {
   val context = request.goalContinuation ?: return report
   val outcome = goalContinuationOutcomeFor(phaseRecorder, gitOperations, request, context, report)?.let { base ->
-    val attribution = agentAttributionFromPhaseState(phaseRecorder, request.workflowId, request.dbPathOverride)
+    val attribution = agentAttributionFromPhaseState(phaseRecorder, request.workflowId)
     base.copy(
       finalizingAgentId = attribution.finalizingAgentId,
       participatingAgentIds = attribution.participatingAgentIds,
@@ -95,7 +98,6 @@ fun persistGoalContinuationOutcome(
           else -> "blocked"
         },
       ),
-      dbOverride = request.dbPathOverride,
     )
   }
   return when {

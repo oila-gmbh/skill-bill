@@ -1,5 +1,4 @@
 package skillbill.application.goalrunner
-
 import skillbill.application.goalrunner.model.GoalContinuationCandidate
 import skillbill.boundary.OpenBoundaryMap
 import skillbill.contracts.JsonCodec
@@ -7,6 +6,9 @@ import skillbill.goalrunner.asGoalRunnerIntOrNull
 import skillbill.goalrunner.goalContinuationTerminalStatus
 import skillbill.goalrunner.model.GoalRunnerStoredOutcome
 import skillbill.goalrunner.model.GoalRunnerTerminalStatus
+import skillbill.workflow.decomposition.model.IssueKey
+import skillbill.workflow.decomposition.model.SubtaskId
+import skillbill.workflow.engine.model.WorkflowId
 
 fun List<GoalContinuationCandidate>.authoritativeOutcomesBySubtask(): Map<Int, GoalRunnerStoredOutcome> =
   groupBy { candidate -> candidate.goalContinuation.subtaskId }
@@ -30,8 +32,8 @@ fun List<GoalContinuationCandidate>.selectAuthoritativeOutcome(): GoalRunnerStor
 
 fun staleRunningReason(
   staleWorkflowId: String,
-  issueKey: String,
-  subtaskId: Int,
+  issueKey: IssueKey,
+  subtaskId: SubtaskId,
   authoritative: GoalRunnerStoredOutcome?,
 ): String = authoritative?.let { outcome ->
   if (outcome.workflowId == staleWorkflowId) {
@@ -50,9 +52,9 @@ fun staleRunningReason(
 @OpenBoundaryMap("Missing result-prefix terminal outcome artifact reconstruction")
 fun missingResultPrefixTerminalOutcomeArtifact(
   output: Map<String, Any?>,
-  issueKey: String,
-  subtaskId: Int,
-  workflowId: String,
+  issueKey: IssueKey,
+  subtaskId: SubtaskId,
+  workflowId: WorkflowId,
 ): Map<String, Any?>? = (JsonCodec.anyToStringAnyMap(output["subtask_outcome"]) ?: output)
   .takeIf { candidate -> candidate.matchesGoalContinuation(issueKey, subtaskId) }
   ?.let { candidate ->
@@ -61,16 +63,16 @@ fun missingResultPrefixTerminalOutcomeArtifact(
     }
   }
 
-fun Map<String, Any?>.matchesGoalContinuation(issueKey: String, subtaskId: Int): Boolean {
+fun Map<String, Any?>.matchesGoalContinuation(issueKey: IssueKey, subtaskId: SubtaskId): Boolean {
   val candidateIssueKey = this["issue_key"]?.toString()?.takeIf(String::isNotBlank) ?: issueKey
   val candidateSubtaskId = this["subtask_id"].asGoalRunnerIntOrNull() ?: subtaskId
   return candidateIssueKey == issueKey && candidateSubtaskId == subtaskId
 }
 
 fun Map<String, Any?>.toMissingResultPrefixOutcomeArtifact(
-  issueKey: String,
-  subtaskId: Int,
-  workflowId: String,
+  issueKey: IssueKey,
+  subtaskId: SubtaskId,
+  workflowId: WorkflowId,
   status: GoalRunnerTerminalStatus,
 ): Map<String, Any?> = linkedMapOf<String, Any?>(
   "issue_key" to issueKey,

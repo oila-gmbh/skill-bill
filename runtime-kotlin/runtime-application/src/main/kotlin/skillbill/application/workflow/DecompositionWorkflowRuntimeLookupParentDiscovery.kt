@@ -1,5 +1,4 @@
 package skillbill.application.workflow
-
 import skillbill.application.decomposition.DECOMPOSITION_RUNTIME_ARTIFACT_KEY
 import skillbill.application.decomposition.decodeArtifacts
 import skillbill.ports.workflow.WorkflowStateRepository
@@ -8,21 +7,22 @@ import skillbill.ports.workflow.model.WorkflowStateRecord
 import skillbill.ports.workflow.model.toSnapshot
 import skillbill.workflow.decomposition.DecompositionManifestValidator
 import skillbill.workflow.decomposition.model.DecompositionManifest
+import skillbill.workflow.decomposition.model.IssueKey
 import skillbill.workflow.decomposition.runtime.isActiveGoalRuntime
 
 fun WorkflowStateRepository.findDecomposedParentOrCorruptFallback(
-  issueKey: String,
+  issueKey: IssueKey,
   validator: DecompositionManifestValidator,
   currentProjectedManifest: DecompositionManifest?,
 ): WorkflowStateRecord? {
-  val normalizedIssueKey = issueKey.trim()
+  val normalizedIssueKey = issueKey.value.trim()
   val validCandidates = mutableListOf<DecomposedParentCandidate>()
   val corruptCandidates = mutableListOf<WorkflowStateRecord>()
   listFeatureTaskWorkflowsForParentDiscovery()
     .filter { row ->
       val snapshot = row.toSnapshot()
       !snapshot.isGoalContinuationChildWorkflow() &&
-        row.issueKey == normalizedIssueKey &&
+        row.issueKey?.value == normalizedIssueKey &&
         (
           snapshot.hasDecompositionPlan() ||
             DECOMPOSITION_RUNTIME_ARTIFACT_KEY in decodeArtifacts(snapshot.artifactsJson)
@@ -32,7 +32,7 @@ fun WorkflowStateRepository.findDecomposedParentOrCorruptFallback(
       val manifest = row.toSnapshot().decompositionRuntime(validator)
       when {
         manifest != null &&
-          manifest.issueKey == normalizedIssueKey &&
+          manifest.issueKey.value == normalizedIssueKey &&
           row.workflowStatus !in IMPLEMENT_TERMINAL_STATUSES ->
           validCandidates += DecomposedParentCandidate(row, manifest)
         manifest == null && row.workflowStatus !in IMPLEMENT_TERMINAL_STATUSES ->
@@ -44,7 +44,7 @@ fun WorkflowStateRepository.findDecomposedParentOrCorruptFallback(
   if (active.size > 1) {
     error(
       "Ambiguous decomposed parent workflows for '$normalizedIssueKey': " +
-        active.joinToString { it.record.workflowId } +
+        active.joinToString { it.record.workflowId.value } +
         ". Pass an explicit workflow or manifest selector before continuing.",
     )
   }
@@ -53,7 +53,7 @@ fun WorkflowStateRepository.findDecomposedParentOrCorruptFallback(
   if (corruptCandidates.size > 1) {
     error(
       "Ambiguous corrupt-manifest parent rows for '$normalizedIssueKey': " +
-        corruptCandidates.joinToString { it.workflowId } +
+        corruptCandidates.joinToString { it.workflowId.value } +
         ". Operator intervention is required to resolve the duplicate parent rows.",
     )
   }
@@ -84,6 +84,6 @@ fun WorkflowStateRepository.findDecomposedParentWorkflowForRuntime(
 ): WorkflowStateRecord? = listFeatureTaskWorkflows(FeatureTaskWorkflowMode.RUNTIME, Int.MAX_VALUE).firstOrNull { row ->
   val snapshot = row.toSnapshot()
   !snapshot.isGoalContinuationChildWorkflow() &&
-    (snapshot.hasDecompositionPlan() || row.issueKey?.trim() == manifest.issueKey) &&
+    (snapshot.hasDecompositionPlan() || row.issueKey?.value?.trim() == manifest.issueKey.value) &&
     snapshot.decompositionRuntime(validator)?.sameRuntimeIdentity(manifest) == true
 }

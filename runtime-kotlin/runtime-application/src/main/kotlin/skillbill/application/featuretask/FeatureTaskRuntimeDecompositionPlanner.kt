@@ -1,5 +1,4 @@
 package skillbill.application.featuretask
-
 import me.tatarka.inject.annotations.Inject
 import skillbill.application.featurespec.FeatureSpecPreparationRuntime
 import skillbill.application.featurespec.FeatureSpecPreparationWriter
@@ -8,6 +7,7 @@ import skillbill.featurespec.model.FeatureSpecPreparationMode
 import skillbill.featurespec.model.FeatureSpecSubtaskPreparation
 import skillbill.featurespec.model.FeatureSpecWriteRequest
 import skillbill.featurespec.model.FeatureSpecWriteResult
+import skillbill.workflow.decomposition.model.IssueKey
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeDecomposePlanOutcome
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeDecomposeSubtask
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRunInvariants
@@ -20,7 +20,7 @@ class FeatureTaskRuntimeDecompositionPlanner(
 ) {
   fun writeDecomposition(
     repoRoot: Path,
-    issueKey: String,
+    issueKey: IssueKey,
     runInvariants: FeatureTaskRuntimeRunInvariants,
     outcome: FeatureTaskRuntimeDecomposePlanOutcome,
   ): FeatureSpecWriteResult {

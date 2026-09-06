@@ -67,7 +67,6 @@ object FeatureTaskRuntimeRunLoopSubtaskCommit {
           parentSha = ledger.commitSha,
           ownedPaths = stagedPaths,
           commitSha = commitSha,
-          dbOverride = runLoop.request.dbPathOverride,
         ),
       )
     }

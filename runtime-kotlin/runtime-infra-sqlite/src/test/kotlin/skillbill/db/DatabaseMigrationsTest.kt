@@ -1,5 +1,4 @@
 package skillbill.db
-
 import skillbill.db.core.DatabaseColumnMigrations
 import skillbill.db.core.DatabaseMigrations
 import skillbill.db.core.DatabaseRuntime
@@ -8,6 +7,7 @@ import skillbill.db.core.inImmediateTransaction
 import skillbill.db.telemetry.GoalTelemetryMigration
 import skillbill.db.telemetry.TelemetryOutboxStore
 import skillbill.ports.telemetry.model.TelemetryOutboxRecord
+import skillbill.review.model.ReviewRunId
 import java.nio.file.Files
 import java.sql.DriverManager
 import java.sql.SQLException
@@ -807,7 +807,7 @@ class DatabaseMigrationsEnsureDatabaseTest {
 
     DatabaseRuntime.ensureDatabase(dbPath).use { connection ->
       val columns = tableColumns(connection = connection, tableName = "review_runs")
-      val reviewSessionId = reviewSessionId(connection = connection, reviewRunId = "rvw-legacy-001")
+      val reviewSessionId = reviewSessionId(connection = connection, reviewRunId = ReviewRunId("rvw-legacy-001"))
 
       assertTrue("review_session_id" in columns)
       assertEquals("rvw-legacy-001", reviewSessionId)
@@ -1295,7 +1295,7 @@ class DatabaseMigrationsReviewAttributionTest {
     DatabaseRuntime.ensureDatabase(dbPath).use { connection ->
       val schemaSql = feedbackEventsSchemaSql(connection)
       val migratedEventType =
-        feedbackEventType(connection = connection, reviewRunId = "rvw-legacy-002", findingId = "F-001")
+        feedbackEventType(connection = connection, reviewRunId = ReviewRunId("rvw-legacy-002"), findingId = "F-001")
 
       assertTrue("'fix_rejected'" in schemaSql)
       assertEquals("fix_rejected", migratedEventType)

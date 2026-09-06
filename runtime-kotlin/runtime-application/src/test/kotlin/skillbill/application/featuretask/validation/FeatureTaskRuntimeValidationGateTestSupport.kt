@@ -1,5 +1,4 @@
 package skillbill.application.featuretask.validation
-
 import skillbill.application.featuretask.model.FeatureTaskRuntimeRunRequest
 import skillbill.application.featuretask.validation.model.ValidationGateAgentRepairLauncher
 import skillbill.application.featuretask.validation.model.ValidationGateAgentRepairResult
@@ -31,6 +30,9 @@ import skillbill.scaffold.model.ValidationGateExecutedWorkFormat
 import skillbill.scaffold.model.ValidationGateExecutedWorkSignal
 import skillbill.scaffold.model.ValidationGateFindingsFormat
 import skillbill.scaffold.model.ValidationGateFindingsLocator
+import skillbill.workflow.decomposition.model.IssueKey
+import skillbill.workflow.engine.model.SessionId
+import skillbill.workflow.engine.model.WorkflowId
 import skillbill.workflow.goal.model.ValidationDepth
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFeatureSize
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutput
@@ -138,9 +140,9 @@ internal fun declaredResolver(
   ValidationGateResolver { listOf(kotlinPackWithoutGate().copy(validationGate = declaration)) }
 
 internal fun minimalRequest(): FeatureTaskRuntimeRunRequest = FeatureTaskRuntimeRunRequest(
-  issueKey = "SKILL-180",
-  workflowId = "wf-skill-180",
-  sessionId = "session",
+  issueKey = IssueKey("SKILL-180"),
+  workflowId = WorkflowId("wf-skill-180"),
+  sessionId = SessionId("session"),
   runInvariants = FeatureTaskRuntimeRunInvariants(
     specReference = "spec.md",
     featureSize = FeatureTaskRuntimeFeatureSize.MEDIUM,

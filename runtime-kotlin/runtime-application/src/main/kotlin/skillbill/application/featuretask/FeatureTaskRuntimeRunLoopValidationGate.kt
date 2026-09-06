@@ -1,5 +1,7 @@
 package skillbill.application.featuretask
 
+import skillbill.agent.model.AgentId
+
 import skillbill.application.featuretask.validation.FeatureTaskRuntimeBuildGateCoordinator
 import skillbill.application.featuretask.validation.model.ValidationGateAgentRepairLauncher
 import skillbill.application.featuretask.validation.model.ValidationGateAgentRepairResult
@@ -109,7 +111,6 @@ object FeatureTaskRuntimeRunLoopValidationGate {
           ),
         ),
       ),
-      run.request.dbPathOverride,
     )
     if (!persisted) {
       return FeatureTaskRuntimeRunLoopPhaseAttempts.blockInPhase(
@@ -190,7 +191,7 @@ object FeatureTaskRuntimeRunLoopValidationGate {
       ),
     )
     state.reserveReviewPass(runningPhaseState.reviewPassNumber)
-    if (!runLoop.recorder.recordPhaseState(runningPhaseState, run.request.dbPathOverride)) {
+    if (!runLoop.recorder.recordPhaseState(runningPhaseState)) {
       return FeatureTaskRuntimeRunLoopPhaseAttempts.blockInPhase(
         runLoop,
         PhaseBlockRequest(
@@ -380,7 +381,7 @@ object FeatureTaskRuntimeRunLoopValidationGate {
         settled.blockedReason
           ?: settled.pausedReason
           ?: "Validation repair attempt runLoop.session.blocked.",
-        failureDisposition = runLoop.recorder.loadPhaseRecords(run.request.workflowId, run.request.dbPathOverride)
+        failureDisposition = runLoop.recorder.loadPhaseRecords(run.request.workflowId)
           ?.get(run.phaseId)
           ?.failureDisposition,
       )
@@ -449,7 +450,6 @@ object FeatureTaskRuntimeRunLoopValidationGate {
           ),
         ),
       ),
-      run.request.dbPathOverride,
     )
     if (!persisted) {
       return FeatureTaskRuntimeRunLoopPhaseAttempts.blockInPhase(

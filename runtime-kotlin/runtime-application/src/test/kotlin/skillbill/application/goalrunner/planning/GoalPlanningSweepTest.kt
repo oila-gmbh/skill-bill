@@ -1,5 +1,4 @@
 package skillbill.application.goalrunner.planning
-
 import skillbill.application.InMemoryGoalManifestStore
 import skillbill.application.PlanningProjectionFixtures
 import skillbill.application.RecordingOutcomeStore
@@ -75,7 +74,9 @@ import skillbill.ports.workflow.decomposition.DecompositionManifestStore
 import skillbill.workflow.NoopGoalPlanningPreparationEnvelopeValidator
 import skillbill.workflow.decomposition.model.DecompositionManifest
 import skillbill.workflow.decomposition.model.DecompositionSubtask
+import skillbill.workflow.decomposition.model.IssueKey
 import skillbill.workflow.decomposition.model.SpecSource
+import skillbill.workflow.engine.model.WorkflowId
 import skillbill.workflow.goal.model.GoalProgressEventKind
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseOutputValidator
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePlanningProjectionValidator
@@ -616,7 +617,13 @@ class GoalPlanningSweepPromptTest {
       status = "in_progress",
       currentSubtaskIntent = initial.currentSubtaskIntent.copy(action = "resume"),
       subtasks = initial.subtasks.map {
-        it.copy(status = "skipped", workflowId = "wfl-child", commitSha = "abc123", lastResumableStep = "pr")
+        it.copy(
+          status = "skipped",
+          workflowId =
+          WorkflowId("wfl-child"),
+          commitSha = "abc123",
+          lastResumableStep = "pr",
+        )
       },
     )
 
@@ -783,7 +790,7 @@ class GoalPlanningSweepPromptTest {
     val resumeManifest = initial.copy(
       subtasks = initial.subtasks.map { subtask ->
         if (subtask.id == 1) {
-          subtask.copy(status = "complete", commitSha = "sha-1", workflowId = "wfl-1")
+          subtask.copy(status = "complete", commitSha = "sha-1", workflowId = WorkflowId("wfl-1"))
         } else {
           subtask
         }
@@ -1110,7 +1117,7 @@ class GoalPlanningSweepPrepareAndResumeTest {
   fun `non-skipped subtask with an allocated workflow remains planning eligible`() {
     val harness = sweepHarness { phase, _, _ -> validPhaseOutcome(phase) }
     val allocated = manifest(subtaskCount = 1).let { manifest ->
-      manifest.copy(subtasks = manifest.subtasks.map { it.copy(workflowId = "wfl-child") })
+      manifest.copy(subtasks = manifest.subtasks.map { it.copy(workflowId = WorkflowId("wfl-child")) })
     }
 
     val outcome = harness.sweep.prepare(harness.stateFor(allocated), harness.request())
@@ -1717,7 +1724,7 @@ class GoalPlanningSweepRejectionTest {
       manifest = manifest(subtaskCount = 2),
     )
     val request = GoalRunnerRunRequest(
-      issueKey = "SKILL-56",
+      issueKey = IssueKey("SKILL-56"),
       repoRoot = Files.createTempDirectory("goal-planning-sweep"),
       invokedAgentId = "claude",
       dbPathOverride = "/fake/goal-planning-sweep-preparations.db",
@@ -2900,17 +2907,17 @@ private class InMemoryPreparationDatabase(
   val repository = InMemoryPreparationRepository(markPreparedThrows, planCheckpointThrows)
   private val dbPath = Path.of("/fake/goal-planning-sweep-preparations.db")
 
-  override fun resolveDbPath(dbOverride: String?): Path = dbPath
-  override fun databaseExists(dbOverride: String?): Boolean = true
+  override fun resolveDbPath(): Path = dbPath
+  override fun databaseExists(): Boolean = true
 
   @Synchronized
-  override fun <T> read(dbOverride: String?, block: (UnitOfWork) -> T): T = block(unitOfWork())
+  override fun <T> read(block: (UnitOfWork) -> T): T = block(unitOfWork())
 
   @Synchronized
-  override fun <T> selfManagedWrite(dbOverride: String?, block: (UnitOfWork) -> T): T = transaction(dbOverride, block)
+  override fun <T> selfManagedWrite(block: (UnitOfWork) -> T): T = transaction(block)
 
   @Synchronized
-  override fun <T> transaction(dbOverride: String?, block: (UnitOfWork) -> T): T = block(unitOfWork())
+  override fun <T> transaction(block: (UnitOfWork) -> T): T = block(unitOfWork())
 
   private fun unitOfWork(): UnitOfWork = object : UnitOfWorkDefaults() {
     override val dbPath: Path = this@InMemoryPreparationDatabase.dbPath
@@ -2943,7 +2950,7 @@ private data class SweepFixtures(
   )
 
   fun request(outputSink: AgentRunOutputSink = AgentRunOutputSink.NONE): GoalRunnerRunRequest = GoalRunnerRunRequest(
-    issueKey = "SKILL-56",
+    issueKey = IssueKey("SKILL-56"),
     repoRoot = repoRoot,
     invokedAgentId = "claude",
     dbPathOverride = dbOverride,

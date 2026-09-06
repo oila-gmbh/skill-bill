@@ -1,5 +1,4 @@
 package skillbill.application.goalrunner.findings
-
 import skillbill.error.InvalidUnaddressedFindingsLedgerSchemaError
 import skillbill.error.UnaddressedFindingsLedgerAbsentError
 import skillbill.goalrunner.model.ReviewFindingOutcomeRecord
@@ -18,6 +17,9 @@ import skillbill.ports.telemetry.TelemetryOutboxRepository
 import skillbill.ports.telemetry.TelemetryReconciliationRepository
 import skillbill.ports.work.WorkListRepository
 import skillbill.ports.workflow.WorkflowStateRepository
+import skillbill.workflow.decomposition.model.IssueKey
+import skillbill.workflow.decomposition.model.SubtaskId
+import skillbill.workflow.engine.model.WorkflowId
 import java.nio.file.Path
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -45,8 +47,24 @@ class UnaddressedFindingsLedgerServiceTest {
   @Test
   fun `a valid ledger spans every subtask of the goal and accepts the writer issue-category vocabulary`() {
     val rows = listOf(
-      finding(subtaskId = 1, workflowId = "wf-1", ordinal = 1, severity = "major", category = "behavior_correctness"),
-      finding(subtaskId = 3, workflowId = "wf-3", ordinal = 1, severity = "minor", category = "data_persistence"),
+      finding(
+        subtaskId =
+        SubtaskId(1),
+        workflowId =
+        WorkflowId("wf-1"),
+        ordinal = 1,
+        severity = "major",
+        category = "behavior_correctness",
+      ),
+      finding(
+        subtaskId =
+        SubtaskId(3),
+        workflowId =
+        WorkflowId("wf-3"),
+        ordinal = 1,
+        severity = "minor",
+        category = "data_persistence",
+      ),
     )
     val service = serviceFor(InMemoryUnaddressedFindings(setOf("SKILL-135"), rows))
 
@@ -58,7 +76,14 @@ class UnaddressedFindingsLedgerServiceTest {
 
   @Test
   fun `a row outside the severity taxonomy raises the typed malformed error`() {
-    val malformed = finding(subtaskId = 1, workflowId = "wf-1", ordinal = 1, severity = "catastrophic")
+    val malformed = finding(
+      subtaskId =
+      SubtaskId(1),
+      workflowId =
+      WorkflowId("wf-1"),
+      ordinal = 1,
+      severity = "catastrophic",
+    )
     val service = serviceFor(InMemoryUnaddressedFindings(setOf("SKILL-135"), listOf(malformed)))
 
     assertFailsWith<InvalidUnaddressedFindingsLedgerSchemaError> { service.ledger("SKILL-135") }
@@ -66,7 +91,14 @@ class UnaddressedFindingsLedgerServiceTest {
 
   @Test
   fun `a row outside the issue-category vocabulary raises the typed malformed error`() {
-    val malformed = finding(subtaskId = 1, workflowId = "wf-1", ordinal = 1, category = "platform_correctness")
+    val malformed = finding(
+      subtaskId =
+      SubtaskId(1),
+      workflowId =
+      WorkflowId("wf-1"),
+      ordinal = 1,
+      category = "platform_correctness",
+    )
     val service = serviceFor(InMemoryUnaddressedFindings(setOf("SKILL-135"), listOf(malformed)))
 
     assertFailsWith<InvalidUnaddressedFindingsLedgerSchemaError> { service.ledger("SKILL-135") }
@@ -78,9 +110,33 @@ class UnaddressedFindingsLedgerServiceTest {
     // in the unaddressed-findings ledger without reopening implement_fix. Only Blocker
     // findings trigger the fix pass; Major, Minor, and Nit findings are ledger-only.
     val rows = listOf(
-      finding(subtaskId = 1, workflowId = "wf-1", ordinal = 1, severity = "blocker", category = "behavior_correctness"),
-      finding(subtaskId = 1, workflowId = "wf-1", ordinal = 2, severity = "major", category = "concurrency_lifecycle"),
-      finding(subtaskId = 1, workflowId = "wf-1", ordinal = 3, severity = "minor", category = "testing_quality_gate"),
+      finding(
+        subtaskId =
+        SubtaskId(1),
+        workflowId =
+        WorkflowId("wf-1"),
+        ordinal = 1,
+        severity = "blocker",
+        category = "behavior_correctness",
+      ),
+      finding(
+        subtaskId =
+        SubtaskId(1),
+        workflowId =
+        WorkflowId("wf-1"),
+        ordinal = 2,
+        severity = "major",
+        category = "concurrency_lifecycle",
+      ),
+      finding(
+        subtaskId =
+        SubtaskId(1),
+        workflowId =
+        WorkflowId("wf-1"),
+        ordinal = 3,
+        severity = "minor",
+        category = "testing_quality_gate",
+      ),
     )
     val service = serviceFor(InMemoryUnaddressedFindings(setOf("SKILL-135"), rows))
 
@@ -110,7 +166,7 @@ class UnaddressedFindingsLedgerServiceTest {
     severity: String = "minor",
     category: String = "behavior_correctness",
   ) = UnaddressedFinding(
-    issueKey = "SKILL-135",
+    issueKey = IssueKey("SKILL-135"),
     subtaskId = subtaskId,
     workflowId = workflowId,
     reviewPassNumber = 1,
@@ -150,15 +206,15 @@ private class InMemoryUnaddressedFindings(
 private class LedgerOnlySessionFactory(
   private val findings: UnaddressedFindingsRepository,
 ) : DatabaseSessionFactory {
-  override fun resolveDbPath(dbOverride: String?): Path = Path.of("/fake/runtime.db")
+  override fun resolveDbPath(): Path = Path.of("/fake/runtime.db")
 
-  override fun databaseExists(dbOverride: String?): Boolean = true
+  override fun databaseExists(): Boolean = true
 
-  override fun <T> read(dbOverride: String?, block: (UnitOfWork) -> T): T = block(unit())
+  override fun <T> read(block: (UnitOfWork) -> T): T = block(unit())
 
-  override fun <T> selfManagedWrite(dbOverride: String?, block: (UnitOfWork) -> T): T = transaction(dbOverride, block)
+  override fun <T> selfManagedWrite(block: (UnitOfWork) -> T): T = transaction(block)
 
-  override fun <T> transaction(dbOverride: String?, block: (UnitOfWork) -> T): T = block(unit())
+  override fun <T> transaction(block: (UnitOfWork) -> T): T = block(unit())
 
   private fun unit(): UnitOfWork = object : UnitOfWorkDefaults() {
     override val dbPath: Path = Path.of("/fake/runtime.db")

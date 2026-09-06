@@ -3,6 +3,8 @@ package skillbill.goalrunner
 import skillbill.boundary.OpenBoundaryMap
 import skillbill.goalrunner.model.GoalObservabilityProgressInput
 import skillbill.goalrunner.model.GoalObservabilityRuntimeEventInput
+import skillbill.workflow.decomposition.model.IssueKey
+import skillbill.workflow.decomposition.model.SubtaskId
 import skillbill.workflow.goal.GoalObservabilityEventValidator
 import skillbill.workflow.goal.model.GOAL_OBSERVABILITY_LATEST_EVENT_ARTIFACT_KEY
 import skillbill.workflow.goal.model.GOAL_OBSERVABILITY_RUN_HISTORY_ARTIFACT_KEY
@@ -12,8 +14,8 @@ import skillbill.workflow.goal.model.goalObservabilityHistoryFromArtifacts
 object GoalObservabilityArtifacts {
   private data class RequiredProgressFields(
     val progressEvent: Map<*, *>,
-    val issueKey: String,
-    val subtaskId: Int,
+    val issueKey: IssueKey,
+    val subtaskId: SubtaskId,
     val timestamp: String,
   )
 
@@ -70,8 +72,8 @@ object GoalObservabilityArtifacts {
   private fun requiredProgressFields(input: GoalObservabilityProgressInput): RequiredProgressFields? {
     val progressEvent = input.artifacts["progress_event"] as? Map<*, *>
     val continuation = input.artifacts["goal_continuation"] as? Map<*, *>
-    val issueKey = continuation?.get("issue_key")?.toString()?.takeIf(String::isNotBlank)
-    val subtaskId = continuation?.get("subtask_id").asGoalObservabilityIntOrNull()
+    val issueKey = continuation?.get("issue_key")?.toString()?.takeIf(String::isNotBlank)?.let(::IssueKey)
+    val subtaskId = continuation?.get("subtask_id").asGoalObservabilityIntOrNull()?.let(::SubtaskId)
     val timestamp = progressEvent?.get("timestamp")?.toString()?.takeIf(String::isNotBlank)
     return when {
       progressEvent == null -> null
@@ -85,8 +87,8 @@ object GoalObservabilityArtifacts {
   private fun eventFrom(
     input: GoalObservabilityProgressInput,
     progressEvent: Map<*, *>,
-    issueKey: String,
-    subtaskId: Int,
+    issueKey: IssueKey,
+    subtaskId: SubtaskId,
     timestamp: String,
   ): GoalObservabilityEvent {
     val kind = progressEvent["kind"]?.toString()?.takeIf(String::isNotBlank) ?: "durable_progress"

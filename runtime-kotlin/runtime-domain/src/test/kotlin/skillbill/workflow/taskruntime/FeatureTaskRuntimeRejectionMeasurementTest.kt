@@ -1,5 +1,5 @@
 package skillbill.workflow.taskruntime
-
+import skillbill.workflow.engine.model.WorkflowId
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRejectionMeasurement
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRejectionViolationClass
 import skillbill.workflow.taskruntime.model.featureTaskRuntimeRejectionCapOf
@@ -58,7 +58,7 @@ class FeatureTaskRuntimeRejectionMeasurementTest {
   fun `the emitted map carries the pointer and classification but never the offending value`() {
     val offendingValue = "the agent's verbose reconciliation narrative that overflowed the field"
     val map = FeatureTaskRuntimeRejectionMeasurement(
-      workflowId = "wftr-20260807-123754-11fb",
+      workflowId = WorkflowId("wftr-20260807-123754-11fb"),
       phaseId = "implement",
       iteration = 3,
       rule = "producer-projection",
@@ -84,7 +84,7 @@ class FeatureTaskRuntimeRejectionMeasurementTest {
   @Test
   fun `optional measures are omitted rather than emitted as nulls`() {
     val map = FeatureTaskRuntimeRejectionMeasurement(
-      workflowId = "wf-1",
+      workflowId = WorkflowId("wf-1"),
       phaseId = "audit",
       iteration = 1,
       rule = "phase-output-schema",
@@ -101,7 +101,7 @@ class FeatureTaskRuntimeRejectionMeasurementTest {
   fun `identity and counter fields loud-fail rather than emitting an unattributable row`() {
     assertFailsWith<IllegalArgumentException> {
       FeatureTaskRuntimeRejectionMeasurement(
-        workflowId = " ",
+        workflowId = WorkflowId(" "),
         phaseId = "implement",
         iteration = 1,
         rule = "producer-projection",
@@ -111,7 +111,7 @@ class FeatureTaskRuntimeRejectionMeasurementTest {
     }
     assertFailsWith<IllegalArgumentException> {
       FeatureTaskRuntimeRejectionMeasurement(
-        workflowId = "wf-1",
+        workflowId = WorkflowId("wf-1"),
         phaseId = "implement",
         iteration = 0,
         rule = "producer-projection",
@@ -121,7 +121,7 @@ class FeatureTaskRuntimeRejectionMeasurementTest {
     }
     assertFailsWith<IllegalArgumentException> {
       FeatureTaskRuntimeRejectionMeasurement(
-        workflowId = "wf-1",
+        workflowId = WorkflowId("wf-1"),
         phaseId = "implement",
         iteration = 1,
         rule = "producer-projection",

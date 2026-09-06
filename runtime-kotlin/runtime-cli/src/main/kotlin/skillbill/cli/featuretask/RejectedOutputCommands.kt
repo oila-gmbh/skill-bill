@@ -7,7 +7,6 @@ import com.github.ajalt.clikt.parameters.types.int
 import me.tatarka.inject.annotations.Inject
 import skillbill.application.diagnostics.RejectedOutputDiagnosticService
 import skillbill.cli.kernel.DocumentedCliCommand
-import skillbill.cli.model.CliRunInputs
 import skillbill.ports.db.DatabaseSessionFactory
 import skillbill.ports.diagnostics.RejectedOutputDiagnosticMetadataValidator
 import skillbill.ports.diagnostics.model.RejectedOutputDiagnostic
@@ -69,7 +68,6 @@ class RejectedOutputCleanupCommand(
 @Inject
 class RejectedOutputInspectCliCommand(
   private val database: DatabaseSessionFactory,
-  private val inputs: CliRunInputs,
   private val metadataValidator: RejectedOutputDiagnosticMetadataValidator,
   private val clock: Clock,
 ) : DocumentedCliCommand(
@@ -89,7 +87,7 @@ class RejectedOutputInspectCliCommand(
   ).flag(default = false)
 
   override fun run() {
-    database.selfManagedWrite(inputs.dbPathOverride) { unitOfWork ->
+    database.selfManagedWrite { unitOfWork ->
       RejectedOutputInspectCommand(unitOfWork.diagnosticService(metadataValidator, clock)).execute(
         RejectedOutputInspectRequest(workflowId, phaseId, attempt, rawOutput, repairTurn),
         System.out,
@@ -101,7 +99,6 @@ class RejectedOutputInspectCliCommand(
 @Inject
 class RejectedOutputCleanupCliCommand(
   private val database: DatabaseSessionFactory,
-  private val inputs: CliRunInputs,
   private val metadataValidator: RejectedOutputDiagnosticMetadataValidator,
   private val clock: Clock,
 ) : DocumentedCliCommand(
@@ -117,7 +114,7 @@ class RejectedOutputCleanupCliCommand(
   ).int()
 
   override fun run() {
-    val deleted = database.transaction(inputs.dbPathOverride) { unitOfWork ->
+    val deleted = database.transaction { unitOfWork ->
       RejectedOutputCleanupCommand(unitOfWork.diagnosticService(metadataValidator, clock)).execute(
         RejectedOutputCleanupRequest(workflowId, phaseId, attempt, repairTurn),
       )

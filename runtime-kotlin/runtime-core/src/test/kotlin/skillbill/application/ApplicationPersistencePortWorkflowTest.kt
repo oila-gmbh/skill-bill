@@ -1,5 +1,4 @@
 package skillbill.application
-
 import skillbill.application.featuretask.model.FeatureTaskRuntimePhaseLedgerRequest
 import skillbill.application.featuretask.model.FeatureTaskRuntimePhaseStateRequest
 import skillbill.application.workflow.model.WorkflowContinueResult
@@ -15,6 +14,7 @@ import skillbill.error.FeatureTaskRuntimeHandoffProjectionFailureKind
 import skillbill.error.InvalidFeatureTaskRuntimeHandoffProjectionContext
 import skillbill.error.InvalidFeatureTaskRuntimeHandoffProjectionError
 import skillbill.error.InvalidWorkflowStateSchemaError
+import skillbill.workflow.engine.model.SessionId
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_DELIVERED_PROJECTIONS_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_LEDGER_ARTIFACT_KEY
@@ -37,7 +37,12 @@ class ApplicationPersistencePortWorkflowTest {
     val database = FakeDatabaseSessionFactory(workflows = workflowRepository)
     val service = testWorkflowService(database)
 
-    val opened = service.openTestFeatureTask(WorkflowFamilyKind.TASK_RUNTIME, sessionId = "ftr-001", dbOverride = null)
+    val opened = service.openTestFeatureTask(
+      WorkflowFamilyKind.TASK_RUNTIME,
+      sessionId =
+      SessionId("ftr-001"),
+      dbOverride = null,
+    )
       as WorkflowOpenResult.Ok
     val workflowId = opened.workflowId
     val updated = service.update(
@@ -77,9 +82,19 @@ class ApplicationPersistencePortWorkflowTest {
     val database = FakeDatabaseSessionFactory(workflows = workflowRepository)
     val service = testWorkflowService(database)
 
-    val first = service.openTestFeatureTask(WorkflowFamilyKind.TASK_RUNTIME, sessionId = "ftr-001", dbOverride = null)
+    val first = service.openTestFeatureTask(
+      WorkflowFamilyKind.TASK_RUNTIME,
+      sessionId =
+      SessionId("ftr-001"),
+      dbOverride = null,
+    )
       as WorkflowOpenResult.Ok
-    val second = service.openTestFeatureTask(WorkflowFamilyKind.TASK_RUNTIME, sessionId = "ftr-002", dbOverride = null)
+    val second = service.openTestFeatureTask(
+      WorkflowFamilyKind.TASK_RUNTIME,
+      sessionId =
+      SessionId("ftr-002"),
+      dbOverride = null,
+    )
       as WorkflowOpenResult.Ok
 
     val got = service.get(WorkflowFamilyKind.TASK_RUNTIME, first.workflowId, dbOverride = null)
@@ -101,7 +116,12 @@ class ApplicationPersistencePortWorkflowTest {
     val service = testWorkflowService(database)
     val recorder = testPhaseRecorder(database)
 
-    val opened = service.openTestFeatureTask(WorkflowFamilyKind.TASK_RUNTIME, sessionId = "ftr-001", dbOverride = null)
+    val opened = service.openTestFeatureTask(
+      WorkflowFamilyKind.TASK_RUNTIME,
+      sessionId =
+      SessionId("ftr-001"),
+      dbOverride = null,
+    )
       as WorkflowOpenResult.Ok
     val workflowId = opened.workflowId
 
@@ -254,7 +274,7 @@ class ApplicationPersistencePortWorkflowTest {
     val service = testWorkflowService(database)
     val recorder = testPhaseRecorder(database)
     val workflowId = (
-      service.openTestFeatureTask(WorkflowFamilyKind.TASK_RUNTIME, sessionId = "ftr-001", dbOverride = null)
+      service.openTestFeatureTask(WorkflowFamilyKind.TASK_RUNTIME, sessionId = SessionId("ftr-001"), dbOverride = null)
         as WorkflowOpenResult.Ok
       ).workflowId
     val reason = "Use the operator-approved fresh-process isolation boundary."
@@ -326,7 +346,12 @@ class ApplicationPersistencePortWorkflowTest {
     val service = testWorkflowService(database)
     val recorder = testPhaseRecorder(database)
 
-    val opened = service.openTestFeatureTask(WorkflowFamilyKind.TASK_RUNTIME, sessionId = "ftr-001", dbOverride = null)
+    val opened = service.openTestFeatureTask(
+      WorkflowFamilyKind.TASK_RUNTIME,
+      sessionId =
+      SessionId("ftr-001"),
+      dbOverride = null,
+    )
       as WorkflowOpenResult.Ok
     val workflowId = opened.workflowId
 
@@ -368,7 +393,12 @@ class ApplicationPersistencePortWorkflowTest {
     val service = testWorkflowService(database)
     val recorder = testPhaseRecorder(database)
 
-    val opened = service.openTestFeatureTask(WorkflowFamilyKind.TASK_RUNTIME, sessionId = "ftr-001", dbOverride = null)
+    val opened = service.openTestFeatureTask(
+      WorkflowFamilyKind.TASK_RUNTIME,
+      sessionId =
+      SessionId("ftr-001"),
+      dbOverride = null,
+    )
       as WorkflowOpenResult.Ok
     val workflowId = opened.workflowId
 
@@ -413,7 +443,12 @@ class ApplicationPersistencePortWorkflowTest {
     val service = testWorkflowService(database)
     val recorder = testPhaseRecorder(database)
 
-    val opened = service.openTestFeatureTask(WorkflowFamilyKind.TASK_RUNTIME, sessionId = "ftr-001", dbOverride = null)
+    val opened = service.openTestFeatureTask(
+      WorkflowFamilyKind.TASK_RUNTIME,
+      sessionId =
+      SessionId("ftr-001"),
+      dbOverride = null,
+    )
       as WorkflowOpenResult.Ok
     val workflowId = opened.workflowId
 
@@ -439,7 +474,12 @@ class ApplicationPersistencePortWorkflowTest {
     val service = testWorkflowService(database)
     val recorder = testPhaseRecorder(database)
 
-    val opened = service.openTestFeatureTask(WorkflowFamilyKind.TASK_RUNTIME, sessionId = "ftr-001", dbOverride = null)
+    val opened = service.openTestFeatureTask(
+      WorkflowFamilyKind.TASK_RUNTIME,
+      sessionId =
+      SessionId("ftr-001"),
+      dbOverride = null,
+    )
       as WorkflowOpenResult.Ok
     val workflowId = opened.workflowId
 
@@ -458,7 +498,12 @@ class ApplicationPersistencePortWorkflowTest {
     val service = testWorkflowService(database)
     val recorder = testPhaseRecorder(database)
 
-    val opened = service.openTestFeatureTask(WorkflowFamilyKind.TASK_RUNTIME, sessionId = "ftr-001", dbOverride = null)
+    val opened = service.openTestFeatureTask(
+      WorkflowFamilyKind.TASK_RUNTIME,
+      sessionId =
+      SessionId("ftr-001"),
+      dbOverride = null,
+    )
       as WorkflowOpenResult.Ok
     val workflowId = opened.workflowId
 
@@ -501,7 +546,12 @@ class ApplicationPersistencePortWorkflowTest {
     val service = testWorkflowService(database)
     val recorder = testPhaseRecorder(database)
 
-    val opened = service.openTestFeatureTask(WorkflowFamilyKind.TASK_RUNTIME, sessionId = "ftr-001", dbOverride = null)
+    val opened = service.openTestFeatureTask(
+      WorkflowFamilyKind.TASK_RUNTIME,
+      sessionId =
+      SessionId("ftr-001"),
+      dbOverride = null,
+    )
       as WorkflowOpenResult.Ok
     val workflowId = opened.workflowId
 
@@ -533,7 +583,12 @@ class ApplicationPersistencePortWorkflowTest {
     val service = testWorkflowService(database)
     val recorder = testPhaseRecorder(database)
 
-    val opened = service.openTestFeatureTask(WorkflowFamilyKind.TASK_RUNTIME, sessionId = "ftr-001", dbOverride = null)
+    val opened = service.openTestFeatureTask(
+      WorkflowFamilyKind.TASK_RUNTIME,
+      sessionId =
+      SessionId("ftr-001"),
+      dbOverride = null,
+    )
       as WorkflowOpenResult.Ok
     val workflowId = opened.workflowId
 
@@ -558,7 +613,12 @@ class ApplicationPersistencePortWorkflowTest {
     val service = testWorkflowService(database)
     val recorder = testPhaseRecorder(database)
 
-    val opened = service.openTestFeatureTask(WorkflowFamilyKind.TASK_RUNTIME, sessionId = "ftr-001", dbOverride = null)
+    val opened = service.openTestFeatureTask(
+      WorkflowFamilyKind.TASK_RUNTIME,
+      sessionId =
+      SessionId("ftr-001"),
+      dbOverride = null,
+    )
       as WorkflowOpenResult.Ok
     val workflowId = opened.workflowId
 

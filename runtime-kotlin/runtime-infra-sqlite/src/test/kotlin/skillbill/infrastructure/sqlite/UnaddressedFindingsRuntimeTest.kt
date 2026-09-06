@@ -1,11 +1,14 @@
 package skillbill.infrastructure.sqlite
-
 import skillbill.db.core.DatabaseRuntime
 import skillbill.goalrunner.model.ReviewFindingOutcome
 import skillbill.goalrunner.model.ReviewFindingOutcomeRecord
 import skillbill.goalrunner.model.UnaddressedFinding
 import skillbill.review.model.ReviewClaimVerdict.REFUTED
 import skillbill.review.model.ReviewFindingCitation
+import skillbill.review.model.ReviewRunId
+import skillbill.workflow.decomposition.model.IssueKey
+import skillbill.workflow.decomposition.model.SubtaskId
+import skillbill.workflow.engine.model.WorkflowId
 import java.nio.file.Files
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -88,7 +91,12 @@ class UnaddressedFindingsRuntimeTest {
     val dbPath = Files.createTempDirectory("unaddressed-findings-sibling").resolve("runtime.db")
     DatabaseRuntime.ensureDatabase(dbPath).use { connection ->
       val repository = SQLiteUnaddressedFindingsRepository(connection)
-      val sibling = finding(1, "major", "src/Sibling.kt:3").copy(workflowId = "workflow-2", subtaskId = 2)
+      val sibling = finding(1, "major", "src/Sibling.kt:3").copy(
+        workflowId =
+        WorkflowId("workflow-2"),
+        subtaskId =
+        SubtaskId(2),
+      )
       repository.replaceLedgerForPass("workflow-1", 1, listOf(finding(1, "blocker", "src/First.kt:7")))
       repository.replaceLedgerForPass("workflow-2", 1, listOf(sibling))
 
@@ -103,7 +111,12 @@ class UnaddressedFindingsRuntimeTest {
     val dbPath = Files.createTempDirectory("unaddressed-findings-clear-workflow").resolve("runtime.db")
     DatabaseRuntime.ensureDatabase(dbPath).use { connection ->
       val repository = SQLiteUnaddressedFindingsRepository(connection)
-      val sibling = finding(1, "major", "src/Sibling.kt:3").copy(workflowId = "workflow-2", subtaskId = 2)
+      val sibling = finding(1, "major", "src/Sibling.kt:3").copy(
+        workflowId =
+        WorkflowId("workflow-2"),
+        subtaskId =
+        SubtaskId(2),
+      )
       repository.replaceLedgerForPass("workflow-1", 1, listOf(finding(1, "blocker", "src/First.kt:7")))
       repository.replaceLedgerForPass(
         "workflow-1",
@@ -126,7 +139,7 @@ class UnaddressedFindingsRuntimeTest {
     DatabaseRuntime.ensureDatabase(dbPath).use { connection ->
       val repository = SQLiteUnaddressedFindingsRepository(connection)
       val keyed = finding(1, "blocker", "src/First.kt:7").copy(
-        reviewRunId = "rvw-1",
+        reviewRunId = ReviewRunId("rvw-1"),
         findingId = "F-001",
         claimVerdict = REFUTED,
         citations = listOf(ReviewFindingCitation("src/First.kt", 7)),
@@ -287,9 +300,9 @@ class UnaddressedFindingsRuntimeTest {
   }
 
   private fun finding(ordinal: Int, severity: String, location: String) = UnaddressedFinding(
-    issueKey = "SKILL-135",
-    subtaskId = 3,
-    workflowId = "workflow-1",
+    issueKey = IssueKey("SKILL-135"),
+    subtaskId = SubtaskId(3),
+    workflowId = WorkflowId("workflow-1"),
     reviewPassNumber = 1,
     findingOrdinal = ordinal,
     severity = severity,

@@ -1,8 +1,9 @@
 package skillbill.launcher
-
 import skillbill.launcher.agentrun.AgentRunOutputDecoder
 import skillbill.launcher.agentrun.CursorAgentRunCommandBuilder
 import skillbill.ports.agentrun.model.SkillRunRequest
+import skillbill.workflow.decomposition.model.IssueKey
+import skillbill.workflow.decomposition.model.SubtaskId
 import java.nio.file.Path
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -100,9 +101,9 @@ class CursorAgentRunTransportTest {
   }
 
   private fun request(): SkillRunRequest = SkillRunRequest(
-    issueKey = "SKILL-113",
+    issueKey = IssueKey("SKILL-113"),
     repoRoot = Path.of("/tmp/skillbill-agent-run"),
-    subtaskId = 1,
+    subtaskId = SubtaskId(1),
     timeout = 3.seconds,
     promptOverride = "Phase: implement",
   )

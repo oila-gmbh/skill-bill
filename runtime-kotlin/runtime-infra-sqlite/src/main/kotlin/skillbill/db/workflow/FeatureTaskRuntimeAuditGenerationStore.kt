@@ -1,8 +1,8 @@
 package skillbill.db.workflow
-
 import skillbill.db.telemetry.bind
 import skillbill.ports.featuretask.FeatureTaskRuntimeAuditGenerationRepository
 import skillbill.ports.featuretask.model.FeatureTaskRuntimeAuditGenerationRow
+import skillbill.workflow.engine.model.WorkflowId
 import java.sql.Connection
 
 /**
@@ -35,7 +35,7 @@ internal class FeatureTaskRuntimeAuditGenerationStore(
     }
   }
 
-  override fun listOrdered(workflowId: String): List<FeatureTaskRuntimeAuditGenerationRow> =
+  override fun listOrdered(workflowId: WorkflowId): List<FeatureTaskRuntimeAuditGenerationRow> =
     connection.prepareStatement(
       """
       SELECT workflow_id, generation_ordinal, repository_checkpoint, contract_version, generation_json
@@ -50,7 +50,7 @@ internal class FeatureTaskRuntimeAuditGenerationStore(
           while (rows.next()) {
             add(
               FeatureTaskRuntimeAuditGenerationRow(
-                workflowId = rows.getString("workflow_id"),
+                workflowId = WorkflowId(rows.getString("workflow_id")),
                 generationOrdinal = rows.getInt("generation_ordinal"),
                 repositoryCheckpoint = rows.getString("repository_checkpoint"),
                 contractVersion = rows.getString("contract_version"),
@@ -62,7 +62,7 @@ internal class FeatureTaskRuntimeAuditGenerationStore(
       }
     }
 
-  override fun quarantineAll(workflowId: String): Int = connection.prepareStatement(
+  override fun quarantineAll(workflowId: WorkflowId): Int = connection.prepareStatement(
     "DELETE FROM feature_task_runtime_audit_generations WHERE workflow_id = ?",
   ).use { statement ->
     statement.setString(1, workflowId)

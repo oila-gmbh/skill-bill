@@ -345,10 +345,10 @@ private fun reviewInputFailure(
 }
 
 private val isDefinitiveMissingObject: (WorkflowGitOperationResult) -> Boolean =
-  { result -> result.status == "error" && result.error.contains("exit code 128") }
+  { result -> result is WorkflowGitOperationResult.Failed && result.error.contains("exit code 128") }
 
 private val isDefinitiveNonAncestor: (WorkflowGitOperationResult) -> Boolean =
-  { result -> result.status == "error" && result.error.contains("exit code 1") }
+  { result -> result is WorkflowGitOperationResult.Failed && result.error.contains("exit code 1") }
 
 private fun GoalReviewInputMaterial.toSnapshot(): GoalReviewInputSnapshot = GoalReviewInputSnapshot(
   branch = requireNotNull(branch),

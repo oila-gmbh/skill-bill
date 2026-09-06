@@ -1,7 +1,9 @@
 package skillbill.ports.featuretask.model
 
+import skillbill.workflow.engine.model.WorkflowId
+
 data class FeatureTaskPhaseSettlement(
-  val workflowId: String,
+  val workflowId: WorkflowId,
   val phaseId: String,
   val attempt: Int,
   val kind: String,
@@ -9,7 +11,7 @@ data class FeatureTaskPhaseSettlement(
   val recordedAt: String,
 ) {
   init {
-    require(workflowId.isNotBlank()) { "workflowId must be non-blank." }
+    require(workflowId.value.isNotBlank()) { "workflowId must be non-blank." }
     require(phaseId.isNotBlank()) { "phaseId must be non-blank." }
     require(attempt >= 1) { "attempt must be >= 1." }
     require(kind.isNotBlank()) { "kind must be non-blank." }

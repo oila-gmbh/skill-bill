@@ -177,7 +177,6 @@ class InstallApplyCommand(
 
   private fun telemetryLevelMutator(plan: InstallPlan): TelemetryLevelMutator {
     val reboundContext = RuntimeContext(
-      dbPathOverride = inputs.dbPathOverride,
       userHome = plan.request.home.toPath(),
     )
     return RuntimeComponent::class.create(reboundContext).telemetryLevelMutator

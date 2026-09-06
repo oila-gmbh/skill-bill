@@ -9,8 +9,8 @@ import skillbill.workflow.engine.model.WorkflowStateSnapshot
 object WorkflowStateSnapshotWireMapper {
   @OpenBoundaryMap("Canonical workflow-state snapshot map at the schema-validation seam")
   fun wireMap(snapshot: WorkflowStateSnapshot): Map<String, Any?> = linkedMapOf<String, Any?>(
-    "workflow_id" to snapshot.workflowId,
-    "session_id" to snapshot.sessionId.orEmpty(),
+    "workflow_id" to snapshot.workflowId.value,
+    "session_id" to snapshot.sessionId.value,
     "workflow_name" to snapshot.workflowName,
     "contract_version" to snapshot.contractVersion,
     "workflow_status" to snapshot.workflowStatus,

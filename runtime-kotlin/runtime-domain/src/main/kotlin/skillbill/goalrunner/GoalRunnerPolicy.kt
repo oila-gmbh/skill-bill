@@ -1,5 +1,4 @@
 package skillbill.goalrunner
-
 import skillbill.goalrunner.model.GoalRunnerLaunchFacts
 import skillbill.goalrunner.model.GoalRunnerLivenessSnapshot
 import skillbill.goalrunner.model.GoalRunnerReconciledOutcome
@@ -16,12 +15,13 @@ import skillbill.goalrunner.model.GoalRunnerWorkerSubtaskSchedulingResult
 import skillbill.workflow.decomposition.model.DecompositionDependency
 import skillbill.workflow.decomposition.model.DecompositionManifest
 import skillbill.workflow.decomposition.model.DecompositionSubtask
+import skillbill.workflow.decomposition.model.SubtaskId
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeQualityGateSelection
 
 object GoalRunnerQualityGateSelectionResolver {
-  fun resolve(manifest: DecompositionManifest, subtaskId: Int): FeatureTaskRuntimeQualityGateSelection {
+  fun resolve(manifest: DecompositionManifest, subtaskId: SubtaskId): FeatureTaskRuntimeQualityGateSelection {
     val lastNonSkippedId = manifest.subtasks.lastOrNull { it.status != "skipped" }?.id
-    return if (lastNonSkippedId == subtaskId) {
+    return if (lastNonSkippedId?.toString() == subtaskId.value.toString()) {
       FeatureTaskRuntimeQualityGateSelection.VALIDATE
     } else {
       FeatureTaskRuntimeQualityGateSelection.BUILD
@@ -32,8 +32,8 @@ object GoalRunnerQualityGateSelectionResolver {
 object GoalRunnerPlanner {
   fun selectNext(manifest: DecompositionManifest): GoalRunnerSelection {
     val intended = manifest.currentSubtaskIntent.subtaskId
-      .takeIf { it > 0 }
-      ?.let { id -> manifest.subtasks.firstOrNull { it.id == id } }
+      .takeIf { it.toString().toInt() > 0 }
+      ?.let { id -> manifest.subtasks.firstOrNull { it.id.toString() == id.toString() } }
     val candidate = intended?.takeUnless { it.status in setOf("complete", "skipped") }
       ?: manifest.subtasks.firstOrNull { it.status == "in_progress" }
       ?: manifest.subtasks.firstOrNull { it.status == "blocked" }
@@ -111,7 +111,7 @@ object GoalRunnerWorkerSubtaskScheduler {
 
   private fun GoalRunnerWorkerSubtaskRequest.toSubtask(manifest: DecompositionManifest): DecompositionSubtask {
     val id = manifest.nextSubtaskId()
-    val dependencies = normalizedDependencies(manifest).map(::DecompositionDependency)
+    val dependencies = normalizedDependencies(manifest).map { DecompositionDependency(SubtaskId(it)) }
     return DecompositionSubtask(
       id = id,
       name = name,
@@ -123,10 +123,10 @@ object GoalRunnerWorkerSubtaskScheduler {
 
   private fun GoalRunnerWorkerSubtaskRequest.normalizedDependencies(manifest: DecompositionManifest): List<Int> {
     val requestedDependencies = dependsOnSubtaskIds.ifEmpty {
-      manifest.currentSubtaskIntent.subtaskId.takeIf { it > 0 }?.let(::listOf).orEmpty()
+      manifest.currentSubtaskIntent.subtaskId.value.takeIf { it > 0 }?.let(::listOf).orEmpty()
     }
     return requestedDependencies
-      .filter { dependency -> manifest.subtasks.any { subtask -> subtask.id == dependency } }
+      .filter { dependency -> manifest.subtasks.any { subtask -> subtask.id.toString().toInt() == dependency } }
       .distinct()
   }
 
@@ -140,7 +140,7 @@ object GoalRunnerWorkerSubtaskScheduler {
 
 object GoalRunnerOutcomeReconciler {
   fun reconcile(
-    subtaskId: Int,
+    subtaskId: SubtaskId,
     launchFacts: GoalRunnerLaunchFacts,
     storedOutcome: GoalRunnerStoredOutcome?,
   ): GoalRunnerReconciledOutcome = when {
@@ -182,7 +182,7 @@ object GoalRunnerOutcomeReconciler {
   }
 
   private fun reconcileStoredOutcome(
-    subtaskId: Int,
+    subtaskId: SubtaskId,
     storedOutcome: GoalRunnerStoredOutcome,
     liveness: GoalRunnerLivenessSnapshot?,
   ): GoalRunnerReconciledOutcome = when (storedOutcome.status) {
@@ -238,7 +238,10 @@ object GoalRunnerOutcomeReconciler {
     )
   }
 
-  private fun completeOutcome(subtaskId: Int, storedOutcome: GoalRunnerStoredOutcome): GoalRunnerReconciledOutcome {
+  private fun completeOutcome(
+    subtaskId: SubtaskId,
+    storedOutcome: GoalRunnerStoredOutcome,
+  ): GoalRunnerReconciledOutcome {
     val commitSha = storedOutcome.commitSha
     return if (commitSha.isNullOrBlank()) {
       stop(
@@ -255,7 +258,7 @@ object GoalRunnerOutcomeReconciler {
     }
   }
 
-  private fun noTerminalStoreOutcomeReason(subtaskId: Int, launchFacts: GoalRunnerLaunchFacts): String {
+  private fun noTerminalStoreOutcomeReason(subtaskId: SubtaskId, launchFacts: GoalRunnerLaunchFacts): String {
     val exitStatus = launchFacts.exitStatus
     val lead = when {
       exitStatus != null && exitStatus != 0 ->

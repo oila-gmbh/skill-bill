@@ -1,9 +1,9 @@
 package skillbill.cli
-
 import skillbill.cli.core.CliRuntime
 import skillbill.ports.agentrun.AgentRunLauncher
 import skillbill.ports.agentrun.model.AgentRunLaunchOutcome
 import skillbill.ports.agentrun.model.AgentRunLaunchRequest
+import skillbill.workflow.decomposition.model.IssueKey
 import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.test.Test
@@ -33,7 +33,7 @@ class CliGoalStatusDatabaseFailureTest {
     val fixture = goalFixture(subtaskCount = 2)
 
     val healthy = monitorStatus(fixture, dbPath = fixture.dbPath)
-    val notFound = monitorStatus(fixture, dbPath = fixture.dbPath, issueKey = "SKILL-902")
+    val notFound = monitorStatus(fixture, dbPath = fixture.dbPath, issueKey = IssueKey("SKILL-902"))
     val failure = monitorStatus(fixture, dbPath = unopenableDatabasePath(fixture.tempDir))
 
     assertEquals(0, healthy.exitCode, healthy.stdout)

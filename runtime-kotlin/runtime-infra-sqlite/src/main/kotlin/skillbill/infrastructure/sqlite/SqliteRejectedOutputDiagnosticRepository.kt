@@ -1,5 +1,5 @@
 package skillbill.infrastructure.sqlite
-
+import skillbill.agent.model.AgentId
 import skillbill.error.InvalidProducerOutputEvidenceSchemaError
 import skillbill.ports.diagnostics.RejectedOutputDiagnosticRepository
 import skillbill.ports.diagnostics.model.ProducerOutputEvidence
@@ -9,6 +9,7 @@ import skillbill.ports.diagnostics.model.RejectedOutputDiagnosticRecord
 import skillbill.ports.diagnostics.model.RejectedOutputDiagnosticSelector
 import skillbill.ports.diagnostics.model.RejectedOutputLifecycle
 import skillbill.ports.diagnostics.model.evidenceKey
+import skillbill.workflow.engine.model.WorkflowId
 import java.sql.Connection
 import java.sql.PreparedStatement
 import java.sql.ResultSet
@@ -39,14 +40,14 @@ class SqliteRejectedOutputDiagnosticRepository(
         val metadata = record.metadata
         var index = 1
         statement.setString(index++, metadata.identity)
-        statement.setString(index++, metadata.workflowId)
+        statement.setString(index++, metadata.workflowId.value)
         statement.setString(index++, metadata.phaseId)
         statement.setInt(index++, metadata.attempt)
         statement.setInt(index++, metadata.repairTurn)
         statement.setString(index++, metadata.rule)
         statement.setString(index++, metadata.path)
         statement.setString(index++, metadata.reason)
-        statement.setString(index++, metadata.agentId)
+        statement.setString(index++, metadata.agentId.value)
         statement.setString(index++, metadata.model)
         statement.setString(index++, metadata.recordedAt.toString())
         statement.setLong(index++, metadata.byteSize)
@@ -113,12 +114,12 @@ class SqliteRejectedOutputDiagnosticRepository(
         """.trimIndent(),
       ).use {
         var index = 1
-        it.setString(index++, evidence.workflowId)
+        it.setString(index++, evidence.workflowId.value)
         it.setString(index++, evidence.phaseId)
         it.setInt(index++, evidence.generation)
         it.setInt(index++, evidence.attempt)
         it.setInt(index++, evidence.repairTurn)
-        it.setString(index++, evidence.agentId)
+        it.setString(index++, evidence.agentId.value)
         it.setString(index++, evidence.model)
         it.setString(index++, evidence.recordedAt.toString())
         it.setLong(index++, evidence.byteSize)
@@ -128,10 +129,10 @@ class SqliteRejectedOutputDiagnosticRepository(
       }
       val retained = connection.queryProducerEvidence(
         ProducerEvidenceLookup(
-          workflowId = evidence.workflowId,
+          workflowId = evidence.workflowId.value,
           phaseId = evidence.phaseId,
           attempt = evidence.attempt,
-          agentId = evidence.agentId,
+          agentId = evidence.agentId.value,
           generation = evidence.generation,
           exactGeneration = true,
           repairTurn = evidence.repairTurn,
@@ -146,18 +147,18 @@ class SqliteRejectedOutputDiagnosticRepository(
   }
 
   override fun readProducerOutput(
-    workflowId: String,
+    workflowId: WorkflowId,
     phaseId: String,
     attempt: Int,
-    agentId: String,
+    agentId: AgentId,
     generation: Int,
   ): ProducerOutputEvidence? = persistence("read-producer-output") {
     connection.queryProducerEvidence(
       ProducerEvidenceLookup(
-        workflowId = workflowId,
+        workflowId = workflowId.value,
         phaseId = phaseId,
         attempt = attempt,
-        agentId = agentId,
+        agentId = agentId.value,
         generation = generation,
         exactGeneration = false,
         // Null means "whichever repair turn is newest": a consumer resolving a producer's evidence
@@ -197,7 +198,7 @@ private fun RejectedOutputDiagnosticSelector.whereClause(): String = buildList {
 
 private fun RejectedOutputDiagnosticSelector.bind(statement: PreparedStatement) {
   var index = 1
-  statement.setString(index++, workflowId)
+  statement.setString(index++, workflowId.value)
   phaseId?.let { statement.setString(index++, it) }
   attempt?.let { statement.setInt(index++, it) }
   repairTurn?.let { statement.setInt(index, it) }
@@ -221,13 +222,13 @@ private fun ResultSet.toRecord(): RejectedOutputDiagnosticRecord {
     RejectedOutputDiagnosticRecord(
       metadata = RejectedOutputDiagnostic(
         identity = identity,
-        workflowId = getString("workflow_id"),
+        workflowId = WorkflowId(getString("workflow_id")),
         phaseId = getString("phase_id"),
         attempt = getInt("attempt"),
         rule = getString("rule"),
         path = getString("rejection_path"),
         reason = getString("reason"),
-        agentId = getString("agent_id"),
+        agentId = AgentId(getString("agent_id")),
         model = getString("model"),
         recordedAt = Instant.parse(getString("recorded_at")),
         byteSize = getLong("byte_size"),
@@ -306,10 +307,10 @@ private fun ResultSet.toProducerEvidence(): ProducerOutputEvidence {
     )
   }
   return ProducerOutputEvidence(
-    workflowId = workflowId,
+    workflowId = WorkflowId(workflowId),
     phaseId = phaseId,
     attempt = attempt,
-    agentId = getString("agent_id"),
+    agentId = AgentId(getString("agent_id")),
     model = getString("model"),
     recordedAt = Instant.parse(getString("recorded_at")),
     byteSize = getLong("byte_size"),

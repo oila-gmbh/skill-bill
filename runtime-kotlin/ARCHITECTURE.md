@@ -2017,6 +2017,30 @@ _None — placeholder._
 <!-- skill-52-2-inventory:end -->
 # Native-agent installation integrity
 
+# Typed boundary identifiers
+
+`WorkflowId`, `SessionId`, `IssueKey`, `SubtaskId`, `ReviewRunId`, and `AgentId` are domain value
+classes. Identifier strings enter through CLI option parsing, MCP payload parsing, SQLite column
+mapping, or actual contracts DTO mapping. Identity creation wraps the existing generator output
+once and returns the typed value. SQLite mappings use the numeric representation for `SubtaskId`;
+the other five use their existing scalar strings. The architecture census scans runtime-ports and
+runtime-application main signatures, including prefixed aliases, nullable and generic forms,
+callbacks, multiline declarations, inferred identity returns, and known primitive aliases. Domain
+and application conversion helpers, direct serializer inputs, and implicit rendering sites remain
+review evidence rather than conversion roots.
+
+# Open status-family fields
+
+Status-family fields with values authored by an external pack remain open boundaries and are
+inventoried with their producer and reason. Closed runtime-owned status, mode, kind, phase, and
+outcome fields use domain enums or sealed types.
+
+# Wire vocabulary
+
+Runtime-domain wire-token declarations own closed enum tokens and their aliases. Runtime-contracts
+`*Keys` declarations own durable and wire payload keys. `WireVocabularyArchitectureTest` checks
+that declarations are unique and that production code does not restate token sets.
+
 Native-agent rendering promotes artifacts atomically into the installed cache and records each
 Skill Bill-managed link in the user-home `.skill-bill/native-agent-link-inventory.json`. The inventory stores
 the logical worker name, provider, installed path, cache target, and content digest. Reconciliation

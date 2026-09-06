@@ -1700,3 +1700,12 @@ Consequence: the remaining 19 ports/application basename pairs stay. Twelve of t
 the `FileLocation` migration.
 Revisit when: `FileLocation` lands — then re-run the pair census and expect the twelve
 decomposition pairs to collapse in one move.
+
+**(f) Typed boundary identifiers render through `toString()` outside conversion roots.**
+The six runtime-domain value classes expose their raw value for CLI, MCP, SQLite, and contract
+mapping boundaries; filesystem, HTTP, telemetry, and logging paths render identifiers through
+their `toString()` contract so conversion remains at the declared edges.
+
+**(g) Shared wire tokens have one declaration home.**
+When more than one closed enum emits the same token, the token is declared once in the owning
+workflow-domain vocabulary and enum `wireValue` properties reference that declaration.

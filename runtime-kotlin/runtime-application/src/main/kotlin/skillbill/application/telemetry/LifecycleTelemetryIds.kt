@@ -1,5 +1,6 @@
 package skillbill.application.telemetry
 
+import skillbill.workflow.engine.model.SessionId
 import java.security.SecureRandom
 import java.time.OffsetDateTime
 import java.time.ZoneOffset
@@ -11,8 +12,8 @@ private val sessionIdTimestampFormatter: DateTimeFormatter = DateTimeFormatter.o
 private val suffixChars = "abcdefghijklmnopqrstuvwxyz0123456789".toCharArray()
 private val random = SecureRandom()
 
-fun generateLifecycleSessionId(prefix: String): String {
+fun generateLifecycleSessionId(prefix: String): SessionId {
   val timestamp = OffsetDateTime.now(ZoneOffset.UTC).format(sessionIdTimestampFormatter)
   val suffix = CharArray(SESSION_SUFFIX_LENGTH) { suffixChars[random.nextInt(suffixChars.size)] }.concatToString()
-  return "$prefix-$timestamp-$suffix"
+  return SessionId("$prefix-$timestamp-$suffix")
 }

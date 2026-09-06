@@ -1,5 +1,8 @@
 package skillbill.application.featuretask
 
+import skillbill.workflow.engine.model.WorkflowId
+import skillbill.agent.model.AgentId
+
 import skillbill.application.featuretask.model.FeatureTaskRuntimePhaseLaunchBriefing
 import skillbill.application.featuretask.model.FeatureTaskRuntimeProjectionRejection
 import skillbill.application.review.toProjectionPayload
@@ -47,11 +50,9 @@ object FeatureTaskRuntimeRunLoopLaunch {
     if (run.phaseId != FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VERIFY_FINDINGS) return ""
     val checkpoint = runLoop.recorder.loadFindingVerificationCheckpoint(
       run.request.workflowId,
-      run.request.dbPathOverride,
     )
     val boundarySelection = runLoop.recorder.loadFindingVerificationBoundarySelection(
       run.request.workflowId,
-      run.request.dbPathOverride,
     )?.takeIf { it.isNotEmpty() }
     val resolution = runLoop.phaseGates.specIntentProjectionResolver.resolve(
       SpecIntentProjectionResolveRequest(
@@ -272,7 +273,6 @@ object FeatureTaskRuntimeRunLoopLaunch {
         skillRunRequest = SkillRunRequest(
           issueKey = run.request.issueKey,
           repoRoot = run.request.repoRoot,
-          dbPathOverride = run.request.dbPathOverride,
           timeout = run.request.timeout,
           modelOverride = launched.modelOverride,
           effortOverride = launched.effortOverride,
@@ -284,7 +284,6 @@ object FeatureTaskRuntimeRunLoopLaunch {
           activityStampSink = runLoop.activityStampWriter.sink(
             workflowId = run.request.workflowId,
             parentWorkflowId = run.request.goalContinuation?.parentWorkflowId,
-            dbOverride = run.request.dbPathOverride,
           ),
         ),
       ),
@@ -440,7 +439,6 @@ object FeatureTaskRuntimeRunLoopLaunch {
         failureClassification = classification,
         sourceLabel = sourceLabel,
       ),
-      run.request.dbPathOverride,
     )
   }
 

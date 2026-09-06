@@ -1,5 +1,4 @@
 package skillbill.application.review
-
 import me.tatarka.inject.annotations.Inject
 import skillbill.application.decomposition.repoRelativePath
 import skillbill.contracts.issuekey.issueKeyFromBranch
@@ -15,6 +14,7 @@ import skillbill.workflow.decomposition.DecompositionManifestValidator
 import skillbill.workflow.decomposition.model.DecompositionManifest
 import skillbill.workflow.decomposition.model.DecompositionManifestValidationResult
 import skillbill.workflow.decomposition.model.DecompositionSubtask
+import skillbill.workflow.decomposition.model.IssueKey
 import java.nio.file.Path
 
 @Inject
@@ -48,7 +48,7 @@ class SpecIntentProjectionResolver(
 
   private fun resolveManifest(
     request: SpecIntentProjectionResolveRequest,
-    issueKey: String?,
+    issueKey: IssueKey?,
     degradations: MutableList<SpecIntentDegradationRecord>,
   ): SpecIntentResolution? {
     val candidates = fileStore.findDecompositionManifestFiles(request.repoRoot.toPath())
@@ -92,7 +92,7 @@ class SpecIntentProjectionResolver(
 
   private fun resolveGlob(
     request: SpecIntentProjectionResolveRequest,
-    issueKey: String,
+    issueKey: IssueKey,
     degradations: MutableList<SpecIntentDegradationRecord>,
   ): SpecIntentResolution {
     val matches = fileStore.listDirectChildDirectories(request.repoRoot.resolve(".feature-specs").toPath())

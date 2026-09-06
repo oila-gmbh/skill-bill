@@ -1,6 +1,8 @@
 package skillbill.application.goalrunner.planning.model
 
+import skillbill.workflow.engine.model.WorkflowId
 import me.tatarka.inject.annotations.Inject
+import skillbill.agent.model.AgentId
 import skillbill.contracts.workflow.GOAL_PLANNING_WAVE_CAP
 import skillbill.goalrunner.model.GoalPlanningStatusSnapshot
 import skillbill.goalrunner.model.GoalRunnerStopReason
@@ -9,6 +11,8 @@ import skillbill.ports.goalrunner.model.GoalPlanningIdentity
 import skillbill.ports.goalrunner.model.GovernedGoalSubtaskDescriptor
 import skillbill.ports.goalrunner.runner.model.GoalChildPlanningHydrationRequest
 import skillbill.workflow.decomposition.model.DecompositionManifest
+import skillbill.workflow.decomposition.model.IssueKey
+import skillbill.workflow.decomposition.model.SubtaskId
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutputRepairEvidence
 import skillbill.workflow.taskruntime.model.NormalizedFeatureTaskRuntimePhaseOutput
 import java.nio.file.Path
@@ -21,7 +25,7 @@ sealed interface GoalPlanningSweepOutcome {
     val provenance: GoalPlanningContractProvenance? = null,
     val descriptors: List<GovernedGoalSubtaskDescriptor> = emptyList(),
   ) : GoalPlanningSweepOutcome {
-    fun hydrationFor(subtaskId: Int) = identity?.let { expectedIdentity ->
+    fun hydrationFor(subtaskId: SubtaskId) = identity?.let { expectedIdentity ->
       val expectedProvenance = requireNotNull(provenance)
       val descriptor = descriptors.singleOrNull { it.subtaskId == subtaskId } ?: return@let null
       GoalChildPlanningHydrationRequest(
@@ -33,7 +37,7 @@ sealed interface GoalPlanningSweepOutcome {
   }
 
   data class Stopped(
-    val issueKey: String,
+    val issueKey: IssueKey,
     val currentSubtaskId: Int,
     val reason: GoalRunnerStopReason,
     val blockedReason: String,
@@ -46,13 +50,13 @@ sealed interface GoalPlanningPhaseProduction {
     val payload: String,
     val normalizedOutput: NormalizedFeatureTaskRuntimePhaseOutput,
     val repairEvidence: FeatureTaskRuntimePhaseOutputRepairEvidence? = null,
-    val agentId: String = "",
+    val agentId: AgentId = AgentId(""),
   ) : GoalPlanningPhaseProduction
 
   data class SchemaRejected(
     val reason: String,
     val rejectedOutput: String = "",
-    val agentId: String = "",
+    val agentId: AgentId = AgentId(""),
   ) : GoalPlanningPhaseProduction
 
   /**
@@ -75,7 +79,7 @@ sealed interface GoalPlanningPhaseProduction {
   data class UnsuccessfulStatus(
     val reason: String,
     val rejectedOutput: String,
-    val agentId: String,
+    val agentId: AgentId,
     val outcome: GoalPlanningSweepOutcome.Stopped,
   ) : GoalPlanningPhaseProduction
 
@@ -89,7 +93,7 @@ sealed interface GoalPlanningPhaseProduction {
   data class RetryableDecline(
     val reason: String,
     val rejectedOutput: String,
-    val agentId: String,
+    val agentId: AgentId,
   ) : GoalPlanningPhaseProduction
 
   data class Stopped(val outcome: GoalPlanningSweepOutcome.Stopped) : GoalPlanningPhaseProduction
@@ -101,7 +105,7 @@ sealed interface GoalPlanningPhaseProduction {
  * only evidence the run retains once the undecodable transport is dropped.
  */
 data class GoalPlanningEmptyTurnEvidence(
-  val agentId: String,
+  val agentId: AgentId,
   val durationMs: Long,
   val exitStatus: Int?,
   val assistantEventCount: Int?,
@@ -121,15 +125,14 @@ data class GoalPlanningEmptyTurnEvidence(
 }
 
 data class GoalPlanningRejectionRecord(
-  val parentWorkflowId: String,
-  val issueKey: String,
-  val dbPathOverride: String?,
+  val parentWorkflowId: WorkflowId,
+  val issueKey: IssueKey,
   val phaseId: String,
-  val subtaskId: Int,
+  val subtaskId: SubtaskId,
   val attempt: Int,
   val rule: String,
   val reason: String,
-  val agentId: String,
+  val agentId: AgentId,
   val rawEvidence: String,
 )
 
@@ -180,9 +183,8 @@ data class GoalPlanningBurstSchedule(
 /** Inputs for aligning status `planning_reason` with the launch-path refuse taxonomy. */
 data class GoalPlanningStatusAlignRequest(
   val snapshot: GoalPlanningStatusSnapshot,
-  val parentWorkflowId: String,
-  val issueKey: String,
+  val parentWorkflowId: WorkflowId,
+  val issueKey: IssueKey,
   val manifest: DecompositionManifest,
   val repoRoot: Path,
-  val dbPathOverride: String?,
 )

@@ -1,9 +1,9 @@
 package skillbill.application.featuretask.model
-
+import skillbill.workflow.decomposition.model.IssueKey
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePriorGapMemory
 
 data class PhasePromptHeaderInputs(
-  val issueKey: String,
+  val issueKey: IssueKey,
   val phaseId: String,
   val agentRunValidateFallback: Boolean = false,
   val packCollectAllCommand: String? = null,

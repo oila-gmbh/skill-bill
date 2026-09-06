@@ -1,11 +1,15 @@
 package skillbill.ports.goalrunner.runner.model
 
+import skillbill.workflow.decomposition.model.IssueKey
+
 import skillbill.agentaddon.model.AgentAddonSelection
 import skillbill.ports.goalrunner.model.GoalPlanningContractProvenance
 import skillbill.ports.goalrunner.model.GoalPlanningIdentity
 import skillbill.ports.goalrunner.model.GovernedGoalSubtaskDescriptor
 import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewBaseline
 import skillbill.review.context.model.CodeReviewExecutionMode
+import skillbill.workflow.decomposition.model.SubtaskId
+import skillbill.workflow.engine.model.WorkflowId
 
 data class GoalRunnerReviewPolicy(
   val codeReviewMode: CodeReviewExecutionMode,
@@ -13,10 +17,10 @@ data class GoalRunnerReviewPolicy(
 )
 
 data class GoalRunnerChildWorkflowSetup(
-  val subtaskId: Int,
-  val workflowId: String,
+  val subtaskId: SubtaskId,
+  val workflowId: WorkflowId,
   val goalBranch: String,
-  val normalizedIssueKey: String,
+  val normalizedIssueKey: IssueKey,
   val repositoryIdentity: String,
   val governedSpecPath: String,
   val reviewBaseline: GoalSubtaskReviewBaseline,
@@ -24,10 +28,10 @@ data class GoalRunnerChildWorkflowSetup(
   val planningHydration: GoalChildPlanningHydrationRequest? = null,
 ) {
   init {
-    require(subtaskId > 0) { "subtaskId must be positive." }
-    require(workflowId.isNotBlank()) { "workflowId must not be blank." }
+    require(subtaskId.value > 0) { "subtaskId must be positive." }
+    require(workflowId.value.isNotBlank()) { "workflowId must not be blank." }
     require(goalBranch.isNotBlank()) { "goalBranch must not be blank." }
-    require(normalizedIssueKey.isNotBlank()) { "normalizedIssueKey must not be blank." }
+    require(normalizedIssueKey.value.isNotBlank()) { "normalizedIssueKey must not be blank." }
     require(repositoryIdentity.isNotBlank()) { "repositoryIdentity must not be blank." }
     require(governedSpecPath.isNotBlank()) { "governedSpecPath must not be blank." }
   }

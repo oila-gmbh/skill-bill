@@ -28,10 +28,10 @@ class FeatureTaskRuntimeCrashReconciler(
   private val diagnostics: RuntimeDiagnostics,
   private val clock: Clock,
 ) {
-  fun reconcile(dbOverride: String? = null): FeatureTaskRuntimeCrashReconciliationResult {
+  fun reconcile(): FeatureTaskRuntimeCrashReconciliationResult {
     val now = clock.instant().toString()
     val candidates = runCatching {
-      database.read(dbOverride) { it.workflowStates.findFeatureTaskRuntimeCrashReconciliationCandidates(now) }
+      database.read { it.workflowStates.findFeatureTaskRuntimeCrashReconciliationCandidates(now) }
     }.getOrElse { error ->
       diagnostics.warning("Crash-reconciliation candidate scan failed; startup is unaffected.", error)
       return FeatureTaskRuntimeCrashReconciliationResult.NONE
@@ -40,7 +40,7 @@ class FeatureTaskRuntimeCrashReconciler(
     val reasonClassCounts = mutableMapOf<String, Int>()
     var reconciledCount = 0
     candidates.forEach { candidate ->
-      reconcileCandidate(candidate, dbOverride)?.let { reasonClass ->
+      reconcileCandidate(candidate)?.let { reasonClass ->
         reasonClassCounts.merge(reasonClass, 1, Int::plus)
         // The fault class counts toward telemetry visibility but not toward reconciled rows.
         if (reasonClass != FAULT_REASON_CLASS) reconciledCount++
@@ -54,17 +54,14 @@ class FeatureTaskRuntimeCrashReconciler(
   // race. The store returns false for a lost race, so an exception reaching this catch is a genuine
   // infrastructure or programming fault, surfaced as the fault class rather than masked as idle.
   // Never throws: the pass runs unconditionally and must not block an otherwise healthy start.
-  private fun reconcileCandidate(
-    candidate: FeatureTaskRuntimeCrashReconciliationCandidate,
-    dbOverride: String?,
-  ): String? = runCatching {
+  private fun reconcileCandidate(candidate: FeatureTaskRuntimeCrashReconciliationCandidate): String? = runCatching {
     if (!supervisor.inspect(candidate.ownership).isConfirmedDead()) {
       return@runCatching null
     }
     val reason = interruptionReason()
     // The fenced reconcile write re-checks lease expiry inside the transaction against `now`, so a
     // lease extended between the scan and here (or another pass winning the race) returns false.
-    val reconciled = database.transaction(dbOverride) {
+    val reconciled = database.transaction {
       it.workflowStates.reconcileFeatureTaskRuntimeCrashedWorker(
         workflowId = candidate.ownership.workflowId,
         ownerToken = candidate.ownership.ownerToken,

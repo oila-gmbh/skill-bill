@@ -1,5 +1,4 @@
 package skillbill.application
-
 import skillbill.application.featuretask.FeatureTaskRuntimeCrashReconciler
 import skillbill.ports.diagnostics.NoopRuntimeDiagnostics
 import skillbill.ports.featuretask.model.FeatureTaskRuntimeWorkerLeaseState
@@ -13,6 +12,8 @@ import skillbill.ports.taskruntime.model.FeatureTaskRuntimeProcessInspection
 import skillbill.ports.taskruntime.model.isConfirmedDead
 import skillbill.ports.workflow.model.FeatureTaskWorkflowMode.RUNTIME
 import skillbill.ports.workflow.model.WorkflowStateRecord
+import skillbill.workflow.engine.model.SessionId
+import skillbill.workflow.engine.model.WorkflowId
 import java.time.Duration
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -132,8 +133,8 @@ class FeatureTaskRuntimeCrashReconcilerTest {
     InMemoryRuntimeWorkflowRepository().apply {
       saveFeatureTaskRuntimeWorkflow(
         WorkflowStateRecord(
-          workflowId = WORKFLOW_ID,
-          sessionId = SESSION_ID,
+          workflowId = WorkflowId(WORKFLOW_ID),
+          sessionId = SessionId(SESSION_ID),
           workflowName = "bill-feature-task",
           contractVersion = "0.1",
           workflowStatus = "running",
@@ -148,7 +149,7 @@ class FeatureTaskRuntimeCrashReconcilerTest {
       )
       seedWorkerOwnership(
         FeatureTaskRuntimeWorkerOwnership(
-          workflowId = WORKFLOW_ID,
+          workflowId = WorkflowId(WORKFLOW_ID),
           generation = 1,
           ownerToken = "owner-token-crashed01",
           hostIdentity = "host",

@@ -1,6 +1,6 @@
 package skillbill.application.featuretask
-
 import skillbill.application.featuretask.model.FeatureTaskRuntimePhasePromptComposeInputs
+import skillbill.workflow.decomposition.model.IssueKey
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeCorrectiveRepairContext
 
 fun composePhasePrompt(inputs: FeatureTaskRuntimePhasePromptComposeInputs): String =
@@ -21,13 +21,13 @@ fun phasePromptSections(inputs: FeatureTaskRuntimePhasePromptComposeInputs): Lis
 }
 
 private fun requireComposableInputs(
-  issueKey: String,
+  issueKey: IssueKey,
   priorSchemaFailure: String?,
   priorTerminalFailure: String?,
   priorFindingCoverage: String?,
   correctiveRepairContext: FeatureTaskRuntimeCorrectiveRepairContext?,
 ) {
-  require(issueKey.isNotBlank()) { "issueKey is required to compose a phase prompt." }
+  require(issueKey.value.isNotBlank()) { "issueKey is required to compose a phase prompt." }
   require(correctiveRepairContext == null || !priorSchemaFailure.isNullOrBlank()) {
     "correctiveRepairContext requires a non-blank priorSchemaFailure; raw repair context belongs " +
       "only to schema-gate retries."

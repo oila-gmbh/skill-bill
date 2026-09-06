@@ -1,5 +1,4 @@
 package skillbill.application.featuretask.validation
-
 import me.tatarka.inject.annotations.Inject
 import skillbill.application.featuretask.FeatureTaskRuntimePhaseRecorder
 import skillbill.application.featuretask.emitFeatureTaskRuntimeEventSafely
@@ -29,6 +28,7 @@ import skillbill.ports.validation.model.ValidationGateRunOutcome
 import skillbill.ports.validation.model.ValidationGateRunRequest
 import skillbill.ports.validation.model.ValidationGateRunResult
 import skillbill.scaffold.model.ValidationGateDeclaration
+import skillbill.workflow.engine.model.WorkflowId
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFailureDisposition
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutput
@@ -55,17 +55,17 @@ class FeatureTaskRuntimeValidationGateProgressStore private constructor(
 
   internal constructor(delegate: ValidationGateProgressStore) : this(null, delegate)
 
-  override fun persist(workflowId: String, progress: FeatureTaskRuntimeValidationGateProgress, dbOverride: String?) {
+  override fun persist(workflowId: WorkflowId, progress: FeatureTaskRuntimeValidationGateProgress) {
     when {
-      delegate != null -> delegate.persist(workflowId, progress, dbOverride)
-      recorder != null -> recorder.persistValidationGateProgress(workflowId, progress, dbOverride)
+      delegate != null -> delegate.persist(workflowId, progress)
+      recorder != null -> recorder.persistValidationGateProgress(workflowId, progress)
       else -> error("FeatureTaskRuntimeValidationGateProgressStore has no backing store.")
     }
   }
 
-  override fun load(workflowId: String, dbOverride: String?): FeatureTaskRuntimeValidationGateProgress? = when {
-    delegate != null -> delegate.load(workflowId, dbOverride)
-    recorder != null -> recorder.loadValidationGateProgress(workflowId, dbOverride)
+  override fun load(workflowId: WorkflowId): FeatureTaskRuntimeValidationGateProgress? = when {
+    delegate != null -> delegate.load(workflowId)
+    recorder != null -> recorder.loadValidationGateProgress(workflowId)
     else -> error("FeatureTaskRuntimeValidationGateProgressStore has no backing store.")
   }
 }
@@ -91,7 +91,7 @@ class FeatureTaskRuntimeValidationGateCoordinator(
     declaration: ValidationGateDeclaration,
     onGateRunCount: (Int) -> Unit,
   ): ValidationGateCycleResult {
-    val loaded = progressStore.load(cycle.request.workflowId, cycle.request.dbPathOverride)
+    val loaded = progressStore.load(cycle.request.workflowId)
     val measurements = loaded?.gateRuns?.toMutableList() ?: mutableListOf()
     val state = ValidationGateCycleState(cycle, measurements, onGateRunCount)
 
@@ -296,7 +296,7 @@ class FeatureTaskRuntimeValidationGateCoordinator(
       repairsUsed = write.repairsUsed,
       capturedTriagePlan = write.capturedTriagePlan,
     )
-    progressStore.persist(state.cycle.request.workflowId, progress, state.cycle.request.dbPathOverride)
+    progressStore.persist(state.cycle.request.workflowId, progress)
     emitFeatureTaskRuntimeEventSafely(
       diagnostics = diagnostics,
       seam = "ValidationGateProgress event-sink emission",

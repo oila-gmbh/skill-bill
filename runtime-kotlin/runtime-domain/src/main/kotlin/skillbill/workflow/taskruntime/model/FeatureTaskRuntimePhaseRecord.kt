@@ -1,8 +1,11 @@
 package skillbill.workflow.taskruntime.model
 
+import skillbill.agent.model.AgentId
+
 import skillbill.boundary.OpenBoundaryMap
 import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_PERSISTENCE_CONTRACT_VERSION
 import skillbill.error.InvalidWorkflowStateSchemaError
+import skillbill.review.model.ReviewRunId
 
 /**
  * Durable per-phase record: one entry per phase id holding its latest persisted state.
@@ -22,7 +25,7 @@ data class FeatureTaskRuntimePhaseRecord(
   val firstStartedAt: String = startedAt,
   val finishedAt: String? = null,
   val durationMillis: Long? = null,
-  val resolvedAgentId: String,
+  val resolvedAgentId: AgentId,
   val executionOrigin: FeatureTaskRuntimePhaseExecutionOrigin =
     FeatureTaskRuntimePhaseExecutionOrigin.AGENT_EXECUTED,
   val outputArtifact: String? = null,
@@ -48,7 +51,7 @@ data class FeatureTaskRuntimePhaseRecord(
    */
   val launchedModel: String? = null,
   val launchedEffort: String? = null,
-  val reviewRunId: String? = null,
+  val reviewRunId: ReviewRunId? = null,
 ) {
   init {
     require(phaseId.isNotBlank()) { "FeatureTaskRuntimePhaseRecord.phaseId must be non-blank." }
@@ -58,7 +61,7 @@ data class FeatureTaskRuntimePhaseRecord(
     }
     require(startedAt.isNotBlank()) { "FeatureTaskRuntimePhaseRecord.startedAt must be non-blank." }
     require(firstStartedAt.isNotBlank()) { "FeatureTaskRuntimePhaseRecord.firstStartedAt must be non-blank." }
-    require(resolvedAgentId.isNotBlank()) { "FeatureTaskRuntimePhaseRecord.resolvedAgentId must be non-blank." }
+    require(resolvedAgentId.value.isNotBlank()) { "FeatureTaskRuntimePhaseRecord.resolvedAgentId must be non-blank." }
     durationMillis?.let { duration ->
       require(duration >= 0) { "FeatureTaskRuntimePhaseRecord.durationMillis must be non-negative, was $duration." }
     }
@@ -82,7 +85,7 @@ data class FeatureTaskRuntimePhaseRecord(
       }
     }
     reviewRunId?.let { runId ->
-      require(phaseId == "review" && runId.isNotBlank()) {
+      require(phaseId == "review" && runId.toString().isNotBlank()) {
         "FeatureTaskRuntimePhaseRecord.reviewRunId must be non-blank and present only for review."
       }
     }
@@ -97,7 +100,7 @@ data class FeatureTaskRuntimePhaseRecord(
     "attempt_count" to attemptCount,
     "started_at" to startedAt,
     "first_started_at" to firstStartedAt,
-    "resolved_agent_id" to resolvedAgentId,
+    "resolved_agent_id" to resolvedAgentId.value,
     "execution_origin" to executionOrigin.wireValue,
   ).apply {
     finishedAt?.let { put("finished_at", it) }
@@ -118,7 +121,7 @@ data class FeatureTaskRuntimePhaseRecord(
   private fun MutableMap<String, Any?>.putLaunchPair() {
     launchedModel?.let { put("launched_model", it) }
     launchedEffort?.let { put("launched_effort", it) }
-    reviewRunId?.let { put("review_run_id", it) }
+    reviewRunId?.let { put("review_run_id", it.value) }
   }
 
   companion object {
@@ -136,7 +139,7 @@ data class FeatureTaskRuntimePhaseRecord(
           firstStartedAt = raw.requireStringField("first_started_at"),
           finishedAt = raw.optionalStringField("finished_at"),
           durationMillis = raw.optionalLongField("duration_millis"),
-          resolvedAgentId = raw.requireStringField("resolved_agent_id"),
+          resolvedAgentId = AgentId(raw.requireStringField("resolved_agent_id")),
           executionOrigin = FeatureTaskRuntimePhaseExecutionOrigin.fromWireValue(
             raw.requireStringField("execution_origin"),
           ),
@@ -161,7 +164,7 @@ data class FeatureTaskRuntimePhaseRecord(
           },
           launchedModel = raw.optionalStringField("launched_model"),
           launchedEffort = raw.optionalStringField("launched_effort"),
-          reviewRunId = raw.optionalStringField("review_run_id"),
+          reviewRunId = raw.optionalStringField("review_run_id")?.let(::ReviewRunId),
         )
       } catch (_: IllegalArgumentException) {
         incompatiblePhaseRecord()

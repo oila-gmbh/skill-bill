@@ -5,6 +5,8 @@ import skillbill.ports.goalrunner.runner.model.GoalRunnerCompletionPersistenceRe
 import skillbill.ports.goalrunner.runner.model.GoalRunnerManifestState
 import skillbill.ports.goalrunner.runner.model.GoalRunnerScopedReplanOptions
 import skillbill.ports.goalrunner.runner.model.GoalRunnerScopedReplanWriteResult
+import skillbill.workflow.decomposition.model.SubtaskId
+import skillbill.workflow.engine.model.WorkflowId
 
 internal class WorkflowGoalRunnerManifestWriteOpsImpl(
   private val ctx: WorkflowGoalRunnerManifestStoreContext,
@@ -14,8 +16,7 @@ internal class WorkflowGoalRunnerManifestWriteOpsImpl(
     orderedSubtaskIds: List<Int>,
     blockedSubtaskId: Int?,
     blockedReason: String?,
-    dbPathOverride: String?,
-  ) = ctx.database.read(dbPathOverride) {
+  ) = ctx.database.read {
     it.goalPlanningPreparations.boundedStatus(
       parentWorkflowId,
       orderedSubtaskIds,
@@ -23,25 +24,19 @@ internal class WorkflowGoalRunnerManifestWriteOpsImpl(
       blockedReason,
     )
   }
-  override fun save(state: GoalRunnerManifestState, dbPathOverride: String?): GoalRunnerManifestState {
-    val saved = ctx.projectionPersistence.save(state, dbPathOverride)
+  override fun save(state: GoalRunnerManifestState): GoalRunnerManifestState {
+    val saved = ctx.projectionPersistence.save(state)
     ctx.writeProjectionFile(state, saved.projectionArtifactsJson)
     return saved.state
   }
-  override fun saveRuntimeState(state: GoalRunnerManifestState, dbPathOverride: String?): GoalRunnerManifestState =
-    ctx.projectionPersistence.save(state, dbPathOverride).state
+  override fun saveRuntimeState(state: GoalRunnerManifestState): GoalRunnerManifestState =
+    ctx.projectionPersistence.save(state).state
   override fun saveCompletedSubtaskAtBoundary(
     state: GoalRunnerManifestState,
-    subtaskId: Int,
-    dbPathOverride: String?,
-  ): GoalRunnerCompletionPersistenceResult =
-    ctx.controls.saveCompletedSubtaskAtBoundary(state, subtaskId, dbPathOverride)
-  override fun saveHardReset(
-    state: GoalRunnerManifestState,
-    dbPathOverride: String?,
-    preservePlanning: Boolean,
-  ): GoalRunnerManifestState {
-    val saved = ctx.database.transaction(dbPathOverride) { unitOfWork ->
+    subtaskId: SubtaskId,
+  ): GoalRunnerCompletionPersistenceResult = ctx.controls.saveCompletedSubtaskAtBoundary(state, subtaskId)
+  override fun saveHardReset(state: GoalRunnerManifestState, preservePlanning: Boolean): GoalRunnerManifestState {
+    val saved = ctx.database.transaction { unitOfWork ->
       if (!preservePlanning) unitOfWork.goalPlanningPreparations.deleteByGoal(state.parentWorkflowId)
       unitOfWork.workflowStates.deleteGoalChildWorkflowsByParent(state.parentWorkflowId)
       val repositoryIdentity = unitOfWork.goalRunnerControls.controlState(state.parentWorkflowId).repositoryIdentity
@@ -68,14 +63,13 @@ internal class WorkflowGoalRunnerManifestWriteOpsImpl(
   }
   override fun deleteIncompatibleChildWorkflow(
     state: GoalRunnerManifestState,
-    subtaskId: Int,
-    workflowId: String,
-    dbPathOverride: String?,
+    subtaskId: SubtaskId,
+    workflowId: WorkflowId,
   ): GoalRunnerManifestState {
-    val saved = ctx.database.transaction(dbPathOverride) { unitOfWork ->
-      val selected = state.manifest.subtasks.singleOrNull { it.id == subtaskId }
+    val saved = ctx.database.transaction { unitOfWork ->
+      val selected = state.manifest.subtasks.singleOrNull { it.id == subtaskId.value }
         ?: error("Unknown or ambiguous goal subtask '$subtaskId'.")
-      require(selected.workflowId == workflowId) {
+      require(selected.workflowId == workflowId.value) {
         "Selected subtask '$subtaskId' does not own child workflow '$workflowId'."
       }
       val deleted = unitOfWork.workflowStates.deleteGoalChildWorkflow(
@@ -86,7 +80,7 @@ internal class WorkflowGoalRunnerManifestWriteOpsImpl(
       require(deleted == 1) {
         "Child workflow '$workflowId' is absent, compatible, or not owned by subtask '$subtaskId'."
       }
-      val recoveredManifest = state.manifest.afterIncompatibleChildDeletion(subtaskId)
+      val recoveredManifest = state.manifest.afterIncompatibleChildDeletion(subtaskId.value)
       ctx.projectionPersistence.saveInTransaction(unitOfWork, state.copy(manifest = recoveredManifest))
     }
     ctx.writeProjectionFile(state, saved.projectionArtifactsJson)
@@ -94,26 +88,23 @@ internal class WorkflowGoalRunnerManifestWriteOpsImpl(
   }
   override fun saveScopedReplan(
     state: GoalRunnerManifestState,
-    subtaskId: Int,
-    dbPathOverride: String?,
+    subtaskId: SubtaskId,
     options: GoalRunnerScopedReplanOptions,
   ): GoalRunnerScopedReplanWriteResult {
-    val saved = ctx.database.transaction(dbPathOverride) { unitOfWork ->
-      ctx.scopedReplanPersistence.executeScopedReplan(unitOfWork, state, subtaskId, options)
+    val saved = ctx.database.transaction { unitOfWork ->
+      ctx.scopedReplanPersistence.executeScopedReplan(unitOfWork, state, subtaskId.value, options)
     }
     ctx.writeProjectionFile(state, saved.second)
     return saved.first
   }
-  override fun sharedPreplanPayloadSha256(parentWorkflowId: String, dbPathOverride: String?): String? =
-    ctx.database.read(dbPathOverride) {
-      it.goalPlanningPreparations.sharedPreplanPayloadSha256(parentWorkflowId)
-    }
+  override fun sharedPreplanPayloadSha256(parentWorkflowId: String): String? = ctx.database.read {
+    it.goalPlanningPreparations.sharedPreplanPayloadSha256(parentWorkflowId)
+  }
   override fun saveNewChildWorkflow(
     state: GoalRunnerManifestState,
     setup: GoalRunnerChildWorkflowSetup,
-    dbPathOverride: String?,
   ): GoalRunnerManifestState {
-    val saved = ctx.database.transaction(dbPathOverride) { unitOfWork ->
+    val saved = ctx.database.transaction { unitOfWork ->
       ctx.childWorkflowPersistence.saveInTransaction(unitOfWork, state, setup)
     }
     ctx.writeProjectionFile(state, saved.projectionArtifactsJson)

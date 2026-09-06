@@ -1,5 +1,4 @@
 package skillbill.application.evidence
-
 import skillbill.application.reviewevidence.ReviewCommitRange
 import skillbill.application.reviewevidence.ReviewDiffEvidence
 import skillbill.application.reviewevidence.SharedReviewEvidenceProjection
@@ -13,6 +12,7 @@ import skillbill.ports.taskruntime.model.FeatureTaskRuntimeSharedEvidenceRequest
 import skillbill.ports.taskruntime.model.FeatureTaskRuntimeSharedEvidenceResolution
 import skillbill.review.context.model.REVIEW_SYNTHETIC_COMMIT_PREFIX
 import skillbill.review.context.model.ReviewCommitSource
+import skillbill.workflow.engine.model.WorkflowId
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeSharedEvidenceArtifact
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeSharedEvidenceDiffPayloadRef
 import java.nio.file.Path
@@ -243,7 +243,7 @@ class SharedReviewEvidenceResolutionTest {
     val otherRange = SharedReviewEvidenceResolution(store, otherGit).resolve(
       SharedReviewEvidenceQuery(
         repoRoot = repoRoot,
-        workflowId = "wf-1",
+        workflowId = WorkflowId("wf-1"),
         scope = ParallelReviewScope.BRANCH,
         range = ReviewCommitRange("base", "other-head"),
         suppliedDiff = false,
@@ -257,12 +257,12 @@ class SharedReviewEvidenceResolutionTest {
   @Test fun `standalone and feature-task locators share the run-evidence workflow layout`() {
     val store = InMemoryStore()
     val (git, aggregate) = twoCommitGit()
-    val standalone = resolve(store, git, aggregate, queryOf(workflowId = "code-review"))
+    val standalone = resolve(store, git, aggregate, queryOf(workflowId = WorkflowId("code-review")))
     val featureTask = resolve(
       InMemoryStore(),
       twoCommitGit().first,
       aggregate,
-      queryOf(workflowId = "wftr-1"),
+      queryOf(workflowId = WorkflowId("wftr-1")),
     )
     val standalonePath = checkNotNull(standalone.storePath)
     val featureTaskPath = checkNotNull(featureTask.storePath)

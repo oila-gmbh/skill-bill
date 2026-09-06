@@ -1,5 +1,7 @@
 package skillbill.application.goalrunner
 
+import skillbill.workflow.engine.model.WorkflowId
+
 import skillbill.agentaddon.model.AgentAddonSelection
 import skillbill.application.goalrunner.model.GoalRunnerRunRequest
 import skillbill.ports.goalrunner.runner.GoalRunnerManifestStore
@@ -12,11 +14,11 @@ fun goalRepositoryIdentity(repoRoot: Path, repositoryEnclosingRootPort: Reposito
   repositoryEnclosingRootPort.repositoryIdentity(repoRoot)
 
 fun GoalRunnerManifestStore.effectiveAgentAddonSelection(
-  parentWorkflowId: String,
+  parentWorkflowId: WorkflowId,
   request: GoalRunnerRunRequest,
 ): AgentAddonSelection = request.agentAddonSelection.persisted
   .takeUnless { it.entries.isEmpty() }
-  ?: reviewPolicy(parentWorkflowId, request.dbPathOverride)?.agentAddonSelection
+  ?: reviewPolicy(parentWorkflowId)?.agentAddonSelection
   ?: AgentAddonSelection()
 
 internal data class GoalRunnerEffectiveReviewPolicy(
@@ -33,7 +35,7 @@ internal fun effectiveGoalRunnerReviewPolicy(
 )
 
 fun goalRunnerReviewPolicyMismatch(
-  parentWorkflowId: String,
+  parentWorkflowId: WorkflowId,
   requestedReviewMode: CodeReviewExecutionMode?,
   persisted: GoalRunnerReviewPolicy,
 ): String? = when {
