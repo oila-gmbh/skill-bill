@@ -2,6 +2,7 @@ package skillbill.application.goalrunner.planning
 
 import skillbill.application.goalrunner.planning.model.GoalPlanningSweepOutcome
 import skillbill.contracts.workflow.GoalPlanningPreparationSchemaPaths
+import skillbill.goalrunner.planning.cascadeEligiblePlanSubtaskIds
 import skillbill.ports.goalrunner.model.GoalPlanningContractProvenance
 import skillbill.ports.goalrunner.model.SharedGoalPreplanCheckpoint
 

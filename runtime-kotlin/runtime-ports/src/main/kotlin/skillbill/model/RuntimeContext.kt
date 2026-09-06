@@ -6,9 +6,7 @@ import skillbill.ports.goalrunner.runner.GoalPullRequestPort
 import skillbill.ports.review.ReviewNativeAgentPreflightPort
 import skillbill.ports.system.HostPlatformPort
 import skillbill.ports.telemetry.RemoteTransportPort
-import skillbill.ports.telemetry.UnconfiguredRemoteTransportPort
 import skillbill.ports.time.RuntimeTimingPort
-import skillbill.ports.workflow.gitops.NoopWorkflowGitOperations
 import skillbill.ports.workflow.gitops.WorkflowGitOperations
 import java.nio.file.Path
 
@@ -28,9 +26,9 @@ data class EnvironmentContext(
   }
 }
 
-data class TransportContext(val requester: RemoteTransportPort = UnconfiguredRemoteTransportPort)
+data class TransportContext(val requester: RemoteTransportPort? = null)
 
-data class WorkflowOpsContext(val workflowGitOperations: WorkflowGitOperations = NoopWorkflowGitOperations)
+data class WorkflowOpsContext(val workflowGitOperations: WorkflowGitOperations? = null)
 
 data class OptionalCallbacks(
   val agentRunLauncher: AgentRunLauncher? = null,
@@ -53,8 +51,8 @@ data class RuntimeContext(
     environment: Map<String, String> = EnvironmentContext.UnspecifiedEnvironment,
     userHome: Path = EnvironmentContext.UnspecifiedUserHome,
     repositoryRoot: Path = EnvironmentContext.UnspecifiedRepositoryRoot,
-    requester: RemoteTransportPort = UnconfiguredRemoteTransportPort,
-    workflowGitOperations: WorkflowGitOperations = NoopWorkflowGitOperations,
+    requester: RemoteTransportPort? = null,
+    workflowGitOperations: WorkflowGitOperations? = null,
     agentRunLauncher: AgentRunLauncher? = null,
     goalPullRequestPort: GoalPullRequestPort? = null,
     executableLookup: ExecutableLookup? = null,

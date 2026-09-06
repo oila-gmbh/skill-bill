@@ -1,7 +1,7 @@
 package skillbill.infrastructure.sqlite.goalrunner
 
+import skillbill.goalrunner.planning.cascadeEligiblePlanSubtaskIds
 import skillbill.ports.goalrunner.GoalPlanningPreparationRepository
-import skillbill.ports.goalrunner.persistence.planning.cascadeEligiblePlanSubtaskIds
 import skillbill.ports.goalrunner.runner.model.GoalRunnerManifestState
 import skillbill.ports.goalrunner.runner.model.GoalRunnerScopedReplanOptions
 import skillbill.ports.goalrunner.runner.model.GoalRunnerScopedReplanWriteResult

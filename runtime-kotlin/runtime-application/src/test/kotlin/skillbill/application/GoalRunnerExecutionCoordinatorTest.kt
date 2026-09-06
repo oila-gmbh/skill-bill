@@ -5,7 +5,7 @@ import skillbill.application.goalrunner.GoalRunnerExecutionAlreadyRunningExcepti
 import skillbill.goalrunner.model.GoalRunnerControlState
 import skillbill.goalrunner.model.GoalRunnerExecutionLease
 import skillbill.ports.featuretask.model.FeatureTaskRuntimeWorkerOwnership
-import skillbill.ports.goalrunner.runner.GoalRunnerManifestStore
+import skillbill.ports.goalrunner.runner.GoalRunnerManifestStoreDefaults
 import skillbill.ports.goalrunner.runner.model.GoalRunnerManifestState
 import skillbill.ports.process.DaemonThreadPort
 import skillbill.ports.process.IdentifierGeneratorPort
@@ -265,7 +265,7 @@ private const val SHUTDOWN_BUDGET_CEILING_MILLIS = 10_000L
 
 private class InMemoryExecutionLeaseStore(
   initialLease: GoalRunnerExecutionLease?,
-) : GoalRunnerManifestStore {
+) : GoalRunnerManifestStoreDefaults() {
   var executionLeaseValue: GoalRunnerExecutionLease? = initialLease
   var controlStateValue: GoalRunnerControlState = GoalRunnerControlState()
   val pauseNowCalls: MutableList<Triple<String, String, Boolean>> = mutableListOf()

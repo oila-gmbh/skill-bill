@@ -67,7 +67,10 @@ private fun briefingsForCompletedPhases(
       repositoryCheckpoint = FeatureTaskRuntimeRepositoryCheckpoint(fingerprint = "fixture-checkpoint-1"),
     ),
   )
-  FeatureTaskRuntimePhaseBriefingAssembler.assemble(handoff)
+  FeatureTaskRuntimePhaseBriefingAssembler.assemble(
+    handoff,
+    planningProjectionValidator = realPlanningProjectionValidator,
+  )
 }
 
 private fun assertBriefingRunInvariants(briefings: Map<String, FeatureTaskRuntimePhaseLaunchBriefing>) {

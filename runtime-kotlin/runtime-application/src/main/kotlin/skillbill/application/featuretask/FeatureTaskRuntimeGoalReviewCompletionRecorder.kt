@@ -3,11 +3,11 @@ package skillbill.application.featuretask
 import skillbill.application.decomposition.decodeArtifacts
 import skillbill.application.featuretask.model.FeatureTaskRuntimePhaseStateRequest
 import skillbill.application.featuretask.model.GoalReviewPhaseCompletionRequest
-import skillbill.application.subtaskreview.GoalSubtaskReviewSummaryReducer
-import skillbill.application.subtaskreview.UnaddressedFindingLedgerScope
-import skillbill.application.subtaskreview.recordedVerdicts
 import skillbill.application.workflow.model.WorkflowFamily
 import skillbill.goalrunner.model.UnaddressedFinding
+import skillbill.goalrunner.subtaskreview.GoalSubtaskReviewSummaryReducer
+import skillbill.goalrunner.subtaskreview.model.UnaddressedFindingLedgerScope
+import skillbill.goalrunner.subtaskreview.recordedVerdicts
 import skillbill.ports.db.DatabaseSessionFactory
 import skillbill.ports.persistence.UnitOfWork
 import skillbill.review.model.ReviewFindingVerdict
@@ -104,7 +104,10 @@ class FeatureTaskRuntimeGoalReviewCompletionRecorder(
     val envelope = requireNotNull(request.normalizedOutput) {
       "Goal review completion requires normalized output to persist the unaddressed-findings ledger."
     }.envelope
-    val recordedVerdicts = GoalSubtaskReviewSummaryReducer.recordedVerdicts(unitOfWork, envelope)
+    val recordedVerdicts = GoalSubtaskReviewSummaryReducer.recordedVerdicts(
+      unitOfWork.reviews::fetchFindingVerdicts,
+      envelope,
+    )
     val currentFindings = GoalSubtaskReviewSummaryReducer.unaddressedFindings(
       output = envelope,
       scope = UnaddressedFindingLedgerScope(
@@ -193,7 +196,10 @@ class FeatureTaskRuntimeGoalReviewCompletionRecorder(
     val output = requireNotNull(request.normalizedOutput) {
       "Goal review completion requires normalized output to persist the unaddressed-findings ledger."
     }.envelope
-    val recordedVerdicts = GoalSubtaskReviewSummaryReducer.recordedVerdicts(unitOfWork, output)
+    val recordedVerdicts = GoalSubtaskReviewSummaryReducer.recordedVerdicts(
+      unitOfWork.reviews::fetchFindingVerdicts,
+      output,
+    )
     val findings = GoalSubtaskReviewSummaryReducer.unaddressedFindings(
       output = output,
       scope = UnaddressedFindingLedgerScope(

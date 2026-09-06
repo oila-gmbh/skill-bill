@@ -1,7 +1,6 @@
 package skillbill.di
 
 import me.tatarka.inject.annotations.Provides
-import skillbill.contracts.diagnostics.RecordingNullObjectDiagnostics
 import skillbill.infrastructure.fs.JdkBoundedWorkFanOutPort
 import skillbill.infrastructure.fs.JdkDaemonThreadPort
 import skillbill.infrastructure.fs.JdkHostPlatformPort
@@ -22,10 +21,7 @@ import java.time.Clock
 
 internal interface RuntimeDiagnosticsProvides {
   @Provides @JvmSynthetic
-  fun runtimeDiagnostics(adapter: JdkRuntimeDiagnostics): RuntimeDiagnostics {
-    RecordingNullObjectDiagnostics.bind { message, error -> adapter.warning(message, error) }
-    return adapter
-  }
+  fun runtimeDiagnostics(adapter: JdkRuntimeDiagnostics): RuntimeDiagnostics = adapter
 
   @Provides @JvmSynthetic
   fun runtimeTimingPort(callbacks: OptionalCallbacks, adapter: JdkRuntimeTimingPort): RuntimeTimingPort =

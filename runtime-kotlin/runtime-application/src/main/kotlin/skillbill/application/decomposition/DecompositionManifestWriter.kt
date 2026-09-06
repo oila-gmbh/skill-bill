@@ -10,13 +10,14 @@ import skillbill.contracts.issuekey.issueAndFeature
 import skillbill.error.InvalidDecompositionManifestSchemaError
 import skillbill.ports.decomposition.DecompositionManifestProjectionWriter
 import skillbill.ports.workflow.decomposition.DecompositionManifestStore
-import skillbill.ports.workflow.decomposition.UnavailableDecompositionManifestStore
 import skillbill.ports.workflow.decomposition.runtime.model.DecompositionManifestWriteResult
 import skillbill.workflow.decomposition.DecompositionManifestValidator
 import skillbill.workflow.decomposition.model.CurrentSubtaskIntent
 import skillbill.workflow.decomposition.model.DecompositionExecutionModel
 import skillbill.workflow.decomposition.model.DecompositionManifest
 import skillbill.workflow.decomposition.model.DecompositionManifestPlan
+import skillbill.workflow.decomposition.runtime.DECOMPOSITION_RUNTIME_ARTIFACT_KEY
+import skillbill.workflow.decomposition.runtime.invalidManifest
 import java.io.IOException
 import java.nio.file.Path
 
@@ -76,7 +77,7 @@ class DecompositionManifestWriter : DecompositionManifestProjectionWriter {
   fun writeIfDecomposed(
     request: DecompositionManifestWriteRequest,
     validator: DecompositionManifestValidator,
-    fileStore: DecompositionManifestStore = UnavailableDecompositionManifestStore,
+    fileStore: DecompositionManifestStore,
   ): DecompositionManifestWriteResult? {
     if (request.planningResult["mode"]?.toString().orEmpty() != DECOMPOSITION_MODE) {
       return null
@@ -88,7 +89,7 @@ class DecompositionManifestWriter : DecompositionManifestProjectionWriter {
     request: DecompositionManifestWriteRequest,
     validator: DecompositionManifestValidator,
     runtimeUpdate: DecompositionManifestRuntimeUpdate? = null,
-    fileStore: DecompositionManifestStore = UnavailableDecompositionManifestStore,
+    fileStore: DecompositionManifestStore,
   ): DecompositionManifestWriteResult {
     val prepared = prepare(request, validator, runtimeUpdate, fileStore)
     writeDecompositionManifestText(prepared.manifestPath, prepared.yaml, fileStore)
@@ -104,7 +105,7 @@ class DecompositionManifestWriter : DecompositionManifestProjectionWriter {
     request: DecompositionManifestWriteRequest,
     validator: DecompositionManifestValidator,
     runtimeUpdate: DecompositionManifestRuntimeUpdate? = null,
-    fileStore: DecompositionManifestStore = UnavailableDecompositionManifestStore,
+    fileStore: DecompositionManifestStore,
   ): PreparedDecompositionManifestWrite {
     assertParentSpecIsNotDecomposedSubtask(request.repoRoot, request.parentSpecPath, validator, fileStore)
     val manifestPath = request.manifestPath()

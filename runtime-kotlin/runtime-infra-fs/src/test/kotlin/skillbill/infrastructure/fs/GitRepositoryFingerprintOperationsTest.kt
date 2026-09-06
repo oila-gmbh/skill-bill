@@ -1,15 +1,14 @@
 package skillbill.infrastructure.fs
 
 import skillbill.ports.workflow.gitops.NoopWorkflowGitOperations
-import skillbill.ports.workflow.gitops.WorkflowGitOperations
 import skillbill.ports.workflow.gitops.repositoryFingerprint
 import skillbill.workflow.taskruntime.model.MAX_REPOSITORY_FINGERPRINT_LENGTH
 import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
+import kotlin.test.assertNotEquals
 import kotlin.test.assertTrue
 
 class GitRepositoryFingerprintOperationsTest {
@@ -106,12 +105,13 @@ class GitRepositoryFingerprintOperationsTest {
   }
 
   @Test
-  fun `repository fingerprint has no silent fallback for adapters that do not implement it`() {
-    val repoRoot = Files.createTempDirectory("skillbill-fingerprint-missing")
-    val withoutFingerprint = object : WorkflowGitOperations by NoopWorkflowGitOperations {}
+  fun `repository fingerprint comes from the git adapter, never a stand-in default`() {
+    val repoRoot = initRepo("skillbill-fingerprint-adapter")
 
-    assertFailsWith<IllegalStateException> { withoutFingerprint.repositoryFingerprint(repoRoot) }
-    assertTrue(NoopWorkflowGitOperations.repositoryFingerprint(repoRoot).ok)
+    val fingerprint = GitWorkflowGitOperations().repositoryFingerprint(repoRoot)
+
+    assertTrue(fingerprint.ok, fingerprint.error)
+    assertNotEquals(NoopWorkflowGitOperations.repositoryFingerprint(repoRoot).value, fingerprint.value)
   }
 
   private fun initRepo(prefix: String): Path {

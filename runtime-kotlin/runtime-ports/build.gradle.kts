@@ -10,7 +10,7 @@ plugins {
 dependencies {
   api(project(":runtime-contracts"))
   api(project(":runtime-domain"))
-  implementation(libs.kotlin.inject.runtime)
+  implementation(libs.kotlinx.serialization.json)
   testImplementation(libs.junit.jupiter)
   testImplementation(libs.kotlin.test)
 }

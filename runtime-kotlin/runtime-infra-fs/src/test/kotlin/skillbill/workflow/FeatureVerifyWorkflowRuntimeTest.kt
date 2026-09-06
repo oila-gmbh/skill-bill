@@ -1,8 +1,7 @@
 package skillbill.workflow
 
-import skillbill.contracts.workflow.CanonicalWorkflowStateSchemaValidator
+import skillbill.infrastructure.fs.WorkflowSnapshotValidatorInfraAdapter
 import skillbill.workflow.engine.WorkflowEngine
-import skillbill.workflow.engine.WorkflowSnapshotValidator
 import skillbill.workflow.engine.model.WorkflowUpdateInput
 import skillbill.workflow.verify.FeatureVerifyWorkflowDefinition
 import kotlin.test.Test
@@ -11,10 +10,7 @@ import kotlin.test.assertTrue
 
 class FeatureVerifyWorkflowRuntimeTest {
   private val definition = FeatureVerifyWorkflowDefinition.definition
-  private val validator = object : WorkflowSnapshotValidator {
-    private val delegate = CanonicalWorkflowStateSchemaValidator()
-    override fun validate(snapshot: Map<String, Any?>, slug: String) = delegate.validate(snapshot, slug)
-  }
+  private val validator = WorkflowSnapshotValidatorInfraAdapter()
   private val engine = WorkflowEngine(validator) { "abc123" }
 
   @Test

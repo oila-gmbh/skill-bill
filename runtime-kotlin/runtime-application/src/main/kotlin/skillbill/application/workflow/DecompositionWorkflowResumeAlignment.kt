@@ -40,7 +40,7 @@ internal fun WorkflowEngine.continueExistingWorkflow(
             input = reopenInput,
             workflowId = workflowId,
             validator = requireNotNull(args.validator),
-            fileStore = args.fileStore,
+            fileStore = requireNotNull(args.fileStore),
             repoRoot = requireNotNull(args.repoRoot),
             manifestWriter = requireNotNull(args.manifestWriter),
           ),
@@ -80,7 +80,7 @@ private fun canRefreshDecompositionRuntime(family: WorkflowFamily, args: Continu
   family == WorkflowFamily.TASK_RUNTIME && args.hasWriteTargets()
 
 private fun ContinueExistingWorkflowArgs.hasWriteTargets(): Boolean =
-  validator != null && repoRoot != null && manifestWriter != null
+  validator != null && repoRoot != null && manifestWriter != null && fileStore != null
 
 fun WorkflowEngine.alignSubtaskResumeStep(
   record: WorkflowStateSnapshot,

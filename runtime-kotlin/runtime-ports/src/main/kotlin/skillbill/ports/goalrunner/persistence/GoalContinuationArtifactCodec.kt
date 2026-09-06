@@ -3,11 +3,11 @@ import skillbill.boundary.OpenBoundaryMap
 import skillbill.contracts.JsonCodec
 import skillbill.error.InvalidGoalSubtaskReviewStateSchemaError
 import skillbill.error.InvalidWorkflowStateSchemaError
-import skillbill.goalrunner.model.GoalRunnerStoredOutcome
+import skillbill.goalrunner.asGoalRunnerIntOrNull
+import skillbill.goalrunner.model.GoalContinuation
+import skillbill.goalrunner.subtaskreview.GoalSubtaskReviewStructuredFindingsParse
+import skillbill.goalrunner.subtaskreview.GoalSubtaskReviewSummaryReducer
 import skillbill.ports.goalrunner.GoalRunnerPersistenceSession
-import skillbill.ports.goalrunner.persistence.model.GoalContinuation
-import skillbill.ports.subtaskreview.GoalSubtaskReviewStructuredFindingsParse
-import skillbill.ports.subtaskreview.GoalSubtaskReviewSummaryReducer
 import skillbill.ports.workflow.WorkflowStateRepository
 import skillbill.ports.workflow.persistence.model.WorkflowFamily
 import skillbill.ports.workflow.persistence.toSnapshot
@@ -49,7 +49,10 @@ fun validatedGoalReviewPasses(
   review.state.passResults.forEach { pass ->
     val rawResult = review.rawResults.getValue(pass.passNumber.toString())
     val output = goalReviewEmissionEnvelope(rawResult, phaseOutputValidator)
-    val recordedVerdicts = GoalSubtaskReviewStructuredFindingsParse.recordedVerdicts(unitOfWork.reviews, output)
+    val recordedVerdicts = GoalSubtaskReviewStructuredFindingsParse.recordedVerdicts(
+      unitOfWork.reviews::fetchFindingVerdicts,
+      output,
+    )
     val findings = GoalSubtaskReviewSummaryReducer.fromOutput(output, recordedVerdicts)
     val outcome = GoalSubtaskReviewSummaryReducer.outcomeFor(output, findings)
     if (
@@ -96,25 +99,3 @@ fun featureTaskRecordForLegacyControls(
   workflowStates: WorkflowStateRepository,
   workflowId: String,
 ): WorkflowStateSnapshot? = workflowStates.getFeatureTaskWorkflow(workflowId)?.toSnapshot()
-
-@OpenBoundaryMap("Goal continuation outcome decode from durable workflow artifacts")
-fun goalContinuationOutcome(
-  artifacts: Map<String, Any?>,
-  issueKey: String,
-  subtaskId: Int,
-  suppressPr: Boolean,
-): GoalRunnerStoredOutcome? = (artifacts["goal_continuation_outcome"] as? Map<*, *>)
-  ?.takeIf { outcome -> outcome["issue_key"]?.toString() == issueKey }
-  ?.takeIf { outcome -> outcome["subtask_id"].asGoalRunnerIntOrNull() == subtaskId }
-  ?.let { outcome ->
-    goalContinuationTerminalStatus(outcome["status"]?.toString())?.let { status ->
-      GoalRunnerStoredOutcome(
-        status = status,
-        workflowId = outcome["workflow_id"]?.toString().orEmpty(),
-        commitSha = outcome["commit_sha"]?.toString()?.takeIf(String::isNotBlank),
-        blockedReason = outcome["blocked_reason"]?.toString()?.takeIf(String::isNotBlank),
-        lastResumableStep = outcome["last_resumable_step"]?.toString()?.takeIf(String::isNotBlank),
-        suppressPr = suppressPr,
-      )
-    }
-  }

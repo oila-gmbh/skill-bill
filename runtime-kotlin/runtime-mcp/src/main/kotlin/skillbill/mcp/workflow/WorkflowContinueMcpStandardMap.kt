@@ -1,6 +1,6 @@
 package skillbill.mcp.workflow
 
-import skillbill.workflow.engine.WorkflowEngine
+import skillbill.application.workflow.WorkflowWireProjections
 import skillbill.workflow.engine.model.WorkflowContinueView
 
 internal fun standardMcpContinueMap(
@@ -8,7 +8,7 @@ internal fun standardMcpContinueMap(
   dbPath: String,
   decompositionExtras: Map<String, Any?>,
 ): Map<String, Any?> {
-  val map = LinkedHashMap(WorkflowEngine.compactContinueMap(view.compact))
+  val map = LinkedHashMap(WorkflowWireProjections.compactContinueMap(view.compact))
   val workflowCommand = if (view.skillName == "bill-feature-verify") "verify-workflow" else "workflow"
   val quotedDbPath = "'${dbPath.replace("'", "'\"'\"'")}'"
   val quotedWorkflowId = "'${view.resume.snapshot.workflowId.replace("'", "'\"'\"'")}'"

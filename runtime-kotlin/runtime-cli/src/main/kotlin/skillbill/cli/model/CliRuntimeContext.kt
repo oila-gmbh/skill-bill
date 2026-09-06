@@ -8,9 +8,7 @@ import skillbill.ports.goalrunner.runner.GoalPullRequestPort
 import skillbill.ports.review.ReviewNativeAgentPreflightPort
 import skillbill.ports.system.HostPlatformPort
 import skillbill.ports.telemetry.RemoteTransportPort
-import skillbill.ports.telemetry.UnconfiguredRemoteTransportPort
 import skillbill.ports.time.RuntimeTimingPort
-import skillbill.ports.workflow.gitops.NoopWorkflowGitOperations
 import skillbill.ports.workflow.gitops.WorkflowGitOperations
 import java.nio.file.Path
 
@@ -20,8 +18,8 @@ data class CliRuntimeContext(
   val environment: Map<String, String> = EnvironmentContext.UnspecifiedEnvironment,
   val externalCommandRunner: ExternalCommandRunner = ProcessExternalCommandRunner,
   val userHome: Path = EnvironmentContext.UnspecifiedUserHome,
-  val requester: RemoteTransportPort = UnconfiguredRemoteTransportPort,
-  val workflowGitOperations: WorkflowGitOperations = NoopWorkflowGitOperations,
+  val requester: RemoteTransportPort? = null,
+  val workflowGitOperations: WorkflowGitOperations? = null,
   val agentRunLauncher: AgentRunLauncher? = null,
   val goalPullRequestPort: GoalPullRequestPort? = null,
   val executableLookup: ExecutableLookup? = null,

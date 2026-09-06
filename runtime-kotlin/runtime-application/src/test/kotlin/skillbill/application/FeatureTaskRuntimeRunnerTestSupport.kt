@@ -85,6 +85,7 @@ import skillbill.ports.goalrunner.runner.GoalRunnerSubtaskLauncher
 import skillbill.ports.goalrunner.runner.model.GoalRunnerSubtaskLaunchRequest
 import skillbill.ports.learning.LearningRepository
 import skillbill.ports.persistence.UnitOfWork
+import skillbill.ports.persistence.UnitOfWorkDefaults
 import skillbill.ports.review.ReviewRepository
 import skillbill.ports.taskruntime.FeatureTaskRuntimeSharedEvidenceResolverPort
 import skillbill.ports.taskruntime.FeatureTaskRuntimeSpecStatusWriter
@@ -110,19 +111,14 @@ import skillbill.ports.validation.model.ValidationGateRunResult
 import skillbill.ports.work.EmptyWorkListRepository
 import skillbill.ports.workflow.WorkflowStateRepository
 import skillbill.ports.workflow.gitops.CheckpointHistoryGitOperations
-import skillbill.ports.workflow.gitops.CheckpointHistoryGitOperationsProvider
 import skillbill.ports.workflow.gitops.GoalSubtaskReviewGitOperations
-import skillbill.ports.workflow.gitops.GoalSubtaskReviewGitOperationsProvider
 import skillbill.ports.workflow.gitops.NoopWorkflowGitOperations
 import skillbill.ports.workflow.gitops.RepositoryFingerprintGitOperations
-import skillbill.ports.workflow.gitops.RepositoryFingerprintGitOperationsProvider
 import skillbill.ports.workflow.gitops.RepositoryOwnedPathsGitOperations
-import skillbill.ports.workflow.gitops.RepositoryOwnedPathsGitOperationsProvider
 import skillbill.ports.workflow.gitops.RuntimePhaseFileManifestGitOperations
-import skillbill.ports.workflow.gitops.RuntimePhaseFileManifestGitOperationsProvider
 import skillbill.ports.workflow.gitops.ScopedStagingGitOperations
-import skillbill.ports.workflow.gitops.ScopedStagingGitOperationsProvider
 import skillbill.ports.workflow.gitops.WorkflowGitOperations
+import skillbill.ports.workflow.gitops.WorkflowGitOperationsTestBase
 import skillbill.ports.workflow.gitops.buildGoalSubtaskReviewInput
 import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewBaseline
 import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewBaselineRecoveryRequest
@@ -160,6 +156,7 @@ import skillbill.scaffold.model.ValidationGateFindingsFormat.JUNIT_XML
 import skillbill.scaffold.model.ValidationGateFindingsLocator
 import skillbill.telemetry.model.TelemetrySettings
 import skillbill.workflow.engine.WorkflowSnapshotValidator
+import skillbill.workflow.engine.model.WorkflowStateSnapshot
 import skillbill.workflow.goal.model.GOAL_SUBTASK_REVIEW_RESULTS_ARTIFACT_KEY
 import skillbill.workflow.goal.model.GOAL_SUBTASK_REVIEW_STATE_ARTIFACT_KEY
 import skillbill.workflow.goal.model.GoalObservabilityChangedFileSummary
@@ -1680,13 +1677,7 @@ internal class RecordingWorkflowGitOperations(
   var landedBranchAfterCheckout: String? = null,
   var existingBranches: Set<String>? = null,
   var branchExistsResult: WorkflowGitOperationResult? = null,
-) : WorkflowGitOperations,
-  CheckpointHistoryGitOperationsProvider,
-  GoalSubtaskReviewGitOperationsProvider,
-  RepositoryFingerprintGitOperationsProvider,
-  RepositoryOwnedPathsGitOperationsProvider,
-  RuntimePhaseFileManifestGitOperationsProvider,
-  ScopedStagingGitOperationsProvider {
+) : WorkflowGitOperationsTestBase() {
   var headCommitShaValue: String = ""
   var headCommitShaResult: WorkflowGitOperationResult? = null
   val runtimePhaseHeadCommitSequence = ArrayDeque<String>()
@@ -2062,7 +2053,7 @@ internal class RecordingWorkflowGitOperations(
     }
 }
 private object NoopWorkflowSnapshotValidator : WorkflowSnapshotValidator {
-  override fun validate(snapshot: Map<String, Any?>, slug: String) = Unit
+  override fun validate(snapshot: WorkflowStateSnapshot, slug: String) = Unit
 }
 
 private fun FeatureTaskRuntimePhaseRecorder.recordPhaseStateForTest(
@@ -2182,7 +2173,7 @@ internal class RuntimeFakeDatabaseSessionFactory(
     return block(unitOfWork())
   }
 
-  private fun unitOfWork(): UnitOfWork = object : UnitOfWork {
+  private fun unitOfWork(): UnitOfWork = object : UnitOfWorkDefaults() {
     override val dbPath: Path = this@RuntimeFakeDatabaseSessionFactory.dbPath
     override val reviews: ReviewRepository = this@RuntimeFakeDatabaseSessionFactory.reviewsPort
     override val learnings: LearningRepository = this@RuntimeFakeDatabaseSessionFactory.learningsPort

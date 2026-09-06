@@ -1,9 +1,6 @@
 package skillbill.workflow.engine
 
-import skillbill.boundary.OpenBoundaryMap
-import skillbill.workflow.engine.model.WorkflowCompactContinueView
 import skillbill.workflow.engine.model.WorkflowContinueDecision
-import skillbill.workflow.engine.model.WorkflowContinueView
 import skillbill.workflow.engine.model.WorkflowDefinition
 import skillbill.workflow.engine.model.WorkflowInputProjection
 import skillbill.workflow.engine.model.WorkflowResumeView
@@ -12,6 +9,7 @@ import skillbill.workflow.engine.model.WorkflowStateSnapshot
 import skillbill.workflow.engine.model.WorkflowSummaryView
 import skillbill.workflow.engine.model.WorkflowUpdateAcknowledgementView
 import skillbill.workflow.engine.model.WorkflowUpdateInput
+
 private typealias CheckpointResolver = () -> String
 
 private val unresolvedCheckpoint: CheckpointResolver = { "" }
@@ -20,26 +18,6 @@ class WorkflowEngine(
   private val schemaValidator: WorkflowSnapshotValidator,
   private val checkpoint: CheckpointResolver = unresolvedCheckpoint,
 ) {
-  private fun validatedSnapshotMap(definition: WorkflowDefinition, record: WorkflowStateSnapshot): Map<String, Any?> {
-    val snapshot = linkedMapOf<String, Any?>(
-      "workflow_id" to record.workflowId,
-      "session_id" to record.sessionId.orEmpty(),
-      "workflow_name" to record.workflowName,
-      "contract_version" to record.contractVersion,
-      "workflow_status" to record.workflowStatus,
-      "current_step_id" to record.currentStepId.orEmpty(),
-      "steps" to decodeSteps(record.stepsJson),
-      "artifacts" to decodeObject(record.artifactsJson),
-      "started_at" to record.startedAt.orEmpty(),
-      "updated_at" to record.updatedAt.orEmpty(),
-      "finished_at" to record.finishedAt.orEmpty(),
-    ).apply {
-      record.mode?.let { mode -> put("mode", mode) }
-    }
-    schemaValidator.validate(snapshot, definition.workflowName)
-    return snapshot
-  }
-
   fun openRecord(
     definition: WorkflowDefinition,
     workflowId: String,
@@ -60,7 +38,7 @@ class WorkflowEngine(
       finishedAt = null,
       mode = definition.workflowMode,
     )
-    validatedSnapshotMap(definition, snapshot)
+    schemaValidator.validate(snapshot, definition.workflowName)
     return snapshot
   }
 
@@ -85,28 +63,28 @@ class WorkflowEngine(
       artifactsJson = jsonString(mergedArtifacts),
       finishedAt = if (terminal) existing.finishedAt ?: "" else null,
     )
-    validatedSnapshotMap(definition, updated)
+    schemaValidator.validate(updated, definition.workflowName)
     return updated
   }
 
   fun snapshotView(definition: WorkflowDefinition, record: WorkflowStateSnapshot): WorkflowSnapshotView {
-    val map = validatedSnapshotMap(definition, record)
-    return snapshotViewFromMap(map)
+    schemaValidator.validate(record, definition.workflowName)
+    return snapshotViewFrom(record)
   }
 
   fun summaryView(definition: WorkflowDefinition, record: WorkflowStateSnapshot): WorkflowSummaryView {
-    val map = validatedSnapshotMap(definition, record)
+    schemaValidator.validate(record, definition.workflowName)
     return WorkflowSummaryView(
-      workflowId = map["workflow_id"] as String,
-      sessionId = map["session_id"] as String,
-      workflowName = map["workflow_name"] as String,
-      mode = map["mode"] as? String,
-      contractVersion = map["contract_version"] as String,
-      workflowStatus = map["workflow_status"] as String,
-      currentStepId = map["current_step_id"] as String,
-      startedAt = map["started_at"] as String,
-      updatedAt = map["updated_at"] as String,
-      finishedAt = map["finished_at"] as String,
+      workflowId = record.workflowId,
+      sessionId = record.sessionId.orEmpty(),
+      workflowName = record.workflowName,
+      mode = record.mode,
+      contractVersion = record.contractVersion,
+      workflowStatus = record.workflowStatus,
+      currentStepId = record.currentStepId.orEmpty(),
+      startedAt = record.startedAt.orEmpty(),
+      updatedAt = record.updatedAt.orEmpty(),
+      finishedAt = record.finishedAt.orEmpty(),
     )
   }
 
@@ -233,29 +211,5 @@ class WorkflowEngine(
 
     fun validateUpdate(definition: WorkflowDefinition, input: WorkflowUpdateInput): String? =
       validateWorkflowUpdate(definition, input)
-
-    @OpenBoundaryMap("Wire-shape ordered snapshot map for CLI/MCP adapters")
-    fun snapshotMap(view: WorkflowSnapshotView): Map<String, Any?> = WorkflowEngineWireMaps.snapshotMap(view)
-
-    @OpenBoundaryMap("Wire-shape ordered summary map for CLI/MCP adapters")
-    fun summaryMap(view: WorkflowSummaryView): Map<String, Any?> = WorkflowEngineWireMaps.summaryMap(view)
-
-    @OpenBoundaryMap("Wire-shape ordered resume map for CLI/MCP adapters")
-    fun resumeMap(view: WorkflowResumeView): Map<String, Any?> = WorkflowEngineWireMaps.resumeMap(view)
-
-    @OpenBoundaryMap("Wire-shape ordered continue map for CLI/MCP adapters")
-    fun continueMap(view: WorkflowContinueView): Map<String, Any?> = WorkflowEngineWireMaps.continueMap(view)
-
-    @OpenBoundaryMap("Compact wire-shape ordered continue map for CLI/MCP adapters")
-    fun compactContinueMap(view: WorkflowCompactContinueView): Map<String, Any?> =
-      WorkflowEngineWireMaps.compactContinueMap(view)
-
-    @OpenBoundaryMap("Compact wire-shape ordered workflow-update acknowledgement map for CLI/MCP adapters")
-    fun updateAcknowledgementMap(view: WorkflowUpdateAcknowledgementView): Map<String, Any?> =
-      WorkflowEngineWireMaps.updateAcknowledgementMap(view)
-
-    @OpenBoundaryMap("Bounded workflow launch projection map for CLI/MCP adapters")
-    fun inputProjectionMap(projection: WorkflowInputProjection): Map<String, Any?> =
-      WorkflowEngineWireMaps.inputProjectionMap(projection)
   }
 }

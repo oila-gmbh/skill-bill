@@ -14,6 +14,7 @@ import skillbill.model.RepositoryRoot
 import skillbill.ports.workflow.decomposition.DecompositionManifestStore
 import skillbill.workflow.decomposition.DecompositionManifestValidator
 import skillbill.workflow.engine.WorkflowSnapshotValidator
+import skillbill.workflow.engine.model.WorkflowStateSnapshot
 import java.nio.file.AtomicMoveNotSupportedException
 import java.nio.file.Files
 import java.nio.file.Path
@@ -107,7 +108,7 @@ internal val testDecompositionManifestValidator: DecompositionManifestValidator 
  */
 internal val testWorkflowSnapshotValidator: WorkflowSnapshotValidator =
   object : WorkflowSnapshotValidator {
-    override fun validate(snapshot: Map<String, Any?>, slug: String) = Unit
+    override fun validate(snapshot: WorkflowStateSnapshot, slug: String) = Unit
   }
 
 /** Pass-through install-plan wire validator fake — see above for rationale. */

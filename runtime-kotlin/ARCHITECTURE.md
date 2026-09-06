@@ -540,23 +540,23 @@ runtime-ports
     - `skillbill.application.planningprojection.requireValidPlanningProjection`
     - `skillbill.application.review.model.ReviewContextEnvelope.asWireMap`
     - `skillbill.application.review.toBoundedPayload`
-    - `skillbill.application.subtaskreview.GoalSubtaskReviewOutcomeDispositionReduction.blockerDispositions`
-    - `skillbill.application.subtaskreview.GoalSubtaskReviewStructuredFindingsParse.recordedVerdicts`
-    - `skillbill.application.subtaskreview.GoalSubtaskReviewStructuredFindingsParse.reviewRunIdOf`
-    - `skillbill.application.subtaskreview.GoalSubtaskReviewStructuredFindingsParse.structuredFindings`
-    - `skillbill.application.subtaskreview.GoalSubtaskReviewSummaryReducer.blockerDispositions`
-    - `skillbill.application.subtaskreview.GoalSubtaskReviewSummaryReducer.commitFocusedAccounting`
-    - `skillbill.application.subtaskreview.GoalSubtaskReviewSummaryReducer.fromOutput`
-    - `skillbill.application.subtaskreview.GoalSubtaskReviewSummaryReducer.outcomeFor`
-    - `skillbill.application.subtaskreview.GoalSubtaskReviewSummaryReducer.rejectedVerificationFindings`
-    - `skillbill.application.subtaskreview.GoalSubtaskReviewSummaryReducer.unaddressedFindings`
-    - `skillbill.application.subtaskreview.GoalSubtaskReviewSummaryReducer.unresolvedCount`
-    - `skillbill.application.subtaskreview.GoalSubtaskReviewSummarySanitize.labelFor`
-    - `skillbill.application.subtaskreview.GoalSubtaskReviewVerificationRejection.rejectedVerificationFindings`
-    - `skillbill.application.subtaskreview.recordedVerdicts`
-    - `skillbill.application.subtaskreview.reviewPassVerdict`
-    - `skillbill.application.subtaskreview.reviewRunIdOf`
-    - `skillbill.application.subtaskreview.structuredFindings`
+    - `skillbill.goalrunner.subtaskreview.GoalSubtaskReviewOutcomeDispositionReduction.blockerDispositions`
+    - `skillbill.goalrunner.subtaskreview.GoalSubtaskReviewStructuredFindingsParse.recordedVerdicts`
+    - `skillbill.goalrunner.subtaskreview.GoalSubtaskReviewStructuredFindingsParse.reviewRunIdOf`
+    - `skillbill.goalrunner.subtaskreview.GoalSubtaskReviewStructuredFindingsParse.structuredFindings`
+    - `skillbill.goalrunner.subtaskreview.GoalSubtaskReviewSummaryReducer.blockerDispositions`
+    - `skillbill.goalrunner.subtaskreview.GoalSubtaskReviewSummaryReducer.commitFocusedAccounting`
+    - `skillbill.goalrunner.subtaskreview.GoalSubtaskReviewSummaryReducer.fromOutput`
+    - `skillbill.goalrunner.subtaskreview.GoalSubtaskReviewSummaryReducer.outcomeFor`
+    - `skillbill.goalrunner.subtaskreview.GoalSubtaskReviewSummaryReducer.rejectedVerificationFindings`
+    - `skillbill.goalrunner.subtaskreview.GoalSubtaskReviewSummaryReducer.unaddressedFindings`
+    - `skillbill.goalrunner.subtaskreview.GoalSubtaskReviewSummaryReducer.unresolvedCount`
+    - `skillbill.goalrunner.subtaskreview.GoalSubtaskReviewSummarySanitize.labelFor`
+    - `skillbill.goalrunner.subtaskreview.GoalSubtaskReviewVerificationRejection.rejectedVerificationFindings`
+    - `skillbill.goalrunner.subtaskreview.recordedVerdicts`
+    - `skillbill.goalrunner.subtaskreview.reviewPassVerdict`
+    - `skillbill.goalrunner.subtaskreview.reviewRunIdOf`
+    - `skillbill.goalrunner.subtaskreview.structuredFindings`
     - `skillbill.application.telemetry.LifecycleTelemetryService.featureTaskRuntimeFinished`
     - `skillbill.application.telemetry.LifecycleTelemetryService.featureTaskRuntimeStarted`
     - `skillbill.application.telemetry.LifecycleTelemetryService.featureVerifyFinished`
@@ -595,13 +595,13 @@ runtime-ports
     - `skillbill.learnings.scopeCounts`
     - `skillbill.learnings.summarizeLearningReferences`
     - `skillbill.ports.goalrunner.persistence.GoalParentProjectionWriter.artifacts`
-    - `skillbill.ports.goalrunner.persistence.backwardEdgeCountsFromLedger`
-    - `skillbill.ports.goalrunner.persistence.blockedReasonFrom`
-    - `skillbill.ports.goalrunner.persistence.commitShaFrom`
-    - `skillbill.ports.goalrunner.persistence.declaredProgressEventFrom`
-    - `skillbill.ports.goalrunner.persistence.derivedTerminalOutcomeFor`
+    - `skillbill.goalrunner.backwardEdgeCountsFromLedger`
+    - `skillbill.goalrunner.blockedReasonFrom`
+    - `skillbill.goalrunner.commitShaFrom`
+    - `skillbill.goalrunner.declaredProgressEventFrom`
+    - `skillbill.goalrunner.derivedTerminalOutcomeFor`
     - `skillbill.ports.goalrunner.persistence.goalContinuation`
-    - `skillbill.ports.goalrunner.persistence.goalContinuationOutcome`
+    - `skillbill.goalrunner.goalContinuationOutcome`
     - `skillbill.ports.goalrunner.persistence.goalReviewArtifacts`
     - `skillbill.ports.goalrunner.persistence.goalReviewEmissionEnvelope`
     - `skillbill.ports.goalrunner.persistence.maxHistorySequence`
@@ -612,42 +612,25 @@ runtime-ports
     - `skillbill.ports.goalrunner.persistence.model.HistoryArtifactAppend.entryMap`
     - `skillbill.ports.goalrunner.persistence.planning.model.GoalChildPlanningHydration.artifacts`
     - `skillbill.ports.goalrunner.persistence.planning.model.GoalChildPlanningHydration.stepUpdates`
-    - `skillbill.ports.goalrunner.persistence.progressEventFrom`
-    - `skillbill.ports.goalrunner.persistence.terminalOutcomeFor`
-    - `skillbill.ports.goalrunner.persistence.toArtifactMap`
-    - `skillbill.ports.goalrunner.persistence.toArtifactsMap`
+    - `skillbill.goalrunner.progressEventFrom`
+    - `skillbill.goalrunner.terminalOutcomeFor`
+    - `skillbill.goalrunner.toArtifactMap`
+    - `skillbill.goalrunner.toArtifactsMap`
     - `skillbill.ports.goalrunner.runner.GoalRunnerTerminalOutcomeStore.recoverMissingResultPrefixOutput`
     - `skillbill.ports.goalrunner.runner.GoalRunnerWorkflowProgressStore.progressEvents`
-    - `skillbill.ports.phaseartifacts.decodeStrictKeyedArtifactMap`
-    - `skillbill.ports.phaseartifacts.decomposeTerminalFrom`
-    - `skillbill.ports.phaseartifacts.goalContinuationFieldAdoptionFrom`
-    - `skillbill.ports.phaseartifacts.operatorBlockRetryFrom`
-    - `skillbill.ports.phaseartifacts.phaseLedgerFrom`
-    - `skillbill.ports.phaseartifacts.phaseRecordsFrom`
-    - `skillbill.ports.phaseartifacts.resolvedBranchFrom`
-    - `skillbill.ports.phaseartifacts.reviewGenerationFrom`
+    - `skillbill.workflow.taskruntime.phaseartifacts.decodeStrictKeyedArtifactMap`
+    - `skillbill.workflow.taskruntime.phaseartifacts.decomposeTerminalFrom`
+    - `skillbill.workflow.taskruntime.phaseartifacts.goalContinuationFieldAdoptionFrom`
+    - `skillbill.workflow.taskruntime.phaseartifacts.operatorBlockRetryFrom`
+    - `skillbill.workflow.taskruntime.phaseartifacts.phaseLedgerFrom`
+    - `skillbill.workflow.taskruntime.phaseartifacts.phaseRecordsFrom`
+    - `skillbill.workflow.taskruntime.phaseartifacts.resolvedBranchFrom`
+    - `skillbill.workflow.taskruntime.phaseartifacts.reviewGenerationFrom`
     - `skillbill.ports.review.model.GovernedReviewEvidenceCodec.TOOL_SPECS`
     - `skillbill.ports.review.model.GovernedReviewEvidenceCodec.expansionRequest`
     - `skillbill.ports.review.model.GovernedReviewEvidenceCodec.payload`
     - `skillbill.ports.review.model.GovernedReviewEvidenceCodec.readRequest`
     - `skillbill.ports.review.model.ReviewAccountingRecord.boundedPayload`
-    - `skillbill.ports.subtaskreview.GoalSubtaskReviewOutcomeDispositionReduction.blockerDispositions`
-    - `skillbill.ports.subtaskreview.GoalSubtaskReviewStructuredFindingsParse.recordedVerdicts`
-    - `skillbill.ports.subtaskreview.GoalSubtaskReviewStructuredFindingsParse.reviewRunIdOf`
-    - `skillbill.ports.subtaskreview.GoalSubtaskReviewStructuredFindingsParse.structuredFindings`
-    - `skillbill.ports.subtaskreview.GoalSubtaskReviewSummaryReducer.blockerDispositions`
-    - `skillbill.ports.subtaskreview.GoalSubtaskReviewSummaryReducer.commitFocusedAccounting`
-    - `skillbill.ports.subtaskreview.GoalSubtaskReviewSummaryReducer.fromOutput`
-    - `skillbill.ports.subtaskreview.GoalSubtaskReviewSummaryReducer.outcomeFor`
-    - `skillbill.ports.subtaskreview.GoalSubtaskReviewSummaryReducer.rejectedVerificationFindings`
-    - `skillbill.ports.subtaskreview.GoalSubtaskReviewSummaryReducer.unaddressedFindings`
-    - `skillbill.ports.subtaskreview.GoalSubtaskReviewSummaryReducer.unresolvedCount`
-    - `skillbill.ports.subtaskreview.GoalSubtaskReviewSummarySanitize.labelFor`
-    - `skillbill.ports.subtaskreview.GoalSubtaskReviewVerificationRejection.rejectedVerificationFindings`
-    - `skillbill.ports.subtaskreview.recordedVerdicts`
-    - `skillbill.ports.subtaskreview.reviewPassVerdict`
-    - `skillbill.ports.subtaskreview.reviewRunIdOf`
-    - `skillbill.ports.subtaskreview.structuredFindings`
     - `skillbill.ports.validation.model.ReleaseRefMetadata.toPayload`
     - `skillbill.ports.validation.model.RepoValidationReport.toPayload`
     - `skillbill.ports.workflow.decomposition.DecompositionManifestPersistencePort.encodeManifestYaml`
@@ -655,7 +638,7 @@ runtime-ports
     - `skillbill.ports.workflow.decomposition.runtime.DecompositionManifestWriter.maybeWriteFromWorkflowUpdate`
     - `skillbill.ports.workflow.decomposition.runtime.DecompositionManifestWriter.writeFromWorkflowUpdate`
     - `skillbill.ports.workflow.decomposition.runtime.decodeArtifacts`
-    - `skillbill.ports.workflow.decomposition.runtime.decodeArtifactKeys`
+    - `skillbill.workflow.decomposition.runtime.decodeArtifactKeys`
     - `skillbill.ports.workflow.decomposition.runtime.decodeDecompositionManifestMap`
     - `skillbill.ports.workflow.decomposition.runtime.encodeDecompositionManifestMap`
     - `skillbill.ports.workflow.decomposition.runtime.manifestPathFromArtifacts`
@@ -669,10 +652,10 @@ runtime-ports
     - `skillbill.ports.workflow.decomposition.runtime.model.DecompositionPlanManifestInput.plan`
     - `skillbill.ports.workflow.decomposition.runtime.parentSpecPath`
     - `skillbill.ports.workflow.gitops.model.GoalSubtaskReviewInput.toArtifactMap`
-    - `skillbill.ports.goalrunner.runner.GoalObservabilityArtifacts.patchForProgressEvent`
-    - `skillbill.ports.goalrunner.runner.GoalObservabilityArtifacts.patchForRuntimeEvent`
-    - `skillbill.ports.goalrunner.runner.model.GoalObservabilityProgressInput.artifacts`
-    - `skillbill.ports.goalrunner.runner.model.GoalObservabilityRuntimeEventInput.artifacts`
+    - `skillbill.goalrunner.GoalObservabilityArtifacts.patchForProgressEvent`
+    - `skillbill.goalrunner.GoalObservabilityArtifacts.patchForRuntimeEvent`
+    - `skillbill.goalrunner.model.GoalObservabilityProgressInput.artifacts`
+    - `skillbill.goalrunner.model.GoalObservabilityRuntimeEventInput.artifacts`
     - `skillbill.ports.workflow.persistence.model.WorkflowFamily.sessionSummary`
     - `skillbill.ports.goalrunner.persistence.outOfBandAcceptancesFromLegacyArtifacts`
     - `skillbill.ports.goalrunner.persistence.reviewPolicyFromLegacyArtifacts`
@@ -687,15 +670,14 @@ runtime-ports
     - `skillbill.workflow.decomposition.DecompositionManifestValidator.validate`
     - `skillbill.workflow.decomposition.DecompositionManifestValidator.validateYamlText`
     - `skillbill.workflow.decomposition.toWireMap`
-    - `skillbill.workflow.engine.WorkflowEngine.compactContinueMap`
+    - `skillbill.application.workflow.WorkflowWireProjections.compactContinueMap`
     - `skillbill.workflow.engine.WorkflowEngine.continueDecision`
-    - `skillbill.workflow.engine.WorkflowEngine.continueMap`
-    - `skillbill.workflow.engine.WorkflowEngine.inputProjectionMap`
-    - `skillbill.workflow.engine.WorkflowEngine.resumeMap`
-    - `skillbill.workflow.engine.WorkflowEngine.snapshotMap`
-    - `skillbill.workflow.engine.WorkflowEngine.summaryMap`
-    - `skillbill.workflow.engine.WorkflowEngine.updateAcknowledgementMap`
-    - `skillbill.workflow.engine.WorkflowSnapshotValidator.validate`
+    - `skillbill.application.workflow.WorkflowWireProjections.continueMap`
+    - `skillbill.application.workflow.WorkflowWireProjections.inputProjectionMap`
+    - `skillbill.application.workflow.WorkflowWireProjections.resumeMap`
+    - `skillbill.application.workflow.WorkflowWireProjections.snapshotMap`
+    - `skillbill.application.workflow.WorkflowWireProjections.summaryMap`
+    - `skillbill.application.workflow.WorkflowWireProjections.updateAcknowledgementMap`
     - `skillbill.workflow.engine.model.WorkflowContinuationArtifactSummary.value`
     - `skillbill.workflow.engine.model.WorkflowContinueView.extraFields`
     - `skillbill.workflow.engine.model.WorkflowContinueView.sessionSummary`
@@ -828,33 +810,15 @@ runtime-ports
     - `skillbill.application.decomposition.encodeDecompositionManifestMap`
     - `skillbill.application.decomposition.manifestPathFromArtifacts`
     - `skillbill.application.goalrunner.GoalParentProjectionWriter.artifacts`
-    - `skillbill.application.goalrunner.backwardEdgeCountsFromLedger`
-    - `skillbill.application.goalrunner.blockedReasonFrom`
-    - `skillbill.application.goalrunner.commitShaFrom`
-    - `skillbill.application.goalrunner.declaredProgressEventFrom`
-    - `skillbill.application.goalrunner.derivedTerminalOutcomeFor`
     - `skillbill.application.goalrunner.goalContinuation`
-    - `skillbill.application.goalrunner.goalContinuationOutcome`
     - `skillbill.application.goalrunner.goalReviewArtifacts`
     - `skillbill.application.goalrunner.goalReviewEmissionEnvelope`
     - `skillbill.application.goalrunner.maxHistorySequence`
     - `skillbill.application.goalrunner.missingResultPrefixTerminalOutcomeArtifact`
     - `skillbill.application.goalrunner.planning.model.GoalChildPlanningHydration.artifacts`
     - `skillbill.application.goalrunner.planning.model.GoalChildPlanningHydration.stepUpdates`
-    - `skillbill.application.goalrunner.progressEventFrom`
-    - `skillbill.application.goalrunner.terminalOutcomeFor`
     - `skillbill.application.goalrunner.toArtifactMap`
     - `skillbill.application.goalrunner.toArtifactsMap`
-    - `skillbill.application.phaseartifacts.decodeStrictKeyedArtifactMap`
-    - `skillbill.application.phaseartifacts.decomposeTerminalFrom`
-    - `skillbill.application.phaseartifacts.goalContinuationFieldAdoptionFrom`
-    - `skillbill.application.phaseartifacts.operatorBlockRetryFrom`
-    - `skillbill.application.phaseartifacts.phaseLedgerFrom`
-    - `skillbill.application.phaseartifacts.phaseRecordsFrom`
-    - `skillbill.application.phaseartifacts.resolvedBranchFrom`
-    - `skillbill.application.phaseartifacts.reviewGenerationFrom`
-    - `skillbill.application.workflow.GoalObservabilityArtifacts.patchForProgressEvent`
-    - `skillbill.application.workflow.GoalObservabilityArtifacts.patchForRuntimeEvent`
     - `skillbill.application.workflow.outOfBandAcceptancesFromLegacyArtifacts`
     - `skillbill.application.workflow.reviewPolicyFromLegacyArtifacts`
     - `skillbill.application.workflow.toPayload`
@@ -948,15 +912,25 @@ skillbill.workflow.verify
   `skillbill.workflow.engine.WorkflowSnapshotValidator`, which the composition root
   wires to the infra adapter
   `skillbill.infrastructure.fs.WorkflowSnapshotValidatorInfraAdapter`. The
-  owning read seam is still `skillbill.workflow.engine.WorkflowEngine`; durable record
+  port takes the typed `skillbill.workflow.engine.model.WorkflowStateSnapshot`, not a
+  `Map<String, Any?>`; projecting that record onto the canonical wire shape is
+  adapter work owned by
+  `skillbill.infrastructure.fs.WorkflowStateSnapshotWireMapper`, so
+  `WorkflowEngine` never builds a snapshot map. The owning read seam is still
+  `skillbill.workflow.engine.WorkflowEngine`; durable record
   mapping stays pure and the next engine read rejects drift. Architecture
   tests forbid any `skillbill.contracts.workflow.*SchemaValidator*` or
   `skillbill.contracts.*Mapper` import under `runtime-domain` workflow
   source. (SKILL-52.2 Subtask 4 narrowed the
   `runtime-domain -> runtime-contracts` module-graph edge to non-validator
-  helpers only: `JsonCodec`, `WorkflowContracts` ordering helper, the
-  `DECOMPOSITION_MANIFEST_CONTRACT_VERSION` constant, and the typed
-  `InvalidWorkflowStateSchemaError`.)
+  helpers only; SKILL-233 narrowed it further to `JsonCodec` — including its
+  stdlib-typed `parseValue` / `valueToJsonString` facade that keeps
+  `kotlinx.serialization` out of `runtime-domain` — the `*_CONTRACT_VERSION`
+  constants, `InstallPlanSchemaPaths`, and the typed
+  `InvalidWorkflowStateSchemaError` / `MalformedJsonTextError`. The
+  `WorkflowContracts` ordering helper is no longer reachable from
+  `runtime-domain`; it moved with the wire maps to
+  `skillbill.application.workflow.WorkflowWireProjections`.)
 - Install-plan schema validation is owned by
   `skillbill.contracts.install.InstallPlanSchemaValidator`, compiled into
   `runtime-infra-fs` and reached through the domain-owned port
@@ -1544,53 +1518,26 @@ grow without an explicit baseline update through the recorder.
 
 ### Port null-object classification
 
-`PortNullObjectClassificationGuardTest` requires every `Unavailable`, `Noop`,
-`Empty`, or `Unconfigured` object under `runtime-ports`, `runtime-domain`, and
-`runtime-application` main source to appear in
-`PortNullObjectClassification.classifiedObjects`. `RecordingNullObjectDiagnosticsTest`
-exercises every `RECORDING_NULL_OBJECT` entry and asserts each swallow method
-emits through `RecordingNullObjectDiagnostics` when bound. Objects classified as
-`DELEGATION_COMPOSITE` delegate every swallow to other classified recording null
-objects and are excluded from that census. Runtime wiring binds
-that sink in `RuntimeDiagnosticsProvides.runtimeDiagnostics`.
+`PortNullObjectAbsenceArchitectureTest` requires that no `Unavailable`, `Noop`,
+`Empty`, or `Unconfigured` object is declared in any runtime module's main
+source. A port whose absence a production call site actually reaches is
+nullable, and the reached site names its fallback (`?: JdkHttpRequester`,
+`?: git`) or returns the absent answer. The substitutes that tests still need
+live in the owning module's `src/testFixtures` under their original packages,
+so they are unreachable from a published runtime.
 
-| Object | Classification |
-| --- | --- |
-| `UnavailableUnaddressedFindingsRepository` | total refusal |
-| `UnavailableGoalRunnerControlRepository` | total refusal |
-| `UnavailableSpecScratchStore` | total refusal |
-| `UnavailableDecompositionManifestStore` | total refusal |
-| `UnavailableFeatureTaskRuntimeAuditGenerationRepository` | total refusal |
-| `UnavailableReviewRunLaneCompletenessRepository` | total refusal |
-| `UnavailableReviewRunStageCompletenessRepository` | total refusal |
-| `UnavailableReviewRunCompletenessRepository` | total refusal |
-| `UnconfiguredRemoteTransportPort` | total refusal |
-| `UnavailableCheckpointHistoryGitOperations` | total refusal |
-| `UnavailableScopedStagingGitOperations` | total refusal |
-| `UnavailableGoalSubtaskReviewGitOperations` | total refusal |
-| `EmptyGoalRunnerControlRepository` | recording null object |
-| `EmptyAgentActivityStampRepository` | recording null object |
-| `NoopGoalRunnerAttemptLedgerStore` | recording null object |
-| `NoopGoalRunnerChildRepairStore` | recording null object |
-| `NoopIdeStatusValidator` | recording null object |
-| `NoopGoalProgressEventValidator` | recording null object |
-| `NoopGoalObservabilityEventValidator` | recording null object |
-| `NoopFeatureTaskRuntimeQuarantineValidator` | recording null object |
-| `NoopFeatureTaskRuntimePlanningProjectionValidator` | recording null object |
-| `NoopFeatureTaskRuntimeImplementationAttemptValidator` | recording null object |
-| `NoopFeatureTaskRuntimeBuildReceiptValidator` | recording null object |
-| `NoopRuntimePhaseFileManifestGitOperations` | recording null object |
-| `NoopWorkflowGitWorktreeOperations` | recording null object |
-| `NoopWorkflowGitRemoteOperations` | recording null object |
-| `NoopWorkflowGitCommitHistoryOperations` | recording null object |
-| `NoopWorkflowGitBranchOperations` | recording null object |
-| `NoopRepositoryFingerprintGitOperations` | recording null object |
-| `NoopGoalSubtaskReviewGitOperations` | recording null object |
-| `NoopWorkflowGitOperations` | delegation composite |
-| `NoopRuntimeTimingPort` | recording null object |
-| `NoopFeatureTaskRuntimeHeartbeat` | recording null object |
-| `NoopFeatureTaskRuntimeWorkerSupervisor` | recording null object |
-| `NoopRuntimeDiagnostics` | diagnostic sink |
+`RuntimeContractModuleImportRulesTest` pins the two inward layers: `runtime-ports`
+declares interfaces and DTOs and imports no adapter machinery
+(`java.io`, `java.nio.file.Files`, `kotlinx.serialization`, `me.tatarka.inject`,
+`org.yaml`), and `runtime-domain` imports no serialization, charset, or IO
+library (`java.io`, `java.nio.charset`, `com.fasterxml`, `kotlinx.serialization`,
+`org.yaml`). Domain code reaches JSON only through the stdlib-typed
+`skillbill.contracts.JsonCodec` facade and text encoding only through
+`kotlin.text.Charsets`. Both guards assert an empty violation list; neither
+carries a baseline.
+
+`data object` cases of a sealed hierarchy — `ValidationGateTriageResult.Empty`
+is the one in the tree — are not substitutes and the census excludes them.
 
 ### Destructive command failure policy
 
@@ -1809,23 +1756,23 @@ Categories:
 - `skillbill.application.planningprojection.requireValidPlanningProjection`
 - `skillbill.application.review.model.ReviewContextEnvelope.asWireMap`
 - `skillbill.application.review.toBoundedPayload`
-- `skillbill.application.subtaskreview.GoalSubtaskReviewOutcomeDispositionReduction.blockerDispositions`
-- `skillbill.application.subtaskreview.GoalSubtaskReviewStructuredFindingsParse.recordedVerdicts`
-- `skillbill.application.subtaskreview.GoalSubtaskReviewStructuredFindingsParse.reviewRunIdOf`
-- `skillbill.application.subtaskreview.GoalSubtaskReviewStructuredFindingsParse.structuredFindings`
-- `skillbill.application.subtaskreview.GoalSubtaskReviewSummaryReducer.blockerDispositions`
-- `skillbill.application.subtaskreview.GoalSubtaskReviewSummaryReducer.commitFocusedAccounting`
-- `skillbill.application.subtaskreview.GoalSubtaskReviewSummaryReducer.fromOutput`
-- `skillbill.application.subtaskreview.GoalSubtaskReviewSummaryReducer.outcomeFor`
-- `skillbill.application.subtaskreview.GoalSubtaskReviewSummaryReducer.rejectedVerificationFindings`
-- `skillbill.application.subtaskreview.GoalSubtaskReviewSummaryReducer.unaddressedFindings`
-- `skillbill.application.subtaskreview.GoalSubtaskReviewSummaryReducer.unresolvedCount`
-- `skillbill.application.subtaskreview.GoalSubtaskReviewSummarySanitize.labelFor`
-- `skillbill.application.subtaskreview.GoalSubtaskReviewVerificationRejection.rejectedVerificationFindings`
-- `skillbill.application.subtaskreview.recordedVerdicts`
-- `skillbill.application.subtaskreview.reviewPassVerdict`
-- `skillbill.application.subtaskreview.reviewRunIdOf`
-- `skillbill.application.subtaskreview.structuredFindings`
+- `skillbill.goalrunner.subtaskreview.GoalSubtaskReviewOutcomeDispositionReduction.blockerDispositions`
+- `skillbill.goalrunner.subtaskreview.GoalSubtaskReviewStructuredFindingsParse.recordedVerdicts`
+- `skillbill.goalrunner.subtaskreview.GoalSubtaskReviewStructuredFindingsParse.reviewRunIdOf`
+- `skillbill.goalrunner.subtaskreview.GoalSubtaskReviewStructuredFindingsParse.structuredFindings`
+- `skillbill.goalrunner.subtaskreview.GoalSubtaskReviewSummaryReducer.blockerDispositions`
+- `skillbill.goalrunner.subtaskreview.GoalSubtaskReviewSummaryReducer.commitFocusedAccounting`
+- `skillbill.goalrunner.subtaskreview.GoalSubtaskReviewSummaryReducer.fromOutput`
+- `skillbill.goalrunner.subtaskreview.GoalSubtaskReviewSummaryReducer.outcomeFor`
+- `skillbill.goalrunner.subtaskreview.GoalSubtaskReviewSummaryReducer.rejectedVerificationFindings`
+- `skillbill.goalrunner.subtaskreview.GoalSubtaskReviewSummaryReducer.unaddressedFindings`
+- `skillbill.goalrunner.subtaskreview.GoalSubtaskReviewSummaryReducer.unresolvedCount`
+- `skillbill.goalrunner.subtaskreview.GoalSubtaskReviewSummarySanitize.labelFor`
+- `skillbill.goalrunner.subtaskreview.GoalSubtaskReviewVerificationRejection.rejectedVerificationFindings`
+- `skillbill.goalrunner.subtaskreview.recordedVerdicts`
+- `skillbill.goalrunner.subtaskreview.reviewPassVerdict`
+- `skillbill.goalrunner.subtaskreview.reviewRunIdOf`
+- `skillbill.goalrunner.subtaskreview.structuredFindings`
 - `skillbill.application.telemetry.LifecycleTelemetryService.featureTaskRuntimeFinished`
 - `skillbill.application.telemetry.LifecycleTelemetryService.featureTaskRuntimeStarted`
 - `skillbill.application.telemetry.LifecycleTelemetryService.featureVerifyFinished`
@@ -1858,13 +1805,13 @@ Categories:
 - `skillbill.install.model.InstallPlanWireValidator.validate`
 - `skillbill.install.model.buildInstallPlanWireMap`
 - `skillbill.ports.goalrunner.persistence.GoalParentProjectionWriter.artifacts`
-- `skillbill.ports.goalrunner.persistence.backwardEdgeCountsFromLedger`
-- `skillbill.ports.goalrunner.persistence.blockedReasonFrom`
-- `skillbill.ports.goalrunner.persistence.commitShaFrom`
-- `skillbill.ports.goalrunner.persistence.declaredProgressEventFrom`
-- `skillbill.ports.goalrunner.persistence.derivedTerminalOutcomeFor`
+- `skillbill.goalrunner.backwardEdgeCountsFromLedger`
+- `skillbill.goalrunner.blockedReasonFrom`
+- `skillbill.goalrunner.commitShaFrom`
+- `skillbill.goalrunner.declaredProgressEventFrom`
+- `skillbill.goalrunner.derivedTerminalOutcomeFor`
 - `skillbill.ports.goalrunner.persistence.goalContinuation`
-- `skillbill.ports.goalrunner.persistence.goalContinuationOutcome`
+- `skillbill.goalrunner.goalContinuationOutcome`
 - `skillbill.ports.goalrunner.persistence.goalReviewArtifacts`
 - `skillbill.ports.goalrunner.persistence.goalReviewEmissionEnvelope`
 - `skillbill.ports.goalrunner.persistence.maxHistorySequence`
@@ -1875,42 +1822,25 @@ Categories:
 - `skillbill.ports.goalrunner.persistence.model.HistoryArtifactAppend.entryMap`
 - `skillbill.ports.goalrunner.persistence.planning.model.GoalChildPlanningHydration.artifacts`
 - `skillbill.ports.goalrunner.persistence.planning.model.GoalChildPlanningHydration.stepUpdates`
-- `skillbill.ports.goalrunner.persistence.progressEventFrom`
-- `skillbill.ports.goalrunner.persistence.terminalOutcomeFor`
-- `skillbill.ports.goalrunner.persistence.toArtifactMap`
-- `skillbill.ports.goalrunner.persistence.toArtifactsMap`
+- `skillbill.goalrunner.progressEventFrom`
+- `skillbill.goalrunner.terminalOutcomeFor`
+- `skillbill.goalrunner.toArtifactMap`
+- `skillbill.goalrunner.toArtifactsMap`
 - `skillbill.ports.goalrunner.runner.GoalRunnerTerminalOutcomeStore.recoverMissingResultPrefixOutput`
 - `skillbill.ports.goalrunner.runner.GoalRunnerWorkflowProgressStore.progressEvents`
-- `skillbill.ports.phaseartifacts.decodeStrictKeyedArtifactMap`
-- `skillbill.ports.phaseartifacts.decomposeTerminalFrom`
-- `skillbill.ports.phaseartifacts.goalContinuationFieldAdoptionFrom`
-- `skillbill.ports.phaseartifacts.operatorBlockRetryFrom`
-- `skillbill.ports.phaseartifacts.phaseLedgerFrom`
-- `skillbill.ports.phaseartifacts.phaseRecordsFrom`
-- `skillbill.ports.phaseartifacts.resolvedBranchFrom`
-- `skillbill.ports.phaseartifacts.reviewGenerationFrom`
+- `skillbill.workflow.taskruntime.phaseartifacts.decodeStrictKeyedArtifactMap`
+- `skillbill.workflow.taskruntime.phaseartifacts.decomposeTerminalFrom`
+- `skillbill.workflow.taskruntime.phaseartifacts.goalContinuationFieldAdoptionFrom`
+- `skillbill.workflow.taskruntime.phaseartifacts.operatorBlockRetryFrom`
+- `skillbill.workflow.taskruntime.phaseartifacts.phaseLedgerFrom`
+- `skillbill.workflow.taskruntime.phaseartifacts.phaseRecordsFrom`
+- `skillbill.workflow.taskruntime.phaseartifacts.resolvedBranchFrom`
+- `skillbill.workflow.taskruntime.phaseartifacts.reviewGenerationFrom`
 - `skillbill.ports.review.model.GovernedReviewEvidenceCodec.TOOL_SPECS`
 - `skillbill.ports.review.model.GovernedReviewEvidenceCodec.expansionRequest`
 - `skillbill.ports.review.model.GovernedReviewEvidenceCodec.payload`
 - `skillbill.ports.review.model.GovernedReviewEvidenceCodec.readRequest`
 - `skillbill.ports.review.model.ReviewAccountingRecord.boundedPayload`
-- `skillbill.ports.subtaskreview.GoalSubtaskReviewOutcomeDispositionReduction.blockerDispositions`
-- `skillbill.ports.subtaskreview.GoalSubtaskReviewStructuredFindingsParse.recordedVerdicts`
-- `skillbill.ports.subtaskreview.GoalSubtaskReviewStructuredFindingsParse.reviewRunIdOf`
-- `skillbill.ports.subtaskreview.GoalSubtaskReviewStructuredFindingsParse.structuredFindings`
-- `skillbill.ports.subtaskreview.GoalSubtaskReviewSummaryReducer.blockerDispositions`
-- `skillbill.ports.subtaskreview.GoalSubtaskReviewSummaryReducer.commitFocusedAccounting`
-- `skillbill.ports.subtaskreview.GoalSubtaskReviewSummaryReducer.fromOutput`
-- `skillbill.ports.subtaskreview.GoalSubtaskReviewSummaryReducer.outcomeFor`
-- `skillbill.ports.subtaskreview.GoalSubtaskReviewSummaryReducer.rejectedVerificationFindings`
-- `skillbill.ports.subtaskreview.GoalSubtaskReviewSummaryReducer.unaddressedFindings`
-- `skillbill.ports.subtaskreview.GoalSubtaskReviewSummaryReducer.unresolvedCount`
-- `skillbill.ports.subtaskreview.GoalSubtaskReviewSummarySanitize.labelFor`
-- `skillbill.ports.subtaskreview.GoalSubtaskReviewVerificationRejection.rejectedVerificationFindings`
-- `skillbill.ports.subtaskreview.recordedVerdicts`
-- `skillbill.ports.subtaskreview.reviewPassVerdict`
-- `skillbill.ports.subtaskreview.reviewRunIdOf`
-- `skillbill.ports.subtaskreview.structuredFindings`
 - `skillbill.ports.validation.model.ReleaseRefMetadata.toPayload`
 - `skillbill.ports.validation.model.RepoValidationReport.toPayload`
 - `skillbill.ports.workflow.decomposition.DecompositionManifestPersistencePort.encodeManifestYaml`
@@ -1918,7 +1848,7 @@ Categories:
 - `skillbill.ports.workflow.decomposition.runtime.DecompositionManifestWriter.maybeWriteFromWorkflowUpdate`
 - `skillbill.ports.workflow.decomposition.runtime.DecompositionManifestWriter.writeFromWorkflowUpdate`
 - `skillbill.ports.workflow.decomposition.runtime.decodeArtifacts`
-- `skillbill.ports.workflow.decomposition.runtime.decodeArtifactKeys`
+- `skillbill.workflow.decomposition.runtime.decodeArtifactKeys`
 - `skillbill.ports.workflow.decomposition.runtime.manifestPathFromArtifacts`
 - `skillbill.ports.workflow.decomposition.runtime.model.DecompositionManifestRuntimeUpdate.artifactsPatch`
 - `skillbill.ports.workflow.decomposition.runtime.model.DecompositionManifestRuntimeUpdate.existingArtifacts`
@@ -1930,10 +1860,10 @@ Categories:
 - `skillbill.ports.workflow.decomposition.runtime.model.DecompositionPlanManifestInput.plan`
 - `skillbill.ports.workflow.decomposition.runtime.parentSpecPath`
 - `skillbill.ports.workflow.gitops.model.GoalSubtaskReviewInput.toArtifactMap`
-- `skillbill.ports.goalrunner.runner.GoalObservabilityArtifacts.patchForProgressEvent`
-- `skillbill.ports.goalrunner.runner.GoalObservabilityArtifacts.patchForRuntimeEvent`
-- `skillbill.ports.goalrunner.runner.model.GoalObservabilityProgressInput.artifacts`
-- `skillbill.ports.goalrunner.runner.model.GoalObservabilityRuntimeEventInput.artifacts`
+- `skillbill.goalrunner.GoalObservabilityArtifacts.patchForProgressEvent`
+- `skillbill.goalrunner.GoalObservabilityArtifacts.patchForRuntimeEvent`
+- `skillbill.goalrunner.model.GoalObservabilityProgressInput.artifacts`
+- `skillbill.goalrunner.model.GoalObservabilityRuntimeEventInput.artifacts`
 - `skillbill.ports.workflow.persistence.model.WorkflowFamily.sessionSummary`
 - `skillbill.ports.goalrunner.persistence.outOfBandAcceptancesFromLegacyArtifacts`
 - `skillbill.ports.goalrunner.persistence.reviewPolicyFromLegacyArtifacts`
@@ -1946,14 +1876,13 @@ Categories:
 - `skillbill.telemetry.model.TelemetryRemoteStatsResult.metrics`
 - `skillbill.workflow.decomposition.DecompositionManifestValidator.validate`
 - `skillbill.workflow.decomposition.DecompositionManifestValidator.validateYamlText`
-- `skillbill.workflow.engine.WorkflowEngine.compactContinueMap`
-- `skillbill.workflow.engine.WorkflowEngine.continueMap`
-- `skillbill.workflow.engine.WorkflowEngine.inputProjectionMap`
-- `skillbill.workflow.engine.WorkflowEngine.resumeMap`
-- `skillbill.workflow.engine.WorkflowEngine.snapshotMap`
-- `skillbill.workflow.engine.WorkflowEngine.summaryMap`
-- `skillbill.workflow.engine.WorkflowEngine.updateAcknowledgementMap`
-- `skillbill.workflow.engine.WorkflowSnapshotValidator.validate`
+- `skillbill.application.workflow.WorkflowWireProjections.compactContinueMap`
+- `skillbill.application.workflow.WorkflowWireProjections.continueMap`
+- `skillbill.application.workflow.WorkflowWireProjections.inputProjectionMap`
+- `skillbill.application.workflow.WorkflowWireProjections.resumeMap`
+- `skillbill.application.workflow.WorkflowWireProjections.snapshotMap`
+- `skillbill.application.workflow.WorkflowWireProjections.summaryMap`
+- `skillbill.application.workflow.WorkflowWireProjections.updateAcknowledgementMap`
 - `skillbill.workflow.engine.model.WorkflowContinuationArtifactSummary.value`
 - `skillbill.workflow.engine.model.WorkflowContinueView.extraFields`
 - `skillbill.workflow.engine.model.WorkflowContinueView.sessionSummary`
@@ -2086,33 +2015,15 @@ Categories:
 - `skillbill.application.decomposition.encodeDecompositionManifestMap`
 - `skillbill.application.decomposition.manifestPathFromArtifacts`
 - `skillbill.application.goalrunner.GoalParentProjectionWriter.artifacts`
-- `skillbill.application.goalrunner.backwardEdgeCountsFromLedger`
-- `skillbill.application.goalrunner.blockedReasonFrom`
-- `skillbill.application.goalrunner.commitShaFrom`
-- `skillbill.application.goalrunner.declaredProgressEventFrom`
-- `skillbill.application.goalrunner.derivedTerminalOutcomeFor`
 - `skillbill.application.goalrunner.goalContinuation`
-- `skillbill.application.goalrunner.goalContinuationOutcome`
 - `skillbill.application.goalrunner.goalReviewArtifacts`
 - `skillbill.application.goalrunner.goalReviewEmissionEnvelope`
 - `skillbill.application.goalrunner.maxHistorySequence`
 - `skillbill.application.goalrunner.missingResultPrefixTerminalOutcomeArtifact`
 - `skillbill.application.goalrunner.planning.model.GoalChildPlanningHydration.artifacts`
 - `skillbill.application.goalrunner.planning.model.GoalChildPlanningHydration.stepUpdates`
-- `skillbill.application.goalrunner.progressEventFrom`
-- `skillbill.application.goalrunner.terminalOutcomeFor`
 - `skillbill.application.goalrunner.toArtifactMap`
 - `skillbill.application.goalrunner.toArtifactsMap`
-- `skillbill.application.phaseartifacts.decodeStrictKeyedArtifactMap`
-- `skillbill.application.phaseartifacts.decomposeTerminalFrom`
-- `skillbill.application.phaseartifacts.goalContinuationFieldAdoptionFrom`
-- `skillbill.application.phaseartifacts.operatorBlockRetryFrom`
-- `skillbill.application.phaseartifacts.phaseLedgerFrom`
-- `skillbill.application.phaseartifacts.phaseRecordsFrom`
-- `skillbill.application.phaseartifacts.resolvedBranchFrom`
-- `skillbill.application.phaseartifacts.reviewGenerationFrom`
-- `skillbill.application.workflow.GoalObservabilityArtifacts.patchForProgressEvent`
-- `skillbill.application.workflow.GoalObservabilityArtifacts.patchForRuntimeEvent`
 - `skillbill.application.workflow.outOfBandAcceptancesFromLegacyArtifacts`
 - `skillbill.application.workflow.reviewPolicyFromLegacyArtifacts`
 - `skillbill.application.workflow.toPayload`

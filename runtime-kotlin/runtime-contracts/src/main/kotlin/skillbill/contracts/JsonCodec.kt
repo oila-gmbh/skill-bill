@@ -1,5 +1,6 @@
 package skillbill.contracts
 
+import kotlinx.serialization.SerializationException
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
@@ -14,6 +15,7 @@ import kotlinx.serialization.json.doubleOrNull
 import kotlinx.serialization.json.intOrNull
 import kotlinx.serialization.json.longOrNull
 import kotlinx.serialization.json.put
+import skillbill.error.MalformedJsonTextError
 
 object JsonCodec {
   val json: Json =
@@ -82,6 +84,16 @@ object JsonCodec {
   fun valueToJsonElement(value: Any?): JsonElement = jsonPrimitiveElement(value)
     ?: collectionJsonElement(value)
     ?: JsonPrimitive(value.toString())
+
+  fun parseValue(rawValue: String): Any? = try {
+    jsonElementToValue(json.parseToJsonElement(rawValue))
+  } catch (error: SerializationException) {
+    throw MalformedJsonTextError(error)
+  } catch (error: IllegalArgumentException) {
+    throw MalformedJsonTextError(error)
+  }
+
+  fun valueToJsonString(value: Any?): String = json.encodeToString(JsonElement.serializer(), valueToJsonElement(value))
 }
 
 private fun jsonPrimitiveToValue(primitive: JsonPrimitive): Any? = if (primitive.isJsonString()) {

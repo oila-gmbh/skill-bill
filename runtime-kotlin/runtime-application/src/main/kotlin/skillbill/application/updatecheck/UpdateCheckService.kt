@@ -8,6 +8,7 @@ import skillbill.application.updatecheck.model.UpdateCheckResult
 import skillbill.application.updatecheck.model.UpdateCheckStatus
 import skillbill.contracts.JsonCodec
 import skillbill.model.TransportContext
+import skillbill.ports.telemetry.RemoteTransportPort
 import skillbill.ports.telemetry.model.RemoteTransportResponse
 import java.io.IOException
 
@@ -68,9 +69,12 @@ class UpdateCheckService(
 
   private var lastUnknown: UpdateCheckResult = unknown("release check did not complete")
 
+  private fun requireRequester(): RemoteTransportPort = transportContext.requester
+    ?: error("Remote transport is not configured for this runtime context.")
+
   private fun fetchReleases(): List<Any?>? {
     val response = try {
-      transportContext.requester.execute(
+      requireRequester().execute(
         method = "GET",
         url = RELEASES_URL,
         bodyJson = null,

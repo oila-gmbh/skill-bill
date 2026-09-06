@@ -1,4 +1,5 @@
 package skillbill.application
+
 import skillbill.application.decomposition.DECOMPOSITION_RUNTIME_ARTIFACT_KEY
 import skillbill.application.decomposition.encodeDecompositionManifestMap
 import skillbill.application.decomposition.encodeDecompositionManifestYaml
@@ -17,6 +18,7 @@ import skillbill.application.goalrunner.testWorkflowGoalRunnerOutcomeStore
 import skillbill.application.workflow.ContinuationStepResult
 import skillbill.application.workflow.DecompositionWorkflowContinuation
 import skillbill.application.workflow.WorkflowService
+import skillbill.application.workflow.WorkflowWireProjections
 import skillbill.application.workflow.alignSubtaskResumeStep
 import skillbill.application.workflow.decompositionRuntime
 import skillbill.application.workflow.findDecomposedParentWorkflow
@@ -76,6 +78,7 @@ import skillbill.ports.goalrunner.runner.model.GoalRunnerReviewPolicy
 import skillbill.ports.goalrunner.runner.model.GoalRunnerScopedReplanOptions
 import skillbill.ports.learning.LearningRepository
 import skillbill.ports.persistence.UnitOfWork
+import skillbill.ports.persistence.UnitOfWorkDefaults
 import skillbill.ports.review.ReviewRepository
 import skillbill.ports.telemetry.LifecycleTelemetryRepository
 import skillbill.ports.telemetry.TelemetryOutboxRepository
@@ -105,6 +108,7 @@ import skillbill.workflow.decomposition.model.DecompositionSubtask
 import skillbill.workflow.engine.WorkflowEngine
 import skillbill.workflow.engine.WorkflowSnapshotValidator
 import skillbill.workflow.engine.model.WorkflowDefinition
+import skillbill.workflow.engine.model.WorkflowStateSnapshot
 import skillbill.workflow.engine.model.WorkflowUpdateInput
 import skillbill.workflow.goal.GoalObservabilityEventValidator
 import skillbill.workflow.goal.GoalProgressEventValidator
@@ -569,7 +573,7 @@ class WorkflowServiceTest {
     ).toRecord()
     workflows.saveFeatureTaskRuntimeWorkflow(record)
     val loudFailValidator = object : WorkflowSnapshotValidator {
-      override fun validate(snapshot: Map<String, Any?>, slug: String): Unit =
+      override fun validate(snapshot: WorkflowStateSnapshot, slug: String): Unit =
         throw InvalidWorkflowStateSchemaError("Workflow '$slug': snapshot fails schema validation at '<root>'.")
     }
     val service = WorkflowService(
@@ -601,7 +605,7 @@ class WorkflowServiceTest {
     ).toRecord()
     workflows.saveFeatureTaskRuntimeWorkflow(opened)
     val loudFailValidator = object : WorkflowSnapshotValidator {
-      override fun validate(snapshot: Map<String, Any?>, slug: String): Unit =
+      override fun validate(snapshot: WorkflowStateSnapshot, slug: String): Unit =
         throw InvalidWorkflowStateSchemaError("Workflow '$slug': snapshot fails schema validation at '<root>'.")
     }
     val service = WorkflowService(
@@ -1925,7 +1929,7 @@ class WorkflowUpdateAcknowledgementBudgetTest {
     // Build the compact ack wire shape (typed ack map + result-level db_path) and
     // assert it stays under the ceiling. A regression that echoes the full
     // durable artifacts map back in the ack would blow past it.
-    val ackMap = WorkflowEngine.updateAcknowledgementMap(ack) + mapOf("db_path" to ok.dbPath)
+    val ackMap = WorkflowWireProjections.updateAcknowledgementMap(ack) + mapOf("db_path" to ok.dbPath)
     val serialized = JsonCodec.mapToJsonString(ackMap)
     val byteSize = serialized.toByteArray(Charsets.UTF_8).size
     assertTrue(
@@ -3703,7 +3707,7 @@ internal class FakeDatabaseSessionFactory(
 
   override fun <T> transaction(dbOverride: String?, block: (UnitOfWork) -> T): T = block(unit())
 
-  private fun unit(): UnitOfWork = object : UnitOfWork {
+  private fun unit(): UnitOfWork = object : UnitOfWorkDefaults() {
     override val dbPath: Path = fakeDbPath
     override val workflowStates: WorkflowStateRepository = this@FakeDatabaseSessionFactory.workflowStates
     override val learnings: LearningRepository
@@ -4067,6 +4071,51 @@ class DecompositionDiskBootstrapTest {
       workflows.listFeatureTaskRuntimeWorkflows(Int.MAX_VALUE).size >= 2,
       "Expected parent bootstrap row and child subtask row in DB",
     )
+  }
+
+  @Test
+  fun `continueDecomposedParentByIssueKey without a manifest file store reports an unknown workflow`() {
+    val repoRoot = Files.createTempDirectory("skillbill-disk-bootstrap-no-store")
+    val manifestPath = repoRoot.resolve(".feature-specs/SKILL-TEST-feature/decomposition-manifest.yaml")
+    Files.createDirectories(manifestPath.parent)
+    val manifest = DecompositionManifest(
+      issueKey = "SKILL-TEST",
+      featureName = "test-feature",
+      parentSpecPath = ".feature-specs/SKILL-TEST-feature/spec.md",
+      status = "in_progress",
+      executionModel = DecompositionExecutionModel.SAME_BRANCH_COMMIT_PER_SUBTASK,
+      baseBranch = "main",
+      featureBranch = "",
+      currentSubtaskIntent = CurrentSubtaskIntent(subtaskId = 1, action = "implement"),
+      subtasks = listOf(
+        DecompositionSubtask(
+          id = 1,
+          name = "first-subtask",
+          specPath = ".feature-specs/SKILL-TEST-feature/spec_subtask_1.md",
+          status = "pending",
+        ),
+      ),
+    )
+    Files.writeString(
+      manifestPath,
+      encodeDecompositionManifestYaml(manifest, testDecompositionManifestValidator, TestDecompositionManifestStore),
+    )
+    val workflows = InMemoryWorkflowStates()
+    val db = FakeDatabaseSessionFactory(workflows)
+    val continuation = DecompositionWorkflowContinuation(
+      engine = testWorkflowEngine,
+      gitOperations = NoopWorkflowGitOperations,
+      validator = testDecompositionManifestValidator,
+      repoRoot = repoRoot,
+      manifestWriter = testDecompositionManifestWriter,
+    )
+
+    val result = db.transaction<ContinuationStepResult>(null) { unitOfWork ->
+      continuation.continueDecomposedParentByIssueKey("SKILL-TEST", unitOfWork)
+    }
+
+    assertTrue(result.result is WorkflowContinueResult.UnknownWorkflow)
+    assertTrue(workflows.listFeatureTaskRuntimeWorkflows(Int.MAX_VALUE).isEmpty())
   }
 
   /**

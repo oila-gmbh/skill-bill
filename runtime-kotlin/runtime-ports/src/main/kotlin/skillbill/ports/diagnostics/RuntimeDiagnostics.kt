@@ -5,9 +5,3 @@ interface RuntimeDiagnostics {
 
   fun error(message: String, error: Throwable? = null)
 }
-
-object NoopRuntimeDiagnostics : RuntimeDiagnostics {
-  override fun warning(message: String, error: Throwable?) = Unit
-
-  override fun error(message: String, error: Throwable?) = Unit
-}

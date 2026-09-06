@@ -1,4 +1,5 @@
 package skillbill.infrastructure.sqlite.goalrunner
+
 import skillbill.ports.goalrunner.persistence.featureTaskRecordForLegacyControls
 import skillbill.ports.goalrunner.persistence.migrateLegacyGoalRunnerControls
 import skillbill.ports.goalrunner.persistence.outOfBandAcceptancesFromLegacyArtifacts
@@ -11,7 +12,7 @@ import skillbill.review.context.model.CodeReviewExecutionMode
 
 internal class WorkflowGoalRunnerManifestReviewOpsImpl(
   private val ctx: WorkflowGoalRunnerManifestStoreContext,
-) : GoalRunnerManifestReviewOps {
+) : GoalRunnerManifestReviewCommands {
   override fun reviewMode(parentWorkflowId: String, dbPathOverride: String?): CodeReviewExecutionMode? =
     ctx.database.read(dbPathOverride) { unitOfWork ->
       unitOfWork.goalRunnerControls.reviewPolicy(parentWorkflowId)?.codeReviewMode

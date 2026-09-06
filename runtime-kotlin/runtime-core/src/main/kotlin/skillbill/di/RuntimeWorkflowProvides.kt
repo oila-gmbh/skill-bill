@@ -9,7 +9,6 @@ import skillbill.model.RepositoryRoot
 import skillbill.model.WorkflowOpsContext
 import skillbill.ports.decomposition.DecompositionManifestProjectionWriter
 import skillbill.ports.workflow.decomposition.DecompositionManifestStore
-import skillbill.ports.workflow.gitops.NoopWorkflowGitOperations
 import skillbill.ports.workflow.gitops.WorkflowGitOperations
 
 internal interface RuntimeWorkflowProvides {
@@ -21,7 +20,7 @@ internal interface RuntimeWorkflowProvides {
 
   @Provides @JvmSynthetic
   fun workflowGitOperations(workflowOps: WorkflowOpsContext, git: GitWorkflowGitOperations): WorkflowGitOperations =
-    if (workflowOps.workflowGitOperations === NoopWorkflowGitOperations) git else workflowOps.workflowGitOperations
+    workflowOps.workflowGitOperations ?: git
 
   @Provides @JvmSynthetic
   fun decompositionManifestStore(store: FileSystemDecompositionManifestFileStore): DecompositionManifestStore = store

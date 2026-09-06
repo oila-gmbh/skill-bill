@@ -1,6 +1,7 @@
 package skillbill.application
 
 import skillbill.application.workflow.WorkflowService
+import skillbill.application.workflow.WorkflowWireProjections
 import skillbill.application.workflow.model.WorkflowContinueResult
 import skillbill.application.workflow.model.WorkflowFamilyKind
 import skillbill.application.workflow.model.WorkflowOpenResult
@@ -10,7 +11,6 @@ import skillbill.contracts.JsonCodec
 import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_PERSISTENCE_CONTRACT_VERSION
 import skillbill.ports.workflow.decomposition.UnavailableDecompositionManifestStore
 import skillbill.ports.workflow.gitops.NoopWorkflowGitOperations
-import skillbill.workflow.engine.WorkflowEngine
 import skillbill.workflow.goal.NoopGoalObservabilityEventValidator
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -139,7 +139,7 @@ class WorkflowCompactContinuationTest {
     val standard = assertIs<WorkflowContinueResult.Standard>(
       service.continueWorkflow(WorkflowFamilyKind.TASK_RUNTIME, opened.workflowId),
     )
-    val compactMap = WorkflowEngine.compactContinueMap(standard.view.compact)
+    val compactMap = WorkflowWireProjections.compactContinueMap(standard.view.compact)
     val serialized = JsonCodec.mapToJsonString(compactMap)
     val byteSize = serialized.toByteArray(Charsets.UTF_8).size
 
@@ -175,7 +175,7 @@ class WorkflowCompactContinuationTest {
     )
     // The explicit diagnostic shape is operator-only: its step_artifacts field
     // stays projected, while its resume snapshot may expose private durable state.
-    val fullMap = WorkflowEngine.continueMap(standard.view)
+    val fullMap = WorkflowWireProjections.continueMap(standard.view)
     val fullSerialized = JsonCodec.mapToJsonString(fullMap)
 
     assertTrue(fullSerialized.contains("\"step_artifacts\""))

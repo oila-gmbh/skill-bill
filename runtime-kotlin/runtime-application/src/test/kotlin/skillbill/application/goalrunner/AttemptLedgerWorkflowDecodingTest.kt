@@ -1,8 +1,10 @@
 package skillbill.application.goalrunner
 
-import skillbill.application.decomposition.decodeArtifactKeys
 import skillbill.contracts.JsonCodec
+import skillbill.workflow.decomposition.runtime.decodeArtifactKeys
+import skillbill.workflow.engine.artifactsFingerprint
 import skillbill.workflow.engine.model.WorkflowStateSnapshot
+import skillbill.workflow.engine.progressToken
 import skillbill.workflow.goal.model.GOAL_PROGRESS_LATEST_EVENT_ARTIFACT_KEY
 import kotlin.test.Test
 import kotlin.test.assertEquals

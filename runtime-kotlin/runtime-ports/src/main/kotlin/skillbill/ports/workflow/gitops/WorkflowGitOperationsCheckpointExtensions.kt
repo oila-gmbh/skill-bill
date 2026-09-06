@@ -8,30 +8,30 @@ fun WorkflowGitOperations.amendHeadCommit(
   expectedOwnedHeadSha: String,
   replacementMessage: String? = null,
   allowUnchangedIndex: Boolean = false,
-): WorkflowGitOperationResult = checkpointHistoryOperations()
+): WorkflowGitOperationResult = checkpointHistoryOperations
   .amendHeadCommit(repoRoot, expectedOwnedHeadSha, replacementMessage, allowUnchangedIndex)
 
 fun WorkflowGitOperations.headCommitMessage(repoRoot: Path): WorkflowGitOperationResult =
-  checkpointHistoryOperations().headCommitMessage(repoRoot)
+  checkpointHistoryOperations.headCommitMessage(repoRoot)
 
 fun WorkflowGitOperations.updateCheckpointRef(
   repoRoot: Path,
   namespacePrefix: String,
   refName: String,
   targetSha: String,
-): WorkflowGitOperationResult = checkpointHistoryOperations().updateRef(repoRoot, namespacePrefix, refName, targetSha)
+): WorkflowGitOperationResult = checkpointHistoryOperations.updateRef(repoRoot, namespacePrefix, refName, targetSha)
 
 fun WorkflowGitOperations.resolveCheckpointRef(
   repoRoot: Path,
   namespacePrefix: String,
   refName: String,
-): WorkflowGitOperationResult = checkpointHistoryOperations().resolveRef(repoRoot, namespacePrefix, refName)
+): WorkflowGitOperationResult = checkpointHistoryOperations.resolveRef(repoRoot, namespacePrefix, refName)
 
 fun WorkflowGitOperations.listCheckpointRefs(repoRoot: Path, namespacePrefix: String): WorkflowGitOperationResult =
-  checkpointHistoryOperations().listRefs(repoRoot, namespacePrefix)
+  checkpointHistoryOperations.listRefs(repoRoot, namespacePrefix)
 
 fun WorkflowGitOperations.deleteCheckpointRef(
   repoRoot: Path,
   namespacePrefix: String,
   refName: String,
-): WorkflowGitOperationResult = checkpointHistoryOperations().deleteRef(repoRoot, namespacePrefix, refName)
+): WorkflowGitOperationResult = checkpointHistoryOperations.deleteRef(repoRoot, namespacePrefix, refName)

@@ -42,6 +42,7 @@ import skillbill.ports.goalrunner.EmptyGoalRunnerControlRepository
 import skillbill.ports.learning.LearningRepository
 import skillbill.ports.learning.model.LearningResolution
 import skillbill.ports.persistence.UnitOfWork
+import skillbill.ports.persistence.UnitOfWorkDefaults
 import skillbill.ports.review.ReviewAttributionPort
 import skillbill.ports.review.ReviewInputSource
 import skillbill.ports.review.ReviewRepository
@@ -63,8 +64,8 @@ import skillbill.ports.workflow.WorkflowStateRepository
 import skillbill.ports.workflow.WorkflowStatsRepository
 import skillbill.ports.workflow.gitops.NoopWorkflowGitOperations
 import skillbill.ports.workflow.gitops.RepositoryFingerprintGitOperations
-import skillbill.ports.workflow.gitops.RepositoryFingerprintGitOperationsProvider
 import skillbill.ports.workflow.gitops.WorkflowGitOperations
+import skillbill.ports.workflow.gitops.WorkflowGitOperationsTestBase
 import skillbill.ports.workflow.gitops.model.WorkflowGitOperationResult
 import skillbill.ports.workflow.gitops.model.WorkflowSelectedDiffHunksRequest
 import skillbill.ports.workflow.gitops.model.WorkflowSelectedDiffHunksResult
@@ -215,7 +216,7 @@ internal class FakeDatabaseSessionFactory(
     return block(fakeUnitOfWork())
   }
 
-  private fun fakeUnitOfWork(): UnitOfWork = object : UnitOfWork {
+  private fun fakeUnitOfWork(): UnitOfWork = object : UnitOfWorkDefaults() {
     override val dbPath: Path = this@FakeDatabaseSessionFactory.dbPath
     override val reviews: ReviewRepository = this@FakeDatabaseSessionFactory.reviews
     override val learnings: LearningRepository = this@FakeDatabaseSessionFactory.learnings
@@ -1049,7 +1050,7 @@ internal class InMemoryWorkflowStateRepository(
 internal class FakeWorkflowGitOperations(
   private val commitSha: String = "commit-sha",
   private val commitError: String = "",
-) : WorkflowGitOperations, RepositoryFingerprintGitOperationsProvider {
+) : WorkflowGitOperationsTestBase() {
   val checkouts = mutableListOf<String>()
   val baseValidations = mutableListOf<String>()
   val commits = mutableListOf<String>()

@@ -1,4 +1,5 @@
 package skillbill.application.goalrunner.planning
+
 import skillbill.application.InMemoryGoalManifestStore
 import skillbill.application.PlanningProjectionFixtures
 import skillbill.application.RecordingOutcomeStore
@@ -52,12 +53,14 @@ import skillbill.ports.goalrunner.planning.GoalPlanningContextDiscovery
 import skillbill.ports.goalrunner.planning.model.GoalPlanningBoundaryHeading
 import skillbill.ports.goalrunner.planning.model.GoalPlanningContext
 import skillbill.ports.goalrunner.runner.GoalRunnerManifestStore
+import skillbill.ports.goalrunner.runner.GoalRunnerManifestStoreDefaults
 import skillbill.ports.goalrunner.runner.GoalRunnerSubtaskLauncher
 import skillbill.ports.goalrunner.runner.model.GoalRunnerManifestState
 import skillbill.ports.goalrunner.runner.model.GoalRunnerSubtaskLaunchRequest
 import skillbill.ports.goalrunner.verification.model.GoalVerificationBoundaryDiscovery
 import skillbill.ports.learning.LearningRepository
 import skillbill.ports.persistence.UnitOfWork
+import skillbill.ports.persistence.UnitOfWorkDefaults
 import skillbill.ports.review.ReviewRepository
 import skillbill.ports.taskruntime.FeatureTaskRuntimeRunInvariantsSource
 import skillbill.ports.telemetry.LifecycleTelemetryRepository
@@ -2909,7 +2912,7 @@ private class InMemoryPreparationDatabase(
   @Synchronized
   override fun <T> transaction(dbOverride: String?, block: (UnitOfWork) -> T): T = block(unitOfWork())
 
-  private fun unitOfWork(): UnitOfWork = object : UnitOfWork {
+  private fun unitOfWork(): UnitOfWork = object : UnitOfWorkDefaults() {
     override val dbPath: Path = this@InMemoryPreparationDatabase.dbPath
     override val reviews: ReviewRepository get() = error("unused by goal planning sweep tests")
     override val learnings: LearningRepository get() = error("unused by goal planning sweep tests")
@@ -3112,7 +3115,7 @@ private class RecordingRuntimeTimingPort(
   }
 }
 
-private class MutablePauseGoalPlanningManifestStore : GoalRunnerManifestStore {
+private class MutablePauseGoalPlanningManifestStore : GoalRunnerManifestStoreDefaults() {
   var pauseRequested: Boolean = false
 
   override fun loadByIssueKey(issueKey: String, dbPathOverride: String?, repoRoot: Path?): GoalRunnerManifestState? =
@@ -3170,7 +3173,7 @@ private val fakeContextDiscovery = object : GoalPlanningContextDiscovery {
     )
 }
 
-private object NoopGoalPlanningManifestStore : GoalRunnerManifestStore {
+private object NoopGoalPlanningManifestStore : GoalRunnerManifestStoreDefaults() {
   override fun loadByIssueKey(issueKey: String, dbPathOverride: String?, repoRoot: Path?): GoalRunnerManifestState? =
     null
 
@@ -3216,7 +3219,7 @@ private class TrackingPlanningAuthorization : AgentRunSpawnAuthorization {
 
 private class AuthorizingGoalPlanningManifestStore(
   private val authorization: AgentRunSpawnAuthorization,
-) : GoalRunnerManifestStore {
+) : GoalRunnerManifestStoreDefaults() {
   override fun loadByIssueKey(issueKey: String, dbPathOverride: String?, repoRoot: Path?): GoalRunnerManifestState? =
     null
 

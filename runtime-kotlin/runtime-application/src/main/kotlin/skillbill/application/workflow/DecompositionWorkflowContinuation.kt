@@ -9,7 +9,6 @@ import skillbill.application.workflow.model.WorkflowContinueResult
 import skillbill.contracts.issuekey.normalizeRequiredIssueKey
 import skillbill.ports.persistence.UnitOfWork
 import skillbill.ports.workflow.decomposition.DecompositionManifestStore
-import skillbill.ports.workflow.decomposition.UnavailableDecompositionManifestStore
 import skillbill.ports.workflow.gitops.WorkflowGitOperations
 import skillbill.workflow.decomposition.DecompositionContinuationSelector
 import skillbill.workflow.decomposition.DecompositionManifestValidator
@@ -24,7 +23,7 @@ class DecompositionWorkflowContinuation(
   private val engine: WorkflowEngine,
   private val gitOperations: WorkflowGitOperations,
   private val validator: DecompositionManifestValidator,
-  private val fileStore: DecompositionManifestStore = UnavailableDecompositionManifestStore,
+  private val fileStore: DecompositionManifestStore? = null,
   private val repoRoot: Path,
   private val manifestWriter: DecompositionManifestWriter,
 ) {
@@ -60,11 +59,11 @@ class DecompositionWorkflowContinuation(
   }
 
   private fun findProjectedManifestByIssueKey(issueKey: String): DecompositionManifest? {
-    if (fileStore === UnavailableDecompositionManifestStore) return null
+    val store = fileStore ?: return null
     return resolveDecompositionManifest(
       repoRoot = repoRoot,
       issueKey = issueKey,
-      fileStore = fileStore,
+      fileStore = store,
       validator = validator,
     )
   }

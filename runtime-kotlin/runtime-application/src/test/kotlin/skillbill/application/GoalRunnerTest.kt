@@ -3,7 +3,6 @@ package skillbill.application
 import skillbill.agentaddon.model.AgentAddonSelection
 import skillbill.agentaddon.model.PersistedAgentAddonSelectionEntry
 import skillbill.application.decomposition.parentSpecPath
-import skillbill.application.decomposition.withBlockedSubtask
 import skillbill.application.featuretask.AcceptingFeatureTaskRuntimeHandoffEnvelopeValidator
 import skillbill.application.featuretask.AcceptingFeatureTaskRuntimeHandoffFoundationValidator
 import skillbill.application.featuretask.FeatureTaskRuntimePhaseRecorder
@@ -27,7 +26,6 @@ import skillbill.application.goalrunner.model.GoalRunnerResetRequest
 import skillbill.application.goalrunner.model.GoalRunnerRunEvent
 import skillbill.application.goalrunner.model.GoalRunnerRunRequest
 import skillbill.application.goalrunner.model.GoalRunnerStatusRequest
-import skillbill.application.goalrunner.planning.cascadeEligiblePlanSubtaskIds
 import skillbill.application.goalrunner.testActivityStampWriter
 import skillbill.application.goalrunner.testGoalRunner
 import skillbill.application.goalrunner.testGoalRunnerStatusService
@@ -35,6 +33,7 @@ import skillbill.application.goalrunner.testPhaseRecorder
 import skillbill.error.IncompatibleGoalPlanningPreparationRecoveryError
 import skillbill.goalrunner.model.ExecutionLiveness
 import skillbill.goalrunner.model.GoalAttemptLedgerAction
+import skillbill.goalrunner.model.GoalObservabilityProgressEvent
 import skillbill.goalrunner.model.GoalPlanningStatusReasons
 import skillbill.goalrunner.model.GoalPlanningStatusReasons.NOT_STARTED
 import skillbill.goalrunner.model.GoalPlanningStatusSnapshot
@@ -46,6 +45,7 @@ import skillbill.goalrunner.model.GoalRunnerAcceptedSubtask
 import skillbill.goalrunner.model.GoalRunnerControlState
 import skillbill.goalrunner.model.GoalRunnerExecutionLease
 import skillbill.goalrunner.model.GoalRunnerLaunchFacts
+import skillbill.goalrunner.model.GoalRunnerObservabilityRecordRequest
 import skillbill.goalrunner.model.GoalRunnerRunReport
 import skillbill.goalrunner.model.GoalRunnerStopReason
 import skillbill.goalrunner.model.GoalRunnerStoredOutcome
@@ -53,6 +53,7 @@ import skillbill.goalrunner.model.GoalRunnerSupervisionEvent
 import skillbill.goalrunner.model.GoalRunnerTerminalStatus
 import skillbill.goalrunner.model.GoalRunnerWorkerSubtaskRequestOutcome
 import skillbill.goalrunner.model.UnaddressedFinding
+import skillbill.goalrunner.planning.cascadeEligiblePlanSubtaskIds
 import skillbill.install.model.InstallAgent
 import skillbill.ports.agentrun.model.AgentRunLaunchFacts
 import skillbill.ports.agentrun.model.AgentRunLaunchOutcome
@@ -66,10 +67,9 @@ import skillbill.ports.goalrunner.EmptyGoalPlanningPreparationRepository
 import skillbill.ports.goalrunner.EmptyGoalRunnerControlRepository
 import skillbill.ports.goalrunner.GoalPlanningPreparationRepository
 import skillbill.ports.goalrunner.runner.GoalPullRequestPort
-import skillbill.ports.goalrunner.runner.GoalRunnerManifestStore
+import skillbill.ports.goalrunner.runner.GoalRunnerManifestStoreDefaults
 import skillbill.ports.goalrunner.runner.GoalRunnerSubtaskLauncher
 import skillbill.ports.goalrunner.runner.GoalRunnerWorkflowOutcomeStore
-import skillbill.ports.goalrunner.runner.model.GoalObservabilityProgressEvent
 import skillbill.ports.goalrunner.runner.model.GoalPullRequestRequest
 import skillbill.ports.goalrunner.runner.model.GoalPullRequestResult
 import skillbill.ports.goalrunner.runner.model.GoalRunnerAttemptLedgerRecordRequest
@@ -79,7 +79,6 @@ import skillbill.ports.goalrunner.runner.model.GoalRunnerLaunchAuthorization
 import skillbill.ports.goalrunner.runner.model.GoalRunnerLaunchAuthorizationDeniedException
 import skillbill.ports.goalrunner.runner.model.GoalRunnerLedgerSequenceWatermarks
 import skillbill.ports.goalrunner.runner.model.GoalRunnerManifestState
-import skillbill.ports.goalrunner.runner.model.GoalRunnerObservabilityRecordRequest
 import skillbill.ports.goalrunner.runner.model.GoalRunnerOutOfBandAcceptance
 import skillbill.ports.goalrunner.runner.model.GoalRunnerProgressEventRecordRequest
 import skillbill.ports.goalrunner.runner.model.GoalRunnerReconcileGate
@@ -90,6 +89,7 @@ import skillbill.ports.goalrunner.runner.model.GoalRunnerSubtaskLaunchRequest
 import skillbill.ports.goalrunner.runner.model.GoalRunnerWorkflowProgress
 import skillbill.ports.learning.LearningRepository
 import skillbill.ports.persistence.UnitOfWork
+import skillbill.ports.persistence.UnitOfWorkDefaults
 import skillbill.ports.review.ReviewRepository
 import skillbill.ports.telemetry.LifecycleTelemetryRepository
 import skillbill.ports.telemetry.TelemetryOutboxRepository
@@ -97,10 +97,9 @@ import skillbill.ports.telemetry.TelemetryReconciliationRepository
 import skillbill.ports.work.EmptyWorkListRepository
 import skillbill.ports.workflow.WorkflowStateRepository
 import skillbill.ports.workflow.gitops.GoalSubtaskReviewGitOperations
-import skillbill.ports.workflow.gitops.GoalSubtaskReviewGitOperationsProvider
 import skillbill.ports.workflow.gitops.ScopedStagingGitOperations
-import skillbill.ports.workflow.gitops.ScopedStagingGitOperationsProvider
 import skillbill.ports.workflow.gitops.WorkflowGitOperations
+import skillbill.ports.workflow.gitops.WorkflowGitOperationsTestBase
 import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewBaseline
 import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewBaselineRecoveryRequest
 import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewBaselineResult
@@ -123,6 +122,7 @@ import skillbill.workflow.decomposition.model.DecompositionManifest
 import skillbill.workflow.decomposition.model.DecompositionSubtask
 import skillbill.workflow.decomposition.model.SpecSource
 import skillbill.workflow.engine.WorkflowSnapshotValidator
+import skillbill.workflow.engine.model.WorkflowStateSnapshot
 import skillbill.workflow.goal.model.GoalObservabilityDiffStat
 import skillbill.workflow.goal.model.GoalProgressEventKind
 import skillbill.workflow.goal.model.GoalProgressOutcome
@@ -1682,7 +1682,7 @@ private class CommitAllRecordingGitOperations(
   private val unpushedCommits: Boolean = false,
   private val pushError: String? = null,
   private val commitError: String? = null,
-) : WorkflowGitOperations, GoalSubtaskReviewGitOperationsProvider, ScopedStagingGitOperationsProvider {
+) : WorkflowGitOperationsTestBase() {
   var stageAllCalls: Int = 0
   val stagePathsCalls: MutableList<List<String>> = mutableListOf()
   val commitMessages: MutableList<String> = mutableListOf()
@@ -3137,7 +3137,7 @@ internal class InMemoryGoalManifestStore(
   private val hardReset: ((GoalRunnerManifestState, String?) -> Unit)? = null,
   private val projectionSaved: (() -> Unit)? = null,
   initialControlState: GoalRunnerControlState = GoalRunnerControlState(),
-) : GoalRunnerManifestStore {
+) : GoalRunnerManifestStoreDefaults() {
   var manifest: DecompositionManifest = manifest
     private set
   var saveCount: Int = 0
@@ -4090,7 +4090,7 @@ internal class RecordingPullRequestPort : GoalPullRequestPort {
 
 private class FixedBranchGitOperations(
   private val branch: String,
-) : WorkflowGitOperations, GoalSubtaskReviewGitOperationsProvider {
+) : WorkflowGitOperationsTestBase() {
   override fun checkoutBranch(repoRoot: Path, branch: String, baseBranch: String?): WorkflowGitOperationResult =
     WorkflowGitOperationResult(status = "ok", value = branch)
 
@@ -4140,7 +4140,7 @@ internal class AcceptGitOperations(
       )
 }
 
-private object StatusDiffGitOperations : WorkflowGitOperations {
+private object StatusDiffGitOperations : WorkflowGitOperationsTestBase() {
   override fun checkoutBranch(repoRoot: Path, branch: String, baseBranch: String?): WorkflowGitOperationResult =
     WorkflowGitOperationResult(status = "ok", value = branch)
 
@@ -4181,7 +4181,7 @@ private class RecordingGitOperations(
   private val checkoutError: String? = null,
   private val validationError: String? = null,
   private val baselineError: String? = null,
-) : WorkflowGitOperations, GoalSubtaskReviewGitOperationsProvider {
+) : WorkflowGitOperationsTestBase() {
   val checkouts: MutableList<String> = mutableListOf()
   val validations: MutableList<String> = mutableListOf()
 
@@ -4557,7 +4557,7 @@ private class GoalStatusSeedableDatabase(
 
   override fun <T> transaction(dbOverride: String?, block: (UnitOfWork) -> T): T = block(unitOfWork())
 
-  private fun unitOfWork(): UnitOfWork = object : UnitOfWork {
+  private fun unitOfWork(): UnitOfWork = object : UnitOfWorkDefaults() {
     override val dbPath: Path = this@GoalStatusSeedableDatabase.dbPath
     override val reviews: ReviewRepository get() = error("unused by goal status tests")
     override val learnings: LearningRepository get() = error("unused by goal status tests")
@@ -4629,7 +4629,7 @@ private class GoalStatusSeedableWorkflowStateRepository : WorkflowStateRepositor
 }
 
 private object GoalTestNoopSnapshotValidator : WorkflowSnapshotValidator {
-  override fun validate(snapshot: Map<String, Any?>, slug: String) = Unit
+  override fun validate(snapshot: WorkflowStateSnapshot, slug: String) = Unit
 }
 
 private object GoalTestEmptyDatabase : DatabaseSessionFactory {
@@ -4645,7 +4645,7 @@ private object GoalTestEmptyDatabase : DatabaseSessionFactory {
 
   override fun <T> transaction(dbOverride: String?, block: (UnitOfWork) -> T): T = block(unitOfWork())
 
-  private fun unitOfWork(): UnitOfWork = object : UnitOfWork {
+  private fun unitOfWork(): UnitOfWork = object : UnitOfWorkDefaults() {
     override val dbPath: Path = this@GoalTestEmptyDatabase.dbPath
     override val reviews: ReviewRepository get() = error("unused by goal status tests")
     override val learnings: LearningRepository get() = error("unused by goal status tests")
@@ -4682,7 +4682,7 @@ private class GoalTestPlanningDatabase : DatabaseSessionFactory {
     return block(unitOfWork())
   }
 
-  private fun unitOfWork(): UnitOfWork = object : UnitOfWork {
+  private fun unitOfWork(): UnitOfWork = object : UnitOfWorkDefaults() {
     override val dbPath: Path = this@GoalTestPlanningDatabase.dbPath
     override val reviews: ReviewRepository get() = error("unused by hard reset test")
     override val learnings: LearningRepository get() = error("unused by hard reset test")

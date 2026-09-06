@@ -2,7 +2,6 @@ package skillbill.application.featuretask
 
 import skillbill.ports.workflow.gitops.NoopWorkflowGitOperations
 import skillbill.ports.workflow.gitops.RepositoryOwnedPathsGitOperations
-import skillbill.ports.workflow.gitops.RepositoryOwnedPathsGitOperationsProvider
 import skillbill.ports.workflow.gitops.WorkflowGitOperations
 import skillbill.ports.workflow.gitops.model.WorkflowGitOperationResult
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeResolvedBranch
@@ -13,8 +12,7 @@ import kotlin.test.assertEquals
 private const val NUL: Char = '\u0000'
 
 private class OwnedPathsGitOperations(private val result: WorkflowGitOperationResult) :
-  WorkflowGitOperations by NoopWorkflowGitOperations,
-  RepositoryOwnedPathsGitOperationsProvider {
+  WorkflowGitOperations by NoopWorkflowGitOperations {
   override val repositoryOwnedPathsOperations: RepositoryOwnedPathsGitOperations =
     object : RepositoryOwnedPathsGitOperations {
       override fun ownedPaths(repoRoot: Path): WorkflowGitOperationResult = result

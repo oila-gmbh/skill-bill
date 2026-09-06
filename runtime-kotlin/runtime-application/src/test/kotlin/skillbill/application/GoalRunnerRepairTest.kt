@@ -23,7 +23,6 @@ import skillbill.application.goalrunner.model.GoalRunnerRepairStatus
 import skillbill.application.goalrunner.model.GoalRunnerWedgeClass
 import skillbill.application.goalrunner.testGoalRunnerStatusService
 import skillbill.application.goalrunner.testWorkflowGoalRunnerOutcomeStore
-import skillbill.application.phaseartifacts.phaseRecordsFrom
 import skillbill.application.workflow.model.WorkflowFamily
 import skillbill.application.workflow.toRecord
 import skillbill.contracts.JsonCodec
@@ -32,7 +31,7 @@ import skillbill.goalrunner.model.GoalRunnerExecutionLease
 import skillbill.ports.diagnostics.NoopRuntimeDiagnostics
 import skillbill.ports.featuretask.model.FeatureTaskRuntimeWorkerLeaseState
 import skillbill.ports.featuretask.model.FeatureTaskRuntimeWorkerOwnership
-import skillbill.ports.goalrunner.runner.GoalRunnerManifestStore
+import skillbill.ports.goalrunner.runner.GoalRunnerManifestStoreDefaults
 import skillbill.ports.goalrunner.runner.model.GoalRunnerManifestState
 import skillbill.ports.taskruntime.FeatureTaskRuntimeWorkerSupervisor
 import skillbill.ports.taskruntime.NoopFeatureTaskRuntimeHeartbeat
@@ -42,7 +41,6 @@ import skillbill.ports.taskruntime.model.FeatureTaskRuntimeProcessIdentity
 import skillbill.ports.taskruntime.model.FeatureTaskRuntimeProcessInspection
 import skillbill.ports.workflow.decomposition.DecompositionManifestStore
 import skillbill.ports.workflow.gitops.GoalSubtaskReviewGitOperations
-import skillbill.ports.workflow.gitops.GoalSubtaskReviewGitOperationsProvider
 import skillbill.ports.workflow.gitops.NoopWorkflowGitOperations
 import skillbill.ports.workflow.gitops.WorkflowGitOperations
 import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewBaseline
@@ -67,6 +65,7 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeGoalContinuationAr
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseRecord
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeQualityGateSelection
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeVerdict
+import skillbill.workflow.taskruntime.phaseartifacts.phaseRecordsFrom
 import java.nio.file.Path
 import java.time.Duration
 import kotlin.test.Test
@@ -1216,7 +1215,7 @@ internal abstract class GoalRunnerRepairFixtures {
 
   protected class RepairManifestStore(
     private val childWorkflowId: String,
-  ) : GoalRunnerManifestStore {
+  ) : GoalRunnerManifestStoreDefaults() {
     override fun loadByIssueKey(issueKey: String, dbPathOverride: String?, repoRoot: Path?): GoalRunnerManifestState =
       GoalRunnerManifestState(
         parentWorkflowId = "wfl-parent",
@@ -1270,7 +1269,7 @@ internal abstract class GoalRunnerRepairFixtures {
   protected class ReachableGit(
     private val unreachableShas: Set<String> = emptySet(),
     private val recoveredSha: String = "b".repeat(40),
-  ) : WorkflowGitOperations by NoopWorkflowGitOperations, GoalSubtaskReviewGitOperationsProvider {
+  ) : WorkflowGitOperations by NoopWorkflowGitOperations {
     override fun headCommitSha(repoRoot: Path): WorkflowGitOperationResult =
       WorkflowGitOperationResult(status = "ok", value = HEAD_SHA)
 

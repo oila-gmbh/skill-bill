@@ -1,31 +1,27 @@
 package skillbill.infrastructure.fs
 
 import skillbill.ports.workflow.gitops.CheckpointHistoryGitOperations
-import skillbill.ports.workflow.gitops.CheckpointHistoryGitOperationsProvider
 import skillbill.ports.workflow.gitops.GoalSubtaskReviewGitOperations
-import skillbill.ports.workflow.gitops.GoalSubtaskReviewGitOperationsProvider
 import skillbill.ports.workflow.gitops.RepositoryFingerprintGitOperations
-import skillbill.ports.workflow.gitops.RepositoryFingerprintGitOperationsProvider
 import skillbill.ports.workflow.gitops.RepositoryOwnedPathsGitOperations
-import skillbill.ports.workflow.gitops.RepositoryOwnedPathsGitOperationsProvider
 import skillbill.ports.workflow.gitops.RuntimePhaseFileManifestGitOperations
-import skillbill.ports.workflow.gitops.RuntimePhaseFileManifestGitOperationsProvider
 import skillbill.ports.workflow.gitops.ScopedStagingGitOperations
-import skillbill.ports.workflow.gitops.ScopedStagingGitOperationsProvider
 import skillbill.ports.workflow.gitops.SuppressionEvidenceGitOperations
 import skillbill.ports.workflow.gitops.SuppressionEvidenceGitOperationsProvider
+import skillbill.ports.workflow.gitops.WorkflowGitBranchOperations
+import skillbill.ports.workflow.gitops.WorkflowGitCommitHistoryOperations
 import skillbill.ports.workflow.gitops.WorkflowGitOperations
+import skillbill.ports.workflow.gitops.WorkflowGitRemoteOperations
+import skillbill.ports.workflow.gitops.WorkflowGitWorktreeOperations
 import skillbill.ports.workflow.gitops.model.WorkflowGitOperationResult
 import java.nio.file.Path
 
 class GitWorkflowGitOperations :
-  WorkflowGitOperations by GitStandardWorkflowGitOperations,
-  CheckpointHistoryGitOperationsProvider,
-  GoalSubtaskReviewGitOperationsProvider,
-  RepositoryFingerprintGitOperationsProvider,
-  RepositoryOwnedPathsGitOperationsProvider,
-  RuntimePhaseFileManifestGitOperationsProvider,
-  ScopedStagingGitOperationsProvider,
+  WorkflowGitOperations,
+  WorkflowGitBranchOperations by GitStandardWorkflowGitOperations,
+  WorkflowGitRemoteOperations by GitStandardWorkflowGitOperations,
+  WorkflowGitCommitHistoryOperations by GitStandardWorkflowGitOperations,
+  WorkflowGitWorktreeOperations by GitStandardWorkflowGitOperations,
   SuppressionEvidenceGitOperationsProvider {
   override val checkpointHistoryOperations: CheckpointHistoryGitOperations = GitCheckpointHistoryOperations
   override val goalSubtaskReviewOperations: GoalSubtaskReviewGitOperations = GitGoalSubtaskReviewOperations

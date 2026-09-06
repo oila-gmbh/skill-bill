@@ -1,5 +1,7 @@
 package skillbill.ports.workflow.decomposition.runtime
 
+import skillbill.workflow.decomposition.runtime.invalidManifest
+
 fun parentSpecPath(plan: Map<String, Any?>): String {
   when (val rawParentPath = plan["parent_spec_path"]) {
     is String -> if (rawParentPath.isNotBlank()) return rawParentPath

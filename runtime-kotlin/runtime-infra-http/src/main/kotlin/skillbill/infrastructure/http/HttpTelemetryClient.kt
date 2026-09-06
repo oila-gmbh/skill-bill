@@ -8,7 +8,6 @@ import skillbill.model.EnvironmentContext
 import skillbill.model.TransportContext
 import skillbill.ports.telemetry.RemoteTransportPort
 import skillbill.ports.telemetry.TelemetryClient
-import skillbill.ports.telemetry.UnconfiguredRemoteTransportPort
 import skillbill.ports.telemetry.model.RemoteTransportResponse
 import skillbill.ports.telemetry.model.TelemetryOutboxRecord
 import skillbill.ports.time.JvmSystemClock
@@ -54,12 +53,7 @@ class HttpTelemetryClient(
   private val clock: Clock,
 ) : TelemetryClient {
   private val resolvedEnvironment = environmentContext.withProcessDefaults()
-  private val resolvedTransport =
-    if (transportContext.requester === UnconfiguredRemoteTransportPort) {
-      transportContext.copy(requester = JdkHttpRequester)
-    } else {
-      transportContext
-    }
+  private val resolvedRequester = transportContext.requester ?: JdkHttpRequester
 
   constructor(
     requester: RemoteTransportPort,
@@ -88,7 +82,7 @@ class HttpTelemetryClient(
       url = settings.proxyUrl,
       payload = telemetryProxyBatchPayload(settings, rows).toPayload(),
       errorContext = errorContext,
-      requester = resolvedTransport.requester,
+      requester = resolvedRequester,
     )
   }
 
@@ -100,7 +94,7 @@ class HttpTelemetryClient(
         url = capabilitiesUrl,
         errorContext = "Telemetry proxy capabilities request",
         headers = proxyAuthHeaders(resolvedEnvironment.environment),
-        requester = resolvedTransport.requester,
+        requester = resolvedRequester,
       ).toMutableMap().apply {
         putIfAbsent("contract_version", TELEMETRY_PROXY_CONTRACT_VERSION)
         putIfAbsent("source", "remote_proxy")
@@ -153,7 +147,7 @@ class HttpTelemetryClient(
         ).toPayload(),
         errorContext = "Remote telemetry stats request",
         headers = proxyAuthHeaders(resolvedEnvironment.environment),
-        requester = resolvedTransport.requester,
+        requester = resolvedRequester,
       ).toMutableMap()
     val responseCapabilitiesPresent = payload.containsKey("capabilities")
     payload.putIfAbsent("workflow", request.workflow)

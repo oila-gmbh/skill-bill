@@ -1541,3 +1541,111 @@ Reason: The re-merged run state carries 43 raw member functions (10 own plus 33 
 Spillover-scanner scope: the numbered-suffix rule (`Continued<N>`, `Helpers<N>`, `Fns<N>`, `Support<N>`, `[A-Z]<N>`, bare-digit siblings) keeps scanning every `src` root including tests; the new bare `Support`, `Helpers`, `Misc`, `Extras` file-and-type rule and the new identifier rule apply only to paths containing `/src/main/`, matching the 2026-08-29 decision that production rules scope to `src/main`, so the 42 `*TestSupport` helpers keep their names. Rename ownership: this subtask renames every suffixed file, type, and member in all ten modules (including `JsonSupport` in `runtime-contracts` and the `*Extras` types in `runtime-domain` and `runtime-ports`) as a rename-only final step because AC-002 requires an empty census across all ten modules; behaviour moves inside ports, domain, and contracts remain subtask 2 work. The two `@Inject` data classes in `runtime-ports` `WorkflowGoalRunnerStoreDepsModels.kt` are deleted here because AC-005 requires it and subtask 2 wants the same deletion; both overlaps are named in the subtask report.
 Alternatives considered: Baseline entries for the oversized merged units (rejected: 2026-09-02 permanent-floor decision). `TooManyFunctions` 25 (rejected: forces a count split of two measured single-responsibility units). Leaving `LargeClass` at 600 (rejected: would contradict the 1200-line file ceiling and force a suppression on every merged unit). Keeping `thresholdInInterfaces` at 40 (rejected: port width is the SKILL-231 guard against composite ports).
 Revisit when: a merged unit legitimately exceeds 1200 lines or 40 functions and the alternative is a named responsibility split, not a suffix file.
+
+## [2026-09-06] Ports evacuation and inward-layer purity (SKILL-233 subtask 2)
+
+**(a) Null-object substitutes leave production; reached absences become nullable ports.**
+Every `Noop`/`Unavailable`/`Empty`/`Unconfigured` object moved out of `src/main` into the owning
+module's `src/testFixtures` under its original package, so no consumer import changed and the
+substitutes cannot be resolved from a published runtime. Where a production call site actually
+reached a total refusal, the port became nullable and the site names its fallback:
+`TransportContext.requester` (`?: JdkHttpRequester` in `RuntimeBootstrapBindings` and
+`HttpTelemetryClient`), `WorkflowOpsContext.workflowGitOperations` (`?: git` in
+`RuntimeWorkflowProvides`), and `DecompositionWorkflowContinuation.fileStore` (absent store returns
+no disk manifest). `RecordingNullObjectDiagnostics` and its global bind are deleted: a substitute
+that is unreachable from production has nothing to record.
+Alternative rejected: keeping the classification census and its recording contract — it made a
+production reachability problem look like a documentation problem.
+
+**(b) `GoalRunnerManifestStore` is one flat interface with no default bodies.**
+The six sub-interfaces (`GoalRunnerManifestLookup`, `…PauseOps`, `…ExecutionLease`,
+`…ControlCommands`, `…PersistenceCommands`, `…ReviewCommands`) are now `internal` declarations in
+`runtime-infra-sqlite`, where the delegating store is assembled. The port declares ~35 abstract
+members. Test fakes that relied on the removed default bodies extend
+`GoalRunnerManifestStoreDefaults` in `runtime-ports` testFixtures, which reproduces the former
+defaults exactly.
+Alternative rejected: expanding the defaults into all 13 fakes — ~450 lines of restated behaviour
+with no assertion behind it.
+
+**(c) `UnitOfWork` declares only abstract members.**
+The three defaulted repositories and the two nullable diagnostics accessors are abstract; the
+production `SQLiteRepositories` already supplied all five. The 14 anonymous test implementations
+extend `UnitOfWorkDefaults` in `runtime-ports` testFixtures.
+
+**(d) `runtime-ports` imports no adapter machinery.**
+`AttemptLedgerWorkflowDecoding` was duplicated byte-for-byte in `runtime-ports` and
+`runtime-application`. It decodes `WorkflowStepState`, a `runtime-domain` type, and its consumers
+span `runtime-infra-fs`, `runtime-infra-sqlite`, and `runtime-application` — modules whose only
+common visible ancestor is `runtime-domain`. Both copies are deleted and the single home is
+`skillbill.workflow.engine`. That removes the last `kotlinx.serialization` import from
+`runtime-ports` and one duplicate basename pair. `kotlin-inject` leaves the `runtime-ports` Gradle
+edge with it.
+Alternative rejected: keeping the ports copy and deleting the application one — it would leave
+serialization in a module that must declare interfaces and DTOs only.
+
+**(e) `runtime-contracts` stops exporting `kotlinx-serialization-json`.**
+The edge narrows from `api` to `implementation` and every module that names a kotlinx type declares
+the dependency itself. `JsonCodec` still exposes `JsonObject` and `JsonElement`, so the declaration
+is not optional for its consumers; making that explicit is the point.
+
+## [2026-09-06] Audit-gap remediation: interface segregation restored, second ports wave, Path migration scoped out (SKILL-233 implement attempt 2)
+
+**(a) `GoalRunnerManifestStore` is a composite of six segregated interfaces again, superseding decision (b) of the 2026-09-06 subtask-2 entry.**
+Flattening the port into ~35 abstract members put it at 34 functions against detekt's
+`TooManyFunctions` threshold of 11 for interfaces. The six groupings (`GoalRunnerManifestLookup`,
+`…PauseOps`, `…ExecutionLease`, `…ControlCommands`, `…PersistenceCommands`, `…ReviewCommands`) are
+declared in `runtime-ports` and `GoalRunnerManifestStore` extends all six, so every consumer import
+and every fake is unchanged and no default bodies came back.
+Alternative rejected: a `@Suppress("TooManyFunctions")` on the port — the audit forbids clearing a
+gap with a new suppression, exemption, or baseline entry, and the threshold is measuring a real
+cohesion problem.
+
+**(b) Snapshot wire projection is adapter work; the domain port takes the typed record.**
+`WorkflowEngine.validatedSnapshotMap` built a `linkedMapOf<String, Any?>` inside `runtime-domain`.
+`WorkflowSnapshotValidator.validate` now takes `WorkflowStateSnapshot`, and the canonical wire
+shape (`workflow_id, session_id, workflow_name, contract_version, workflow_status, current_step_id,
+steps, artifacts, started_at, updated_at, finished_at`, plus `mode` when present) is built by
+`skillbill.infrastructure.fs.WorkflowStateSnapshotWireMapper`. The seven remaining wire maps left
+`skillbill.workflow.engine.WorkflowEngineWireMaps` for
+`skillbill.application.workflow.WorkflowWireProjections`; `artifactSummaryMap` became private rather
+than earning an eighth allow-list row.
+
+**(c) A lenient integer coercion is declared privately in the domain rather than reusing `asExactIntOrNull`.**
+`AttemptLedgerWorkflowDecoding` needs Int→this, Number→toInt(), String→toIntOrNull(), else null.
+`asExactIntOrNull` rejects lossy numbers by design; widening it to serve both call sites would make
+one caller's leniency the other caller's silent truncation.
+
+**(d) Duplicated ports/application basenames collapse into `runtime-domain` only when the shared code is free of port types.**
+Nineteen ports files moved to `runtime-domain` and thirteen application duplicates were deleted this
+round (39 unresolved ports-vs-application basename pairs down to 19; non-interface files outside
+`runtime-ports/**/model/` down from 47 to 24, and their line count from 6,599 to 5,069). Two port
+parameters (`ReviewRepository`, `UnitOfWork`) became the narrowest function type,
+`(String) -> List<ReviewFindingVerdict>`. Nine pairs (`AttemptLedgerDecoding`,
+`AttemptLedgerAccumulator`, `AttemptLedgerProgressEvents`, `GoalTerminalOutcomeDerivation`,
+`GoalObservabilityArtifacts`, and the DTOs they carry) were byte-identical modulo package and were
+reachable from `runtime-infra-sqlite` on the ports side and from `runtime-core` on the application
+side, so neither copy could be deleted in favour of the other: nine pure DTOs
+(`GoalRunnerObservabilityRecordRequest`, `GoalRunnerProgressEvent`, `GoalObservabilityProgressEvent`,
+`GoalRunnerAttemptLedgerSummary`, `BuildDeclaredGoalProgressEventArgs`, `GoalContinuation`,
+`GoalObservabilityWorktreeActivity`, `GoalObservabilityProgressInput`,
+`GoalObservabilityRuntimeEventInput`) moved to `skillbill.goalrunner.model` in `runtime-domain`
+first. Each collapsed pair also removed a duplicated `@OpenBoundaryMap` allow-list row: the
+duplication was being paid twice, once in code and once in `ARCHITECTURE.md`.
+
+**(e) The `java.nio.file` half of AC-009 is a subtask, not a step inside this phase; `kotlinx.serialization` and `StandardCharsets` are closed and guarded.**
+`runtime-domain` no longer imports `kotlinx.serialization` (4 files) or
+`java.nio.charset.StandardCharsets` (8 files), and `RuntimeContractModuleImportRulesTest` now bans
+`java.io.`, `java.nio.charset.`, `com.fasterxml.`, `kotlinx.serialization.`, and `org.yaml.` in
+`runtime-domain` — a strict tightening with no baseline. `java.nio.file` remains in 15 files, which
+declare 85 Path-carrying types referenced from 306 files across nine modules (`runtime-infra-fs` 147,
+`runtime-application` 62, `runtime-domain` 45, `runtime-ports` 22, `runtime-cli` 16, `runtime-core`
+8, `runtime-infra-http` 3, `runtime-mcp` 2, `runtime-infra-sqlite` 1). Introducing `FileLocation` and
+pushing `Paths.get`/`normalize`/`resolve` into `runtime-infra-fs` changes call sites, not just
+imports, so it cannot land behind a single green gate inside one phase.
+Consequence: the remaining 19 ports/application basename pairs stay. Twelve of them
+(`DecompositionManifest*`, `DecompositionWorkflowRuntimeLookup*`) depend on
+`DecompositionManifestStore`, whose seven members take `java.nio.file.Path`; the rest carry
+`WorkflowStateRepository`, `WorkflowStateRecord`, or `WorkflowFamily`. Both groups unblock only after
+the `FileLocation` migration.
+Revisit when: `FileLocation` lands — then re-run the pair census and expect the twelve
+decomposition pairs to collapse in one move.

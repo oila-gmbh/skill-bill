@@ -1,5 +1,6 @@
 package skillbill.application.decomposition
 
+import skillbill.workflow.decomposition.runtime.invalidManifest
 import java.math.BigDecimal
 import java.math.BigInteger
 import java.nio.file.Path

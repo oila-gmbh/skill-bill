@@ -8,7 +8,6 @@ import skillbill.model.RepositoryRoot
 import skillbill.model.RuntimeContext
 import skillbill.ports.db.DatabaseSessionFactory
 import skillbill.ports.repository.RepositoryEnclosingRootPort
-import skillbill.ports.telemetry.UnconfiguredRemoteTransportPort
 import java.nio.file.Path
 
 internal object RuntimeBootstrapBindings {
@@ -30,12 +29,7 @@ internal object RuntimeBootstrapBindings {
         resolvedEnvironment
       }
     val inputTransport = inputRuntimeContext.transport
-    val resolvedTransport =
-      if (inputTransport.requester === UnconfiguredRemoteTransportPort) {
-        inputTransport.copy(requester = JdkHttpRequester)
-      } else {
-        inputTransport
-      }
+    val resolvedTransport = inputTransport.copy(requester = inputTransport.requester ?: JdkHttpRequester)
     val resolvedRepositoryRoot =
       if (environmentWithEnv.repositoryRoot == EnvironmentContext.UnspecifiedRepositoryRoot) {
         environmentWithEnv.copy(repositoryRoot = repositoryEnclosingRootPort.enclosingRepositoryRoot(Path.of("")))

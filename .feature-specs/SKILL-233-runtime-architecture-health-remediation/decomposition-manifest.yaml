@@ -3,25 +3,24 @@ contract_version: "0.5"
 issue_key: "SKILL-233"
 feature_name: "runtime-architecture-health-remediation"
 parent_spec_path: ".feature-specs/SKILL-233-runtime-architecture-health-remediation/spec.md"
-status: "blocked"
+status: "in_progress"
 execution_model: "same_branch_commit_per_subtask"
 base_branch: "main"
 feature_branch: "feat/SKILL-233-runtime-architecture-health-remediation"
 stack_branches: []
 current_subtask_intent:
-  subtask_id: 1
-  action: "blocked"
+  subtask_id: 2
+  action: "resume"
 subtasks:
 - id: 1
   name: "Guard recalibration, run-loop consolidation, DI flattening"
   spec_path: ".feature-specs/SKILL-233-runtime-architecture-health-remediation/spec_subtask_1_guard-recalibration-run-loop-consolidation.md"
-  status: "blocked"
+  status: "complete"
   branch: null
   commit_sha: null
   workflow_id: "wftr-20260904-210526-r3x0"
-  blocked_reason: "Feature-task-runtime phase 'review' agent exited with status 1\
-    \ — You've hit your individual spend limit · run /usage-credits "
-  last_resumable_step: "review"
+  blocked_reason: null
+  last_resumable_step: "commit_push"
   linear_issue_id: null
   finalizing_agent_id: null
   participating_agent_ids: []
@@ -29,10 +28,10 @@ subtasks:
 - id: 2
   name: "Ports evacuation and domain purity"
   spec_path: ".feature-specs/SKILL-233-runtime-architecture-health-remediation/spec_subtask_2_ports-evacuation-domain-purity.md"
-  status: "pending"
+  status: "in_progress"
   branch: null
   commit_sha: null
-  workflow_id: null
+  workflow_id: "wftr-20260906-062341-tkfj"
   blocked_reason: null
   last_resumable_step: null
   linear_issue_id: null

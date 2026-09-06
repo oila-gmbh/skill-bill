@@ -1,7 +1,6 @@
 package skillbill.workflow.taskruntime.model
 
 import skillbill.error.InvalidFeatureTaskRuntimeRepairReceiptError
-import java.nio.charset.StandardCharsets
 
 private val COMPACT_SYMBOL = Regex("^[A-Za-z_][A-Za-z0-9_$-]*(?:\\.[A-Za-z_][A-Za-z0-9_$-]*)?$")
 private val COMPACT_IDENTIFIER = Regex("^[A-Za-z_][A-Za-z0-9_$-]*$")
@@ -72,7 +71,7 @@ internal fun requireReceiptSanitizedText(value: String, field: String, maxUtf8By
 
 internal fun sanitizedTextViolation(value: String, maxUtf8Bytes: Int): String? = when {
   value.isBlank() -> "must be a non-blank string."
-  value.toByteArray(StandardCharsets.UTF_8).size > maxUtf8Bytes -> "allows at most $maxUtf8Bytes UTF-8 bytes."
+  value.toByteArray(Charsets.UTF_8).size > maxUtf8Bytes -> "allows at most $maxUtf8Bytes UTF-8 bytes."
   value.any(Char::isISOControl) || value.contains('\n') || value.contains('\r') ->
     "must be a single line with no line break or control character."
   value.contains(CODE_FENCE) -> "must not contain a code fence."
@@ -85,12 +84,12 @@ internal fun sanitizedTextViolation(value: String, maxUtf8Bytes: Int): String? =
 
 internal fun utf8BudgetViolation(value: String, maxUtf8Bytes: Int): String? = when {
   value.isBlank() -> "must be a non-blank string."
-  value.toByteArray(StandardCharsets.UTF_8).size > maxUtf8Bytes -> "allows at most $maxUtf8Bytes UTF-8 bytes."
+  value.toByteArray(Charsets.UTF_8).size > maxUtf8Bytes -> "allows at most $maxUtf8Bytes UTF-8 bytes."
   else -> null
 }
 
 private fun requireUtf8Budget(value: String, field: String, maxUtf8Bytes: Int) {
-  val bytes = value.toByteArray(StandardCharsets.UTF_8).size
+  val bytes = value.toByteArray(Charsets.UTF_8).size
   if (bytes > maxUtf8Bytes) {
     receiptError(field, "allows at most $maxUtf8Bytes UTF-8 bytes.")
   }

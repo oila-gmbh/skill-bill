@@ -8,6 +8,8 @@ import skillbill.ports.workflow.decomposition.runtime.model.DecompositionManifes
 import skillbill.workflow.decomposition.DecompositionManifestValidator
 import skillbill.workflow.decomposition.model.DecompositionManifest
 import skillbill.workflow.decomposition.model.DecompositionSubtask
+import skillbill.workflow.decomposition.runtime.invalidManifest
+import skillbill.workflow.decomposition.runtime.isActiveGoalRuntime
 import java.nio.file.NoSuchFileException
 import java.nio.file.Path
 

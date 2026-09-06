@@ -7,7 +7,7 @@ import skillbill.application.testHarnessClock
 import skillbill.goalrunner.model.GoalRunnerExecutionLease
 import skillbill.ports.db.DatabaseSessionFactory
 import skillbill.ports.diagnostics.RejectedOutputDiagnosticMetadataValidator
-import skillbill.ports.goalrunner.runner.GoalRunnerManifestStore
+import skillbill.ports.goalrunner.runner.GoalRunnerManifestStoreDefaults
 import skillbill.ports.goalrunner.runner.GoalRunnerWorkflowOutcomeStore
 import skillbill.ports.goalrunner.runner.model.GoalRunnerManifestState
 import skillbill.ports.persistence.UnitOfWork
@@ -99,7 +99,7 @@ class GoalPlanningLogPairingTest {
   )
 }
 
-private object StubManifestStore : GoalRunnerManifestStore {
+private object StubManifestStore : GoalRunnerManifestStoreDefaults() {
   override fun loadByIssueKey(issueKey: String, dbPathOverride: String?, repoRoot: Path?) =
     GoalRunnerManifestState(PARENT_WORKFLOW_ID, "/fake/metrics.db", manifest(subtaskCount = 3))
 

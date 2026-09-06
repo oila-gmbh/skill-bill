@@ -28,7 +28,7 @@ class RuntimeComponentInboundApiArchitectureTest {
         abstract val extraSurface: ExtraSurface
         internal abstract val internalSurface: InternalSurface
         protected abstract val protectedSurface: ProtectedSurface
-        @Suppress("unused") abstract val annotatedSurface: AnnotatedSurface
+        @Deprecated("legacy") abstract val annotatedSurface: AnnotatedSurface
         abstract var mutableSurface: MutableSurface
         fun helper(): Int = 1
       }

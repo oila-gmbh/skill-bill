@@ -128,10 +128,11 @@ object PrincipleEnforcementInventory {
       "Misc, and Extras apply to main sources only.",
     "Gradle module edges: every module api(project(...)) and implementation(project(...)) set is pinned " +
       "to today's edges.",
-    "Port null-object classification: every Unavailable, Noop, Empty, or Unconfigured object under " +
-      "runtime-ports, runtime-domain, and runtime-application main source must appear in " +
-      "PortNullObjectClassification; recording null objects must emit through " +
-      "RecordingNullObjectDiagnostics when bound.",
+    "Port null-object absence: no runtime module main source declares an Unavailable, Noop, Empty, or " +
+      "Unconfigured substitute; a reached absence is a nullable port resolved at the call site and the " +
+      "test-only substitutes live in testFixtures.",
+    "Inward-layer import rules: runtime-ports imports no adapter machinery and runtime-domain imports no " +
+      "serialization or IO library, both asserted as an empty violation list without a baseline.",
     "Composition-only construction: no main-source site outside skillbill.di may construct a " +
       "concrete class the RuntimeComponent binds; sanctioned second entrypoints are named explicitly.",
   )

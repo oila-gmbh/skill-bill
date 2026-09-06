@@ -4,8 +4,8 @@ import skillbill.application.featuretask.model.FeatureTaskRuntimePhasePromptComp
 import skillbill.application.featuretask.model.FeatureTaskRuntimePhaseStateRequest
 import skillbill.application.featuretask.model.GoalReviewPhaseCompletionRequest
 import skillbill.application.review.RuntimeOwnedReviewMode
-import skillbill.application.subtaskreview.GoalSubtaskReviewSummaryReducer
-import skillbill.application.subtaskreview.UnaddressedFindingLedgerScope
+import skillbill.goalrunner.subtaskreview.GoalSubtaskReviewSummaryReducer
+import skillbill.goalrunner.subtaskreview.model.UnaddressedFindingLedgerScope
 import skillbill.install.model.InstallAgent
 import skillbill.ports.workflow.gitops.repositoryFingerprint
 import skillbill.workflow.goal.model.ValidationDepth

@@ -11,6 +11,7 @@ import skillbill.ports.goalrunner.GoalPlanningPreparationRepository
 import skillbill.ports.goalrunner.UnaddressedFindingsRepository
 import skillbill.ports.learning.LearningRepository
 import skillbill.ports.persistence.UnitOfWork
+import skillbill.ports.persistence.UnitOfWorkDefaults
 import skillbill.ports.review.ReviewRepository
 import skillbill.ports.telemetry.LifecycleTelemetryRepository
 import skillbill.ports.telemetry.TelemetryOutboxRepository
@@ -159,7 +160,7 @@ private class LedgerOnlySessionFactory(
 
   override fun <T> transaction(dbOverride: String?, block: (UnitOfWork) -> T): T = block(unit())
 
-  private fun unit(): UnitOfWork = object : UnitOfWork {
+  private fun unit(): UnitOfWork = object : UnitOfWorkDefaults() {
     override val dbPath: Path = Path.of("/fake/runtime.db")
     override val unaddressedFindings: UnaddressedFindingsRepository = findings
     override val reviews: ReviewRepository

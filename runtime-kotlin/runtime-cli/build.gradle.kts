@@ -32,6 +32,7 @@ dependencies {
   // classes. Test code crossing module boundaries for fixtures is expected;
   // main source must not.
   testImplementation(testFixtures(project(":runtime-application")))
+  testImplementation(testFixtures(project(":runtime-ports")))
   testImplementation(project(":runtime-infra-fs"))
   testImplementation(project(":runtime-infra-http"))
   testImplementation(project(":runtime-infra-sqlite"))

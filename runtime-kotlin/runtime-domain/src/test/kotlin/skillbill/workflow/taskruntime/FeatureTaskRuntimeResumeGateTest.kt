@@ -260,6 +260,6 @@ class FeatureTaskRuntimeResumeGateTest {
     value.replace("\\", "\\\\").replace("\"", "\\\"").let { """"$it"""" }
 
   private object NoopWorkflowSnapshotValidator : WorkflowSnapshotValidator {
-    override fun validate(snapshot: Map<String, Any?>, slug: String) = Unit
+    override fun validate(snapshot: WorkflowStateSnapshot, slug: String) = Unit
   }
 }

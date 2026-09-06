@@ -16,6 +16,7 @@ import skillbill.ports.goalrunner.EmptyGoalRunnerControlRepository
 import skillbill.ports.goalrunner.runner.model.GoalRunnerManifestState
 import skillbill.ports.learning.LearningRepository
 import skillbill.ports.persistence.UnitOfWork
+import skillbill.ports.persistence.UnitOfWorkDefaults
 import skillbill.ports.review.ReviewRepository
 import skillbill.ports.telemetry.LifecycleTelemetryRepository
 import skillbill.ports.telemetry.TelemetryOutboxRepository
@@ -30,6 +31,7 @@ import skillbill.ports.workflow.model.FeatureVerifySessionSummary
 import skillbill.ports.workflow.model.WorkflowStateRecord
 import skillbill.workflow.decomposition.model.CurrentSubtaskIntent
 import skillbill.workflow.engine.WorkflowSnapshotValidator
+import skillbill.workflow.engine.model.WorkflowStateSnapshot
 import java.nio.file.Path
 import java.time.Clock
 import java.time.Instant
@@ -167,7 +169,7 @@ private class RefreshLivenessHarness(clock: Clock) {
 }
 
 private object NoopRefreshLivenessSnapshotValidator : WorkflowSnapshotValidator {
-  override fun validate(snapshot: Map<String, Any?>, slug: String) = Unit
+  override fun validate(snapshot: WorkflowStateSnapshot, slug: String) = Unit
 }
 
 private class SeedableRefreshLivenessDatabase(
@@ -185,7 +187,7 @@ private class SeedableRefreshLivenessDatabase(
 
   override fun <T> transaction(dbOverride: String?, block: (UnitOfWork) -> T): T = block(unitOfWork())
 
-  private fun unitOfWork(): UnitOfWork = object : UnitOfWork {
+  private fun unitOfWork(): UnitOfWork = object : UnitOfWorkDefaults() {
     override val dbPath: Path = this@SeedableRefreshLivenessDatabase.dbPath
     override val reviews: ReviewRepository get() = error("unused by refresh liveness tests")
     override val learnings: LearningRepository get() = error("unused by refresh liveness tests")

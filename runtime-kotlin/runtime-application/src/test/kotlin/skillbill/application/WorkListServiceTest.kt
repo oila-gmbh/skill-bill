@@ -7,6 +7,7 @@ import skillbill.ports.goalrunner.EmptyGoalPlanningPreparationRepository
 import skillbill.ports.goalrunner.EmptyGoalRunnerControlRepository
 import skillbill.ports.learning.LearningRepository
 import skillbill.ports.persistence.UnitOfWork
+import skillbill.ports.persistence.UnitOfWorkDefaults
 import skillbill.ports.review.ReviewRepository
 import skillbill.ports.telemetry.LifecycleTelemetryRepository
 import skillbill.ports.telemetry.TelemetryOutboxRepository
@@ -17,6 +18,7 @@ import skillbill.ports.work.model.WorkItemKind
 import skillbill.ports.workflow.WorkflowStateRepository
 import skillbill.ports.workflow.model.WorkflowStateRecord
 import skillbill.workflow.engine.WorkflowSnapshotValidator
+import skillbill.workflow.engine.model.WorkflowStateSnapshot
 import java.nio.file.Path
 import java.time.Instant
 import kotlin.test.Test
@@ -43,7 +45,7 @@ class WorkListServiceTest {
       ),
     )
     val validator = object : WorkflowSnapshotValidator {
-      override fun validate(snapshot: Map<String, Any?>, slug: String): Unit =
+      override fun validate(snapshot: WorkflowStateSnapshot, slug: String): Unit =
         throw InvalidWorkflowStateSchemaError("Workflow '$slug' fails snapshot validation.")
     }
     val service = WorkListService(
@@ -130,7 +132,7 @@ private class WorkListDatabase(
 
   override fun <T> transaction(dbOverride: String?, block: (UnitOfWork) -> T): T = block(unitOfWork())
 
-  private fun unitOfWork(): UnitOfWork = object : UnitOfWork {
+  private fun unitOfWork(): UnitOfWork = object : UnitOfWorkDefaults() {
     override val dbPath: Path = Path.of("/fake/work-list.db")
     override val workflowStates = workflows
     override val workList: WorkListRepository = object : WorkListRepository {

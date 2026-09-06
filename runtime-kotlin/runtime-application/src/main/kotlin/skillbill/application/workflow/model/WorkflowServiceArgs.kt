@@ -9,7 +9,7 @@ import java.nio.file.Path
 
 data class ContinueExistingWorkflowArgs(
   val validator: DecompositionManifestValidator? = null,
-  val fileStore: DecompositionManifestStore,
+  val fileStore: DecompositionManifestStore? = null,
   val repoRoot: Path? = null,
   val manifestWriter: DecompositionManifestWriter? = null,
 )

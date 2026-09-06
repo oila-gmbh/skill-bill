@@ -92,10 +92,10 @@ sealed interface WorkflowResumeResult {
  *
  * `WorkflowContinueResult.Reopened` and `Blocked` carry the typed
  * `WorkflowContinueView` so the adapter can reconstruct the
- * wire-shape map via `WorkflowEngine.continueMap(view)`.
+ * wire-shape map via `WorkflowWireProjections.continueMap(view)`.
  *
  * Decomposition variants carry their own typed fields because their
- * shapes do not pass through `WorkflowEngine.continueMap`.
+ * shapes do not pass through `WorkflowWireProjections.continueMap`.
  */
 sealed interface WorkflowContinueResult {
   val dbPath: String

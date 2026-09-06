@@ -4,6 +4,7 @@ import skillbill.workflow.decomposition.model.CurrentSubtaskIntent
 import skillbill.workflow.decomposition.model.DecompositionExecutionModel
 import skillbill.workflow.decomposition.model.DecompositionManifest
 import skillbill.workflow.decomposition.model.DecompositionSubtask
+import skillbill.workflow.decomposition.runtime.normalizedBlockedReason
 import java.nio.file.Path
 
 // Runtime terminal step is `pr` (FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PR). Keep

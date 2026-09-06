@@ -5,11 +5,11 @@ import skillbill.application.featuretask.model.GoalSubtaskReviewPassCarryForward
 import skillbill.application.featuretask.model.GoalSubtaskReviewPassInFlight
 import skillbill.application.featuretask.model.GoalSubtaskReviewPassReservation
 import skillbill.application.featuretask.model.GoalSubtaskReviewPassReserved
-import skillbill.application.subtaskreview.GoalSubtaskReviewSummaryReducer
-import skillbill.application.subtaskreview.UnaddressedFindingLedgerScope
-import skillbill.application.subtaskreview.recordedVerdicts
 import skillbill.application.workflow.model.WorkflowFamily
 import skillbill.goalrunner.model.UnaddressedFinding
+import skillbill.goalrunner.subtaskreview.GoalSubtaskReviewSummaryReducer
+import skillbill.goalrunner.subtaskreview.model.UnaddressedFindingLedgerScope
+import skillbill.goalrunner.subtaskreview.recordedVerdicts
 import skillbill.ports.db.DatabaseSessionFactory
 import skillbill.ports.persistence.UnitOfWork
 import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewInput
@@ -148,7 +148,10 @@ class FeatureTaskRuntimeGoalReviewPassRecorder(
     val continuation = continuationFromArtifacts(artifacts)
       ?: error("Goal-subtask review continuation is missing during reserved-pass recovery.")
     val reservedPass = state.reservedPassNumber ?: 1
-    val recordedVerdicts = GoalSubtaskReviewSummaryReducer.recordedVerdicts(unitOfWork, request.normalizedOutput)
+    val recordedVerdicts = GoalSubtaskReviewSummaryReducer.recordedVerdicts(
+      unitOfWork.reviews::fetchFindingVerdicts,
+      request.normalizedOutput,
+    )
     val ledgerFindings = GoalSubtaskReviewSummaryReducer.unaddressedFindings(
       output = request.normalizedOutput,
       scope = UnaddressedFindingLedgerScope(

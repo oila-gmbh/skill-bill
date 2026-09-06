@@ -1,10 +1,10 @@
 package skillbill.ports.agentrun
 
+import skillbill.goalrunner.model.GoalRunnerObservabilityRecordRequest
 import skillbill.install.model.InstallAgent
 import skillbill.ports.agentrun.model.AgentRunLaunchFacts
 import skillbill.ports.agentrun.model.SkillRunGoalContinuationContext
 import skillbill.ports.agentrun.model.SkillRunRequest
-import skillbill.ports.goalrunner.runner.model.GoalRunnerObservabilityRecordRequest
 import skillbill.workflow.goal.model.ValidationDepth
 import java.nio.file.Path
 import kotlin.test.Test

@@ -437,6 +437,7 @@ class FeatureTaskRuntimePlanningProjectionEdgeTest {
       ),
     ),
     sharedReviewEvidence = fixture.sharedReviewEvidence,
+    planningProjectionValidator = realPlanningProjectionValidator,
   )
 
   private fun phaseOutput(phaseId: String, payload: String) =

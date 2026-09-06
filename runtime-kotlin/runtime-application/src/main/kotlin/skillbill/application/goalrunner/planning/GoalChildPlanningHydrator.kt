@@ -1,7 +1,7 @@
 package skillbill.application.goalrunner.planning
+
 import skillbill.application.decomposition.decodeArtifacts
 import skillbill.application.goalplanning.sha256HexUtf8
-import skillbill.application.goalrunner.decodeWorkflowSteps
 import skillbill.application.goalrunner.planning.model.GoalChildPlanningHydration
 import skillbill.application.planningprojection.requireValidPlanningProjection
 import skillbill.error.IncompatibleGoalPlanningPreparationRecoveryError
@@ -12,6 +12,7 @@ import skillbill.ports.goalrunner.model.GoalSubtaskPlanCheckpoint
 import skillbill.ports.goalrunner.model.SharedGoalPreplanCheckpoint
 import skillbill.ports.goalrunner.runner.model.GoalChildPlanningHydrationRequest
 import skillbill.ports.goalrunner.runner.model.GoalRunnerChildWorkflowSetup
+import skillbill.workflow.engine.decodeWorkflowSteps
 import skillbill.workflow.engine.model.WorkflowStateSnapshot
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseOutputValidator
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePlanningProjectionValidator

@@ -3,8 +3,8 @@ package skillbill.application.goalrunner
 import skillbill.application.decomposition.withParentStatus
 import skillbill.application.goalrunner.model.GoalRunnerResetSnapshot
 import skillbill.application.goalrunner.model.GoalRunnerResetSubtaskSnapshot
+import skillbill.goalrunner.model.GoalObservabilityProgressEvent
 import skillbill.goalrunner.model.GoalRunnerAcceptedSubtask
-import skillbill.ports.goalrunner.runner.model.GoalObservabilityProgressEvent
 import skillbill.ports.goalrunner.runner.model.GoalRunnerOutOfBandAcceptance
 import skillbill.workflow.decomposition.model.CurrentSubtaskIntent
 import skillbill.workflow.decomposition.model.DecompositionManifest

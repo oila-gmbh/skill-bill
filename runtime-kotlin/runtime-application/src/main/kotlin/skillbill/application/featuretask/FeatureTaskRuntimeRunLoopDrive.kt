@@ -1,8 +1,8 @@
 package skillbill.application.featuretask
 
 import skillbill.application.featuretask.model.FeatureTaskRuntimePhaseStateRequest
-import skillbill.application.subtaskreview.GoalSubtaskReviewSummaryReducer
 import skillbill.error.FeatureTaskRuntimePhaseOrderViolationError
+import skillbill.goalrunner.subtaskreview.GoalSubtaskReviewSummaryReducer
 import skillbill.ports.workflow.gitops.repositoryCheckpointFingerprint
 import skillbill.workflow.goal.model.GoalSubtaskReviewState
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition

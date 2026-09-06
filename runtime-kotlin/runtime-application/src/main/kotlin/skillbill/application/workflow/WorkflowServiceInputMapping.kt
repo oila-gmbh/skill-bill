@@ -1,5 +1,4 @@
 package skillbill.application.workflow
-
 import skillbill.application.workflow.model.GoalObservabilityProgressInput
 import skillbill.application.workflow.model.GoalObservabilityWorktreeActivity
 import skillbill.application.workflow.model.PersistOpenedWorkflowArgs
@@ -11,6 +10,7 @@ import skillbill.application.workflow.model.WorkflowUpdateRequest
 import skillbill.application.workflow.model.WorkflowUpdateResult
 import skillbill.contracts.JsonCodec
 import skillbill.contracts.issuekey.normalizeIssueKey
+import skillbill.goalrunner.GoalObservabilityArtifacts
 import skillbill.ports.workflow.gitops.WorkflowGitOperations
 import skillbill.workflow.engine.RUNTIME_REPOSITORY_EVIDENCE_ARTIFACT_KEY
 import skillbill.workflow.engine.WorkflowEngine

@@ -1,6 +1,7 @@
 package skillbill.application.featuretask
 
 import skillbill.contracts.JsonCodec
+import skillbill.goalrunner.subtaskreview.FeatureTaskRuntimeVerificationSignalKeys
 import skillbill.review.ReviewFindingActionability
 import skillbill.review.model.ReviewClaimVerdict
 import skillbill.review.model.ReviewScopeDisposition

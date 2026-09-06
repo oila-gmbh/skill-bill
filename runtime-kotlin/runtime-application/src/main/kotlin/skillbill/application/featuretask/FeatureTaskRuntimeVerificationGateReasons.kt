@@ -2,6 +2,7 @@ package skillbill.application.featuretask
 
 import skillbill.contracts.JsonCodec
 import skillbill.error.InvalidFeatureTaskRuntimeFindingVerificationRecordError
+import skillbill.goalrunner.subtaskreview.FeatureTaskRuntimeVerificationSignalKeys
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFindingVerificationDisposition
 import skillbill.workflow.taskruntime.model.validateDispositionCoverage

@@ -158,7 +158,10 @@ class FeatureTaskRuntimeRemediationPassPromptTest {
         expectedRepositoryCheckpoint = checkpoint,
       ),
     )
-    val briefing = FeatureTaskRuntimePhaseBriefingAssembler.assemble(handoff)
+    val briefing = FeatureTaskRuntimePhaseBriefingAssembler.assemble(
+      handoff,
+      planningProjectionValidator = realPlanningProjectionValidator,
+    )
     val prompt = composePhasePrompt(
       issueKey = "SKILL-142",
       briefing = briefing,
@@ -208,7 +211,10 @@ class FeatureTaskRuntimeRemediationPassPromptTest {
         expectedRepositoryCheckpoint = checkpoint,
       ),
     )
-    val briefing = FeatureTaskRuntimePhaseBriefingAssembler.assemble(handoff)
+    val briefing = FeatureTaskRuntimePhaseBriefingAssembler.assemble(
+      handoff,
+      planningProjectionValidator = realPlanningProjectionValidator,
+    )
     val prompt = composePhasePrompt(
       issueKey = "SKILL-178",
       briefing = briefing,
@@ -260,7 +266,10 @@ class FeatureTaskRuntimeRemediationPassPromptTest {
         expectedRepositoryCheckpoint = checkpoint,
       ),
     )
-    val briefing = FeatureTaskRuntimePhaseBriefingAssembler.assemble(handoff)
+    val briefing = FeatureTaskRuntimePhaseBriefingAssembler.assemble(
+      handoff,
+      planningProjectionValidator = realPlanningProjectionValidator,
+    )
     return composePhasePrompt(
       issueKey = "SKILL-142",
       briefing = briefing,
@@ -313,4 +322,5 @@ private fun reviewBriefing() = FeatureTaskRuntimePhaseBriefingAssembler.assemble
       repositoryCheckpoint = FeatureTaskRuntimeRepositoryCheckpoint(fingerprint = "fixture-checkpoint-1"),
     ),
   ),
+  planningProjectionValidator = realPlanningProjectionValidator,
 )

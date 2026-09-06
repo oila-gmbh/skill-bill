@@ -1,6 +1,8 @@
 package skillbill.ports.goalrunner.persistence
 import skillbill.boundary.OpenBoundaryMap
 import skillbill.contracts.JsonCodec
+import skillbill.goalrunner.asGoalRunnerIntOrNull
+import skillbill.goalrunner.goalContinuationTerminalStatus
 import skillbill.goalrunner.model.GoalRunnerStoredOutcome
 import skillbill.goalrunner.model.GoalRunnerTerminalStatus
 import skillbill.ports.goalrunner.persistence.model.GoalContinuationCandidate
@@ -92,15 +94,6 @@ fun GoalRunnerTerminalStatus.toGoalContinuationWireStatus(): String = when (this
   GoalRunnerTerminalStatus.NO_TERMINAL_STORE_OUTCOME -> "no_terminal_store_outcome"
   GoalRunnerTerminalStatus.RECONCILABLE -> "reconcilable"
   GoalRunnerTerminalStatus.PAUSED -> "paused"
-}
-
-fun goalContinuationTerminalStatus(status: String?): GoalRunnerTerminalStatus? = when (status) {
-  "complete", "completed" -> GoalRunnerTerminalStatus.COMPLETE
-  "failed" -> GoalRunnerTerminalStatus.FAILED
-  "blocked" -> GoalRunnerTerminalStatus.BLOCKED
-  "timeout", "timed_out" -> GoalRunnerTerminalStatus.TIMEOUT
-  "paused" -> GoalRunnerTerminalStatus.PAUSED
-  else -> null
 }
 
 @OpenBoundaryMap("Bounded history sequence scan over durable workflow artifacts")

@@ -4,6 +4,7 @@ import skillbill.boundary.OpenBoundaryMap
 import skillbill.goalrunner.model.GoalRunnerSupervisionEvent
 import skillbill.goalrunner.model.GoalRunnerWorkerSubtaskRequest
 import skillbill.goalrunner.model.GoalRunnerWorkerSubtaskRequestOutcome
+import skillbill.goalrunner.toArtifactMap
 
 @OpenBoundaryMap("Goal runner supervision event durable artifact map")
 fun GoalRunnerSupervisionEvent.toArtifactsMap(): Map<String, Any?> = linkedMapOf(

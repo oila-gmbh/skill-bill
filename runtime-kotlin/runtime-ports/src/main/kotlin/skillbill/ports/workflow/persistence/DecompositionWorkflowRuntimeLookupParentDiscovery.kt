@@ -1,12 +1,12 @@
 package skillbill.ports.workflow.persistence
 import skillbill.ports.workflow.WorkflowStateRepository
-import skillbill.ports.workflow.decomposition.runtime.DECOMPOSITION_RUNTIME_ARTIFACT_KEY
 import skillbill.ports.workflow.decomposition.runtime.decodeArtifacts
-import skillbill.ports.workflow.decomposition.runtime.isActiveGoalRuntime
 import skillbill.ports.workflow.model.FeatureTaskWorkflowMode
 import skillbill.ports.workflow.model.WorkflowStateRecord
 import skillbill.workflow.decomposition.DecompositionManifestValidator
 import skillbill.workflow.decomposition.model.DecompositionManifest
+import skillbill.workflow.decomposition.runtime.DECOMPOSITION_RUNTIME_ARTIFACT_KEY
+import skillbill.workflow.decomposition.runtime.isActiveGoalRuntime
 
 fun WorkflowStateRepository.findDecomposedParentOrCorruptFallback(
   issueKey: String,
