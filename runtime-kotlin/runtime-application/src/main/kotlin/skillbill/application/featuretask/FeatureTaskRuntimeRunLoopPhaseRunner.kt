@@ -119,8 +119,7 @@ class FeatureTaskRuntimeRunLoopPhaseRunner {
   internal fun missingRequiredUpstream(run: PhaseRun, state: FeatureTaskRuntimeRunState): List<String>? {
     val recoverableAuditRepairSource =
       run.phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT &&
-        run.reentry?.loopId == FeatureTaskRuntimePhaseWorkflowDefinition.AUDIT_GAP_LOOP_ID &&
-        run.reentry.reentryGapCriteria.isNotEmpty()
+        run.reentry?.loopId == FeatureTaskRuntimePhaseWorkflowDefinition.AUDIT_GAP_LOOP_ID
     return missingUpstream(run.declaration, state.outputs())
       ?.filterNot {
         recoverableAuditRepairSource && it in RECOVERABLE_AUDIT_REPAIR_UPSTREAM
