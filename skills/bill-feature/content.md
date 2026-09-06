@@ -49,10 +49,11 @@ dual-agent parallel review capability, and do not run preflight or launch.
 Call this command exactly once:
 
 ```text
-skill-bill goal preflight <issue-key> --format json
+skill-bill goal preflight <issue-key> --agent <currently-executing-agent> --format json
 ```
 
-Forward the agent, review, and agent add-on values as flags.
+Always pass the currently executing agent explicitly; do not rely on environment
+detection. Forward the review and agent add-on values as flags.
 Derive the next action from the returned `verdict`. Invoke `bill-feature-spec`
 after this preflight when the verdict reports new work, retaining the returned
 gate state without recomputing it. Report and stop for an already-running or
