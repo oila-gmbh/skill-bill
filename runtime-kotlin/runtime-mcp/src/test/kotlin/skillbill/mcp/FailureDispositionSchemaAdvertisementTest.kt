@@ -5,11 +5,6 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFailureDisposition
 import kotlin.test.Test
 import kotlin.test.assertEquals
 
-/**
- * `failure_disposition` is enforced downstream by the phase-settlement schema, and a rejected
- * settlement consumes the bounded output-gate correction budget. Advertising the enum on the wire
- * is what stops an invented value from reaching that gate and blocking the run.
- */
 class FailureDispositionSchemaAdvertisementTest {
   @Test
   fun `phase_block advertises the settlement failure_disposition enum`() {

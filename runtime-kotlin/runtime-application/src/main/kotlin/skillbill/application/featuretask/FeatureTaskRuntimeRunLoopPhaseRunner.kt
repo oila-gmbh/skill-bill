@@ -5,6 +5,11 @@ import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFailureDisposition
 import skillbill.workflow.taskruntime.model.acceptanceCriterionRefsFor
 
+private val RECOVERABLE_AUDIT_REPAIR_UPSTREAM: Set<String> = setOf(
+  FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT,
+  FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT,
+)
+
 @Inject
 class FeatureTaskRuntimeRunLoopPhaseRunner {
   fun declaredCriterionRefs(runLoop: FeatureTaskRuntimeRunLoop): List<String> =
@@ -118,7 +123,7 @@ class FeatureTaskRuntimeRunLoopPhaseRunner {
         run.reentry.reentryGapCriteria.isNotEmpty()
     return missingUpstream(run.declaration, state.outputs())
       ?.filterNot {
-        recoverableAuditRepairSource && it == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT
+        recoverableAuditRepairSource && it in RECOVERABLE_AUDIT_REPAIR_UPSTREAM
       }
       ?.takeIf(List<String>::isNotEmpty)
   }
