@@ -1,15 +1,14 @@
 package skillbill.application.featuretask.model
 
-import skillbill.agent.model.AgentId
 import skillbill.application.idestatus.model.IdeStatusCurrentPhaseExecution
-import skillbill.workflow.engine.model.WorkflowId
 
 /** Request for the read-only status projection of one runtime workflow. */
 data class FeatureTaskRuntimeStatusRequest(
-  val workflowId: WorkflowId,
+  val workflowId: String,
+  val dbPathOverride: String? = null,
 ) {
   init {
-    require(workflowId.value.isNotBlank()) { "FeatureTaskRuntimeStatusRequest.workflowId is required." }
+    require(workflowId.isNotBlank()) { "FeatureTaskRuntimeStatusRequest.workflowId is required." }
   }
 }
 
@@ -21,7 +20,7 @@ data class FeatureTaskRuntimePhaseStatus(
   val phaseId: String,
   val status: String,
   val attemptCount: Int,
-  val resolvedAgentId: AgentId?,
+  val resolvedAgentId: String?,
   val finished: Boolean,
   val executionOrigin: String? = null,
   /**
@@ -40,7 +39,7 @@ data class FeatureTaskRuntimePhaseStatus(
  * order; the counts and [currentPhaseId] are derived from them.
  */
 data class FeatureTaskRuntimeStatusProjection(
-  val workflowId: WorkflowId,
+  val workflowId: String,
   val featureSize: String?,
   val phases: List<FeatureTaskRuntimePhaseStatus>,
   val completeCount: Int,
@@ -54,7 +53,7 @@ data class FeatureTaskRuntimeStatusProjection(
    * The ledger-derived finalizing agent (Seam A rollup), computed even for a single-spec run where
    * no goal-continuation outcome is persisted. Null when no terminal agent attribution exists yet.
    */
-  val finalizingAgentId: AgentId? = null,
+  val finalizingAgentId: String? = null,
   val decomposeTerminal: FeatureTaskRuntimeDecomposeTerminalStatus? = null,
   val auditRepair: FeatureTaskRuntimeAuditRepairStatus? = null,
   /** Runtime-measured validation gate runs while validate is active; null when not yet started. */

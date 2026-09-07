@@ -1,4 +1,5 @@
 package skillbill.application
+
 import skillbill.application.goalrunner.GoalRunnerStatusTestPorts
 import skillbill.application.goalrunner.model.GoalRunnerStopStatus
 import skillbill.application.goalrunner.testGoalRunnerStatusService
@@ -20,7 +21,6 @@ import skillbill.ports.taskruntime.model.FeatureTaskRuntimeProcessInspection
 import skillbill.workflow.decomposition.model.CurrentSubtaskIntent
 import skillbill.workflow.decomposition.model.DecompositionManifest
 import skillbill.workflow.decomposition.model.DecompositionSubtask
-import skillbill.workflow.decomposition.model.SubtaskId
 import java.nio.file.Path
 import java.time.Clock
 import java.time.Duration
@@ -309,7 +309,7 @@ private class StopFakeManifestStore(
         parentSpecPath = ".feature-specs/$issueKey/spec.md",
         baseBranch = "main",
         featureBranch = "feat/$issueKey",
-        currentSubtaskIntent = CurrentSubtaskIntent(subtaskId = SubtaskId(1), action = "start"),
+        currentSubtaskIntent = CurrentSubtaskIntent(subtaskId = 1, action = "start"),
         subtasks = listOf(DecompositionSubtask(id = 1, name = "One", specPath = "spec_1.md", status = "in_progress")),
       ),
       controlState = controlStateValue,

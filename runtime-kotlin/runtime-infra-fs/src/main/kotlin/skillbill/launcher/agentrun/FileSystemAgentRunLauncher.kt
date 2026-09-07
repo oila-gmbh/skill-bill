@@ -21,7 +21,7 @@ class FileSystemAgentRunLauncher internal constructor(
     headlessAgentRunAdapters(processRunner, executableLookup)
 
   override fun launch(request: AgentRunLaunchRequest): AgentRunLaunchOutcome {
-    val agent = InstallAgent.fromNormalizedId(request.agentId.value)
+    val agent = InstallAgent.fromNormalizedId(request.agentId)
     val adapter = adapters[agent]
       ?: return UnsupportedAgentRunLaunch(
         agent = agent,

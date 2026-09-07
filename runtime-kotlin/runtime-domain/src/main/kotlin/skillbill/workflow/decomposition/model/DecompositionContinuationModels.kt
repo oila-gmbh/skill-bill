@@ -1,11 +1,9 @@
 package skillbill.workflow.decomposition.model
 
-import skillbill.workflow.engine.model.WorkflowId
-
 sealed class DecompositionContinuationSelection {
   data class Resume(
     val subtask: DecompositionSubtask,
-    val workflowId: WorkflowId,
+    val workflowId: String,
     val resumeStepId: String,
   ) : DecompositionContinuationSelection()
 

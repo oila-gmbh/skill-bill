@@ -1,8 +1,8 @@
 package skillbill.db
+
 import skillbill.db.core.DatabaseMigrations
 import skillbill.db.core.DatabaseRuntime
 import skillbill.error.InvalidGoalPlanningPreparationSchemaError
-import skillbill.workflow.engine.model.WorkflowId
 import java.nio.file.Files
 import java.sql.Connection
 import java.sql.SQLException
@@ -58,7 +58,7 @@ class GoalPlanningPhaseOutputMigrationTest {
         textScalar(connection, "SELECT plan_repair_evidence_json FROM goal_planning_preparations"),
       )
       assertFailsWith<SQLException> {
-        seedPlanningRow(connection, phaseOutputContractVersion = "0.1", workflowId = WorkflowId("wfl-incompatible"))
+        seedPlanningRow(connection, phaseOutputContractVersion = "0.1", workflowId = "wfl-incompatible")
       }
     }
   }

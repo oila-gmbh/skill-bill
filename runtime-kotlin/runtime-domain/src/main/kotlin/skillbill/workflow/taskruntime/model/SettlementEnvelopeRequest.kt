@@ -2,7 +2,7 @@ package skillbill.workflow.taskruntime.model
 
 data class SettlementEnvelopeRequest(
   val phaseId: String,
-  val status: PhaseOutputStatus,
+  val status: String,
   val value: String,
   val summary: String,
   val prompt: String? = null,

@@ -1,4 +1,5 @@
 package skillbill.application.goalrunner
+
 import skillbill.application.goalrunner.model.GoalContinuation
 import skillbill.application.workflow.model.WorkflowFamily
 import skillbill.boundary.OpenBoundaryMap
@@ -12,7 +13,6 @@ import skillbill.ports.persistence.UnitOfWork
 import skillbill.ports.workflow.WorkflowStateRepository
 import skillbill.ports.workflow.get
 import skillbill.ports.workflow.model.toSnapshot
-import skillbill.workflow.engine.model.WorkflowId
 import skillbill.workflow.engine.model.WorkflowStateSnapshot
 import skillbill.workflow.goal.model.GOAL_SUBTASK_REVIEW_STATE_ARTIFACT_KEY
 import skillbill.workflow.goal.model.GoalSubtaskReviewArtifactDecoder
@@ -87,18 +87,17 @@ fun goalReviewEmissionEnvelope(
     .envelope
 }
 
-fun taskRuntimeRecordOrNull(workflowStates: WorkflowStateRepository, workflowId: WorkflowId): WorkflowStateSnapshot? =
-  try {
-    WorkflowFamily.TASK_RUNTIME.get(workflowStates, workflowId)
-  } catch (error: InvalidWorkflowStateSchemaError) {
-    if (error.message.orEmpty().contains("mode='")) {
-      null
-    } else {
-      throw error
-    }
+fun taskRuntimeRecordOrNull(workflowStates: WorkflowStateRepository, workflowId: String): WorkflowStateSnapshot? = try {
+  WorkflowFamily.TASK_RUNTIME.get(workflowStates, workflowId)
+} catch (error: InvalidWorkflowStateSchemaError) {
+  if (error.message.orEmpty().contains("mode='")) {
+    null
+  } else {
+    throw error
   }
+}
 
 fun featureTaskRecordForLegacyControls(
   workflowStates: WorkflowStateRepository,
-  workflowId: WorkflowId,
+  workflowId: String,
 ): WorkflowStateSnapshot? = workflowStates.getFeatureTaskWorkflow(workflowId)?.toSnapshot()

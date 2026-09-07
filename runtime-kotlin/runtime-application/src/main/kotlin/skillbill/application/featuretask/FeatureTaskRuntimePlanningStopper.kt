@@ -52,7 +52,7 @@ class FeatureTaskRuntimePlanningStopper(
     // A decompose terminal already durably recorded on a prior run is reconstructed without
     // rewriting the specs/manifest, so a crash after PLAN completed but before the terminal was
     // observed re-derives the same Decomposed report rather than advancing to implement.
-    val recordedTerminal = decomposeTerminalRecorder.loadDecomposeTerminal(request.workflowId)
+    val recordedTerminal = decomposeTerminalRecorder.loadDecomposeTerminal(request.workflowId, request.dbPathOverride)
     return if (recordedTerminal != null) {
       FeatureTaskRuntimePlanningStopDecision.Decomposed(
         recordedTerminal.toRunReport(request, completedPhaseIds, resolvedBranch),
@@ -100,7 +100,7 @@ class FeatureTaskRuntimePlanningStopper(
     val outcome = featureTaskRuntimeDecomposePlanOutcomeOrNull(parsed, specSource)
       ?: return FeatureTaskRuntimePlanningStopDecision.Proceed
     val terminal = writeDecompositionTerminal(request, outcome)
-    decomposeTerminalRecorder.recordDecomposeTerminal(request.workflowId, terminal)
+    decomposeTerminalRecorder.recordDecomposeTerminal(request.workflowId, terminal, request.dbPathOverride)
     emitDecomposedAtPlanning(request, terminal)
     return FeatureTaskRuntimePlanningStopDecision.Decomposed(
       terminal.toRunReport(request, completedPhaseIds, resolvedBranch),

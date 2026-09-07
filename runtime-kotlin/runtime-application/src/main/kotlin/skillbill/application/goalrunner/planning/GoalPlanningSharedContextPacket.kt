@@ -1,7 +1,5 @@
 package skillbill.application.goalrunner.planning
 
-import skillbill.workflow.decomposition.model.IssueKey
-
 import skillbill.contracts.JsonCodec
 import skillbill.contracts.goalplanning.GoalPlanningDiscoveryExclusions
 import skillbill.ports.goalrunner.planning.model.GoalPlanningContext
@@ -49,7 +47,7 @@ object GoalPlanningSharedContextPacket {
   fun validate(
     packet: Map<String, Any?>,
     repositoryIdentity: String,
-    normalizedIssueKey: IssueKey,
+    normalizedIssueKey: String,
     parentSpecPath: String,
     subtasks: List<DecompositionSubtask>,
   ) {

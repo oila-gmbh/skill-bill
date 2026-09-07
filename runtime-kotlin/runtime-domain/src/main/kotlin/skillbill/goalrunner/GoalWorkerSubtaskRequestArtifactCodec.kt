@@ -1,5 +1,4 @@
 package skillbill.goalrunner
-
 import skillbill.boundary.OpenBoundaryMap
 import skillbill.goalrunner.model.GoalRunnerSupervisionEvent
 import skillbill.goalrunner.model.GoalRunnerWorkerSubtaskRequest
@@ -11,7 +10,7 @@ fun GoalRunnerSupervisionEvent.toArtifactsMap(): Map<String, Any?> = linkedMapOf
   "reason" to reason,
   "continuation_mode" to continuationMode,
   "process_state" to processState,
-  "workflow_id" to workflowId.value,
+  "workflow_id" to workflowId,
   "step_id" to stepId,
   "last_durable_progress" to lastDurableProgress,
   "last_workflow_snapshot_at" to lastWorkflowSnapshotAt,
@@ -28,7 +27,7 @@ fun GoalRunnerWorkerSubtaskRequestOutcome.toArtifactMap(): Map<String, Any?> = w
     "status" to "accepted",
     "source_stream" to sourceStream,
     "request" to request.toArtifactMap(),
-    "subtask_id" to subtask.id.value,
+    "subtask_id" to subtask.id,
     "spec_path" to subtask.specPath,
   )
   is GoalRunnerWorkerSubtaskRequestOutcome.Queued -> linkedMapOf(

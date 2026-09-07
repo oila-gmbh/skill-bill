@@ -1,10 +1,9 @@
 package skillbill.launcher
+
 import skillbill.ports.agentrun.model.AgentRunDeclaredProgressSnapshot
 import skillbill.ports.agentrun.model.AgentRunProgressEmission
 import skillbill.ports.agentrun.model.SkillRunGoalContinuationContext
 import skillbill.ports.agentrun.model.SkillRunRequest
-import skillbill.workflow.decomposition.model.SubtaskId
-import skillbill.workflow.engine.model.WorkflowId
 import skillbill.workflow.goal.model.GoalProgressEvent
 import java.nio.file.Files
 import java.nio.file.Path
@@ -26,7 +25,7 @@ internal class SharedDeclaredProgressStore {
     recorded += emission
     latest = GoalProgressEvent(
       eventKind = emission.eventKind,
-      workflowId = WorkflowId("wfl-child"),
+      workflowId = "wfl-child",
       workflowPhase = "goal_runner_supervision",
       processAlive = emission.processAlive,
       sequenceNumber = sequence++,
@@ -50,7 +49,7 @@ internal fun skillRunRequest(
 ): SkillRunRequest = SkillRunRequest(
   issueKey = issueKey,
   repoRoot = Path.of("/tmp/skillbill-agent-run"),
-  subtaskId = SubtaskId(2),
+  subtaskId = 2,
   dbPathOverride = "/tmp/skillbill-agent-run/metrics.db",
   timeout = 3.seconds,
   goalContinuation = goalContinuation,
@@ -59,7 +58,7 @@ internal fun skillRunRequest(
 internal fun goalContinuationContext(childWorkflowId: String? = null): SkillRunGoalContinuationContext =
   SkillRunGoalContinuationContext(
     parentIssueKey = "SKILL-56",
-    subtaskId = SubtaskId(2),
+    subtaskId = 2,
     goalBranch = "feat/SKILL-56-goal",
     suppressPr = true,
     specPath = ".feature-specs/SKILL-56-goal/spec_subtask_2.md",

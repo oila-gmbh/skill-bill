@@ -1,6 +1,5 @@
 package skillbill.review
 
-import skillbill.agent.model.AgentId
 import skillbill.review.context.model.structuredString
 import skillbill.review.model.ParallelReviewLaneResult
 import skillbill.review.model.ParallelReviewMergeResult
@@ -194,7 +193,7 @@ object ParallelReviewMerger {
         null
       } else {
         ReviewLaneFindingVerdict(
-          laneId = entry.agentId.value,
+          laneId = entry.agentId,
           claimVerdict = finding.claimVerdict,
           scopeDisposition = finding.scopeDisposition,
           citations = finding.citations,
@@ -209,7 +208,7 @@ object ParallelReviewMerger {
       ReviewFindingActionability::conservativeScopeDisposition,
     )
     return MergedCandidate(
-      agentIds = entries.map { it.agentId.value }.distinct(),
+      agentIds = entries.map { it.agentId }.distinct(),
       severity = primary.finding.severity,
       confidence = primary.finding.confidence,
       location = firstEntry.finding.location,
@@ -258,7 +257,7 @@ object ParallelReviewMerger {
 
   private data class FindingEntry(
     val finding: ParallelReviewRawFinding,
-    val agentId: AgentId,
+    val agentId: String,
     val appearanceOrder: Int,
   )
 

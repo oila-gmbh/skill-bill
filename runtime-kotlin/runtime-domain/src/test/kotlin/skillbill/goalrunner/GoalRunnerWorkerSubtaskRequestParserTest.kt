@@ -1,11 +1,10 @@
 package skillbill.goalrunner
+
 import skillbill.goalrunner.model.GoalRunnerWorkerSubtaskRequestOutcome
 import skillbill.goalrunner.model.GoalRunnerWorkerSubtaskRequestRejectionReason
 import skillbill.workflow.decomposition.model.CurrentSubtaskIntent
 import skillbill.workflow.decomposition.model.DecompositionManifest
 import skillbill.workflow.decomposition.model.DecompositionSubtask
-import skillbill.workflow.decomposition.model.IssueKey
-import skillbill.workflow.decomposition.model.SubtaskId
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
@@ -98,21 +97,21 @@ class GoalRunnerWorkerSubtaskRequestParserTest {
     )
 
     val accepted = assertIs<GoalRunnerWorkerSubtaskRequestOutcome.Accepted>(scheduled.outcomes.single())
-    assertEquals(SubtaskId(2), accepted.subtask.id)
+    assertEquals(2, accepted.subtask.id)
     assertEquals("Runtime sibling", scheduled.manifest.subtasks.last().name)
-    assertTrue(scheduled.manifest.subtasks.last().dependencies.any { it.subtaskId == SubtaskId(1) })
+    assertTrue(scheduled.manifest.subtasks.last().dependencies.any { it.subtaskId == 1 })
   }
 
   private fun manifest(): DecompositionManifest = DecompositionManifest(
-    issueKey = IssueKey("SKILL-61"),
+    issueKey = "SKILL-61",
     featureName = "goal-observability",
     parentSpecPath = ".feature-specs/SKILL-61/spec.md",
     baseBranch = "main",
     featureBranch = "feat/SKILL-61-goal-observability",
-    currentSubtaskIntent = CurrentSubtaskIntent(subtaskId = SubtaskId(1), action = "resume"),
+    currentSubtaskIntent = CurrentSubtaskIntent(subtaskId = 1, action = "resume"),
     subtasks = listOf(
       DecompositionSubtask(
-        id = SubtaskId(1),
+        id = 1,
         name = "Foundation",
         specPath = ".feature-specs/SKILL-61/spec_subtask_1_foundation.md",
         status = "in_progress",

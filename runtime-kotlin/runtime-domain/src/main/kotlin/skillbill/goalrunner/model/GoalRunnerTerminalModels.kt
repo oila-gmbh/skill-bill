@@ -1,30 +1,37 @@
 package skillbill.goalrunner.model
 
 import skillbill.workflow.decomposition.model.DecompositionSubtask
-import skillbill.workflow.decomposition.model.IssueKey
-import skillbill.workflow.decomposition.model.SubtaskId
-import skillbill.workflow.engine.model.WorkflowId
 
-enum class GoalRunnerTerminalStatus {
-  COMPLETE,
-  FAILED,
-  BLOCKED,
-  TIMEOUT,
-  NO_TERMINAL_STORE_OUTCOME,
+enum class GoalRunnerTerminalStatus(val wireValue: String) {
+  COMPLETE("complete"),
+  FAILED("failed"),
+  BLOCKED("blocked"),
+  TIMEOUT("timeout"),
+  NO_TERMINAL_STORE_OUTCOME("no_terminal_store_outcome"),
 
   /**
    * A non-terminal child row that crash reconciliation transitioned to the resumable pending state
    * (killed child, expired lease, dead process). Not a failure: the goal parent reports the subtask
    * resumable so `skill-bill goal <key>` resume continues without manual lease or row clearing.
    */
-  RECONCILABLE,
+  RECONCILABLE("reconcilable"),
 
   /**
    * A non-terminal child waiting on the bounded operator decision after the reserved remediation pass
    * left an unresolved Blocker. Not a failure and not blocked: the persisted review state, baseline,
    * and consumed pass count survive, so resume continues from the recorded resumable step.
    */
-  PAUSED,
+  PAUSED("paused"),
+
+  ;
+
+  companion object {
+    fun fromWire(value: String): GoalRunnerTerminalStatus? = when (value) {
+      "complete", "completed" -> COMPLETE
+      "timeout", "timed_out" -> TIMEOUT
+      else -> entries.firstOrNull { it.wireValue == value }
+    }
+  }
 }
 
 enum class GoalRunnerStopReason {
@@ -58,7 +65,7 @@ enum class GoalRunnerStopReason {
 
 data class GoalRunnerStoredOutcome(
   val status: GoalRunnerTerminalStatus,
-  val workflowId: WorkflowId,
+  val workflowId: String,
   val commitSha: String? = null,
   val blockedReason: String? = null,
   val lastResumableStep: String? = null,
@@ -67,7 +74,7 @@ data class GoalRunnerStoredOutcome(
 
 sealed interface GoalRunnerReconciledOutcome {
   data class Complete(
-    val workflowId: WorkflowId,
+    val workflowId: String,
     val commitSha: String,
     val lastResumableStep: String,
   ) : GoalRunnerReconciledOutcome
@@ -75,7 +82,7 @@ sealed interface GoalRunnerReconciledOutcome {
   data class Stop(
     val reason: GoalRunnerStopReason,
     val blockedReason: String,
-    val workflowId: WorkflowId?,
+    val workflowId: String?,
     val commitSha: String?,
     val lastResumableStep: String,
     val liveness: GoalRunnerLivenessSnapshot? = null,
@@ -99,20 +106,20 @@ sealed interface GoalRunnerSelection {
 }
 
 data class GoalRunnerStopReport(
-  val issueKey: IssueKey,
-  val subtaskId: SubtaskId,
+  val issueKey: String,
+  val subtaskId: Int,
   val reason: GoalRunnerStopReason,
   val blockedReason: String,
-  val workflowId: WorkflowId?,
+  val workflowId: String?,
   val lastResumableStep: String,
 )
 
 sealed interface GoalRunnerRunReport {
-  val issueKey: IssueKey
+  val issueKey: String
   val attemptedSubtasks: List<Int>
 
   data class Completed(
-    override val issueKey: IssueKey,
+    override val issueKey: String,
     override val attemptedSubtasks: List<Int>,
     val pullRequestUrl: String?,
     val pullRequestStatus: String,
@@ -125,7 +132,7 @@ sealed interface GoalRunnerRunReport {
   ) : GoalRunnerRunReport
 
   data class Stopped(
-    override val issueKey: IssueKey,
+    override val issueKey: String,
     override val attemptedSubtasks: List<Int>,
     val stop: GoalRunnerStopReport,
   ) : GoalRunnerRunReport

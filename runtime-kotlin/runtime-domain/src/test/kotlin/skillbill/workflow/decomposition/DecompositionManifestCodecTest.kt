@@ -1,12 +1,11 @@
 package skillbill.workflow.decomposition
+
 import skillbill.contracts.JsonCodec
 import skillbill.error.InvalidDecompositionManifestSchemaError
 import skillbill.workflow.decomposition.model.CurrentSubtaskIntent
 import skillbill.workflow.decomposition.model.DecompositionManifest
 import skillbill.workflow.decomposition.model.DecompositionSubtask
-import skillbill.workflow.decomposition.model.IssueKey
 import skillbill.workflow.decomposition.model.SpecSource
-import skillbill.workflow.decomposition.model.SubtaskId
 import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertEquals
@@ -28,7 +27,7 @@ class DecompositionManifestCodecTest {
       specSource = SpecSource.LINEAR,
       subtasks = listOf(
         DecompositionSubtask(
-          id = SubtaskId(1),
+          id = 1,
           name = "Foundation",
           specPath = ".feature-specs/SKILL-51-decomposition/spec_subtask_1_foundation.md",
           linearIssueId = "SKILL-512",
@@ -95,7 +94,7 @@ class DecompositionManifestCodecTest {
     val manifest = validManifest().copy(
       subtasks = listOf(
         DecompositionSubtask(
-          id = SubtaskId(1),
+          id = 1,
           name = "Foundation",
           specPath = ".feature-specs/SKILL-89-attribution/spec_subtask_1_foundation.md",
           status = "complete",
@@ -166,33 +165,33 @@ class DecompositionManifestCodecTest {
     val manifest = validManifest().copy(
       subtasks = listOf(
         DecompositionSubtask(
-          id = SubtaskId(1),
+          id = 1,
           name = "Foundation",
           specPath = ".feature-specs/SKILL-51-decomposition/spec_subtask_1_foundation.md",
         ),
         DecompositionSubtask(
-          id = SubtaskId(3),
+          id = 3,
           name = "Follow up",
           specPath = ".feature-specs/SKILL-51-decomposition/spec_subtask_3_follow_up.md",
         ),
       ),
     )
 
-    assertEquals(SubtaskId(4), manifest.nextSubtaskId())
+    assertEquals(4, manifest.nextSubtaskId())
     assertEquals(manifest, DecompositionManifestCodec.decodeMap(manifest.toWireMap()))
   }
 
   private fun validManifest(): DecompositionManifest = DecompositionManifest(
-    issueKey = IssueKey("SKILL-51"),
+    issueKey = "SKILL-51",
     featureName = "decomposition",
     parentSpecPath = ".feature-specs/SKILL-51-decomposition/spec.md",
     baseBranch = "main",
     featureBranch = "feature/SKILL-51-decomposition",
-    currentSubtaskIntent = CurrentSubtaskIntent(subtaskId = SubtaskId(1), action = "start"),
+    currentSubtaskIntent = CurrentSubtaskIntent(subtaskId = 1, action = "start"),
     subtasks =
     listOf(
       DecompositionSubtask(
-        id = SubtaskId(1),
+        id = 1,
         name = "Foundation",
         specPath = ".feature-specs/SKILL-51-decomposition/spec_subtask_1_foundation.md",
       ),

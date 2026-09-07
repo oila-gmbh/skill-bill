@@ -1,4 +1,5 @@
 package skillbill.application.goalrunner
+
 import skillbill.application.featuretask.FeatureTaskRuntimePhaseRecorder
 import skillbill.application.goalrunner.model.GoalRunnerAppliedRepair
 import skillbill.application.goalrunner.model.GoalRunnerChildWedgeDiagnosis
@@ -14,8 +15,6 @@ import skillbill.ports.goalrunner.runner.GoalRunnerManifestStore
 import skillbill.ports.repository.RepositoryEnclosingRootPort
 import skillbill.ports.taskruntime.FeatureTaskRuntimeWorkerSupervisor
 import skillbill.ports.taskruntime.model.FeatureTaskRuntimeProcessInspection
-import skillbill.workflow.decomposition.model.IssueKey
-import skillbill.workflow.engine.model.WorkflowId
 import java.nio.file.Path
 
 class GoalRunnerRepairCoordinator(
@@ -28,15 +27,16 @@ class GoalRunnerRepairCoordinator(
 ) {
   fun repair(request: GoalRunnerRepairRequest): GoalRunnerRepairResult {
     val repoRoot = request.repoRoot ?: repositoryRoot.path
-    val loaded = manifestStore.loadByIssueKey(request.issueKey, repoRoot)
+    val loaded = manifestStore.loadByIssueKey(request.issueKey, request.dbPathOverride, repoRoot)
       ?: return notFound(request.issueKey)
     manifestStore.bindRepositoryIdentity(
       loaded.parentWorkflowId,
       goalRepositoryIdentity(repoRoot, repositoryEnclosingRootPort),
+      request.dbPathOverride,
     )
     val children = loaded.manifest.subtasks
       .filter { request.subtaskId == null || it.id == request.subtaskId }
-      .filter { !it.workflowId?.value.isNullOrBlank() }
+      .filter { !it.workflowId.isNullOrBlank() }
     val diagnoses = children.map { subtask ->
       childRepairStore.diagnoseChildWedges(
         GoalRunnerChildWedgeDiagnosisRequest(
@@ -45,6 +45,7 @@ class GoalRunnerRepairCoordinator(
           subtaskId = subtask.id,
           subtasks = loaded.manifest.subtasks,
           repoRoot = repoRoot,
+          dbPathOverride = request.dbPathOverride,
         ),
       )
     }
@@ -63,12 +64,12 @@ class GoalRunnerRepairCoordinator(
     }
   }
 
-  private fun notFound(issueKey: IssueKey): GoalRunnerRepairResult = GoalRunnerRepairResult(
+  private fun notFound(issueKey: String): GoalRunnerRepairResult = GoalRunnerRepairResult(
     issueKey = issueKey,
     status = GoalRunnerRepairStatus.NOT_FOUND,
   )
 
-  private fun subtaskNotFound(request: GoalRunnerRepairRequest, parentWorkflowId: WorkflowId): GoalRunnerRepairResult =
+  private fun subtaskNotFound(request: GoalRunnerRepairRequest, parentWorkflowId: String): GoalRunnerRepairResult =
     GoalRunnerRepairResult(
       issueKey = request.issueKey,
       status = GoalRunnerRepairStatus.NOT_FOUND,
@@ -78,7 +79,7 @@ class GoalRunnerRepairCoordinator(
 
   private fun healthyResult(
     request: GoalRunnerRepairRequest,
-    parentWorkflowId: WorkflowId,
+    parentWorkflowId: String,
     diagnoses: List<GoalRunnerChildWedgeDiagnosis>,
   ): GoalRunnerRepairResult {
     val status = if (request.apply && request.subtaskId != null) {
@@ -103,7 +104,7 @@ class GoalRunnerRepairCoordinator(
 
   private fun operatorRequiredResult(
     request: GoalRunnerRepairRequest,
-    parentWorkflowId: WorkflowId,
+    parentWorkflowId: String,
     diagnoses: List<GoalRunnerChildWedgeDiagnosis>,
   ): GoalRunnerRepairResult = GoalRunnerRepairResult(
     issueKey = request.issueKey,
@@ -116,7 +117,7 @@ class GoalRunnerRepairCoordinator(
 
   private fun inspectedResult(
     request: GoalRunnerRepairRequest,
-    parentWorkflowId: WorkflowId,
+    parentWorkflowId: String,
     diagnoses: List<GoalRunnerChildWedgeDiagnosis>,
   ): GoalRunnerRepairResult = GoalRunnerRepairResult(
     issueKey = request.issueKey,
@@ -127,7 +128,7 @@ class GoalRunnerRepairCoordinator(
 
   private fun applyRepairs(
     request: GoalRunnerRepairRequest,
-    parentWorkflowId: WorkflowId,
+    parentWorkflowId: String,
     diagnoses: List<GoalRunnerChildWedgeDiagnosis>,
     wedged: List<GoalRunnerChildWedgeDiagnosis>,
     repoRoot: Path,
@@ -135,7 +136,7 @@ class GoalRunnerRepairCoordinator(
     val applied = mutableListOf<GoalRunnerAppliedRepair>()
     for (diagnosis in wedged) {
       val workflowId = diagnosis.workflowId ?: continue
-      if (childWorkerLeaseLive(workflowId)) {
+      if (childWorkerLeaseLive(workflowId, request.dbPathOverride)) {
         return GoalRunnerRepairResult(
           issueKey = request.issueKey,
           status = GoalRunnerRepairStatus.LIVE_LEASE_REFUSED,
@@ -154,6 +155,7 @@ class GoalRunnerRepairCoordinator(
           subtaskId = diagnosis.subtaskId,
           wedgeClasses = diagnosis.wedges.map { it.wedgeClass },
           repoRoot = repoRoot,
+          dbPathOverride = request.dbPathOverride,
         ),
       )
       applied += repairResult.repairs
@@ -167,8 +169,8 @@ class GoalRunnerRepairCoordinator(
     )
   }
 
-  private fun childWorkerLeaseLive(workflowId: WorkflowId): Boolean {
-    val ownership = runCatching { phaseRecorder.workerOwnership(workflowId) }.getOrNull()
+  private fun childWorkerLeaseLive(workflowId: String, dbPathOverride: String?): Boolean {
+    val ownership = runCatching { phaseRecorder.workerOwnership(workflowId, dbPathOverride) }.getOrNull()
       ?: return false
     return when (workerSupervisor.inspect(ownership)) {
       FeatureTaskRuntimeProcessInspection.ExactLive -> true

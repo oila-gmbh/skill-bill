@@ -1,4 +1,5 @@
 package skillbill.db.workflow
+
 import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_WORKER_OWNERSHIP_CONTRACT_VERSION
 import skillbill.error.InvalidFeatureTaskExecutionIdentitySchemaError
 import skillbill.error.InvalidFeatureTaskRuntimeWorkerOwnershipSchemaError
@@ -7,7 +8,6 @@ import skillbill.ports.featuretask.model.FeatureTaskRuntimeWorkerOwnership
 import skillbill.ports.workflow.model.FeatureTaskExecutionIdentity
 import skillbill.ports.workflow.model.FeatureTaskRouteScope
 import skillbill.ports.workflow.model.FeatureTaskWorkflowMode
-import skillbill.workflow.engine.model.WorkflowId
 import java.sql.Connection
 import java.sql.PreparedStatement
 import java.sql.ResultSet
@@ -35,7 +35,7 @@ internal fun PreparedStatement.bindOwnership(
   includeWorkflowId: Boolean,
 ): Int {
   var index = 1
-  if (includeWorkflowId) setString(index++, ownership.workflowId.value)
+  if (includeWorkflowId) setString(index++, ownership.workflowId)
   setString(index++, ownership.contractVersion)
   setLong(index++, ownership.generation)
   setString(index++, ownership.ownerToken)
@@ -57,7 +57,7 @@ internal fun Connection.featureTaskRuntimeWorkerOwnership(workflowId: String): F
     statement.executeQuery().use { row ->
       if (!row.next()) return null
       FeatureTaskRuntimeWorkerOwnership(
-        workflowId = WorkflowId(row.requiredWorkerOwnershipString(workflowId, "workflow_id")),
+        workflowId = row.requiredWorkerOwnershipString(workflowId, "workflow_id"),
         contractVersion = row.requiredWorkerOwnershipString(workflowId, "contract_version"),
         generation = row.getLong("generation"),
         ownerToken = row.requiredWorkerOwnershipString(workflowId, "owner_token"),
@@ -105,7 +105,7 @@ internal fun validateWorkerOwnership(ownership: FeatureTaskRuntimeWorkerOwnershi
     !expiresAt.isAfter(heartbeatAt) -> "expires_at must be later than heartbeat_at"
     else -> null
   }
-  failure?.let { throw InvalidFeatureTaskRuntimeWorkerOwnershipSchemaError(ownership.workflowId.value, it) }
+  failure?.let { throw InvalidFeatureTaskRuntimeWorkerOwnershipSchemaError(ownership.workflowId, it) }
 }
 
 internal fun parseOwnershipInstant(
@@ -116,7 +116,7 @@ internal fun parseOwnershipInstant(
   Instant.parse(value)
 } catch (_: DateTimeParseException) {
   throw InvalidFeatureTaskRuntimeWorkerOwnershipSchemaError(
-    ownership.workflowId.value,
+    ownership.workflowId,
     "$field must be an RFC 3339 instant",
   )
 }
@@ -131,7 +131,7 @@ internal fun Connection.featureTaskIdentity(workflowId: String): FeatureTaskExec
   statement.executeQuery().use { row ->
     if (!row.next()) return null
     FeatureTaskExecutionIdentity(
-      workflowId = WorkflowId(workflowId),
+      workflowId = workflowId,
       contractVersion = row.getString("contract_version"),
       normalizedIssueKey = row.getString("normalized_issue_key"),
       repositoryIdentity = row.getString("repository_identity"),

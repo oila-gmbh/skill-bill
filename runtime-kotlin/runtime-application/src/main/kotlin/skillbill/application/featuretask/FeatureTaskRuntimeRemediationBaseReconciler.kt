@@ -1,4 +1,5 @@
 package skillbill.application.featuretask
+
 import skillbill.application.decomposition.decodeArtifacts
 import skillbill.application.featuretask.model.PersistHealedRemediationBaseRequest
 import skillbill.application.featuretask.model.RemediationBaseBlocked
@@ -16,7 +17,6 @@ import skillbill.error.InvalidGoalSubtaskReviewStateSchemaError
 import skillbill.ports.db.DatabaseSessionFactory
 import skillbill.ports.workflow.get
 import skillbill.ports.workflow.gitops.WorkflowGitOperations
-import skillbill.workflow.engine.model.WorkflowId
 import skillbill.workflow.goal.model.GOAL_REVIEW_BASE_RECOVERIES_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_CHECKPOINT_IDENTITIES_ARTIFACT_KEY
@@ -34,14 +34,15 @@ class FeatureTaskRuntimeRemediationBaseReconciler(
   val clock: Clock,
 ) {
   fun reconcileRemediationBaseCoherence(
-    workflowId: WorkflowId,
+    workflowId: String,
     gitOperations: WorkflowGitOperations,
     repoRoot: Path,
+    dbOverride: String? = null,
   ): RemediationBaseCoherenceResult {
     val snapshot = try {
-      readRemediationSnapshot(workflowId)
+      readRemediationSnapshot(workflowId, dbOverride)
     } catch (error: InvalidFeatureTaskRuntimeCheckpointIdentityVersionError) {
-      quarantineLegacyCheckpointIdentities(workflowId, error)
+      quarantineLegacyCheckpointIdentities(workflowId, error, dbOverride)
       return RemediationBaseCoherent(null)
     } ?: return RemediationBaseCoherent(null)
     return reconcileFromSnapshot(
@@ -49,14 +50,16 @@ class FeatureTaskRuntimeRemediationBaseReconciler(
       workflowId = workflowId,
       gitOperations = gitOperations,
       repoRoot = repoRoot,
+      dbOverride = dbOverride,
     )
   }
 
   private fun quarantineLegacyCheckpointIdentities(
-    workflowId: WorkflowId,
+    workflowId: String,
     error: InvalidFeatureTaskRuntimeCheckpointIdentityVersionError,
+    dbOverride: String?,
   ) {
-    database.transaction { unitOfWork ->
+    database.transaction(dbOverride) { unitOfWork ->
       val record = WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, workflowId)
         ?: return@transaction
       val artifacts = decodeArtifacts(record.artifactsJson)
@@ -81,8 +84,8 @@ class FeatureTaskRuntimeRemediationBaseReconciler(
     }
   }
 
-  private fun readRemediationSnapshot(workflowId: WorkflowId): RemediationReconcileSnapshot? =
-    database.read { unitOfWork ->
+  private fun readRemediationSnapshot(workflowId: String, dbOverride: String?): RemediationReconcileSnapshot? =
+    database.read(dbOverride) { unitOfWork ->
       val record = WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, workflowId) ?: return@read null
       val artifacts = decodeArtifacts(record.artifactsJson)
       runCatching {
@@ -98,10 +101,11 @@ class FeatureTaskRuntimeRemediationBaseReconciler(
     }
 
   internal fun appendRemediationRollbackDegradationEvidence(
-    workflowId: WorkflowId,
+    workflowId: String,
     signal: RemediationDegradationSignal,
+    dbOverride: String?,
   ) {
-    database.transaction { unitOfWork ->
+    database.transaction(dbOverride) { unitOfWork ->
       val record = WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, workflowId) ?: return@transaction
       val artifacts = decodeArtifacts(record.artifactsJson)
       val goalBranch = continuationFromArtifacts(artifacts)?.goalBranch.orEmpty()
@@ -143,9 +147,10 @@ internal data class RemediationDegradationSignal(
 
 internal fun FeatureTaskRuntimeRemediationBaseReconciler.reconcileFromSnapshot(
   snapshot: RemediationReconcileSnapshot,
-  workflowId: WorkflowId,
+  workflowId: String,
   gitOperations: WorkflowGitOperations,
   repoRoot: Path,
+  dbOverride: String?,
 ): RemediationBaseCoherenceResult {
   if (snapshot.state.remediationBaseSha == null &&
     snapshot.checkpoints.none { it.loopId == FeatureTaskRuntimePhaseWorkflowDefinition.REVIEW_FIX_LOOP_ID }
@@ -170,6 +175,7 @@ internal fun FeatureTaskRuntimeRemediationBaseReconciler.reconcileFromSnapshot(
       workflowId = workflowId,
       gitOperations = gitOperations,
       repoRoot = repoRoot,
+      dbOverride = dbOverride,
       latestRemediationResolved = latestRemediationResolved,
     ),
   )
@@ -208,6 +214,7 @@ internal fun FeatureTaskRuntimeRemediationBaseReconciler.applyRemediationReconci
           valueExpected = "resolvable review_fix checkpoint ref commit",
           cause = remediationBlockedCause(stored, storedResolves, failedRef),
         ),
+        dbOverride = request.dbOverride,
       )
       RemediationBaseBlocked(guidance)
     }
@@ -221,6 +228,7 @@ internal fun FeatureTaskRuntimeRemediationBaseReconciler.applyRemediationReconci
         workflowId = request.workflowId,
         gitOperations = request.gitOperations,
         repoRoot = request.repoRoot,
+        dbOverride = request.dbOverride,
         latestRemediationResolved = request.latestRemediationResolved,
       ),
     )
@@ -249,6 +257,7 @@ private fun FeatureTaskRuntimeRemediationBaseReconciler.healRemediationBase(
         valueExpected = "resolvable remediation_base_sha commit",
         cause = "stored remediation base did not resolve; reconciled through checkpoint ref",
       ),
+      dbOverride = request.dbOverride,
     )
   }
   val healed = persistHealedRemediationBaseState(
@@ -260,13 +269,14 @@ private fun FeatureTaskRuntimeRemediationBaseReconciler.healRemediationBase(
       continuation = request.continuation,
       gitOperations = request.gitOperations,
       repoRoot = request.repoRoot,
+      dbOverride = request.dbOverride,
     ),
   )
   return RemediationBaseCoherent(healed ?: request.state)
 }
 
 internal fun FeatureTaskRuntimeRemediationBaseReconciler.remediationBaseReconciliationBlockedGuidance(
-  workflowId: WorkflowId,
+  workflowId: String,
   continuation: FeatureTaskRuntimeGoalContinuationArtifact,
   failedRef: String?,
   storedSha: String?,
@@ -280,11 +290,12 @@ internal fun FeatureTaskRuntimeRemediationBaseReconciler.remediationBaseReconcil
 }
 
 internal fun FeatureTaskRuntimeRemediationBaseReconciler.appendRemediationBaseReconciliationEvidence(
-  workflowId: WorkflowId,
+  workflowId: String,
   recovery: RemediationBaseRecovery,
   signal: RemediationDegradationSignal,
+  dbOverride: String?,
 ) {
-  database.transaction { unitOfWork ->
+  database.transaction(dbOverride) { unitOfWork ->
     val record = WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, workflowId) ?: return@transaction
     val artifacts = decodeArtifacts(record.artifactsJson)
     val evidenceEntry = remediationBaseRecoveryEvidenceEntry(recovery, signal)

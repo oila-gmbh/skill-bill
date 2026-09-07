@@ -1,5 +1,5 @@
 package skillbill.application.goalrunner.planning
-import skillbill.agent.model.AgentId
+
 import skillbill.application.goalrunner.model.GoalRunnerRunRequest
 import skillbill.ports.agentrun.model.AgentRunOutputSink
 import skillbill.ports.goalrunner.model.GoalPlanningContractProvenance
@@ -51,7 +51,7 @@ internal data class GoalPlanningRejectionRecordArgs(
   val scope: GoalPlanningAttemptScope,
   val rule: String,
   val reason: String,
-  val agentId: AgentId,
+  val agentId: String,
   val rawEvidence: String,
 )
 

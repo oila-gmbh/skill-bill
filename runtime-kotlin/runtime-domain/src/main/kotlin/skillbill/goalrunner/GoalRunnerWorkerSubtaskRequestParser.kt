@@ -92,9 +92,7 @@ object GoalRunnerWorkerSubtaskRequestParser {
         GoalRunnerWorkerSubtaskRequestRejectionReason.DUPLICATE,
         "Worker subtask request duplicates existing visible subtask work.",
       )
-      request.dependsOnSubtaskIds.any { dependency ->
-        existingSubtasks.none { it.id.toString().toInt() == dependency }
-      } -> rejected(
+      request.dependsOnSubtaskIds.any { dependency -> existingSubtasks.none { it.id == dependency } } -> rejected(
         request.sourceStream,
         GoalRunnerWorkerSubtaskRequestRejectionReason.UNKNOWN_DEPENDENCY,
         "Worker subtask request references an unknown dependency.",

@@ -1,20 +1,18 @@
 package skillbill.ports.diagnostics.model
 
-import skillbill.agent.model.AgentId
-import skillbill.workflow.engine.model.WorkflowId
 import java.time.Instant
 
 enum class RejectedOutputLifecycle { STORED, OVERSIZED, EXPIRED }
 
 data class RejectedOutputDiagnostic(
   val identity: String,
-  val workflowId: WorkflowId,
+  val workflowId: String,
   val phaseId: String,
   val attempt: Int,
   val rule: String,
   val path: String,
   val reason: String,
-  val agentId: AgentId,
+  val agentId: String,
   val model: String,
   val recordedAt: Instant,
   val byteSize: Long,
@@ -33,7 +31,7 @@ data class RejectedOutputDiagnostic(
 }
 
 data class RejectedOutputDiagnosticSelector(
-  val workflowId: WorkflowId,
+  val workflowId: String,
   val phaseId: String? = null,
   val attempt: Int? = null,
   /**
@@ -51,10 +49,10 @@ data class RejectedOutputDiagnosticRecord(
 }
 
 data class ProducerOutputEvidence(
-  val workflowId: WorkflowId,
+  val workflowId: String,
   val phaseId: String,
   val attempt: Int,
-  val agentId: AgentId,
+  val agentId: String,
   val model: String,
   val recordedAt: Instant,
   val byteSize: Long,

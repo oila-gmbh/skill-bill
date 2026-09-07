@@ -1,5 +1,5 @@
 package skillbill.ports.review.model
-import skillbill.agent.model.AgentId
+
 import java.nio.file.Path
 
 data class ReviewNativeAgentPreflightRequest(
@@ -9,12 +9,12 @@ data class ReviewNativeAgentPreflightRequest(
   constructor(repoRoot: Path, agentIds: List<String>, logicalNames: List<String>) : this(
     repoRoot = repoRoot,
     assignments = agentIds.flatMap { agentId ->
-      logicalNames.map { logicalName -> ReviewNativeAgentAssignment(AgentId(agentId), logicalName) }
+      logicalNames.map { logicalName -> ReviewNativeAgentAssignment(agentId, logicalName) }
     },
   )
 }
 
 data class ReviewNativeAgentAssignment(
-  val agentId: AgentId,
+  val agentId: String,
   val logicalName: String,
 )

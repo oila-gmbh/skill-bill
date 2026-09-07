@@ -1,7 +1,5 @@
 package skillbill.application.featuretask
 
-import skillbill.agent.model.AgentId
-
 import skillbill.application.featuretask.model.FeatureTaskRuntimePhaseStateRequest
 import skillbill.error.FeatureTaskRuntimePhaseOrderViolationError
 import skillbill.goalrunner.subtaskreview.GoalSubtaskReviewSummaryReducer
@@ -53,7 +51,7 @@ object FeatureTaskRuntimeRunLoopDrive {
   }
 
   fun reviewedCheckpointFingerprint(runLoop: FeatureTaskRuntimeRunLoop): String? =
-    runLoop.recorder.loadDeliveredProjections(runLoop.request.workflowId)
+    runLoop.recorder.loadDeliveredProjections(runLoop.request.workflowId, runLoop.request.dbPathOverride)
       ?.get(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW)
       ?.repositoryCheckpointFingerprint
 
@@ -89,6 +87,7 @@ object FeatureTaskRuntimeRunLoopDrive {
   fun reconcileReservedGoalReviewPass(runLoop: FeatureTaskRuntimeRunLoop, phaseId: String): String? = runCatching {
     runLoop.goalContinuationRecorder.reviewState(
       runLoop.request.workflowId,
+      runLoop.request.dbPathOverride,
     )
   }.fold(
     onSuccess = { reviewState ->
@@ -131,7 +130,7 @@ object FeatureTaskRuntimeRunLoopDrive {
     output: String,
     outputMap: Map<String, Any?>,
   ): String? {
-    val recordedVerdicts = runLoop.recorder.recordedFindingVerdicts(outputMap)
+    val recordedVerdicts = runLoop.recorder.recordedFindingVerdicts(outputMap, runLoop.request.dbPathOverride)
     val findings = GoalSubtaskReviewSummaryReducer.fromOutput(outputMap, recordedVerdicts)
     val outcome = GoalSubtaskReviewSummaryReducer.outcomeFor(outputMap, findings)
     return if (
@@ -149,6 +148,7 @@ object FeatureTaskRuntimeRunLoopDrive {
           ),
           commitFocusedAccounting = GoalSubtaskReviewSummaryReducer.commitFocusedAccounting(outputMap),
         ),
+        dbOverride = runLoop.request.dbPathOverride,
       ) == null
     ) {
       "Completed goal-subtask review could not persist its reserved pass."
@@ -161,6 +161,7 @@ object FeatureTaskRuntimeRunLoopDrive {
     runLoop.recorder.persistAuditGapPause(
       runLoop.request.workflowId,
       pause.copy(grantConsumed = true, operatorDecision = null),
+      runLoop.request.dbPathOverride,
     )
     FeatureTaskRuntimeRunLoopPlanningBranch.blockAt(
       runLoop,
@@ -173,11 +174,12 @@ object FeatureTaskRuntimeRunLoopDrive {
         workflowId = runLoop.request.workflowId,
         workflowStatus = STATUS_ABANDONED,
       ),
+      dbOverride = runLoop.request.dbPathOverride,
     )
   }
 
   internal fun settleCarriedForwardAuditGapAudit(runLoop: FeatureTaskRuntimeRunLoop): PhaseSettlement? = runCatching {
-    runLoop.recorder.loadAuditGapPause(runLoop.request.workflowId)
+    runLoop.recorder.loadAuditGapPause(runLoop.request.workflowId, runLoop.request.dbPathOverride)
   }.fold(
     onSuccess = { pause ->
       if (pause == null || pause.operatorDecision != AUDIT_GAP_PAUSE_DECISION_RETRY_FIX || pause.grantConsumed) {
@@ -236,6 +238,7 @@ object FeatureTaskRuntimeRunLoopDrive {
     runLoop.recorder.persistAuditGapPause(
       runLoop.request.workflowId,
       pause.copy(grantConsumed = true, operatorDecision = null),
+      runLoop.request.dbPathOverride,
     )
   }
 
@@ -256,7 +259,7 @@ object FeatureTaskRuntimeRunLoopDrive {
         phaseId = phaseId,
         status = STATUS_COMPLETED,
         attemptCount = iteration,
-        resolvedAgentId = priorRecord?.resolvedAgentId ?: AgentId("user-directed"),
+        resolvedAgentId = priorRecord?.resolvedAgentId ?: "user-directed",
         finished = true,
         outputArtifact = normalizedOutput.canonicalJson,
         normalizedOutput = normalizedOutput,
@@ -264,6 +267,7 @@ object FeatureTaskRuntimeRunLoopDrive {
         loopId = FeatureTaskRuntimePhaseWorkflowDefinition.AUDIT_GAP_LOOP_ID,
         edgeIteration = priorRecord?.edgeIteration,
       ),
+      runLoop.request.dbPathOverride,
     )
     if (!persisted) {
       error("Carried-forward audit could not atomically persist its canonical result.")
@@ -303,6 +307,7 @@ object FeatureTaskRuntimeRunLoopDrive {
       isGoalContinuationRun(runLoop.request) &&
       runLoop.goalContinuationRecorder.reviewState(
         runLoop.request.workflowId,
+        runLoop.request.dbPathOverride,
       )?.reviewCapReached == true
     ) {
       FeatureTaskRuntimeVerdict.REVIEW_CAP_REACHED
@@ -343,7 +348,7 @@ object FeatureTaskRuntimeRunLoopDrive {
   }
 
   internal fun carriedForwardGoalReviewSettlement(runLoop: FeatureTaskRuntimeRunLoop): PhaseSettlement? = runCatching {
-    runLoop.goalContinuationRecorder.reviewState(runLoop.request.workflowId)
+    runLoop.goalContinuationRecorder.reviewState(runLoop.request.workflowId, runLoop.request.dbPathOverride)
   }.fold(
     onSuccess = { reviewState ->
       reviewState
@@ -371,6 +376,7 @@ object FeatureTaskRuntimeRunLoopDrive {
   ): PhaseSettlement = runCatching {
     runLoop.goalContinuationRecorder.lastGoalReviewResult(
       runLoop.request.workflowId,
+      runLoop.request.dbPathOverride,
     )
   }.fold(
     onSuccess = { rawResult ->
@@ -441,6 +447,7 @@ object FeatureTaskRuntimeRunLoopDrive {
         loopId = reentry?.loopId,
         edgeIteration = reentry?.edgeIteration,
       ),
+      runLoop.request.dbPathOverride,
     )
     if (!persisted) {
       error("Carried-forward goal review could not atomically persist its canonical result.")
@@ -490,7 +497,7 @@ object FeatureTaskRuntimeRunLoopDrive {
       return
     }
     val generation = checkNotNull(
-      runLoop.recorder.persistReviewGenerationInvalidation(runLoop.request.workflowId),
+      runLoop.recorder.persistReviewGenerationInvalidation(runLoop.request.workflowId, runLoop.request.dbPathOverride),
     ) {
       "Could not durably invalidate legacy review evidence for workflow '${runLoop.request.workflowId}'."
     }
@@ -503,12 +510,12 @@ object FeatureTaskRuntimeRunLoopDrive {
   }
 
   fun loadMigratedAuditGapPause(runLoop: FeatureTaskRuntimeRunLoop): FeatureTaskRuntimeAuditGapPause? =
-    runLoop.recorder.loadAuditGapPause(runLoop.request.workflowId)?.let { pause ->
+    runLoop.recorder.loadAuditGapPause(runLoop.request.workflowId, runLoop.request.dbPathOverride)?.let { pause ->
       if (pause.pauseKind != AUDIT_GAP_PAUSE_KIND_WARN_THRESHOLD) {
         pause
       } else {
         val migrated = pause.copy(operatorDecision = null, grantConsumed = true)
-        runLoop.recorder.persistAuditGapPause(runLoop.request.workflowId, migrated)
+        runLoop.recorder.persistAuditGapPause(runLoop.request.workflowId, migrated, runLoop.request.dbPathOverride)
         runCatching {
           runLoop.diagnostics.warning(
             "Cleared a legacy audit-gap warning-threshold pause for workflow '${runLoop.request.workflowId}'; " +

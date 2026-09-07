@@ -1,4 +1,5 @@
 package skillbill.application.featuretask
+
 import me.tatarka.inject.annotations.Inject
 import skillbill.application.featuretask.model.FeatureTaskContinuationCandidate
 import skillbill.application.featuretask.model.FeatureTaskContinuationLiveness
@@ -16,10 +17,8 @@ import skillbill.ports.workflow.model.FeatureTaskWorkflowCandidate
 import skillbill.ports.workflow.model.FeatureTaskWorkflowMode
 import skillbill.ports.workflow.model.toSnapshot
 import skillbill.workflow.decomposition.DecompositionManifestValidator
-import skillbill.workflow.decomposition.model.IssueKey
 import skillbill.workflow.engine.WorkflowEngine
 import skillbill.workflow.engine.WorkflowSnapshotValidator
-import skillbill.workflow.engine.model.WorkflowId
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 
 @Inject
@@ -30,45 +29,52 @@ class FeatureTaskContinuationLookupService(
 ) {
   private val engine = WorkflowEngine(workflowSnapshotValidator)
 
-  fun claim(candidate: FeatureTaskContinuationCandidate): Boolean = database.transaction { unitOfWork ->
-    unitOfWork.workflowStates.claimFeatureTaskContinuation(candidate.workflowId, candidate.updatedAt)
-  }
+  fun claim(candidate: FeatureTaskContinuationCandidate, dbOverride: String? = null): Boolean =
+    database.transaction(dbOverride) { unitOfWork ->
+      unitOfWork.workflowStates.claimFeatureTaskContinuation(candidate.workflowId, candidate.updatedAt)
+    }
 
   fun lookup(
-    issueKey: IssueKey,
+    issueKey: String,
     repositoryIdentity: String,
-    workflowId: WorkflowId? = null,
+    workflowId: String? = null,
+    dbOverride: String? = null,
   ): FeatureTaskContinuationLookupResult = lookup(
     FeatureTaskContinuationLookupQuery(
       issueKey = issueKey,
       repositoryIdentity = repositoryIdentity,
       workflowId = workflowId,
+      dbOverride = dbOverride,
       routeScope = FeatureTaskRouteScope.STANDALONE,
     ),
   )
 
   fun lookupGoalChild(
-    issueKey: IssueKey,
+    issueKey: String,
     repositoryIdentity: String,
-    workflowId: WorkflowId,
+    workflowId: String,
+    dbOverride: String? = null,
   ): FeatureTaskContinuationLookupResult = lookup(
     FeatureTaskContinuationLookupQuery(
       issueKey = issueKey,
       repositoryIdentity = repositoryIdentity,
       workflowId = workflowId,
+      dbOverride = dbOverride,
       routeScope = FeatureTaskRouteScope.GOAL_CHILD,
     ),
   )
 
   fun lookupIfPresent(
-    issueKey: IssueKey,
+    issueKey: String,
     repositoryIdentity: String,
-    workflowId: WorkflowId? = null,
+    workflowId: String? = null,
+    dbOverride: String? = null,
   ): FeatureTaskContinuationLookupResult = lookup(
     FeatureTaskContinuationLookupQuery(
       issueKey = issueKey,
       repositoryIdentity = repositoryIdentity,
       workflowId = workflowId,
+      dbOverride = dbOverride,
       routeScope = FeatureTaskRouteScope.STANDALONE,
       readIfPresent = true,
     ),
@@ -85,9 +91,9 @@ class FeatureTaskContinuationLookupService(
       )
     }
     return if (query.readIfPresent) {
-      database.readIfPresent(lookup) ?: FeatureTaskContinuationLookupResult.NoMatch
+      database.readIfPresent(query.dbOverride, lookup) ?: FeatureTaskContinuationLookupResult.NoMatch
     } else {
-      database.read(lookup)
+      database.read(query.dbOverride, lookup)
     }
   }
 
@@ -157,7 +163,7 @@ class FeatureTaskContinuationLookupService(
     val modeConflicts = workflow.mode?.let { it != identity.mode } ?: false
     return identity.workflowId != workflow.workflowId ||
       modeConflicts ||
-      identity.normalizedIssueKey.value != workflow.issueKey?.value?.trim()?.uppercase()
+      identity.normalizedIssueKey != workflow.issueKey?.trim()?.uppercase()
   }
 
   private fun invalidIdentity(candidate: FeatureTaskWorkflowCandidate, reason: String): Nothing =

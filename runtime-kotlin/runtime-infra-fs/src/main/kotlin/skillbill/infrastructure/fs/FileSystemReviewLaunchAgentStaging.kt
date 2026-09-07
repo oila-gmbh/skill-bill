@@ -1,7 +1,6 @@
 package skillbill.infrastructure.fs
 
 import me.tatarka.inject.annotations.Inject
-import skillbill.agent.model.AgentId
 import skillbill.error.MissingInstalledNativeAgentError
 import skillbill.install.nativeagent.NativeAgentLinkInventory
 import skillbill.install.nativeagent.NativeAgentLinkInventoryEntry
@@ -23,7 +22,7 @@ class FileSystemReviewLaunchAgentStaging(
     val provider = provider(request.agentId)
       ?: throw MissingInstalledNativeAgentError(
         request.logicalWorkerNames.first(),
-        request.agentId.value,
+        request.agentId,
         environment.userHome.toString(),
         "provider does not support native-agent staging",
         REPAIR_COMMAND,
@@ -73,7 +72,7 @@ class FileSystemReviewLaunchAgentStaging(
     }
   }
 
-  private fun provider(agentId: AgentId): NativeAgentProvider? = when (agentId.value) {
+  private fun provider(agentId: String): NativeAgentProvider? = when (agentId) {
     "cursor" -> NativeAgentProvider.Cursor
     else -> null
   }

@@ -1,9 +1,8 @@
 package skillbill.application.featuretask
+
 import skillbill.application.featuretask.model.FeatureTaskRuntimeCheckpointDecision
 import skillbill.application.featuretask.model.FeatureTaskRuntimeCheckpointScopeInput
 import skillbill.application.featuretask.model.FeatureTaskRuntimeSubtaskCommitIdentity
-import skillbill.workflow.decomposition.model.IssueKey
-import skillbill.workflow.decomposition.model.SubtaskId
 import java.util.Locale
 
 private const val RUNTIME_PRIVATE_ROOT = ".skill-bill/"
@@ -114,7 +113,7 @@ class FeatureTaskRuntimeCheckpointMetadata(
 
 object FeatureTaskRuntimeCheckpointMessage {
   fun build(
-    issueKey: IssueKey,
+    issueKey: String,
     subtaskName: String?,
     metadata: FeatureTaskRuntimeCheckpointMetadata,
     identity: FeatureTaskRuntimeSubtaskCommitIdentity,
@@ -140,9 +139,9 @@ object FeatureTaskRuntimeCheckpointMessage {
     return "$subject\n\n$body\n$metadata\n\n${identity.trailer}\n"
   }
 
-  fun fallbackSubject(issueKey: IssueKey, subtaskId: SubtaskId): String = "$issueKey: subtask $subtaskId"
+  fun fallbackSubject(issueKey: String, subtaskId: String): String = "$issueKey: subtask $subtaskId"
 
-  fun missingSubtaskNameRecord(issueKey: IssueKey, subtaskId: SubtaskId): String =
+  fun missingSubtaskNameRecord(issueKey: String, subtaskId: String): String =
     "seam=FeatureTaskRuntimeCheckpointMessage.build value_used='${fallbackSubject(issueKey, subtaskId)}' " +
       "value_expected=manifest subtask name for '$issueKey' subtask '$subtaskId' " +
       "cause=the durable goal-continuation row carried no subtask name; the checkpoint subject " +

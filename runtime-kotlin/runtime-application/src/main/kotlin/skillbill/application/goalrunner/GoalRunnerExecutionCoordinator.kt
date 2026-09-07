@@ -1,7 +1,5 @@
 package skillbill.application.goalrunner
 
-import skillbill.workflow.engine.model.WorkflowId
-
 import me.tatarka.inject.annotations.Inject
 import skillbill.goalrunner.model.GOAL_PAUSE_REASON_RUNNER_INTERRUPTED
 import skillbill.goalrunner.model.GoalRunnerExecutionLease
@@ -20,16 +18,16 @@ import java.time.Clock
 import java.time.Duration
 
 interface GoalRunnerExecutionCoordinator {
-  fun <T> runOwned(parentWorkflowId: WorkflowId, block: () -> T): T
+  fun <T> runOwned(parentWorkflowId: String, dbPathOverride: String?, block: () -> T): T
 
   companion object {
     val NONE: GoalRunnerExecutionCoordinator = object : GoalRunnerExecutionCoordinator {
-      override fun <T> runOwned(parentWorkflowId: WorkflowId, block: () -> T): T = block()
+      override fun <T> runOwned(parentWorkflowId: String, dbPathOverride: String?, block: () -> T): T = block()
     }
   }
 }
 
-class GoalRunnerExecutionAlreadyRunningException(parentWorkflowId: WorkflowId, detail: String) : IllegalStateException(
+class GoalRunnerExecutionAlreadyRunningException(parentWorkflowId: String, detail: String) : IllegalStateException(
   "Goal parent '$parentWorkflowId' cannot start: $detail",
 )
 
@@ -38,7 +36,7 @@ class GoalRunnerExecutionAlreadyRunningException(parentWorkflowId: WorkflowId, d
  * Shared by the execution coordinator's reclaim path and the stop verb so both judge liveness and
  * process identity by exactly the same evidence.
  */
-fun GoalRunnerExecutionLease.asWorkerOwnership(parentWorkflowId: WorkflowId) = FeatureTaskRuntimeWorkerOwnership(
+fun GoalRunnerExecutionLease.asWorkerOwnership(parentWorkflowId: String) = FeatureTaskRuntimeWorkerOwnership(
   workflowId = parentWorkflowId,
   generation = generation,
   ownerToken = ownerToken,
@@ -62,11 +60,11 @@ class DefaultGoalRunnerExecutionCoordinator(
   private val daemonThreadPort: DaemonThreadPort,
   private val identifierGeneratorPort: IdentifierGeneratorPort,
 ) : GoalRunnerExecutionCoordinator {
-  override fun <T> runOwned(parentWorkflowId: WorkflowId, block: () -> T): T {
-    val existing = manifestStore.executionLease(parentWorkflowId)
+  override fun <T> runOwned(parentWorkflowId: String, dbPathOverride: String?, block: () -> T): T {
+    val existing = manifestStore.executionLease(parentWorkflowId, dbPathOverride)
     val expectedOwnerToken = existing?.let { reclaimableOwnerToken(parentWorkflowId, it) }
     val lease = newLease(existing, supervisor.currentProcess())
-    if (!manifestStore.acquireExecutionLease(parentWorkflowId, lease, expectedOwnerToken)) {
+    if (!manifestStore.acquireExecutionLease(parentWorkflowId, lease, expectedOwnerToken, dbPathOverride)) {
       throw GoalRunnerExecutionAlreadyRunningException(
         parentWorkflowId,
         "another goal runner claimed the execution lease before this run could start",
@@ -80,7 +78,7 @@ class DefaultGoalRunnerExecutionCoordinator(
     val heartbeat = supervisor.startHeartbeat(plan) {
       val now = clock.instant()
       val updated = lease.copy(heartbeatAt = now.toString(), expiresAt = now.plus(LEASE_DURATION).toString())
-      if (manifestStore.heartbeatExecutionLease(parentWorkflowId, updated)) {
+      if (manifestStore.heartbeatExecutionLease(parentWorkflowId, updated, dbPathOverride)) {
         FeatureTaskRuntimeHeartbeatTick.Renewed
       } else {
         FeatureTaskRuntimeHeartbeatTick.FencingLost(
@@ -91,7 +89,7 @@ class DefaultGoalRunnerExecutionCoordinator(
     // Registered only for the span this process owns the lease: a runner killed from outside records
     // why it stopped, so an operator stop is never indistinguishable from a crash.
     val shutdownHookRegistration = shutdownHookPort.register {
-      recordInterruption(parentWorkflowId)
+      recordInterruption(parentWorkflowId, dbPathOverride)
     }
     val result = try {
       block()
@@ -102,6 +100,7 @@ class DefaultGoalRunnerExecutionCoordinator(
         parentWorkflowId,
         lease.ownerToken,
         lease.generation,
+        dbPathOverride,
       )
     }
     // Checked after the block rather than inside the finally so a failing block reports its own cause.
@@ -118,7 +117,7 @@ class DefaultGoalRunnerExecutionCoordinator(
    * makes it idempotent with the stop verb — a stop that killed this process already wrote the more
    * specific `operator_stop`, and the hook leaves it alone.
    */
-  fun recordInterruption(parentWorkflowId: WorkflowId) {
+  fun recordInterruption(parentWorkflowId: String, dbPathOverride: String?) {
     daemonThreadPort.runWithJoinBudget(
       action = {
         runCatching {
@@ -127,6 +126,7 @@ class DefaultGoalRunnerExecutionCoordinator(
             reason = GOAL_PAUSE_REASON_RUNNER_INTERRUPTED,
             pausedAt = clock.instant().toString(),
             overwriteExistingReason = false,
+            dbPathOverride = dbPathOverride,
           )
         }
       },
@@ -134,7 +134,7 @@ class DefaultGoalRunnerExecutionCoordinator(
     )
   }
 
-  private fun reclaimableOwnerToken(parentWorkflowId: WorkflowId, existing: GoalRunnerExecutionLease): String {
+  private fun reclaimableOwnerToken(parentWorkflowId: String, existing: GoalRunnerExecutionLease): String {
     val ownership = existing.asWorkerOwnership(parentWorkflowId)
     return when (supervisor.inspect(ownership)) {
       FeatureTaskRuntimeProcessInspection.NotRunning -> existing.ownerToken
@@ -154,7 +154,7 @@ class DefaultGoalRunnerExecutionCoordinator(
    * still fails closed so those agents keep the immediate "already running" signal.
    */
   private fun reclaimAfterLiveOwner(
-    parentWorkflowId: WorkflowId,
+    parentWorkflowId: String,
     existing: GoalRunnerExecutionLease,
     ownership: FeatureTaskRuntimeWorkerOwnership,
   ): String {
@@ -187,7 +187,7 @@ class DefaultGoalRunnerExecutionCoordinator(
     return ageMs in 0 until DUPLICATE_LAUNCH_WINDOW.toMillis()
   }
 
-  private fun cannotStart(parentWorkflowId: WorkflowId, detail: String): Nothing =
+  private fun cannotStart(parentWorkflowId: String, detail: String): Nothing =
     throw GoalRunnerExecutionAlreadyRunningException(parentWorkflowId, detail)
 
   private fun newLease(

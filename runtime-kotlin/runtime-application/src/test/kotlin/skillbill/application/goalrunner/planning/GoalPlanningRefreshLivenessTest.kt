@@ -1,4 +1,5 @@
 package skillbill.application.goalrunner.planning
+
 import org.junit.jupiter.api.Test
 import skillbill.application.featuretask.AcceptingFeatureTaskRuntimeHandoffEnvelopeValidator
 import skillbill.application.featuretask.AcceptingFeatureTaskRuntimeHandoffFoundationValidator
@@ -29,9 +30,7 @@ import skillbill.ports.workflow.model.FeatureTaskWorkflowMode
 import skillbill.ports.workflow.model.FeatureVerifySessionSummary
 import skillbill.ports.workflow.model.WorkflowStateRecord
 import skillbill.workflow.decomposition.model.CurrentSubtaskIntent
-import skillbill.workflow.decomposition.model.SubtaskId
 import skillbill.workflow.engine.WorkflowSnapshotValidator
-import skillbill.workflow.engine.model.SessionId
 import skillbill.workflow.engine.model.WorkflowStateSnapshot
 import java.nio.file.Path
 import java.time.Clock
@@ -112,7 +111,7 @@ class GoalPlanningRefreshLivenessTest {
     val state = GoalRunnerManifestState(
       parentWorkflowId = "wfl-parent",
       dbPath = "/tmp/refresh-liveness.db",
-      manifest = base.copy(currentSubtaskIntent = CurrentSubtaskIntent(subtaskId = SubtaskId(9), action = "resume")),
+      manifest = base.copy(currentSubtaskIntent = CurrentSubtaskIntent(subtaskId = 9, action = "resume")),
     )
 
     assertEquals(ExecutionLiveness.IDLE, harness.liveness.resolve(state, null))
@@ -128,7 +127,7 @@ class GoalPlanningRefreshLivenessTest {
       dbPath = "/tmp/refresh-liveness.db",
       manifest = base.copy(
         status = "in_progress",
-        currentSubtaskIntent = CurrentSubtaskIntent(subtaskId = SubtaskId(1), action = "resume"),
+        currentSubtaskIntent = CurrentSubtaskIntent(subtaskId = 1, action = "resume"),
         subtasks = listOf(subtask),
       ),
     )
@@ -152,7 +151,7 @@ private class RefreshLivenessHarness(clock: Clock) {
     repository.saveFeatureTaskRuntimeWorkflow(
       WorkflowStateRecord(
         workflowId = workflowId,
-        sessionId = SessionId("session"),
+        sessionId = "session",
         workflowName = "bill-feature-task",
         contractVersion = "0.1",
         workflowStatus = "running",
@@ -178,15 +177,15 @@ private class SeedableRefreshLivenessDatabase(
 ) : DatabaseSessionFactory {
   private val dbPath = Path.of("/fake/goal-planning-refresh-liveness.db")
 
-  override fun resolveDbPath(): Path = dbPath
+  override fun resolveDbPath(dbOverride: String?): Path = dbPath
 
-  override fun databaseExists(): Boolean = true
+  override fun databaseExists(dbOverride: String?): Boolean = true
 
-  override fun <T> read(block: (UnitOfWork) -> T): T = block(unitOfWork())
+  override fun <T> read(dbOverride: String?, block: (UnitOfWork) -> T): T = block(unitOfWork())
 
-  override fun <T> selfManagedWrite(block: (UnitOfWork) -> T): T = transaction(block)
+  override fun <T> selfManagedWrite(dbOverride: String?, block: (UnitOfWork) -> T): T = transaction(dbOverride, block)
 
-  override fun <T> transaction(block: (UnitOfWork) -> T): T = block(unitOfWork())
+  override fun <T> transaction(dbOverride: String?, block: (UnitOfWork) -> T): T = block(unitOfWork())
 
   private fun unitOfWork(): UnitOfWork = object : UnitOfWorkDefaults() {
     override val dbPath: Path = this@SeedableRefreshLivenessDatabase.dbPath

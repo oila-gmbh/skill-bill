@@ -1,5 +1,5 @@
 package skillbill.application.featuretask
-import skillbill.agent.model.AgentId
+
 import skillbill.application.InMemoryRuntimeWorkflowRepository
 import skillbill.application.RecordingLifecycleTelemetryRepository
 import skillbill.application.RuntimeFakeDatabaseSessionFactory
@@ -13,7 +13,6 @@ import skillbill.ports.diagnostics.NoopRuntimeDiagnostics
 import skillbill.ports.diagnostics.model.ProducerOutputEvidence
 import skillbill.ports.diagnostics.model.RejectedOutputDiagnosticError
 import skillbill.workflow.engine.WorkflowSnapshotValidator
-import skillbill.workflow.engine.model.WorkflowId
 import skillbill.workflow.engine.model.WorkflowStateSnapshot
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeDiagnosticFailureClass
 import java.time.Instant
@@ -163,7 +162,7 @@ class FeatureTaskRuntimeDiagnosticDegradationTest {
     recorder.ensureWorkflowOpen(WORKFLOW_ID, "session-1")
 
     assertFailsWith<RejectedOutputDiagnosticError.InvalidRequest> {
-      recorder.recordRejectedOutput(rejection(byteArrayOf(1), repairTurn = 1).copy(agentId = AgentId("")))
+      recorder.recordRejectedOutput(rejection(byteArrayOf(1), repairTurn = 1).copy(agentId = ""))
     }
     assertTrue(recorder.loadDiagnosticSignals(WORKFLOW_ID).isEmpty())
   }
@@ -233,10 +232,10 @@ class FeatureTaskRuntimeDiagnosticDegradationTest {
   )
 
   private fun evidence(payload: ByteArray, repairTurn: Int) = ProducerOutputEvidence(
-    workflowId = WorkflowId(WORKFLOW_ID),
+    workflowId = WORKFLOW_ID,
     phaseId = "validate",
     attempt = 1,
-    agentId = AgentId("cursor"),
+    agentId = "cursor",
     model = "gpt",
     recordedAt = Instant.parse("2026-08-11T21:07:48Z"),
     byteSize = payload.size.toLong(),
@@ -246,13 +245,13 @@ class FeatureTaskRuntimeDiagnosticDegradationTest {
   )
 
   private fun rejection(payload: ByteArray, repairTurn: Int) = RejectedOutputDiagnosticRequest(
-    workflowId = WorkflowId(WORKFLOW_ID),
+    workflowId = WORKFLOW_ID,
     phaseId = "validate",
     attempt = 1,
     rule = "phase-output-schema",
     path = "/status",
     reason = "rejected",
-    agentId = AgentId("cursor"),
+    agentId = "cursor",
     model = "gpt",
     rawResponse = payload,
     repairTurn = repairTurn,

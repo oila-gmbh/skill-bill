@@ -1,9 +1,8 @@
 package skillbill.goalrunner
+
 import skillbill.workflow.decomposition.model.CurrentSubtaskIntent
 import skillbill.workflow.decomposition.model.DecompositionManifest
 import skillbill.workflow.decomposition.model.DecompositionSubtask
-import skillbill.workflow.decomposition.model.IssueKey
-import skillbill.workflow.decomposition.model.SubtaskId
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeQualityGateSelection
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -14,15 +13,15 @@ class GoalRunnerQualityGateSelectionResolverTest {
     val manifest = manifest(subtaskCount = 3)
     assertEquals(
       FeatureTaskRuntimeQualityGateSelection.BUILD,
-      GoalRunnerQualityGateSelectionResolver.resolve(manifest, SubtaskId(1)),
+      GoalRunnerQualityGateSelectionResolver.resolve(manifest, 1),
     )
     assertEquals(
       FeatureTaskRuntimeQualityGateSelection.BUILD,
-      GoalRunnerQualityGateSelectionResolver.resolve(manifest, SubtaskId(2)),
+      GoalRunnerQualityGateSelectionResolver.resolve(manifest, 2),
     )
     assertEquals(
       FeatureTaskRuntimeQualityGateSelection.VALIDATE,
-      GoalRunnerQualityGateSelectionResolver.resolve(manifest, SubtaskId(3)),
+      GoalRunnerQualityGateSelectionResolver.resolve(manifest, 3),
     )
   }
 
@@ -31,7 +30,7 @@ class GoalRunnerQualityGateSelectionResolverTest {
     val manifest = manifest(subtaskCount = 1)
     assertEquals(
       FeatureTaskRuntimeQualityGateSelection.VALIDATE,
-      GoalRunnerQualityGateSelectionResolver.resolve(manifest, SubtaskId(1)),
+      GoalRunnerQualityGateSelectionResolver.resolve(manifest, 1),
     )
   }
 
@@ -44,24 +43,24 @@ class GoalRunnerQualityGateSelectionResolverTest {
     )
     assertEquals(
       FeatureTaskRuntimeQualityGateSelection.BUILD,
-      GoalRunnerQualityGateSelectionResolver.resolve(manifest, SubtaskId(1)),
+      GoalRunnerQualityGateSelectionResolver.resolve(manifest, 1),
     )
     assertEquals(
       FeatureTaskRuntimeQualityGateSelection.VALIDATE,
-      GoalRunnerQualityGateSelectionResolver.resolve(manifest, SubtaskId(2)),
+      GoalRunnerQualityGateSelectionResolver.resolve(manifest, 2),
     )
   }
 
   private fun manifest(subtaskCount: Int): DecompositionManifest = DecompositionManifest(
-    issueKey = IssueKey("SKILL-204"),
+    issueKey = "SKILL-204",
     featureName = "goal",
     parentSpecPath = ".feature-specs/SKILL-204-goal/spec.md",
     baseBranch = "main",
     featureBranch = "feat/SKILL-204-goal",
-    currentSubtaskIntent = CurrentSubtaskIntent(subtaskId = SubtaskId(1), action = "start"),
+    currentSubtaskIntent = CurrentSubtaskIntent(subtaskId = 1, action = "start"),
     subtasks = (1..subtaskCount).map { id ->
       DecompositionSubtask(
-        id = SubtaskId(id),
+        id = id,
         name = "Subtask $id",
         specPath = ".feature-specs/SKILL-204-goal/spec_subtask_$id.md",
       )

@@ -1,4 +1,5 @@
 package skillbill.application
+
 import skillbill.application.goalrunner.GoalRunner
 import skillbill.application.goalrunner.goalRunnerDeps
 import skillbill.application.goalrunner.model.GoalRunnerEventSink
@@ -15,9 +16,6 @@ import skillbill.goalrunner.model.GoalRunnerStoredOutcome
 import skillbill.goalrunner.model.GoalRunnerTerminalStatus
 import skillbill.workflow.decomposition.model.CurrentSubtaskIntent
 import skillbill.workflow.decomposition.model.DecompositionManifest
-import skillbill.workflow.decomposition.model.IssueKey
-import skillbill.workflow.decomposition.model.SubtaskId
-import skillbill.workflow.engine.model.WorkflowId
 import java.nio.file.Path
 import java.time.Clock
 import java.time.Instant
@@ -141,7 +139,7 @@ class GoalRunnerTelemetryTest {
         if (subtaskId == 2) {
           GoalRunnerStoredOutcome(
             status = GoalRunnerTerminalStatus.FAILED,
-            workflowId = WorkflowId("wfl-2"),
+            workflowId = "wfl-2",
             blockedReason = "review failed",
             lastResumableStep = "review",
             suppressPr = true,
@@ -184,7 +182,7 @@ class GoalRunnerTelemetryTest {
       store.mutate { current -> current.withWorkflowId(subtaskId, "wfl-blocked") }
       outcomes["wfl-blocked"] = GoalRunnerStoredOutcome(
         status = GoalRunnerTerminalStatus.FAILED,
-        workflowId = WorkflowId("wfl-blocked"),
+        workflowId = "wfl-blocked",
         blockedReason = "review failed",
         lastResumableStep = "review",
         suppressPr = true,
@@ -214,8 +212,8 @@ class GoalRunnerTelemetryTest {
   @Test
   fun `resumed run emits finished only for current-segment terminals and never double-counts`() {
     val initial = manifest(subtaskCount = 3)
-      .withCompletedSubtaskState(1, workflowId = WorkflowId("wfl-1"), commitSha = "sha-1")
-      .withBlockedSubtaskState(2, workflowId = WorkflowId("wfl-2"), reason = "validation failed")
+      .withCompletedSubtaskState(1, workflowId = "wfl-1", commitSha = "sha-1")
+      .withBlockedSubtaskState(2, workflowId = "wfl-2", reason = "validation failed")
     val store = InMemoryGoalManifestStore(manifest = initial)
     val outcomes = RecordingOutcomeStore()
     outcomes["wfl-2"] = completeOutcome(2)
@@ -385,7 +383,7 @@ class GoalRunnerTelemetryTest {
   }
 
   private fun runRequest(eventSink: (GoalRunnerRunEvent) -> Unit = {}): GoalRunnerRunRequest = GoalRunnerRunRequest(
-    issueKey = IssueKey("SKILL-56"),
+    issueKey = "SKILL-56",
     repoRoot = Path.of("/tmp/skillbill-goal-runner"),
     invokedAgentId = "claude",
     dbPathOverride = "/tmp/skillbill-goal-runner/metrics.db",
@@ -439,7 +437,7 @@ private fun DecompositionManifest.withCompletedSubtaskState(
   commitSha: String,
 ): DecompositionManifest = copy(
   status = "in_progress",
-  currentSubtaskIntent = CurrentSubtaskIntent(subtaskId = SubtaskId(0), action = "complete"),
+  currentSubtaskIntent = CurrentSubtaskIntent(subtaskId = 0, action = "complete"),
   subtasks = subtasks.map { subtask ->
     if (subtask.id == subtaskId) {
       subtask.copy(

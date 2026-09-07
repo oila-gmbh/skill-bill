@@ -22,7 +22,7 @@ object FeatureTaskRuntimeRunLoopCheckpoint {
   ): FeatureTaskRuntimeCheckpointDecision? {
     val preparation = prepareCheckpointScope(runLoop, precedingPhaseId, branch, blockedReason) ?: return null
     val ownedInventory = checkpointOwnedInventory(runLoop, preparation)
-    val resolved = runLoop.recorder.loadResolvedBranch(runLoop.request.workflowId)
+    val resolved = runLoop.recorder.loadResolvedBranch(runLoop.request.workflowId, runLoop.request.dbPathOverride)
     persistOwnedInventory(runLoop, ownedInventory, resolved?.workflowOwnedPaths.orEmpty())
     runLoop.session.checkpointOwnershipDecided = true
     return FeatureTaskRuntimeCheckpointScope.decide(
@@ -40,7 +40,7 @@ object FeatureTaskRuntimeRunLoopCheckpoint {
   }
   fun checkpointDeletedPaths(runLoop: FeatureTaskRuntimeRunLoop): List<String> {
     val status = runLoop.phaseGates.gitOperations.worktreeStatus(runLoop.request.repoRoot)
-    if (!status.ok) return emptyList()
+    if (status !is WorkflowGitOperationResult.Ok) return emptyList()
     return FeatureTaskRuntimePhaseSafetyPolicy.deletedPaths(status.value.orEmpty())
   }
 
@@ -64,6 +64,7 @@ object FeatureTaskRuntimeRunLoopCheckpoint {
   fun writingPhaseIntroducedPaths(runLoop: FeatureTaskRuntimeRunLoop, worktreeDelta: List<String>): List<String> {
     val records = runLoop.recorder.loadPhaseRecords(
       runLoop.request.workflowId,
+      runLoop.request.dbPathOverride,
     ).orEmpty()
     val writingRecords = INVENTORY_EXTENDING_PHASES.mapNotNull { records[it] }
     if (writingRecords.isEmpty()) {
@@ -89,6 +90,7 @@ object FeatureTaskRuntimeRunLoopCheckpoint {
   ): List<String> {
     val record = runLoop.recorder.loadPhaseRecords(
       runLoop.request.workflowId,
+      runLoop.request.dbPathOverride,
     )?.get(phaseId)
     if (record == null) {
       if (worktreeDelta.isNotEmpty()) {
@@ -109,7 +111,7 @@ object FeatureTaskRuntimeRunLoopCheckpoint {
 
   fun persistOwnedInventory(runLoop: FeatureTaskRuntimeRunLoop, inventory: List<String>, persisted: List<String>) {
     if (inventory.sorted() == persisted.sorted()) return
-    runLoop.recorder.recordWorkflowOwnedPaths(runLoop.request.workflowId, inventory)
+    runLoop.recorder.recordWorkflowOwnedPaths(runLoop.request.workflowId, inventory, runLoop.request.dbPathOverride)
   }
 
   private fun stagedCheckpointPaths(
@@ -119,7 +121,7 @@ object FeatureTaskRuntimeRunLoopCheckpoint {
     blockedReason: (String, String) -> String,
   ): List<String>? {
     val staged = runLoop.phaseGates.gitOperations.stagedPaths(runLoop.request.repoRoot)
-    if (!staged.ok) {
+    if (staged !is WorkflowGitOperationResult.Ok) {
       FeatureTaskRuntimeRunLoopCheckpointRemediation.blockCheckpointScope(
         runLoop,
         precedingPhaseId,
@@ -140,7 +142,7 @@ object FeatureTaskRuntimeRunLoopCheckpoint {
     branch: String,
     blockedReason: (String, String) -> String,
   ): CheckpointScopePreparation? {
-    val resolved = runLoop.recorder.loadResolvedBranch(runLoop.request.workflowId)
+    val resolved = runLoop.recorder.loadResolvedBranch(runLoop.request.workflowId, runLoop.request.dbPathOverride)
     val worktreeDelta = FeatureTaskRuntimeRunLoopCheckpointRemediation.checkpointWorktreeDelta(
       runLoop,
       resolved?.baselineOwnedPathsForCheckpoint().orEmpty(),
@@ -209,7 +211,7 @@ object FeatureTaskRuntimeRunLoopCheckpoint {
       prepared.message,
       prepared.subtaskIdentity,
     )
-    if (!commit.ok) {
+    if (commit !is WorkflowGitOperationResult.Ok) {
       FeatureTaskRuntimeRunLoopCheckpoint.blockCheckpoint(
         runLoop,
         prepared.precedingPhaseId,
@@ -267,7 +269,7 @@ object FeatureTaskRuntimeRunLoopCheckpoint {
     val subtaskId = runLoop.request.goalContinuation?.subtaskId?.toString()
       ?: FEATURE_TASK_RUNTIME_STANDALONE_SUBTASK_ID
     return runCatching {
-      runLoop.recorder.loadCheckpointIdentities(runLoop.request.workflowId)
+      runLoop.recorder.loadCheckpointIdentities(runLoop.request.workflowId, runLoop.request.dbPathOverride)
     }.fold(
       onSuccess = { loaded -> loaded.orEmpty() },
       onFailure = { error ->
@@ -327,6 +329,7 @@ object FeatureTaskRuntimeRunLoopCheckpoint {
     val read = runCatching {
       runLoop.recorder.loadCheckpointIdentities(
         runLoop.request.workflowId,
+        runLoop.request.dbPathOverride,
       )
     }
     val identities = read.getOrNull()
@@ -361,7 +364,7 @@ object FeatureTaskRuntimeRunLoopCheckpoint {
   ): WorkflowGitOperationResult {
     val ledger = FeatureTaskRuntimeRunLoopCheckpoint.subtaskCommitLedgerState(runLoop, identity)
     val headSha = runLoop.phaseGates.gitOperations.headCommitSha(runLoop.request.repoRoot)
-      .takeIf { it.ok }?.value?.trim()?.takeIf(String::isNotBlank)
+      .takeIf { it is WorkflowGitOperationResult.Ok }?.value?.trim()?.takeIf(String::isNotBlank)
     val decision = FeatureTaskRuntimeSubtaskCommitResolver.decide(
       identity = identity,
       durableCommitSha = ledger.commitSha,
@@ -385,11 +388,11 @@ object FeatureTaskRuntimeRunLoopCheckpoint {
   }
 
   fun headCommitMessageOrNull(runLoop: FeatureTaskRuntimeRunLoop): String? =
-    runLoop.phaseGates.gitOperations.headCommitMessage(runLoop.request.repoRoot).takeIf { it.ok }?.value
+    runLoop.phaseGates.gitOperations.headCommitMessage(runLoop.request.repoRoot).takeIf { it is WorkflowGitOperationResult.Ok }?.value
 
   fun branchHasUnpushedCommits(runLoop: FeatureTaskRuntimeRunLoop, branch: String): Boolean {
     val unpushed = runLoop.phaseGates.gitOperations.localBranchHasUnpushedCommits(runLoop.request.repoRoot, branch)
-    return unpushed.ok && unpushed.value.orEmpty().trim().equals("true", ignoreCase = true)
+    return unpushed is WorkflowGitOperationResult.Ok && unpushed.value.orEmpty().trim().equals("true", ignoreCase = true)
   }
 
   fun withIndexRestoreOutcome(
@@ -399,7 +402,7 @@ object FeatureTaskRuntimeRunLoopCheckpoint {
     snapshot: String,
   ): String {
     val restored = runLoop.phaseGates.gitOperations.restoreIndexState(runLoop.request.repoRoot, ownedPaths, snapshot)
-    return if (restored.ok) {
+    return if (restored is WorkflowGitOperationResult.Ok) {
       "$error; the pre-checkpoint index was restored and the working tree is unchanged"
     } else {
       "$error; the pre-checkpoint index could NOT be restored (${restored.error}) — inspect " +
@@ -436,6 +439,7 @@ object FeatureTaskRuntimeRunLoopCheckpoint {
           parentSha = parentSha,
           ownedPaths = ownedPaths,
           commitSha = commitSha,
+          dbOverride = runLoop.request.dbPathOverride,
         ),
       )
     }

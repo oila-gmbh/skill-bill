@@ -1,5 +1,4 @@
 package skillbill.goalrunner.planning
-
 import skillbill.workflow.decomposition.model.DecompositionSubtask
 
 /**
@@ -18,7 +17,7 @@ fun isTerminalWithCommitPlan(status: String, commitSha: String?): Boolean =
  * subtask are treated as eligible (fail closed: unknown rows must not survive a cascade).
  */
 fun cascadeEligiblePlanSubtaskIds(plannedIds: Collection<Int>, subtasks: Collection<DecompositionSubtask>): List<Int> {
-  val byId = subtasks.associateBy { it.id.toString().toInt() }
+  val byId = subtasks.associateBy { it.id }
   return plannedIds.filter { id ->
     val subtask = byId[id]
     subtask == null || !isTerminalWithCommitPlan(subtask)

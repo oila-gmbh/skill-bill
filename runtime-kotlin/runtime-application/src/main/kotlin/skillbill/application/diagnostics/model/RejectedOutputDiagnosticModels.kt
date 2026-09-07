@@ -1,8 +1,7 @@
 package skillbill.application.diagnostics.model
-import skillbill.agent.model.AgentId
+
 import skillbill.application.diagnostics.RejectedOutputDiagnosticService
 import skillbill.ports.diagnostics.model.RejectedOutputDiagnosticError
-import skillbill.workflow.engine.model.WorkflowId
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeDiagnosticFailureClass
 import java.time.Duration
 
@@ -24,13 +23,13 @@ data class RejectedOutputDiagnosticConfig(
 }
 
 data class RejectedOutputDiagnosticRequest(
-  val workflowId: WorkflowId,
+  val workflowId: String,
   val phaseId: String,
   val attempt: Int,
   val rule: String,
   val path: String,
   val reason: String,
-  val agentId: AgentId,
+  val agentId: String,
   val model: String,
   val rawResponse: ByteArray,
   val observedByteSize: Long = rawResponse.size.toLong(),

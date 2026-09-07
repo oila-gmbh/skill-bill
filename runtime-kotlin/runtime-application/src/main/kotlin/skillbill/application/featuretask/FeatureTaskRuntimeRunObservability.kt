@@ -1,7 +1,5 @@
 package skillbill.application.featuretask
 
-import skillbill.agent.model.AgentId
-
 import skillbill.application.featuretask.model.FeatureTaskRuntimePhaseLedgerRequest
 import skillbill.application.featuretask.model.FeatureTaskRuntimeRunEvent
 import skillbill.application.featuretask.model.FeatureTaskRuntimeRunRequest
@@ -72,7 +70,7 @@ class FeatureTaskRuntimeRunObservability(
     )
   }
 
-  fun branchSetupBlocked(phaseId: String, resolvedAgentId: AgentId, blockedReason: String) {
+  fun branchSetupBlocked(phaseId: String, resolvedAgentId: String, blockedReason: String) {
     emitSafely(
       FeatureTaskRuntimeRunEvent.BranchSetupBlocked(
         workflowId = request.workflowId,
@@ -94,7 +92,7 @@ class FeatureTaskRuntimeRunObservability(
 
   internal fun started(
     phaseId: String,
-    resolvedAgentId: AgentId,
+    resolvedAgentId: String,
     attemptCount: Int,
     directive: PhaseModelDirective?,
     reentry: FeatureTaskRuntimePhaseStartReentry = FeatureTaskRuntimePhaseStartReentry.FIRST_VISIT,
@@ -129,7 +127,7 @@ class FeatureTaskRuntimeRunObservability(
     )
   }
 
-  fun completed(phaseId: String, resolvedAgentId: AgentId, attemptCount: Int) {
+  fun completed(phaseId: String, resolvedAgentId: String, attemptCount: Int) {
     completedEvent(phaseId, resolvedAgentId, attemptCount)
     appendLedger(
       FeatureTaskRuntimePhaseLedgerRequest(

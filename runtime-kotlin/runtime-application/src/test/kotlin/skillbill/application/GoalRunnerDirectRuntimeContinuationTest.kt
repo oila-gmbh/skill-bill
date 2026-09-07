@@ -1,13 +1,11 @@
 package skillbill.application
+
 import skillbill.application.goalrunner.GoalRunnerLaunchReconciler
 import skillbill.application.goalrunner.GoalRunnerProgressReader
 import skillbill.application.goalrunner.SubtaskLaunchRequestArgs
 import skillbill.application.goalrunner.model.GoalRunnerRunRequest
 import skillbill.application.goalrunner.testActivityStampWriter
 import skillbill.ports.diagnostics.NoopRuntimeDiagnostics
-import skillbill.workflow.decomposition.model.IssueKey
-import skillbill.workflow.decomposition.model.SubtaskId
-import skillbill.workflow.engine.model.WorkflowId
 import java.nio.file.Path
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -18,12 +16,7 @@ class GoalRunnerDirectRuntimeContinuationTest {
   @Test
   fun `reconciler threads direct runtime goal-continuation context onto the child launch request`() {
     val store = InMemoryGoalManifestStore(
-      manifest = manifest(subtaskCount = 1).withWorkflowId(
-        subtaskId =
-        SubtaskId(1),
-        workflowId =
-        WorkflowId("wfl-child-runtime"),
-      ),
+      manifest = manifest(subtaskCount = 1).withWorkflowId(subtaskId = 1, workflowId = "wfl-child-runtime"),
     )
     val outcomeStore = RecordingOutcomeStore()
     val reconciler = GoalRunnerLaunchReconciler(
@@ -37,8 +30,8 @@ class GoalRunnerDirectRuntimeContinuationTest {
 
     val launchRequest = reconciler.subtaskLaunchRequest(
       SubtaskLaunchRequestArgs(
-        issueKey = IssueKey("SKILL-56"),
-        subtaskId = SubtaskId(1),
+        issueKey = "SKILL-56",
+        subtaskId = 1,
         request = wiringRunRequest(),
         assignedWorkflowId = null,
         reviewBaseline = null,
@@ -59,12 +52,7 @@ class GoalRunnerDirectRuntimeContinuationTest {
   @Test
   fun `fresh assigned workflow id wins over stale manifest workflow id`() {
     val store = InMemoryGoalManifestStore(
-      manifest = manifest(subtaskCount = 1).withWorkflowId(
-        subtaskId =
-        SubtaskId(1),
-        workflowId =
-        WorkflowId("wfl-stale-blocked"),
-      ),
+      manifest = manifest(subtaskCount = 1).withWorkflowId(subtaskId = 1, workflowId = "wfl-stale-blocked"),
     )
     val outcomeStore = RecordingOutcomeStore()
     val reconciler = GoalRunnerLaunchReconciler(
@@ -78,8 +66,8 @@ class GoalRunnerDirectRuntimeContinuationTest {
 
     val launchRequest = reconciler.subtaskLaunchRequest(
       SubtaskLaunchRequestArgs(
-        issueKey = IssueKey("SKILL-56"),
-        subtaskId = SubtaskId(1),
+        issueKey = "SKILL-56",
+        subtaskId = 1,
         request = wiringRunRequest(),
         assignedWorkflowId = "wftr-fresh-assigned",
         reviewBaseline = null,
@@ -93,7 +81,7 @@ class GoalRunnerDirectRuntimeContinuationTest {
   }
 
   private fun wiringRunRequest(): GoalRunnerRunRequest = GoalRunnerRunRequest(
-    issueKey = IssueKey("SKILL-56"),
+    issueKey = "SKILL-56",
     repoRoot = Path.of("/tmp/skillbill-goal-runner"),
     invokedAgentId = "claude",
     dbPathOverride = "/tmp/skillbill-goal-runner/metrics.db",

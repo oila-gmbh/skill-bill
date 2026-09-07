@@ -43,14 +43,14 @@ internal fun assembleGoalRunnerStatusProjection(
     completeCount = manifest.subtasks.count { statusOf(it) == "complete" || statusOf(it) == "skipped" },
     pendingCount = manifest.subtasks.count { statusOf(it) !in setOf("complete", "skipped", "blocked") },
     blockedCount = manifest.subtasks.count { statusOf(it) == "blocked" },
-    currentSubtaskId = currentSubtask?.id?.toString()?.toInt(),
-    currentChildWorkflowId = currentSubtask?.workflowId?.value?.takeIf(String::isNotBlank),
+    currentSubtaskId = currentSubtask?.id,
+    currentChildWorkflowId = currentSubtask?.workflowId?.takeIf(String::isNotBlank),
     currentSubtaskStatus = currentSubtask?.let(statusOf)?.takeIf(String::isNotBlank),
     currentSubtaskBlockedReason = currentSubtask?.blockedReason?.takeIf(String::isNotBlank),
     currentStep = extras.currentStepOverride?.takeIf(String::isNotBlank)
       ?: currentSubtask?.lastResumableStep
       ?: currentSubtask?.let { subtask ->
-        if (subtask.workflowId?.value.isNullOrBlank()) "pending_launch" else "initializing"
+        if (subtask.workflowId.isNullOrBlank()) "pending_launch" else "initializing"
       },
     activeAgent = activeAgent?.takeIf(String::isNotBlank),
     executionLiveness = extras.executionLiveness,

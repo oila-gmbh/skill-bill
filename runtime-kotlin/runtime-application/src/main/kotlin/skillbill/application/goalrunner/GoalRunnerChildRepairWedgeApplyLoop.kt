@@ -1,6 +1,4 @@
 package skillbill.application.goalrunner
-
-import skillbill.workflow.engine.model.WorkflowId
 import skillbill.application.decomposition.decodeArtifacts
 import skillbill.application.featuretask.buildCompletedUpstreamMissingOutputRepair
 import skillbill.application.featuretask.diagnoseUnsettledCompletedUpstreamPhaseId
@@ -24,6 +22,7 @@ import skillbill.ports.workflow.get
 import skillbill.ports.workflow.gitops.WorkflowGitOperations
 import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewBaselineRecoveryRequest
 import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewInputFailureReason
+import skillbill.ports.workflow.gitops.model.WorkflowGitOperationStatus
 import skillbill.ports.workflow.gitops.recoverGoalSubtaskReviewBaseline
 import skillbill.ports.workflow.save
 import skillbill.workflow.decomposition.DecompositionManifestValidator
@@ -80,7 +79,7 @@ class GoalRunnerChildRepairWedgeApplyLoop(
         currentStepId = record.currentStepId,
         stepUpdates = null,
         artifactsPatch = state.patch,
-        sessionId = record.sessionId,
+        sessionId = record.sessionId.orEmpty(),
       ),
     )
     WorkflowFamily.TASK_RUNTIME.save(workflowStates, updated)
@@ -215,7 +214,7 @@ internal fun unreachableReviewRepairContext(lookup: UnreachableReviewRepairLooku
     continuation.goalBranch,
   )
   val recoveredBaseline = recovered.baseline
-  if (!recovered.ok || recoveredBaseline == null) return null
+  if (recovered.status != WorkflowGitOperationStatus.OK || recoveredBaseline == null) return null
   return UnreachableReviewRepairContext(
     review = review,
     continuation = continuation,

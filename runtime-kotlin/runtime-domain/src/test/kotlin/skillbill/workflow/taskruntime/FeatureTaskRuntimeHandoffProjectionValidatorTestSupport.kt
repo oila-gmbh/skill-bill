@@ -1,5 +1,5 @@
 package skillbill.workflow.taskruntime
-import skillbill.workflow.engine.model.WorkflowId
+
 import skillbill.workflow.goal.model.ValidationDepth
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeCompactReferenceKind
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFeatureSize
@@ -89,7 +89,7 @@ internal data class HandoffProjectionValidatorInputsFixture(
     runInvariants = runInvariants,
     resolvedCheckpoint = resolvedCheckpoint,
     expectedCheckpoint = expectedCheckpoint,
-    workflowId = WorkflowId("wftr-1"),
+    workflowId = "wftr-1",
     validationDepth = validationDepth,
     qualityGateSelection = qualityGateSelection,
     priorGapMemory = priorGapMemory,

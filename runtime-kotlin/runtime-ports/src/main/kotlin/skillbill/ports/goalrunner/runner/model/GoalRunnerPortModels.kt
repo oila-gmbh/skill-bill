@@ -1,7 +1,4 @@
 package skillbill.ports.goalrunner.runner.model
-
-import skillbill.agent.model.AgentId
-
 import skillbill.goalrunner.model.GoalAttemptLedgerEntry
 import skillbill.goalrunner.model.GoalObservabilityProgressEvent
 import skillbill.goalrunner.model.GoalRunnerControlState
@@ -10,14 +7,11 @@ import skillbill.ports.agentrun.model.AgentRunSpawnAuthorization
 import skillbill.ports.agentrun.model.SkillRunRequest
 import skillbill.ports.goalrunner.model.GoalPlanningIdentity
 import skillbill.workflow.decomposition.model.DecompositionManifest
-import skillbill.workflow.decomposition.model.IssueKey
-import skillbill.workflow.decomposition.model.SubtaskId
-import skillbill.workflow.engine.model.WorkflowId
 import skillbill.workflow.goal.model.GoalProgressEvent
 import java.nio.file.Path
 
 data class GoalRunnerManifestState(
-  val parentWorkflowId: WorkflowId,
+  val parentWorkflowId: String,
   val dbPath: String,
   val manifest: DecompositionManifest,
   val controlState: GoalRunnerControlState = GoalRunnerControlState(),
@@ -56,7 +50,7 @@ data class GoalRunnerScopedReplanOptions(
 )
 
 data class GoalRunnerPausePersistenceResult(
-  val parentWorkflowId: WorkflowId,
+  val parentWorkflowId: String,
   val controlState: GoalRunnerControlState,
 )
 
@@ -80,13 +74,13 @@ data class GoalRunnerReconcileGate(
 )
 
 data class GoalRunnerSubtaskLaunchRequest(
-  val invokedAgentId: AgentId,
+  val invokedAgentId: String,
   val configuredAgentOverrideId: String?,
   val skillRunRequest: SkillRunRequest,
 )
 
 data class GoalRunnerWorkflowProgress(
-  val workflowId: WorkflowId,
+  val workflowId: String,
   val workflowStatus: String,
   val currentStepId: String,
   val progressToken: String,
@@ -106,21 +100,21 @@ data class GoalRunnerWorkflowProgress(
  * declared operation state via [latestDeclaredProgressEvent].
  */
 data class GoalRunnerProgressEventRecordRequest(
-  val workflowId: WorkflowId,
+  val workflowId: String,
   val event: GoalProgressEvent,
 ) {
   init {
-    require(workflowId.value.isNotBlank()) { "workflowId is required." }
+    require(workflowId.isNotBlank()) { "workflowId is required." }
   }
 }
 
 /** SKILL-64 Subtask 3 (AC10, AC11): append-only attempt/event ledger write request. */
 data class GoalRunnerAttemptLedgerRecordRequest(
-  val workflowId: WorkflowId,
+  val workflowId: String,
   val entry: GoalAttemptLedgerEntry,
 ) {
   init {
-    require(workflowId.value.isNotBlank()) { "workflowId is required." }
+    require(workflowId.isNotBlank()) { "workflowId is required." }
   }
 }
 
@@ -147,13 +141,13 @@ data class GoalRunnerLedgerSequenceWatermarks(
  * lives on the goal parent workflow; the manifest projection stays derived, never hand-edited.
  */
 data class GoalRunnerOutOfBandAcceptance(
-  val subtaskId: SubtaskId,
+  val subtaskId: Int,
   val commitSha: String,
   val reason: String,
   val acceptedAt: String,
 ) {
   init {
-    require(subtaskId.value > 0) { "subtaskId must be positive." }
+    require(subtaskId > 0) { "subtaskId must be positive." }
     require(commitSha.isNotBlank()) { "commitSha is required." }
     require(reason.isNotBlank()) { "reason is required." }
     require(acceptedAt.isNotBlank()) { "acceptedAt is required." }
@@ -162,7 +156,7 @@ data class GoalRunnerOutOfBandAcceptance(
 
 data class GoalPullRequestRequest(
   val repoRoot: Path,
-  val issueKey: IssueKey,
+  val issueKey: String,
   val featureName: String,
   val baseBranch: String,
   val headBranch: String,

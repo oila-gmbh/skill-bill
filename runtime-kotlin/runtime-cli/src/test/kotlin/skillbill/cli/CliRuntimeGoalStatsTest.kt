@@ -1,12 +1,11 @@
 package skillbill.cli
+
 import skillbill.cli.core.CliRuntime
 import skillbill.cli.model.CliRuntimeContext
 import skillbill.db.core.DatabaseRuntime
 import skillbill.db.telemetry.LifecycleTelemetryStore
 import skillbill.telemetry.model.GoalFinishedRecord
 import skillbill.telemetry.model.GoalStartedRecord
-import skillbill.workflow.decomposition.model.IssueKey
-import skillbill.workflow.engine.model.WorkflowId
 import java.nio.file.Files
 import kotlin.test.Test
 import kotlin.test.assertContains
@@ -40,9 +39,9 @@ class CliRuntimeGoalStatsTest {
       val store = LifecycleTelemetryStore(connection)
       store.goalStarted(
         GoalStartedRecord(
-          issueKey = IssueKey("SKILL-66"),
+          issueKey = "SKILL-66",
           featureName = "goal telemetry",
-          workflowId = WorkflowId("wf-cli-human"),
+          workflowId = "wf-cli-human",
           subtaskTotal = 1,
           resumed = false,
           startedAt = "2026-06-05T10:00:00Z",
@@ -52,8 +51,8 @@ class CliRuntimeGoalStatsTest {
       )
       store.goalFinished(
         GoalFinishedRecord(
-          issueKey = IssueKey("SKILL-66"),
-          workflowId = WorkflowId("wf-cli-human"),
+          issueKey = "SKILL-66",
+          workflowId = "wf-cli-human",
           status = "completed",
           startedAt = "2026-06-05T10:00:00Z",
           finishedAt = "2026-06-05T10:30:00Z",

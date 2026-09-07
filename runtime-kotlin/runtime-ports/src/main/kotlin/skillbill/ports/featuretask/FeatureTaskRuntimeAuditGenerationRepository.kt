@@ -1,7 +1,6 @@
 package skillbill.ports.featuretask
 
 import skillbill.ports.featuretask.model.FeatureTaskRuntimeAuditGenerationRow
-import skillbill.workflow.engine.model.WorkflowId
 
 /**
  * Insert-only durable authority for completeness-audit history.
@@ -18,12 +17,12 @@ interface FeatureTaskRuntimeAuditGenerationRepository {
   fun append(row: FeatureTaskRuntimeAuditGenerationRow)
 
   /** Every generation for one workflow in ascending ordinal order. */
-  fun listOrdered(workflowId: WorkflowId): List<FeatureTaskRuntimeAuditGenerationRow>
+  fun listOrdered(workflowId: String): List<FeatureTaskRuntimeAuditGenerationRow>
 
   /**
    * Discards a workflow's entire generation history so it can be regenerated in band. Reachable only from
    * the quarantine-and-regenerate edge for a legacy workflow whose history predates this contract; ordinary
    * settlement has no path to it.
    */
-  fun quarantineAll(workflowId: WorkflowId): Int
+  fun quarantineAll(workflowId: String): Int
 }

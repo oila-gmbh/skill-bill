@@ -1,4 +1,6 @@
 package skillbill.cli
+
+import skillbill.ports.workflow.gitops.model.WorkflowGitOperationStatus
 import skillbill.cli.model.CliRuntimeContext
 import skillbill.ports.workflow.gitops.RepositoryFingerprintGitOperations
 import skillbill.ports.workflow.gitops.RepositoryOwnedPathsGitOperations
@@ -7,8 +9,6 @@ import skillbill.ports.workflow.gitops.model.WorkflowGitOperationResult
 import skillbill.ports.workflow.gitops.model.WorkflowSelectedDiffHunksRequest
 import skillbill.ports.workflow.gitops.model.WorkflowSelectedDiffHunksResult
 import skillbill.ports.workflow.gitops.model.WorkflowWorktreeActivityResult
-import skillbill.workflow.decomposition.model.IssueKey
-import skillbill.workflow.decomposition.model.SubtaskId
 import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.test.Test
@@ -42,8 +42,8 @@ class CliWorkflowContinuationRuntimeTest {
     )
     val continued = RuntimeWorkflowTestSupport.continueByIssueKey(
       dbPath = fixture.dbPath,
-      issueKey = IssueKey("SKILL-51"),
-      subtaskId = SubtaskId(1),
+      issueKey = "SKILL-51",
+      subtaskId = 1,
       context = fixture.context,
     )
 
@@ -82,8 +82,8 @@ class CliWorkflowContinuationRuntimeTest {
     )
     val continued = RuntimeWorkflowTestSupport.continueByIssueKey(
       dbPath = fixture.dbPath,
-      issueKey = IssueKey("SKILL-51"),
-      subtaskId = SubtaskId(2),
+      issueKey = "SKILL-51",
+      subtaskId = 2,
       context = fixture.context,
     )
 
@@ -151,34 +151,34 @@ private object TestWorkflowGitOperations : WorkflowGitOperationsTestBase() {
   override val repositoryFingerprintOperations: RepositoryFingerprintGitOperations = TestRepositoryFingerprintOperations
 
   override fun checkoutBranch(repoRoot: Path, branch: String, baseBranch: String?): WorkflowGitOperationResult =
-    WorkflowGitOperationResult(status = "ok", value = branch)
+    WorkflowGitOperationResult.Ok(value = branch)
 
   override fun branchExists(repoRoot: Path, branch: String): WorkflowGitOperationResult =
-    WorkflowGitOperationResult(status = "ok", value = "true")
+    WorkflowGitOperationResult.Ok(value = "true")
 
   override fun currentBranch(repoRoot: Path): WorkflowGitOperationResult =
-    WorkflowGitOperationResult(status = "ok", value = "")
+    WorkflowGitOperationResult.Ok(value = "")
 
   override fun createCommit(repoRoot: Path, message: String): WorkflowGitOperationResult =
-    WorkflowGitOperationResult(status = "ok", value = "test-commit")
+    WorkflowGitOperationResult.Ok(value = "test-commit")
 
   override fun headCommitSha(repoRoot: Path): WorkflowGitOperationResult =
-    WorkflowGitOperationResult(status = "ok", value = "test-commit")
+    WorkflowGitOperationResult.Ok(value = "test-commit")
 
   override fun validateBranchBase(
     repoRoot: Path,
     branch: String,
     expectedBaseBranch: String,
-  ): WorkflowGitOperationResult = WorkflowGitOperationResult(status = "ok", value = expectedBaseBranch)
+  ): WorkflowGitOperationResult = WorkflowGitOperationResult.Ok(value = expectedBaseBranch)
 
   override fun worktreeStatus(repoRoot: Path): WorkflowGitOperationResult =
-    WorkflowGitOperationResult(status = "ok", value = "")
+    WorkflowGitOperationResult.Ok(value = "")
 
   override fun worktreeActivity(repoRoot: Path): WorkflowWorktreeActivityResult =
-    WorkflowWorktreeActivityResult(status = "ok")
+    WorkflowWorktreeActivityResult(status = WorkflowGitOperationStatus.OK)
 
   override fun selectedDiffHunks(
     repoRoot: Path,
     request: WorkflowSelectedDiffHunksRequest,
-  ): WorkflowSelectedDiffHunksResult = WorkflowSelectedDiffHunksResult(status = "ok")
+  ): WorkflowSelectedDiffHunksResult = WorkflowSelectedDiffHunksResult(status = WorkflowGitOperationStatus.OK)
 }

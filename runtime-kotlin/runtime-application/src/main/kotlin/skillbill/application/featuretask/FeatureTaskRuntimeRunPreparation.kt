@@ -1,8 +1,5 @@
 package skillbill.application.featuretask
 
-import skillbill.workflow.engine.model.WorkflowId
-import skillbill.workflow.decomposition.model.IssueKey
-
 import skillbill.application.featuretask.model.ContinuationRead
 import skillbill.application.featuretask.model.FeatureTaskRuntimeGoalContinuationContext
 import skillbill.application.featuretask.model.FeatureTaskRuntimePreparation
@@ -22,7 +19,7 @@ class FeatureTaskRuntimeRunPreparation(
   private val runInvariantsStore: FeatureTaskRuntimeRunInvariantsStore,
 ) {
   fun prepare(request: FeatureTaskRuntimeRunRequest): FeatureTaskRuntimePreparation {
-    val persistedInvariants = runInvariantsStore.resolve(request.workflowId)
+    val persistedInvariants = runInvariantsStore.resolve(request.workflowId, request.dbPathOverride)
     val reportInvariants = persistedInvariants ?: request.runInvariants
     return when (
       val initial = continuationRecorder.readContinuation(request, "Goal-continuation review persistence is malformed")
@@ -54,7 +51,7 @@ class FeatureTaskRuntimeRunPreparation(
           "implementation and cannot be substituted.",
       )
     val selectedMode = selectedReviewMode(request, initial.continuation)
-    recorder.ensureWorkflowOpen(request.workflowId, request.sessionId, request.issueKey)
+    recorder.ensureWorkflowOpen(request.workflowId, request.sessionId, request.dbPathOverride, request.issueKey)
     return freezeRunInvariants(
       request,
       persistedInvariants,
@@ -74,7 +71,7 @@ class FeatureTaskRuntimeRunPreparation(
     if (policyConflict != null) {
       return blocked(request, reportInvariants, policyConflict)
     }
-    recorder.ensureWorkflowOpen(request.workflowId, request.sessionId, request.issueKey)
+    recorder.ensureWorkflowOpen(request.workflowId, request.sessionId, request.dbPathOverride, request.issueKey)
     if (initial == null && request.goalContinuation != null && !recordContinuation(request, selectedMode)) {
       return blocked(
         request,
@@ -159,6 +156,7 @@ class FeatureTaskRuntimeRunPreparation(
         reviewBaseline = initial.baseline,
         fieldAdoption = fieldAdoption,
       ),
+      dbOverride = request.dbPathOverride,
     )
   }
 
@@ -214,6 +212,7 @@ class FeatureTaskRuntimeRunPreparation(
         ),
         reviewBaseline = requireNotNull(context.reviewBaseline),
       ),
+      dbOverride = request.dbPathOverride,
     )
   }
 
@@ -227,7 +226,7 @@ class FeatureTaskRuntimeRunPreparation(
       codeReviewMode = continuation?.continuation?.codeReviewMode ?: selectedMode,
       agentAddonSelection = request.agentAddonSelection.persisted,
     )
-    val durable = runInvariantsStore.resolve(request.workflowId, proposed) ?: proposed
+    val durable = runInvariantsStore.resolve(request.workflowId, request.dbPathOverride, proposed) ?: proposed
     val durableContinuation = continuation?.continuation
     if (durableContinuation != null && durable.codeReviewMode != durableContinuation.codeReviewMode) {
       return blocked(
@@ -261,7 +260,7 @@ private fun selectedReviewMode(
 private fun FeatureTaskRuntimeGoalContinuationRecorder.readContinuation(
   request: FeatureTaskRuntimeRunRequest,
   persistencePrefix: String,
-): ContinuationRead = runCatching { continuation(request.workflowId) }.fold(
+): ContinuationRead = runCatching { continuation(request.workflowId, request.dbPathOverride) }.fold(
   onSuccess = { continuation ->
     continuation?.let { readReviewBaseline(request, it) } ?: ContinuationRead.None
   },
@@ -271,7 +270,7 @@ private fun FeatureTaskRuntimeGoalContinuationRecorder.readContinuation(
 private fun FeatureTaskRuntimeGoalContinuationRecorder.readReviewBaseline(
   request: FeatureTaskRuntimeRunRequest,
   continuation: FeatureTaskRuntimeGoalContinuationArtifact,
-): ContinuationRead = runCatching { reviewState(request.workflowId) }.fold(
+): ContinuationRead = runCatching { reviewState(request.workflowId, request.dbPathOverride) }.fold(
   onSuccess = { state ->
     state?.let {
       ContinuationRead.Available(

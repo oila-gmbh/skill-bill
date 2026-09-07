@@ -1,12 +1,10 @@
 package skillbill.db.workflow
+
 import skillbill.contracts.JsonCodec
 import skillbill.error.InvalidGoalPlanningPreparationSchemaError
 import skillbill.ports.goalrunner.model.GoalPlanningPreparationProvenance
 import skillbill.ports.goalrunner.model.GoalPlanningPreparationRecord
 import skillbill.ports.goalrunner.model.GoalPlanningPreparationStatus
-import skillbill.workflow.decomposition.model.SubtaskId
-import skillbill.workflow.decomposition.model.IssueKey
-import skillbill.workflow.engine.model.WorkflowId
 import java.sql.Connection
 
 internal object GoalPlanningPreparationRecordSqlQueries
@@ -25,10 +23,10 @@ internal fun Connection.upsertPreparedRow(record: GoalPlanningPreparationRecord)
   """.trimIndent(),
 ).use { statement ->
   var index = FIRST_COLUMN_INDEX
-  statement.setString(index++, record.parentGoalWorkflowId.value)
-  statement.setString(index++, record.normalizedIssueKey.value)
+  statement.setString(index++, record.parentGoalWorkflowId)
+  statement.setString(index++, record.normalizedIssueKey)
   statement.setString(index++, record.repositoryIdentity)
-  statement.setInt(index++, record.subtaskId.value)
+  statement.setInt(index++, record.subtaskId)
   statement.setString(index++, record.governedSubSpecPath)
   statement.setString(index++, record.preparationStatus.wireValue)
   statement.setString(index++, record.contractVersion)
@@ -61,7 +59,7 @@ internal fun Connection.selectStoredRecoveryIdentity(
   statement.executeQuery().use { rows ->
     if (!rows.next()) return null
     StoredRecoveryIdentity(
-      normalizedIssueKey = IssueKey(rows.getString("normalized_issue_key")),
+      normalizedIssueKey = rows.getString("normalized_issue_key"),
       repositoryIdentity = rows.getString("repository_identity"),
       provenanceTuple = listOf(
         rows.getString("parent_spec_hash"),
@@ -158,8 +156,8 @@ internal fun Connection.selectStatus(parentGoalWorkflowId: String, subtaskId: In
         )
       }
       GoalPlanningPreparationStatus(
-        parentGoalWorkflowId = WorkflowId(rows.getString("parent_goal_workflow_id")),
-        subtaskId = SubtaskId(rows.getInt("subtask_id")),
+        parentGoalWorkflowId = rows.getString("parent_goal_workflow_id"),
+        subtaskId = rows.getInt("subtask_id"),
         preparationStatus = decodeState(label, rows.getString("preparation_status")),
         provenance = GoalPlanningPreparationProvenance(
           parentSpecHash = requireColumn(rows, label, "parent_spec_hash"),

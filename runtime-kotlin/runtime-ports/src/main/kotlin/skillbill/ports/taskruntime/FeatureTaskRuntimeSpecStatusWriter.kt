@@ -1,7 +1,5 @@
 package skillbill.ports.taskruntime
 
-import skillbill.agent.model.AgentId
-
 import java.nio.file.Path
 
 /**
@@ -13,5 +11,5 @@ import java.nio.file.Path
  * keys off `## Acceptance Criteria` is structurally unaffected.
  */
 fun interface FeatureTaskRuntimeSpecStatusWriter {
-  fun writeFinalizingAgent(specPath: Path, finalizingAgentId: AgentId)
+  fun writeFinalizingAgent(specPath: Path, finalizingAgentId: String)
 }

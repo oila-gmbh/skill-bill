@@ -23,7 +23,7 @@ internal fun FeatureTaskRuntimeRemediationBaseReconciler.persistHealedRemediatio
   request: PersistHealedRemediationBaseRequest,
 ): GoalSubtaskReviewState? {
   val headSha = request.gitOperations.headCommitSha(request.repoRoot).value.orEmpty().trim()
-  return database.transaction { unitOfWork ->
+  return database.transaction(request.dbOverride) { unitOfWork ->
     val record = WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, request.workflowId)
       ?: return@transaction null
     val artifacts = decodeArtifacts(record.artifactsJson)

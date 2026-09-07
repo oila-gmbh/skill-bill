@@ -41,13 +41,12 @@ class GitWorkflowGitOperations :
 internal object GitRepositoryOwnedPathsOperations : RepositoryOwnedPathsGitOperations {
   override fun ownedPaths(repoRoot: Path): WorkflowGitOperationResult {
     val untracked = runGitCommand(repoRoot, "ls-files", "--others", "--exclude-standard", "-z")
-    if (!untracked.ok) return untracked
+    if (untracked !is WorkflowGitOperationResult.Ok) return untracked
     val tracked = runGitCommand(repoRoot, "diff", "--name-only", "-z", "HEAD")
     // A repository with no commits has no HEAD to diff against; the untracked listing is the whole
     // owned inventory there, so an unresolvable HEAD is not a failure.
-    val trackedValue = tracked.value.takeIf { tracked.ok }.orEmpty()
-    return WorkflowGitOperationResult(
-      status = "ok",
+    val trackedValue = tracked.value.takeIf { tracked is WorkflowGitOperationResult.Ok }.orEmpty()
+    return WorkflowGitOperationResult.Ok(
       // Each -z listing terminates every entry with NUL, so the two blobs concatenate directly.
       value = untracked.value.orEmpty() + trackedValue,
     )

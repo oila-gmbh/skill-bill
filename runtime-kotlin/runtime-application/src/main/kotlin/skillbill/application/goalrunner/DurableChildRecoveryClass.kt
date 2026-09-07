@@ -1,7 +1,6 @@
 package skillbill.application.goalrunner
+
 import skillbill.ports.goalrunner.runner.model.GoalRunnerWorkflowProgress
-import skillbill.workflow.decomposition.model.IssueKey
-import skillbill.workflow.decomposition.model.SubtaskId
 
 internal enum class DurableChildRecoveryClass(val wireValue: String) {
   ABSENT("absent"),
@@ -20,7 +19,7 @@ internal fun classifyDurableChild(progress: GoalRunnerWorkflowProgress?): Durabl
     else -> DurableChildRecoveryClass.INCOMPATIBLE_TERMINAL // untrusted durable workflow status wire value
   }
 
-fun scopedChildRecoveryCommand(issueKey: IssueKey, subtaskId: SubtaskId): String =
+fun scopedChildRecoveryCommand(issueKey: String, subtaskId: Int): String =
   "skill-bill goal reset $issueKey --subtask $subtaskId --delete-child-workflow"
 
 /**
@@ -29,5 +28,5 @@ fun scopedChildRecoveryCommand(issueKey: IssueKey, subtaskId: SubtaskId): String
  * one re-imports the stale bytes and blocks again. Scoped replan is the command that both regenerates
  * the subtask's plan and drops the stale child, so it is what a planning-import conflict advertises.
  */
-fun staleChildPlanningRecoveryCommand(issueKey: IssueKey, subtaskId: SubtaskId): String =
+fun staleChildPlanningRecoveryCommand(issueKey: String, subtaskId: Int): String =
   "skill-bill goal replan $issueKey --subtask $subtaskId"

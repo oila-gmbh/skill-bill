@@ -1,6 +1,6 @@
 package skillbill.application.review
+
 import skillbill.review.context.model.CodeReviewExecutionMode
-import skillbill.review.model.ReviewRunId
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
@@ -29,7 +29,7 @@ class ParallelCodeReviewStandaloneEntryTest {
       recorder,
     ).run(
       harnessRequest(
-        reviewRunId = ReviewRunId("standalone-single-lane"),
+        reviewRunId = "standalone-single-lane",
         codeReviewMode = CodeReviewExecutionMode.INLINE,
       ),
     )

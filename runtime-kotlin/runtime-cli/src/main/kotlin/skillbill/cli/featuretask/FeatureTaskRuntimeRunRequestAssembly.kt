@@ -3,7 +3,6 @@ package skillbill.cli.featuretask
 import com.github.ajalt.clikt.core.UsageError
 import skillbill.agentaddon.model.AgentAddonConsumer
 import skillbill.agentaddon.model.HydratedAgentAddonSelection
-import skillbill.agent.model.AgentId
 import skillbill.application.featuretask.FeatureTaskRuntimeAgentResolver
 import skillbill.application.featuretask.FeatureTaskRuntimeModelResolver
 import skillbill.application.featuretask.model.FeatureTaskRuntimeAgentAssignment
@@ -17,7 +16,6 @@ import skillbill.cli.kernel.refuseUnsupportedModelDirectives
 import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewBaseline
 import skillbill.workflow.goal.model.GoalSubtaskOperatorDecision
 import skillbill.workflow.goal.model.ValidationDepth
-import skillbill.workflow.decomposition.model.IssueKey
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeQualityGateSelection
 import java.nio.file.Path
@@ -30,7 +28,7 @@ internal fun FeatureTaskRuntimePhaseAgentCommand.prepareRuntimeRun(
   val invokedAgentId = resolveInvokedRuntimeAgentId(agent, environment)
   val phaseAgentMap = parsePhaseAgents(phaseAgents).toMutableMap()
   val agentAssignment = FeatureTaskRuntimeAgentAssignment(
-    perPhaseAgentIds = phaseAgentMap.mapValues { (_, agentId) -> AgentId(agentId) },
+    perPhaseAgentIds = phaseAgentMap,
     override = agentOverride?.takeIf(String::isNotBlank),
   )
   val modelAssignment = FeatureTaskRuntimeModelAssignment(
@@ -48,7 +46,7 @@ internal fun FeatureTaskRuntimePhaseAgentCommand.prepareRuntimeRun(
   }.toMap()
   refuseUnsupportedModelDirectives(directives, resolvedAgentIds)
   val receivingAgents = buildList {
-    addAll(resolvedAgentIds.values.map(AgentId::value))
+    addAll(resolvedAgentIds.values)
     addAll(parsePhaseAgents(phaseAgents).values)
     agentOverride?.takeIf(String::isNotBlank)?.let(::add)
   }.distinct()
@@ -87,7 +85,7 @@ internal fun FeatureTaskRuntimePhaseAgentCommand.parseGoalContinuationContext(
     throw UsageError("${missing.joinToString()} required with goal-continuation options.")
   }
   return FeatureTaskRuntimeGoalContinuationContext(
-    parentIssueKey = IssueKey(requireNotNull(goalParentIssueKey)),
+    parentIssueKey = requireNotNull(goalParentIssueKey),
     subtaskId = requireNotNull(goalSubtaskId),
     goalBranch = requireNotNull(goalBranch),
     suppressPr = true,

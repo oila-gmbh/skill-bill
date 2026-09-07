@@ -1,8 +1,5 @@
 package skillbill.application.goalplanning
 
-import skillbill.workflow.engine.model.WorkflowId
-import skillbill.workflow.decomposition.model.IssueKey
-
 import skillbill.application.planningprojection.requireValidPlanningProjection
 import skillbill.contracts.JsonCodec
 import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_CONTRACT_VERSION
@@ -24,7 +21,7 @@ class GoalPlanningPreparationValidator(
   }
 
   fun canonicalize(record: GoalPlanningPreparationRecord): GoalPlanningPreparationRecord {
-    val label = "${record.parentGoalWorkflowId.value}#${record.subtaskId.value}"
+    val label = "${record.parentGoalWorkflowId}#${record.subtaskId}"
     val acceptedPreplan = outputValidator.validatePhaseOutput(record.preplanPayload, PREPLAN_PHASE_ID)
       .requireAcceptedOutput(PREPLAN_PHASE_ID)
     val preplan = acceptedPreplan.normalizedOutput.envelope
@@ -62,9 +59,9 @@ class GoalPlanningPreparationValidator(
   private fun envelopeFailure(record: GoalPlanningPreparationRecord): String? = when {
     record.contractVersion != LEGACY_GOAL_PLANNING_PREPARATION_CONTRACT_VERSION ->
       "contract_version must be '$LEGACY_GOAL_PLANNING_PREPARATION_CONTRACT_VERSION'"
-    record.subtaskId.value < 1 -> "subtask_id must be a positive integer"
-    record.parentGoalWorkflowId.value.isBlank() -> "parent_goal_workflow_id is required"
-    record.normalizedIssueKey.value.isBlank() -> "normalized_issue_key is required"
+    record.subtaskId < 1 -> "subtask_id must be a positive integer"
+    record.parentGoalWorkflowId.isBlank() -> "parent_goal_workflow_id is required"
+    record.normalizedIssueKey.isBlank() -> "normalized_issue_key is required"
     record.repositoryIdentity.isBlank() -> "repository_identity is required"
     record.governedSubSpecPath.isBlank() -> "governed_sub_spec_path is required"
     record.preparationStatus != GoalPlanningPreparationState.PREPARED ->

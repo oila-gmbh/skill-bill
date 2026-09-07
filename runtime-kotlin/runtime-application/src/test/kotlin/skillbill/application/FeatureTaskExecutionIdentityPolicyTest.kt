@@ -1,7 +1,7 @@
 package skillbill.application
+
 import skillbill.error.InvalidFeatureTaskExecutionIdentitySchemaError
 import skillbill.ports.workflow.FeatureTaskExecutionIdentityPolicy
-import skillbill.workflow.decomposition.model.IssueKey
 import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertEquals
@@ -14,7 +14,7 @@ class FeatureTaskExecutionIdentityPolicyTest {
     assertEquals(
       "SKILL-129",
       FeatureTaskExecutionIdentityPolicy.validateLookupRequest(
-        issueKey = IssueKey(" skill-129 "),
+        issueKey = " skill-129 ",
         repositoryIdentity = "${FeatureTaskExecutionIdentityPolicy.REPOSITORY_IDENTITY_PREFIX}/srv/repo",
       ),
     )
@@ -25,7 +25,7 @@ class FeatureTaskExecutionIdentityPolicyTest {
     assertEquals(
       "0AC-11",
       FeatureTaskExecutionIdentityPolicy.validateLookupRequest(
-        issueKey = IssueKey(" 0ac-11 "),
+        issueKey = " 0ac-11 ",
         repositoryIdentity = "${FeatureTaskExecutionIdentityPolicy.REPOSITORY_IDENTITY_PREFIX}/srv/repo",
       ),
     )
@@ -36,7 +36,7 @@ class FeatureTaskExecutionIdentityPolicyTest {
     assertEquals(
       "BACKLOG-ITEM",
       FeatureTaskExecutionIdentityPolicy.validateLookupRequest(
-        issueKey = IssueKey("backlog-item"),
+        issueKey = "backlog-item",
         repositoryIdentity = "${FeatureTaskExecutionIdentityPolicy.REPOSITORY_IDENTITY_PREFIX}/srv/repo",
       ),
     )
@@ -56,7 +56,7 @@ class FeatureTaskExecutionIdentityPolicyTest {
   fun `control-bearing issue key names the bound and the received value`() {
     val error = assertFailsWith<InvalidFeatureTaskExecutionIdentitySchemaError> {
       FeatureTaskExecutionIdentityPolicy.validateLookupRequest(
-        issueKey = IssueKey("SKILL-129\nspoofed"),
+        issueKey = "SKILL-129\nspoofed",
         repositoryIdentity = "${FeatureTaskExecutionIdentityPolicy.REPOSITORY_IDENTITY_PREFIX}/srv/repo",
       )
     }

@@ -4,15 +4,16 @@ import skillbill.ports.persistence.UnitOfWork
 import java.nio.file.Path
 
 interface DatabaseSessionFactory {
-  fun resolveDbPath(): Path
+  fun resolveDbPath(dbOverride: String? = null): Path
 
-  fun databaseExists(): Boolean
+  fun databaseExists(dbOverride: String? = null): Boolean
 
-  fun <T> read(block: (UnitOfWork) -> T): T
+  fun <T> read(dbOverride: String? = null, block: (UnitOfWork) -> T): T
 
-  fun <T> readIfPresent(block: (UnitOfWork) -> T): T? = if (databaseExists()) read(block) else null
+  fun <T> readIfPresent(dbOverride: String? = null, block: (UnitOfWork) -> T): T? =
+    if (databaseExists(dbOverride)) read(dbOverride, block) else null
 
-  fun <T> transaction(block: (UnitOfWork) -> T): T
+  fun <T> transaction(dbOverride: String? = null, block: (UnitOfWork) -> T): T
 
-  fun <T> selfManagedWrite(block: (UnitOfWork) -> T): T
+  fun <T> selfManagedWrite(dbOverride: String? = null, block: (UnitOfWork) -> T): T
 }

@@ -1,7 +1,5 @@
 package skillbill.application.goalrunner.planning
 
-import skillbill.workflow.decomposition.model.IssueKey
-import skillbill.agent.model.AgentId
 import skillbill.application.decomposition.decodeArtifacts
 import skillbill.application.goalplanning.sha256HexUtf8
 import skillbill.application.goalrunner.planning.model.GoalChildPlanningHydration
@@ -15,7 +13,6 @@ import skillbill.ports.goalrunner.model.SharedGoalPreplanCheckpoint
 import skillbill.ports.goalrunner.runner.model.GoalChildPlanningHydrationRequest
 import skillbill.ports.goalrunner.runner.model.GoalRunnerChildWorkflowSetup
 import skillbill.workflow.engine.decodeWorkflowSteps
-import skillbill.workflow.engine.model.WorkflowId
 import skillbill.workflow.engine.model.WorkflowStateSnapshot
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseOutputValidator
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePlanningProjectionValidator
@@ -223,7 +220,7 @@ private class PreparedPlanningPayloadValidator(
     phaseId: String,
     payload: String,
     expectedDigest: String,
-    workflowId: WorkflowId,
+    workflowId: String,
   ): AcceptedFeatureTaskRuntimePhaseOutput {
     // The digest check stays ahead of the projection gate so a corrupted payload still reports as a
     // digest failure rather than as whatever the corruption made the projection look like.
@@ -261,7 +258,7 @@ private class PreparedPlanningPayloadValidator(
   }
 }
 
-private fun invalidPlanningPreparation(workflowId: WorkflowId, fieldPath: String, reason: String): Nothing =
+private fun invalidPlanningPreparation(workflowId: String, fieldPath: String, reason: String): Nothing =
   throw InvalidGoalPlanningPreparationSchemaError(workflowId, fieldPath, reason)
 
 private class GoalChildPlanningImportMatcher(
@@ -466,7 +463,7 @@ private fun importedRecord(
   startedAt = importedAt,
   finishedAt = importedAt,
   durationMillis = 0,
-  resolvedAgentId = AgentId("goal-planning-import"),
+  resolvedAgentId = "goal-planning-import",
   executionOrigin = FeatureTaskRuntimePhaseExecutionOrigin.GOAL_PLANNING_HYDRATED,
   outputArtifact = payload,
   repairEvidence = repairEvidence,

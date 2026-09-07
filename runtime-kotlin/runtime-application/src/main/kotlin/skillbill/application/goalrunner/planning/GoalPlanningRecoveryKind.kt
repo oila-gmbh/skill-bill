@@ -1,18 +1,17 @@
 package skillbill.application.goalrunner.planning
+
 import skillbill.application.goalrunner.staleChildPlanningRecoveryCommand
 import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_CONTRACT_VERSION
 import skillbill.error.IncompatibleGoalPlanningPreparationRecoveryError
 import skillbill.error.InvalidFeatureTaskRuntimePhaseOutputSchemaError
 import skillbill.error.InvalidGoalPlanningPreparationSchemaError
-import skillbill.workflow.decomposition.model.IssueKey
-import skillbill.workflow.decomposition.model.SubtaskId
 
 internal enum class GoalPlanningRecoveryKind {
   HARD_RESET,
   SCOPED_REPLAN,
 }
 
-fun goalPlanningHardResetRemedy(issueKey: IssueKey): String = "skill-bill goal reset $issueKey --hard --yes"
+fun goalPlanningHardResetRemedy(issueKey: String): String = "skill-bill goal reset $issueKey --hard --yes"
 
 internal fun classifyGoalPlanningRecovery(reason: String, cause: Throwable? = null): GoalPlanningRecoveryKind {
   if (causeIndicatesContractVersionHardReset(cause) || reasonIndicatesContractVersionHardReset(reason)) {
@@ -26,8 +25,8 @@ internal fun classifyGoalPlanningRecovery(
 ): GoalPlanningRecoveryKind = classifyGoalPlanningRecovery(error.reason, error.cause)
 
 fun goalPlanningChildImportConflictBlockedReason(
-  issueKey: IssueKey,
-  subtaskId: SubtaskId,
+  issueKey: String,
+  subtaskId: Int,
   error: IncompatibleGoalPlanningPreparationRecoveryError,
 ): String {
   val kind = classifyGoalPlanningRecovery(error)
@@ -47,7 +46,7 @@ fun goalPlanningChildImportConflictBlockedReason(
   }
 }
 
-fun contractVersionHardResetStopReason(issueKey: IssueKey): String =
+fun contractVersionHardResetStopReason(issueKey: String): String =
   "Goal planning phase-output contract version is incompatible with the installed runtime " +
     "('$FEATURE_TASK_RUNTIME_CONTRACT_VERSION'). Workflows created under an earlier version require a " +
     "hard reset. Recover with: '${goalPlanningHardResetRemedy(issueKey)}'"

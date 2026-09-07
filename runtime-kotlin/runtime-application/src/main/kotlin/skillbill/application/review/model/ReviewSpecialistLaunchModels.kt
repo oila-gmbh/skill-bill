@@ -1,5 +1,5 @@
 package skillbill.application.review.model
-import skillbill.agent.model.AgentId
+
 import skillbill.ports.review.model.ReviewExpansionAuthorizationRequest
 import skillbill.review.context.model.ReviewAssignment
 import skillbill.review.context.model.ReviewContextBudgetPolicy
@@ -26,7 +26,7 @@ data class ReviewSpecialistLaunchRequest(
   val rubrics: List<ReviewRubricProjection>,
   val brokerId: String,
   val budget: ReviewContextBudgetPolicy,
-  val agentId: AgentId,
+  val agentId: String,
   val workerKind: ReviewWorkerKind,
   val logicalWorkerName: String? = null,
   val repoRoot: Path,

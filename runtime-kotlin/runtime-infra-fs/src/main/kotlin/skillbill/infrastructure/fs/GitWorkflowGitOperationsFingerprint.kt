@@ -1,5 +1,6 @@
 package skillbill.infrastructure.fs
 
+import skillbill.ports.workflow.gitops.model.WorkflowGitOperationStatus
 import skillbill.ports.workflow.gitops.RepositoryFingerprintGitOperations
 import skillbill.ports.workflow.gitops.RuntimePhaseFileManifestGitOperations
 import skillbill.ports.workflow.gitops.SuppressionEvidenceGitOperations
@@ -26,7 +27,7 @@ internal object GitRepositoryFingerprintOperations : RepositoryFingerprintGitOpe
     val staged = runGitCommand(repoRoot, "diff", "--binary", "--cached")
     val unstaged = runGitCommand(repoRoot, "diff", "--binary")
     val untracked = runGitCommand(repoRoot, "ls-files", "--others", "--exclude-standard", "-z")
-    val failure = listOf(head, staged, unstaged, untracked).firstOrNull { !it.ok }
+    val failure = listOf(head, staged, unstaged, untracked).firstOrNull { it !is WorkflowGitOperationResult.Ok }
     if (failure != null) return failure
     return runCatching {
       val digest = MessageDigest.getInstance("SHA-256")
@@ -39,9 +40,9 @@ internal object GitRepositoryFingerprintOperations : RepositoryFingerprintGitOpe
         require(resolved.startsWith(root)) { "Untracked path escapes repository root: $path" }
         UntrackedFingerprintDigest.digestUntrackedEntry(digest, path, resolved)
       }
-      WorkflowGitOperationResult(status = "ok", value = digest.digest().joinToString("") { "%02x".format(it) })
+      WorkflowGitOperationResult.Ok(value = digest.digest().joinToString("") { "%02x".format(it) })
     }.getOrElse { error ->
-      WorkflowGitOperationResult(status = "error", error = "Could not fingerprint repository state: ${error.message}")
+      WorkflowGitOperationResult.Failed(error = "Could not fingerprint repository state: ${error.message}")
     }
   }
 
@@ -60,22 +61,21 @@ internal object GitRepositoryFingerprintOperations : RepositoryFingerprintGitOpe
       require(resolved.startsWith(root)) { "Checkpoint path escapes repository root: $path" }
       UntrackedFingerprintDigest.digestUntrackedEntry(digest, path, resolved)
     }
-    WorkflowGitOperationResult(status = "ok", value = digest.digest().joinToString("") { "%02x".format(it) })
+    WorkflowGitOperationResult.Ok(value = digest.digest().joinToString("") { "%02x".format(it) })
   }.getOrElse { error ->
-    WorkflowGitOperationResult(
-      status = "error",
+    WorkflowGitOperationResult.Failed(
       error = "Could not fingerprint workflow-owned repository checkpoint: ${error.message}",
     )
   }
 
   fun worktreeActivity(repoRoot: Path): WorkflowWorktreeActivityResult {
     val status = runGitCommand(repoRoot, "status", "--porcelain")
-    if (!status.ok) {
-      return WorkflowWorktreeActivityResult(status = "error", error = status.error)
+    if (status !is WorkflowGitOperationResult.Ok) {
+      return WorkflowWorktreeActivityResult(status = WorkflowGitOperationStatus.ERROR, error = status.error)
     }
     val diff = combinedDiffStat(repoRoot)
     return WorkflowWorktreeActivityResult(
-      status = "ok",
+      status = WorkflowGitOperationStatus.OK,
       changedFileSummary = parseChangedFileSummary(status.value),
       diffStat = diff,
     )
@@ -83,7 +83,7 @@ internal object GitRepositoryFingerprintOperations : RepositoryFingerprintGitOpe
 
   fun selectedDiffHunks(repoRoot: Path, request: WorkflowSelectedDiffHunksRequest): WorkflowSelectedDiffHunksResult {
     if (request.paths.isEmpty() || (!request.includeStaged && !request.includeUnstaged)) {
-      return WorkflowSelectedDiffHunksResult(status = "ok")
+      return WorkflowSelectedDiffHunksResult(status = WorkflowGitOperationStatus.OK)
     }
     val chunks = mutableListOf<GoalObservabilitySelectedDiffHunk>()
     val results = mutableListOf<WorkflowSelectedDiffHunksResult>()
@@ -93,14 +93,14 @@ internal object GitRepositoryFingerprintOperations : RepositoryFingerprintGitOpe
     }
     if (
       request.includeStaged &&
-      results.all(WorkflowSelectedDiffHunksResult::ok) &&
+      results.all { result -> result.status == WorkflowGitOperationStatus.OK } &&
       results.none { result -> result.selectedDiffHunks.truncated }
     ) {
       results += appendSelectedDiffHunks(repoRoot, request, staged = true, chunks = chunks, budget = budget)
     }
-    val errorResult = results.firstOrNull { result -> !result.ok }
+    val errorResult = results.firstOrNull { result -> result.status != WorkflowGitOperationStatus.OK }
     return errorResult ?: WorkflowSelectedDiffHunksResult(
-      status = "ok",
+      status = WorkflowGitOperationStatus.OK,
       selectedDiffHunks = GoalObservabilitySelectedDiffHunks(
         hunks = chunks,
         truncated = results.any { result -> result.selectedDiffHunks.truncated },
@@ -174,7 +174,7 @@ internal object GitRuntimePhaseFileManifestOperations : RuntimePhaseFileManifest
     beforeCommit: String,
     afterCommit: String,
   ): WorkflowGitOperationResult = if (beforeCommit == afterCommit) {
-    WorkflowGitOperationResult(status = "ok", value = "")
+    WorkflowGitOperationResult.Ok(value = "")
   } else {
     runGitCommand(repoRoot, "diff", "--name-only", beforeCommit, afterCommit)
   }
@@ -192,17 +192,17 @@ internal object GitSuppressionEvidenceOperations : SuppressionEvidenceGitOperati
   ): WorkflowScopedPathContentsResult {
     if (baseRef.isBlank()) {
       return WorkflowScopedPathContentsResult(
-        status = "error",
+        status = WorkflowGitOperationStatus.ERROR,
         error = "Suppression evidence requires a non-blank base ref.",
       )
     }
     val scoped = headPaths.map(String::trim).filter(String::isNotEmpty).distinct()
     if (scoped.isEmpty()) {
-      return WorkflowScopedPathContentsResult(status = "ok", pairs = emptyList())
+      return WorkflowScopedPathContentsResult(status = WorkflowGitOperationStatus.OK, pairs = emptyList())
     }
     val renameToBase = renameBasePaths(repoRoot, baseRef)
-    if (renameToBase.status != "ok") {
-      return WorkflowScopedPathContentsResult(status = "error", error = renameToBase.error)
+    if (renameToBase.status != WorkflowGitOperationStatus.OK) {
+      return WorkflowScopedPathContentsResult(status = WorkflowGitOperationStatus.ERROR, error = renameToBase.error)
     }
     val pairs = scoped.map { headPath ->
       val basePath = renameToBase.value[headPath] ?: headPath
@@ -215,11 +215,11 @@ internal object GitSuppressionEvidenceOperations : SuppressionEvidenceGitOperati
         baseContent = baseContent,
       )
     }
-    return WorkflowScopedPathContentsResult(status = "ok", pairs = pairs)
+    return WorkflowScopedPathContentsResult(status = WorkflowGitOperationStatus.OK, pairs = pairs)
   }
 
   private data class RenameMapResult(
-    val status: String,
+    val status: WorkflowGitOperationStatus,
     val value: Map<String, String> = emptyMap(),
     val error: String = "",
   )
@@ -227,8 +227,11 @@ internal object GitSuppressionEvidenceOperations : SuppressionEvidenceGitOperati
   /** Maps HEAD path → base path for renames detected against [baseRef]. */
   private fun renameBasePaths(repoRoot: Path, baseRef: String): RenameMapResult {
     val diff = runGitCommand(repoRoot, "diff", "-M", "--name-status", "--find-renames", baseRef)
-    if (!diff.ok) {
-      return RenameMapResult(status = "error", error = diff.error.ifBlank { "git diff -M --name-status failed." })
+    if (diff !is WorkflowGitOperationResult.Ok) {
+      return RenameMapResult(
+        status = WorkflowGitOperationStatus.ERROR,
+        error = diff.error.ifBlank { "git diff -M --name-status failed." },
+      )
     }
     val renames = linkedMapOf<String, String>()
     diff.value.lineSequence()
@@ -244,7 +247,7 @@ internal object GitSuppressionEvidenceOperations : SuppressionEvidenceGitOperati
           }
         }
       }
-    return RenameMapResult(status = "ok", value = renames)
+    return RenameMapResult(status = WorkflowGitOperationStatus.OK, value = renames)
   }
 
   private fun readWorktreeContent(repoRoot: Path, path: String): String? {
@@ -263,7 +266,7 @@ internal object GitSuppressionEvidenceOperations : SuppressionEvidenceGitOperati
 
   private fun readContentAtRef(repoRoot: Path, baseRef: String, path: String): String? {
     val result = runGitCommand(repoRoot, "show", "$baseRef:$path")
-    return if (result.ok) result.value else null
+    return if (result is WorkflowGitOperationResult.Ok) result.value else null
   }
 }
 
@@ -279,7 +282,7 @@ internal fun combinedDiffStat(repoRoot: Path): GoalObservabilityDiffStat {
 
 internal fun runCatchingDiffStat(repoRoot: Path, vararg args: String): GoalObservabilityDiffStat {
   val result = runGitForActivity(repoRoot, args.toList())
-  return if (result.ok) parseDiffStat(result.value) else GoalObservabilityDiffStat(0, 0, 0)
+  return if (result is WorkflowGitOperationResult.Ok) parseDiffStat(result.value) else GoalObservabilityDiffStat(0, 0, 0)
 }
 
 internal fun parseChangedFileSummary(statusOutput: String): GoalObservabilityChangedFileSummary {

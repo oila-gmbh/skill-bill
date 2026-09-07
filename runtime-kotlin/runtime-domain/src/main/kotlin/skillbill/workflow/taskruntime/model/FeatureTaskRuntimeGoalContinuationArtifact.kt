@@ -1,20 +1,18 @@
 package skillbill.workflow.taskruntime.model
+
 import skillbill.agentaddon.model.AgentAddonSelection
 import skillbill.agentaddon.model.PersistedAgentAddonSelectionEntry
 import skillbill.boundary.OpenBoundaryMap
 import skillbill.error.InvalidWorkflowStateSchemaError
 import skillbill.review.context.model.CodeReviewExecutionMode
-import skillbill.workflow.decomposition.model.IssueKey
-import skillbill.workflow.decomposition.model.SubtaskId
-import skillbill.workflow.engine.model.WorkflowId
 import skillbill.workflow.goal.model.ValidationDepth
 
 data class FeatureTaskRuntimeGoalContinuationArtifact(
-  val issueKey: IssueKey,
-  val subtaskId: SubtaskId,
+  val issueKey: String,
+  val subtaskId: Int,
   val suppressPr: Boolean,
   val goalBranch: String,
-  val parentWorkflowId: WorkflowId? = null,
+  val parentWorkflowId: String? = null,
   val codeReviewMode: CodeReviewExecutionMode,
   /** Null means the durable row never recorded a depth (pre-contract / key absent). */
   val validationDepth: ValidationDepth? = null,
@@ -26,12 +24,8 @@ data class FeatureTaskRuntimeGoalContinuationArtifact(
   val agentAddonSelection: AgentAddonSelection = AgentAddonSelection(),
 ) {
   init {
-    require(issueKey.value.isNotBlank()) {
-      "FeatureTaskRuntimeGoalContinuationArtifact.issueKey must be non-blank."
-    }
-    require(subtaskId.value > 0) {
-      "FeatureTaskRuntimeGoalContinuationArtifact.subtaskId must be positive."
-    }
+    require(issueKey.isNotBlank()) { "FeatureTaskRuntimeGoalContinuationArtifact.issueKey must be non-blank." }
+    require(subtaskId > 0) { "FeatureTaskRuntimeGoalContinuationArtifact.subtaskId must be positive." }
     require(goalBranch.isNotBlank()) { "FeatureTaskRuntimeGoalContinuationArtifact.goalBranch must be non-blank." }
     parallelReviewAgent?.let {
       require(it.isNotBlank()) { "FeatureTaskRuntimeGoalContinuationArtifact.parallelReviewAgent must be non-blank." }
@@ -43,13 +37,13 @@ data class FeatureTaskRuntimeGoalContinuationArtifact(
 
   @OpenBoundaryMap("Feature-task-runtime goal-continuation artifact map at the durable workflow-artifact seam")
   fun toArtifactMap(): Map<String, Any?> = linkedMapOf<String, Any?>(
-    "issue_key" to issueKey.value,
-    "subtask_id" to subtaskId.value,
+    "issue_key" to issueKey,
+    "subtask_id" to subtaskId,
     "suppress_pr" to suppressPr,
     "goal_branch" to goalBranch,
     "code_review_mode" to codeReviewMode.wireValue,
   ).apply {
-    parentWorkflowId?.let { put("parent_workflow_id", it.value) }
+    parentWorkflowId?.let { put("parent_workflow_id", it) }
     validationDepth?.let { put("validation_depth", it.wireValue) }
     qualityGateSelection?.let { put("quality_gate_selection", it.wireValue) }
     subtaskName?.let { put("subtask_name", it) }
@@ -72,11 +66,11 @@ data class FeatureTaskRuntimeGoalContinuationArtifact(
     fun fromArtifactMap(raw: Map<String, Any?>): FeatureTaskRuntimeGoalContinuationArtifact {
       rejectUnknownGoalContinuationKeys(raw)
       return FeatureTaskRuntimeGoalContinuationArtifact(
-        issueKey = IssueKey(raw.requireStringField("issue_key")),
-        subtaskId = SubtaskId(raw.requireIntField("subtask_id")),
+        issueKey = raw.requireStringField("issue_key"),
+        subtaskId = raw.requireIntField("subtask_id"),
         suppressPr = raw.requireGoalContinuationSuppressPr(),
         goalBranch = raw.requireStringField("goal_branch"),
-        parentWorkflowId = raw.optionalStringField("parent_workflow_id")?.let(::WorkflowId),
+        parentWorkflowId = raw.optionalStringField("parent_workflow_id"),
         codeReviewMode = raw.requireGoalContinuationCodeReviewMode(),
         validationDepth = raw.optionalGoalContinuationValidationDepth(),
         qualityGateSelection = raw.optionalGoalContinuationQualityGateSelection(),

@@ -1,4 +1,5 @@
 package skillbill.cli
+
 import skillbill.application.workflow.model.WorkflowFamilyKind
 import skillbill.application.workflow.model.WorkflowOpenResult
 import skillbill.application.workflow.model.WorkflowServiceOpenArgs
@@ -11,7 +12,6 @@ import skillbill.db.core.DatabaseRuntime
 import skillbill.di.RuntimeComponent
 import skillbill.di.create
 import skillbill.model.RuntimeContext
-import skillbill.workflow.engine.model.WorkflowId
 import java.nio.file.Files
 import java.nio.file.Path
 import java.sql.Connection
@@ -119,7 +119,7 @@ class CliWorkListRuntimeTest {
   @Test
   fun `work list sanitizes persisted workflow identifiers for table output only`() {
     val dbPath = Files.createTempDirectory("skillbill-cli-work-workflow-id-controls").resolve("metrics.db")
-    val workflowId = WorkflowId("goal\u001b]8;;https://example.test\u0007")
+    val workflowId = "goal\u001b]8;;https://example.test\u0007"
     DatabaseRuntime.ensureDatabase(dbPath).use { connection ->
       insertGoal(
         connection,

@@ -1,7 +1,6 @@
 
 package skillbill.ports.agentrun.model
 
-import skillbill.agent.model.AgentId
 import skillbill.agentaddon.model.AgentAddonSelection
 import skillbill.config.model.PhaseCompactionDirective
 import skillbill.goalrunner.model.GoalRunnerLivenessState
@@ -12,9 +11,6 @@ import skillbill.ports.review.ReviewEvidenceBroker
 import skillbill.ports.review.model.ReviewProcessOutcome
 import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewBaseline
 import skillbill.review.context.model.CodeReviewExecutionMode
-import skillbill.workflow.decomposition.model.IssueKey
-import skillbill.workflow.decomposition.model.SubtaskId
-import skillbill.workflow.engine.model.WorkflowId
 import skillbill.workflow.goal.model.GoalProgressEvent
 import skillbill.workflow.goal.model.GoalProgressEventKind
 import skillbill.workflow.goal.model.GoalProgressOutcome
@@ -25,9 +21,10 @@ import java.security.MessageDigest
 import kotlin.time.Duration
 
 data class SkillRunRequest(
-  val issueKey: IssueKey,
+  val issueKey: String,
   val repoRoot: Path,
-  val subtaskId: SubtaskId? = null,
+  val subtaskId: Int? = null,
+  val dbPathOverride: String? = null,
   val timeout: Duration? = null,
   val progressIdleTimeout: Duration? = null,
   val progressProbe: AgentRunProgressProbe = AgentRunProgressProbe.NONE,
@@ -66,11 +63,11 @@ data class SkillRunRequest(
   val activityStampSink: AgentRunActivityStampSink = AgentRunActivityStampSink.NONE,
 ) {
   init {
-    require(issueKey.value.isNotBlank()) { "issueKey is required." }
+    require(issueKey.isNotBlank()) { "issueKey is required." }
     promptOverride?.let { prompt -> require(prompt.isNotBlank()) { "promptOverride must be non-blank when provided." } }
     modelOverride?.let { model -> require(model.isNotBlank()) { "modelOverride must be non-blank when provided." } }
     effortOverride?.let { effort -> require(effort.isNotBlank()) { "effortOverride must be non-blank when provided." } }
-    subtaskId?.let { id -> require(id.toString().toInt() > 0) { "subtaskId must be positive when provided." } }
+    subtaskId?.let { id -> require(id > 0) { "subtaskId must be positive when provided." } }
     timeout?.let { maxWallClockTimeout ->
       require(maxWallClockTimeout.isPositive()) { "timeout must be positive when provided." }
     }
@@ -104,15 +101,15 @@ enum class ConversationIsolation(val forkTurns: String) {
 }
 
 data class SkillRunGoalContinuationContext(
-  val parentIssueKey: IssueKey,
-  val subtaskId: SubtaskId,
+  val parentIssueKey: String,
+  val subtaskId: Int,
   val goalBranch: String,
   val suppressPr: Boolean,
   val specPath: String,
-  val parentWorkflowId: WorkflowId? = null,
+  val parentWorkflowId: String? = null,
   val lastResumableStep: String? = null,
-  val childWorkflowId: WorkflowId? = null,
-  val assignedWorkflowId: WorkflowId? = null,
+  val childWorkflowId: String? = null,
+  val assignedWorkflowId: String? = null,
   val codeReviewMode: CodeReviewExecutionMode = CodeReviewExecutionMode.DEFAULT,
   val validationDepth: ValidationDepth = ValidationDepth.DEFAULT,
   val qualityGateSelection: FeatureTaskRuntimeQualityGateSelection =
@@ -121,14 +118,14 @@ data class SkillRunGoalContinuationContext(
   val agentAddonSelection: AgentAddonSelection = AgentAddonSelection(),
 ) {
   init {
-    require(parentIssueKey.value.isNotBlank()) { "parentIssueKey is required." }
-    require(subtaskId.value > 0) { "subtaskId must be positive." }
+    require(parentIssueKey.isNotBlank()) { "parentIssueKey is required." }
+    require(subtaskId > 0) { "subtaskId must be positive." }
     require(goalBranch.isNotBlank()) { "goalBranch is required." }
     require(specPath.isNotBlank()) { "specPath is required." }
-    parentWorkflowId?.let { require(it.value.isNotBlank()) { "parentWorkflowId must be non-blank when provided." } }
+    parentWorkflowId?.let { require(it.isNotBlank()) { "parentWorkflowId must be non-blank when provided." } }
     lastResumableStep?.let { require(it.isNotBlank()) { "lastResumableStep must be non-blank when provided." } }
-    childWorkflowId?.let { require(it.value.isNotBlank()) { "childWorkflowId must be non-blank when provided." } }
-    assignedWorkflowId?.let { require(it.value.isNotBlank()) { "assignedWorkflowId must be non-blank when provided." } }
+    childWorkflowId?.let { require(it.isNotBlank()) { "childWorkflowId must be non-blank when provided." } }
+    assignedWorkflowId?.let { require(it.isNotBlank()) { "assignedWorkflowId must be non-blank when provided." } }
   }
 }
 
@@ -196,11 +193,11 @@ fun interface AgentRunOutputSink {
 }
 
 data class AgentRunLaunchRequest(
-  val agentId: AgentId,
+  val agentId: String,
   val skillRunRequest: SkillRunRequest,
 ) {
   init {
-    require(agentId.value.isNotBlank()) { "agentId is required." }
+    require(agentId.isNotBlank()) { "agentId is required." }
   }
 }
 
@@ -212,7 +209,7 @@ data class AgentRunLivenessSnapshot(
   val phase: String,
   val reason: String,
   val processState: String,
-  val workflowId: WorkflowId? = null,
+  val workflowId: String? = null,
   val workflowStep: String? = null,
   val lastDurableProgressAt: String? = null,
   val lastDurableProgressLabel: String? = null,

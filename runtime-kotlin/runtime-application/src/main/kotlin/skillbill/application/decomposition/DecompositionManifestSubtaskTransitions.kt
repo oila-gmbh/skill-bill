@@ -1,11 +1,10 @@
 package skillbill.application.decomposition
+
 import skillbill.workflow.decomposition.model.CurrentSubtaskIntent
 import skillbill.workflow.decomposition.model.DecompositionManifest
-import skillbill.workflow.decomposition.model.SubtaskId
-import skillbill.workflow.engine.model.WorkflowId
 
 internal fun DecompositionManifest.withBlockedSubtask(
-  subtaskId: SubtaskId,
+  subtaskId: Int,
   reason: String,
   lastResumableStep: String,
 ): DecompositionManifest = copy(
@@ -25,8 +24,8 @@ internal fun DecompositionManifest.withBlockedSubtask(
 )
 
 internal fun DecompositionManifest.withRetriedSubtask(
-  subtaskId: SubtaskId,
-  workflowId: WorkflowId,
+  subtaskId: Int,
+  workflowId: String,
   lastResumableStep: String,
 ): DecompositionManifest {
   require(subtasks.any { it.id == subtaskId }) {

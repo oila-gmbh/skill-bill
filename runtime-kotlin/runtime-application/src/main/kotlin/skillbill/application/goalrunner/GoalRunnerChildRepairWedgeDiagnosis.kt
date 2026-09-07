@@ -1,4 +1,6 @@
 package skillbill.application.goalrunner
+
+import skillbill.ports.workflow.gitops.model.WorkflowGitOperationResult
 import skillbill.application.decomposition.decodeArtifacts
 import skillbill.application.featuretask.diagnoseUnsettledCompletedUpstreamPhaseId
 import skillbill.application.featuretask.featureSizeFromArtifacts
@@ -11,9 +13,6 @@ import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_CONTRACT_VERSION
 import skillbill.ports.workflow.WorkflowStateRepository
 import skillbill.ports.workflow.get
 import skillbill.ports.workflow.gitops.WorkflowGitOperations
-import skillbill.workflow.decomposition.model.IssueKey
-import skillbill.workflow.decomposition.model.SubtaskId
-import skillbill.workflow.engine.model.WorkflowId
 import skillbill.workflow.goal.model.GoalSubtaskReviewArtifactDecoder
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_GOAL_CONTINUATION_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_GOAL_PLANNING_IMPORT_ARTIFACT_KEY
@@ -35,9 +34,9 @@ class GoalRunnerChildRepairWedgeDiagnosis(
 ) {
   fun diagnose(
     workflowStates: WorkflowStateRepository,
-    workflowId: WorkflowId,
-    issueKey: IssueKey,
-    subtaskId: SubtaskId,
+    workflowId: String,
+    issueKey: String,
+    subtaskId: Int,
     repoRoot: Path,
   ): GoalRunnerChildWedgeDiagnosis {
     val record = WorkflowFamily.TASK_RUNTIME.get(workflowStates, workflowId)
@@ -67,12 +66,12 @@ class GoalRunnerChildRepairWedgeDiagnosis(
 
   fun isUnreachable(repoRoot: Path, sha: String): Boolean {
     val head = gitOperations.headCommitSha(repoRoot)
-    if (!head.ok || head.value.isBlank()) return false
+    if (head !is WorkflowGitOperationResult.Ok || head.value.isBlank()) return false
     val ancestry = gitOperations.isCommitAncestor(repoRoot, sha, head.value.trim())
-    return ancestry.ok && ancestry.value != "true"
+    return ancestry is WorkflowGitOperationResult.Ok && ancestry.value != "true"
   }
 
-  private fun healthyDiagnosis(subtaskId: SubtaskId, workflowId: WorkflowId) = GoalRunnerChildWedgeDiagnosis(
+  private fun healthyDiagnosis(subtaskId: Int, workflowId: String) = GoalRunnerChildWedgeDiagnosis(
     subtaskId = subtaskId,
     workflowId = workflowId,
     passedChecks = listOf(

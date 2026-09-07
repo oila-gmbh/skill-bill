@@ -21,9 +21,9 @@ class WorkListService(
 ) {
   private val workflowEngine = WorkflowEngine(workflowSnapshotValidator)
 
-  fun list(limit: Int? = null): WorkListResult {
+  fun list(limit: Int? = null, dbOverride: String? = null): WorkListResult {
     require(limit == null || limit > 0) { "--limit must be a positive integer." }
-    return database.read { unitOfWork ->
+    return database.read(dbOverride) { unitOfWork ->
       val persistedWork = unitOfWork.workList.list(limit)
       validateWorkflowSnapshots(unitOfWork, persistedWork)
       WorkListResult(

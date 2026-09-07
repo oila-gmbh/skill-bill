@@ -1,6 +1,5 @@
 package skillbill.config.model
 
-import skillbill.agent.model.AgentId
 import skillbill.install.model.InstallAgent
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import kotlin.test.Test
@@ -29,11 +28,11 @@ class ExecutionMatrixModelsTest {
     assertEquals(ExecutionTier.IMPLEMENTATION, parsed.matrix.tierOf("plan"))
     assertEquals(
       PhaseModelDirective("claude-sonnet"),
-      parsed.matrix.directiveFor(AgentId("claude"), "plan"),
+      parsed.matrix.directiveFor("claude", "plan"),
     )
     assertEquals(
       PhaseModelDirective("gpt-reasoning", "xhigh"),
-      parsed.matrix.directiveFor(AgentId("codex"), "review"),
+      parsed.matrix.directiveFor("codex", "review"),
     )
   }
 
@@ -45,8 +44,8 @@ class ExecutionMatrixModelsTest {
       ),
     )
 
-    assertEquals(PhaseModelDirective("sonnet"), parsed.matrix.directiveFor(AgentId("claude"), "implement"))
-    assertNull(parsed.matrix.directiveFor(AgentId("claude"), "review"))
+    assertEquals(PhaseModelDirective("sonnet"), parsed.matrix.directiveFor("claude", "implement"))
+    assertNull(parsed.matrix.directiveFor("claude", "review"))
   }
 
   @Test
@@ -71,13 +70,10 @@ class ExecutionMatrixModelsTest {
     // An override beats an explicit phase_tiers entry, carries an effort, and leaves every
     // non-overridden phase on its tier. The remaining override keys would only re-exercise the
     // same branch with different literals.
-    assertEquals(PhaseModelDirective("gpt-5.6-luna-high"), matrix.directiveFor(AgentId("cursor"), "preplan"))
-    assertEquals(
-      PhaseModelDirective("claude-opus-5-thinking-max", "max"),
-      matrix.directiveFor(AgentId("cursor"), "review"),
-    )
-    assertEquals(PhaseModelDirective("gpt-5.6-luna-xhigh"), matrix.directiveFor(AgentId("cursor"), "audit"))
-    assertEquals(PhaseModelDirective("cursor-grok-4.5-medium"), matrix.directiveFor(AgentId("cursor"), "pr"))
+    assertEquals(PhaseModelDirective("gpt-5.6-luna-high"), matrix.directiveFor("cursor", "preplan"))
+    assertEquals(PhaseModelDirective("claude-opus-5-thinking-max", "max"), matrix.directiveFor("cursor", "review"))
+    assertEquals(PhaseModelDirective("gpt-5.6-luna-xhigh"), matrix.directiveFor("cursor", "audit"))
+    assertEquals(PhaseModelDirective("cursor-grok-4.5-medium"), matrix.directiveFor("cursor", "pr"))
   }
 
   @Test
@@ -197,6 +193,6 @@ class ExecutionMatrixModelsTest {
       agents = mapOf(InstallAgent.CLAUDE to mapOf(ExecutionTier.REASONING to PhaseModelDirective("opus"))),
     )
 
-    assertNull(matrix.directiveFor(AgentId("unknown"), "plan"))
+    assertNull(matrix.directiveFor("unknown", "plan"))
   }
 }

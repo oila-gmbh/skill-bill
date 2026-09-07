@@ -1,4 +1,6 @@
 package skillbill.cli
+
+import skillbill.ports.workflow.gitops.model.WorkflowGitOperationStatus
 import kotlinx.serialization.json.JsonElement
 import skillbill.application.workflow.model.WorkflowFamilyKind
 import skillbill.application.workflow.model.WorkflowOpenResult
@@ -36,8 +38,6 @@ import skillbill.ports.workflow.gitops.model.WorkflowGitOperationResult
 import skillbill.ports.workflow.gitops.model.WorkflowSelectedDiffHunksRequest
 import skillbill.ports.workflow.gitops.model.WorkflowSelectedDiffHunksResult
 import skillbill.ports.workflow.gitops.model.WorkflowWorktreeActivityResult
-import skillbill.workflow.decomposition.model.IssueKey
-import skillbill.workflow.decomposition.model.SubtaskId
 import skillbill.workflow.goal.model.GoalObservabilityDiffStat
 import skillbill.workflow.goal.model.GoalObservabilitySelectedDiffHunk
 import skillbill.workflow.goal.model.GoalObservabilitySelectedDiffHunks
@@ -110,8 +110,8 @@ internal fun clearWorkerLease(fixture: GoalCliFixture, workflowId: String) {
 
 internal fun startRunningGoalChild(fixture: GoalCliFixture): String = RuntimeWorkflowTestSupport.continueByIssueKey(
   dbPath = fixture.dbPath,
-  issueKey = IssueKey("SKILL-901"),
-  subtaskId = SubtaskId(1),
+  issueKey = "SKILL-901",
+  subtaskId = 1,
   context = fixture.context(launcher = NoopGoalTestAgentRunLauncher),
 )["workflow_id"] as String
 
@@ -564,38 +564,37 @@ internal object GoalTestWorkflowGitOperations : WorkflowGitOperationsTestBase() 
 
   override val scopedStagingOperations: ScopedStagingGitOperations = object : ScopedStagingGitOperations {
     override fun stagePaths(repoRoot: Path, paths: List<String>): WorkflowGitOperationResult =
-      WorkflowGitOperationResult(status = "ok", value = "")
+      WorkflowGitOperationResult.Ok(value = "")
 
     override fun captureIndexState(repoRoot: Path, paths: List<String>): WorkflowGitOperationResult =
-      WorkflowGitOperationResult(status = "ok", value = "")
+      WorkflowGitOperationResult.Ok(value = "")
 
     override fun restoreIndexState(repoRoot: Path, paths: List<String>, snapshot: String): WorkflowGitOperationResult =
-      WorkflowGitOperationResult(status = "ok", value = "")
+      WorkflowGitOperationResult.Ok(value = "")
 
     override fun stagedPaths(repoRoot: Path): WorkflowGitOperationResult =
-      WorkflowGitOperationResult(status = "ok", value = "")
+      WorkflowGitOperationResult.Ok(value = "")
 
     override fun pathContentIdentities(repoRoot: Path, paths: List<String>): WorkflowGitOperationResult =
-      WorkflowGitOperationResult(
-        status = "ok",
+      WorkflowGitOperationResult.Ok(
         value = paths.joinToString(separator = "\u0000") { path -> "identity\t$path" },
       )
   }
 
   override fun checkoutBranch(repoRoot: Path, branch: String, baseBranch: String?): WorkflowGitOperationResult =
-    WorkflowGitOperationResult(status = "ok", value = branch)
+    WorkflowGitOperationResult.Ok(value = branch)
 
   override fun branchExists(repoRoot: Path, branch: String): WorkflowGitOperationResult =
-    WorkflowGitOperationResult(status = "ok", value = "true")
+    WorkflowGitOperationResult.Ok(value = "true")
 
   override fun currentBranch(repoRoot: Path): WorkflowGitOperationResult =
-    WorkflowGitOperationResult(status = "ok", value = "")
+    WorkflowGitOperationResult.Ok(value = "")
 
   override val goalSubtaskReviewOperations: GoalSubtaskReviewGitOperations =
     object : GoalSubtaskReviewGitOperations {
       override fun captureBaseline(repoRoot: Path, expectedBranch: String): GoalSubtaskReviewBaselineResult =
         GoalSubtaskReviewBaselineResult(
-          status = "ok",
+          status = WorkflowGitOperationStatus.OK,
           baseline = GoalSubtaskReviewBaseline("0".repeat(40), emptyList()),
         )
 
@@ -607,34 +606,34 @@ internal object GoalTestWorkflowGitOperations : WorkflowGitOperationsTestBase() 
         request: GoalSubtaskReviewBaselineRecoveryRequest,
         expectedBranch: String,
       ): GoalSubtaskReviewBaselineResult = GoalSubtaskReviewBaselineResult(
-        status = "error",
+        status = WorkflowGitOperationStatus.ERROR,
         error = "Goal review baseline recovery is not used by this goal CLI fixture.",
       )
     }
 
   override fun createCommit(repoRoot: Path, message: String): WorkflowGitOperationResult =
-    WorkflowGitOperationResult(status = "ok", value = "test-commit")
+    WorkflowGitOperationResult.Ok(value = "test-commit")
 
   override fun headCommitSha(repoRoot: Path): WorkflowGitOperationResult =
-    WorkflowGitOperationResult(status = "ok", value = "test-commit")
+    WorkflowGitOperationResult.Ok(value = "test-commit")
 
   override fun isCommitAncestor(
     repoRoot: Path,
     ancestorSha: String,
     descendantSha: String,
-  ): WorkflowGitOperationResult = WorkflowGitOperationResult(status = "ok", value = "true")
+  ): WorkflowGitOperationResult = WorkflowGitOperationResult.Ok(value = "true")
 
   override fun validateBranchBase(
     repoRoot: Path,
     branch: String,
     expectedBaseBranch: String,
-  ): WorkflowGitOperationResult = WorkflowGitOperationResult(status = "ok", value = expectedBaseBranch)
+  ): WorkflowGitOperationResult = WorkflowGitOperationResult.Ok(value = expectedBaseBranch)
 
   override fun worktreeStatus(repoRoot: Path): WorkflowGitOperationResult =
-    WorkflowGitOperationResult(status = "ok", value = "")
+    WorkflowGitOperationResult.Ok(value = "")
 
   override fun worktreeActivity(repoRoot: Path): WorkflowWorktreeActivityResult = WorkflowWorktreeActivityResult(
-    status = "ok",
+    status = WorkflowGitOperationStatus.OK,
     diffStat = GoalObservabilityDiffStat(filesChanged = 1, insertions = 2, deletions = 1),
   )
 
@@ -642,7 +641,7 @@ internal object GoalTestWorkflowGitOperations : WorkflowGitOperationsTestBase() 
     repoRoot: Path,
     request: WorkflowSelectedDiffHunksRequest,
   ): WorkflowSelectedDiffHunksResult = WorkflowSelectedDiffHunksResult(
-    status = "ok",
+    status = WorkflowGitOperationStatus.OK,
     selectedDiffHunks = GoalObservabilitySelectedDiffHunks(
       hunks = listOf(
         GoalObservabilitySelectedDiffHunk(

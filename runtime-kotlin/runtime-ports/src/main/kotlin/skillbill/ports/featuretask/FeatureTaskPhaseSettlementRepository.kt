@@ -1,12 +1,16 @@
 package skillbill.ports.featuretask
 
 import skillbill.ports.featuretask.model.FeatureTaskPhaseSettlement
-import skillbill.workflow.engine.model.WorkflowId
 
 interface FeatureTaskPhaseSettlementRepository {
-  fun upsert(settlement: FeatureTaskPhaseSettlement)
+  fun upsert(settlement: FeatureTaskPhaseSettlement, dbPathOverride: String? = null)
 
-  fun find(workflowId: WorkflowId, phaseId: String, attempt: Int): FeatureTaskPhaseSettlement?
+  fun find(
+    workflowId: String,
+    phaseId: String,
+    attempt: Int,
+    dbPathOverride: String? = null,
+  ): FeatureTaskPhaseSettlement?
 
-  fun delete(workflowId: WorkflowId, phaseId: String, attempt: Int): Boolean
+  fun delete(workflowId: String, phaseId: String, attempt: Int, dbPathOverride: String? = null): Boolean
 }

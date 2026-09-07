@@ -131,7 +131,7 @@ internal fun assembleContinueTexts(request: AssembleContinueTextsRequest): Assem
         definition = definition,
         identity = ContinuationIdentity(
           workflowId = context.record.workflowId,
-          sessionId = context.record.sessionId,
+          sessionId = context.record.sessionId.orEmpty(),
           resumeStepId = resume.resumeStepId,
           continueStatus = request.continueStatus,
           nextAction = resume.nextAction,

@@ -1,4 +1,5 @@
 package skillbill.application.review
+
 import skillbill.install.model.InstallAgent
 import skillbill.ports.agentrun.model.UnsupportedAgentRunLaunch
 import skillbill.ports.review.GovernedReviewEvidenceEndpointBinder
@@ -13,7 +14,6 @@ import skillbill.review.context.model.LANE_EVIDENCE_BYTES_DIMENSION
 import skillbill.review.context.model.ReviewContextBudgetPolicy
 import skillbill.review.context.model.ReviewLaneReviewDisposition
 import skillbill.review.model.ReviewEvidenceBoundaryAccounting
-import skillbill.review.model.ReviewRunId
 import skillbill.review.model.ReviewStageDegradationReason
 import skillbill.scaffold.model.ReviewLaneCondition
 import java.nio.file.Files
@@ -38,7 +38,7 @@ class ParallelCodeReviewEvidenceBoundaryTest {
       recorder,
     ).run(
       harnessRequest(
-        reviewRunId = ReviewRunId("rvw-195-unbound"),
+        reviewRunId = "rvw-195-unbound",
         codeReviewMode = CodeReviewExecutionMode.INLINE,
       ),
     )
@@ -72,7 +72,7 @@ class ParallelCodeReviewEvidenceBoundaryTest {
       recorder,
     ).run(
       harnessRequest(
-        reviewRunId = ReviewRunId("rvw-195-endpoint-unbound"),
+        reviewRunId = "rvw-195-endpoint-unbound",
         codeReviewMode = CodeReviewExecutionMode.INLINE,
       ),
     )
@@ -98,7 +98,7 @@ class ParallelCodeReviewEvidenceBoundaryTest {
       recorder,
     ).run(
       harnessRequest(
-        reviewRunId = ReviewRunId("rvw-195-unexercised"),
+        reviewRunId = "rvw-195-unexercised",
         codeReviewMode = CodeReviewExecutionMode.INLINE,
       ),
     )
@@ -132,7 +132,7 @@ class ParallelCodeReviewEvidenceBoundaryTest {
       recorder,
     ).run(
       harnessRequest(
-        reviewRunId = ReviewRunId("rvw-195-zero-byte"),
+        reviewRunId = "rvw-195-zero-byte",
         codeReviewMode = CodeReviewExecutionMode.INLINE,
       ),
     )
@@ -160,7 +160,7 @@ class ParallelCodeReviewEvidenceBoundaryTest {
       recorder,
     ).run(
       harnessRequest(
-        reviewRunId = ReviewRunId("rvw-195-rejected"),
+        reviewRunId = "rvw-195-rejected",
         codeReviewMode = CodeReviewExecutionMode.INLINE,
       ),
     )
@@ -212,7 +212,7 @@ class ParallelCodeReviewEvidenceBoundaryTest {
       ReviewRecorder(),
     ).run(
       harnessRequest(
-        reviewRunId = ReviewRunId("rvw-195-unavailable-cli"),
+        reviewRunId = "rvw-195-unavailable-cli",
         codeReviewMode = CodeReviewExecutionMode.INLINE,
       ),
     )
@@ -239,7 +239,7 @@ class ParallelCodeReviewEvidenceBoundaryTest {
       recorder,
     ).run(
       harnessRequest(
-        reviewRunId = ReviewRunId("rvw-195-unsupported"),
+        reviewRunId = "rvw-195-unsupported",
         codeReviewMode = CodeReviewExecutionMode.INLINE,
       ),
     )
@@ -274,7 +274,7 @@ class ParallelCodeReviewEvidenceBoundaryTest {
       recorder,
     ).run(
       harnessRequest(
-        reviewRunId = ReviewRunId("rvw-195-mixed-lanes"),
+        reviewRunId = "rvw-195-mixed-lanes",
         codeReviewMode = CodeReviewExecutionMode.INLINE,
       ),
     )
@@ -301,7 +301,7 @@ class ParallelCodeReviewEvidenceBoundaryTest {
       recorder,
     ).run(
       harnessRequest(
-        reviewRunId = ReviewRunId("rvw-198-unread-clean"),
+        reviewRunId = "rvw-198-unread-clean",
         codeReviewMode = CodeReviewExecutionMode.INLINE,
       ),
     )
@@ -338,7 +338,7 @@ class ParallelCodeReviewEvidenceBoundaryTest {
       recorder,
     ).run(
       harnessRequest(
-        reviewRunId = ReviewRunId("rvw-198-inline-union"),
+        reviewRunId = "rvw-198-inline-union",
         codeReviewMode = CodeReviewExecutionMode.INLINE,
       ),
     )
@@ -390,7 +390,7 @@ class ParallelCodeReviewEvidenceBoundaryTest {
       recorder,
     ).run(
       harnessRequest(
-        reviewRunId = ReviewRunId("rvw-201-parent-derived-budget"),
+        reviewRunId = "rvw-201-parent-derived-budget",
         codeReviewMode = CodeReviewExecutionMode.INLINE,
       ),
     )
@@ -416,7 +416,7 @@ class ParallelCodeReviewEvidenceBoundaryTest {
       recorder,
     ).run(
       harnessRequest(
-        reviewRunId = ReviewRunId("rvw-201-broker-refusal"),
+        reviewRunId = "rvw-201-broker-refusal",
         codeReviewMode = CodeReviewExecutionMode.INLINE,
       ),
     )
@@ -443,7 +443,7 @@ class ParallelCodeReviewEvidenceBoundaryTest {
       recorder,
     ).run(
       harnessRequest(
-        reviewRunId = ReviewRunId("rvw-201-broker-clean"),
+        reviewRunId = "rvw-201-broker-clean",
         codeReviewMode = CodeReviewExecutionMode.INLINE,
       ),
     )

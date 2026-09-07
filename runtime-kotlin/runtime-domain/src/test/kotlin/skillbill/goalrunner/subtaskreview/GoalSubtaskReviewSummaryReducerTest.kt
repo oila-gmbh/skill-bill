@@ -2,9 +2,6 @@ package skillbill.goalrunner.subtaskreview
 
 import skillbill.goalrunner.subtaskreview.model.StructuredGoalReviewFinding
 import skillbill.goalrunner.subtaskreview.model.UnaddressedFindingLedgerScope
-import skillbill.workflow.decomposition.model.IssueKey
-import skillbill.workflow.decomposition.model.SubtaskId
-import skillbill.workflow.engine.model.WorkflowId
 import skillbill.review.ReviewFindingFieldCodec
 import skillbill.review.model.ReviewFindingCitation
 import skillbill.text.Utf8Text
@@ -263,7 +260,7 @@ class GoalSubtaskReviewSummaryReducerTest {
       2,
       GoalSubtaskReviewSummaryReducer.unaddressedFindings(
         output,
-        UnaddressedFindingLedgerScope(IssueKey("SKILL-146"), SubtaskId(3), WorkflowId("workflow"), 1),
+        UnaddressedFindingLedgerScope("SKILL-146", 3, "workflow", 1),
       ).size,
     )
   }
@@ -311,7 +308,7 @@ class GoalSubtaskReviewSummaryReducerTest {
         ),
       ),
     )
-    val scope = UnaddressedFindingLedgerScope(IssueKey("SKILL-202"), SubtaskId(2), WorkflowId("wf-verify"), 1)
+    val scope = UnaddressedFindingLedgerScope("SKILL-202", 2, "wf-verify", 1)
     val truncationRecords = mutableListOf<String>()
     val rejected = GoalSubtaskReviewSummaryReducer.rejectedVerificationFindings(
       verifyOutput = verifyOutput,
@@ -355,7 +352,7 @@ class GoalSubtaskReviewSummaryReducerTest {
     val rejected = GoalSubtaskReviewSummaryReducer.rejectedVerificationFindings(
       verifyOutput = verifyOutput,
       reviewOutput = reviewOutput,
-      scope = UnaddressedFindingLedgerScope(IssueKey("SKILL-216"), SubtaskId(2), WorkflowId("wf-verify"), 1),
+      scope = UnaddressedFindingLedgerScope("SKILL-216", 2, "wf-verify", 1),
     )
     assertEquals(1, rejected.size)
     assertNull(rejected.single().verificationReason)
@@ -392,7 +389,7 @@ class GoalSubtaskReviewSummaryReducerTest {
     val rejected = GoalSubtaskReviewSummaryReducer.rejectedVerificationFindings(
       verifyOutput = verifyOutput,
       reviewOutput = reviewOutput,
-      scope = UnaddressedFindingLedgerScope(IssueKey("SKILL-216"), SubtaskId(2), WorkflowId("wf-verify"), 1),
+      scope = UnaddressedFindingLedgerScope("SKILL-216", 2, "wf-verify", 1),
       truncationRecords = truncationRecords,
     )
     assertEquals(1, rejected.size)
@@ -457,7 +454,7 @@ class GoalSubtaskReviewSummaryReducerTest {
     // Ledger preserves full location-bearing evidence
     val ledger = GoalSubtaskReviewSummaryReducer.unaddressedFindings(
       output,
-      UnaddressedFindingLedgerScope(IssueKey("SKILL-142"), SubtaskId(1), WorkflowId("wf-1"), 1),
+      UnaddressedFindingLedgerScope("SKILL-142", 1, "wf-1", 1),
     )
     assertEquals(2, ledger.size)
 

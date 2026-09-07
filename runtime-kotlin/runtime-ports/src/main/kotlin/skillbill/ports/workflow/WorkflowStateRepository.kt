@@ -1,4 +1,5 @@
 package skillbill.ports.workflow
+
 import skillbill.boundary.OpenBoundaryMap
 import skillbill.contracts.issuekey.isWellFormedIssueKey
 import skillbill.contracts.issuekey.malformedIssueKeyReason
@@ -14,10 +15,6 @@ import skillbill.ports.workflow.model.WorkflowFamily
 import skillbill.ports.workflow.model.WorkflowStateRecord
 import skillbill.ports.workflow.model.toPayload
 import skillbill.ports.workflow.model.toSnapshot
-import skillbill.workflow.decomposition.model.IssueKey
-import skillbill.workflow.decomposition.model.SubtaskId
-import skillbill.workflow.engine.model.SessionId
-import skillbill.workflow.engine.model.WorkflowId
 import skillbill.workflow.engine.model.WorkflowStateSnapshot
 
 /**
@@ -36,23 +33,23 @@ interface WorkflowStateRepository :
 interface FeatureTaskExecutionLookupRepository {
   fun saveFeatureTaskExecutionIdentity(identity: FeatureTaskExecutionIdentity)
 
-  fun getFeatureTaskExecutionIdentity(workflowId: WorkflowId): FeatureTaskExecutionIdentity? =
+  fun getFeatureTaskExecutionIdentity(workflowId: String): FeatureTaskExecutionIdentity? =
     error("Feature-task execution identity lookup is not implemented by this persistence adapter.")
 
   fun findStandaloneFeatureTaskCandidates(
-    normalizedIssueKey: IssueKey,
+    normalizedIssueKey: String,
     repositoryIdentity: String,
   ): List<FeatureTaskWorkflowCandidate>
 
   fun findGoalChildFeatureTaskCandidates(
-    normalizedIssueKey: IssueKey,
+    normalizedIssueKey: String,
     repositoryIdentity: String,
   ): List<FeatureTaskWorkflowCandidate> =
     error("Goal-child feature-task lookup is not implemented by this persistence adapter.")
 
-  fun countGoalChildIdentities(normalizedIssueKey: IssueKey): Int = 0
+  fun countGoalChildIdentities(normalizedIssueKey: String): Int = 0
 
-  fun claimFeatureTaskContinuation(workflowId: WorkflowId, expectedUpdatedAt: String?): Boolean =
+  fun claimFeatureTaskContinuation(workflowId: String, expectedUpdatedAt: String?): Boolean =
     error("Feature-task continuation claiming is not implemented by this persistence adapter.")
 }
 
@@ -69,11 +66,11 @@ interface FeatureTaskWorkflowRowRepository {
     }
   }
 
-  fun getFeatureTaskWorkflow(workflowId: WorkflowId): WorkflowStateRecord? =
+  fun getFeatureTaskWorkflow(workflowId: String): WorkflowStateRecord? =
     (this as FeatureImplementWorkflowStateRepository).getFeatureImplementWorkflow(workflowId)
       ?: (this as FeatureTaskRuntimeWorkflowStateRepository).getFeatureTaskRuntimeWorkflow(workflowId)
 
-  fun getFeatureTaskWorkflowAsMode(workflowId: WorkflowId, mode: FeatureTaskWorkflowMode): WorkflowStateRecord? =
+  fun getFeatureTaskWorkflowAsMode(workflowId: String, mode: FeatureTaskWorkflowMode): WorkflowStateRecord? =
     when (mode) {
       FeatureTaskWorkflowMode.PROSE -> (this as FeatureImplementWorkflowStateRepository).getFeatureImplementWorkflow(
         workflowId,
@@ -104,13 +101,13 @@ interface FeatureTaskWorkflowStateRepository :
   FeatureTaskWorkflowRowRepository
 
 interface GoalChildWorkflowStateRepository {
-  fun deleteGoalChildWorkflowsByParent(parentWorkflowId: WorkflowId): Int =
+  fun deleteGoalChildWorkflowsByParent(parentWorkflowId: String): Int =
     error("Goal-child workflow deletion is not implemented by this persistence adapter.")
 
   fun deleteGoalChildWorkflow(
-    parentWorkflowId: WorkflowId,
-    subtaskId: SubtaskId,
-    workflowId: WorkflowId,
+    parentWorkflowId: String,
+    subtaskId: Int,
+    workflowId: String,
     scope: GoalChildWorkflowDeletionScope = GoalChildWorkflowDeletionScope.TERMINAL_ONLY,
   ): Int = error("Scoped goal-child workflow deletion is not implemented by this persistence adapter.")
 }
@@ -122,35 +119,31 @@ interface FeatureImplementWorkflowStateRepository {
    */
   fun saveFeatureImplementWorkflow(row: WorkflowStateRecord)
 
-  fun getFeatureImplementWorkflow(workflowId: WorkflowId): WorkflowStateRecord?
+  fun getFeatureImplementWorkflow(workflowId: String): WorkflowStateRecord?
 
-  fun getFeatureImplementWorkflows(workflowIds: Set<WorkflowId>): Map<WorkflowId, WorkflowStateRecord> =
-    workflowIds.mapNotNull { workflowId ->
-      getFeatureImplementWorkflow(workflowId)?.let { workflowId to it }
-    }.toMap()
+  fun getFeatureImplementWorkflows(workflowIds: Set<String>): Map<String, WorkflowStateRecord> =
+    workflowIds.mapNotNull { workflowId -> getFeatureImplementWorkflow(workflowId)?.let { workflowId to it } }.toMap()
 
   fun listFeatureImplementWorkflows(limit: Int = 20): List<WorkflowStateRecord>
 
   fun latestFeatureImplementWorkflow(): WorkflowStateRecord?
 
-  fun getFeatureImplementSessionSummary(sessionId: SessionId): FeatureImplementSessionSummary?
+  fun getFeatureImplementSessionSummary(sessionId: String): FeatureImplementSessionSummary?
 }
 
 interface FeatureVerifyWorkflowStateRepository {
   fun saveFeatureVerifyWorkflow(row: WorkflowStateRecord)
 
-  fun getFeatureVerifyWorkflow(workflowId: WorkflowId): WorkflowStateRecord?
+  fun getFeatureVerifyWorkflow(workflowId: String): WorkflowStateRecord?
 
-  fun getFeatureVerifyWorkflows(workflowIds: Set<WorkflowId>): Map<WorkflowId, WorkflowStateRecord> =
-    workflowIds.mapNotNull { workflowId ->
-      getFeatureVerifyWorkflow(workflowId)?.let { workflowId to it }
-    }.toMap()
+  fun getFeatureVerifyWorkflows(workflowIds: Set<String>): Map<String, WorkflowStateRecord> =
+    workflowIds.mapNotNull { workflowId -> getFeatureVerifyWorkflow(workflowId)?.let { workflowId to it } }.toMap()
 
   fun listFeatureVerifyWorkflows(limit: Int = 20): List<WorkflowStateRecord>
 
   fun latestFeatureVerifyWorkflow(): WorkflowStateRecord?
 
-  fun getFeatureVerifySessionSummary(sessionId: SessionId): FeatureVerifySessionSummary?
+  fun getFeatureVerifySessionSummary(sessionId: String): FeatureVerifySessionSummary?
 }
 
 /**
@@ -165,12 +158,10 @@ interface FeatureTaskRuntimeWorkflowStateRepository {
    */
   fun saveFeatureTaskRuntimeWorkflow(row: WorkflowStateRecord)
 
-  fun getFeatureTaskRuntimeWorkflow(workflowId: WorkflowId): WorkflowStateRecord?
+  fun getFeatureTaskRuntimeWorkflow(workflowId: String): WorkflowStateRecord?
 
-  fun getFeatureTaskRuntimeWorkflows(workflowIds: Set<WorkflowId>): Map<WorkflowId, WorkflowStateRecord> =
-    workflowIds.mapNotNull { workflowId ->
-      getFeatureTaskRuntimeWorkflow(workflowId)?.let { workflowId to it }
-    }.toMap()
+  fun getFeatureTaskRuntimeWorkflows(workflowIds: Set<String>): Map<String, WorkflowStateRecord> =
+    workflowIds.mapNotNull { workflowId -> getFeatureTaskRuntimeWorkflow(workflowId)?.let { workflowId to it } }.toMap()
 
   fun listFeatureTaskRuntimeWorkflows(limit: Int = 20): List<WorkflowStateRecord>
 
@@ -203,17 +194,16 @@ fun WorkflowFamily.saveRecord(repository: WorkflowStateRepository, record: Workf
   }
 }
 
-fun WorkflowFamily.get(repository: WorkflowStateRepository, workflowId: WorkflowId): WorkflowStateSnapshot? =
-  when (this) {
-    WorkflowFamily.VERIFY -> repository.getFeatureVerifyWorkflow(workflowId)
-    WorkflowFamily.TASK_RUNTIME ->
-      repository.getFeatureTaskWorkflowAsMode(workflowId, FeatureTaskWorkflowMode.RUNTIME)
-  }?.toSnapshot()
+fun WorkflowFamily.get(repository: WorkflowStateRepository, workflowId: String): WorkflowStateSnapshot? = when (this) {
+  WorkflowFamily.VERIFY -> repository.getFeatureVerifyWorkflow(workflowId)
+  WorkflowFamily.TASK_RUNTIME ->
+    repository.getFeatureTaskWorkflowAsMode(workflowId, FeatureTaskWorkflowMode.RUNTIME)
+}?.toSnapshot()
 
 fun WorkflowFamily.getAll(
   repository: WorkflowStateRepository,
-  workflowIds: Set<WorkflowId>,
-): Map<WorkflowId, WorkflowStateSnapshot> = buildMap {
+  workflowIds: Set<String>,
+): Map<String, WorkflowStateSnapshot> = buildMap {
   workflowIds.chunked(WORKFLOW_SNAPSHOT_BATCH_SIZE).forEach { batch ->
     val records = when (this@getAll) {
       WorkflowFamily.VERIFY -> repository.getFeatureVerifyWorkflows(batch.toSet())
@@ -234,8 +224,8 @@ fun WorkflowFamily.latest(repository: WorkflowStateRepository): WorkflowStateSna
 }?.toSnapshot()
 
 @OpenBoundaryMap("Durable workflow session summary passthrough")
-fun WorkflowFamily.sessionSummary(repository: WorkflowStateRepository, sessionId: SessionId): Map<String, Any?> {
-  if (sessionId.value.isBlank()) {
+fun WorkflowFamily.sessionSummary(repository: WorkflowStateRepository, sessionId: String): Map<String, Any?> {
+  if (sessionId.isBlank()) {
     return emptyMap()
   }
   return when (this) {
@@ -251,13 +241,13 @@ object FeatureTaskExecutionIdentityPolicy {
 
   private const val MAX_ECHOED_VALUE_LENGTH = 120
 
-  fun validate(identity: FeatureTaskExecutionIdentity, sourceLabel: String = identity.workflowId.value) {
+  fun validate(identity: FeatureTaskExecutionIdentity, sourceLabel: String = identity.workflowId) {
     val failure = when {
       identity.contractVersion != FEATURE_TASK_EXECUTION_IDENTITY_CONTRACT_VERSION ->
         "contract_version must be $FEATURE_TASK_EXECUTION_IDENTITY_CONTRACT_VERSION"
-      identity.workflowId.value.isBlank() -> "workflow_id is malformed: expected a non-blank id"
-      !isWellFormedIssueKey(identity.normalizedIssueKey.value) ->
-        issueKeyFailure("normalized_issue_key", identity.normalizedIssueKey.value)
+      identity.workflowId.isBlank() -> "workflow_id is malformed: expected a non-blank id"
+      !isWellFormedIssueKey(identity.normalizedIssueKey) ->
+        issueKeyFailure("normalized_issue_key", identity.normalizedIssueKey)
       !validRepositoryIdentity(identity.repositoryIdentity) ->
         repositoryIdentityFailure(identity.repositoryIdentity)
       !validGovernedSpecPath(identity.governedSpecPath) ->
@@ -267,17 +257,17 @@ object FeatureTaskExecutionIdentityPolicy {
     failure?.let { throw InvalidFeatureTaskExecutionIdentitySchemaError(sourceLabel, it) }
   }
 
-  fun normalizeIssueKey(issueKey: IssueKey, sourceLabel: String): IssueKey {
-    if (!isWellFormedIssueKey(issueKey.value)) {
+  fun normalizeIssueKey(issueKey: String, sourceLabel: String): String {
+    if (!isWellFormedIssueKey(issueKey)) {
       throw InvalidFeatureTaskExecutionIdentitySchemaError(
         sourceLabel,
-        issueKeyFailure("issue_key", issueKey.value),
+        issueKeyFailure("issue_key", issueKey),
       )
     }
-    return IssueKey(issueKey.value.trim().uppercase())
+    return issueKey.trim().uppercase()
   }
 
-  fun validateLookupRequest(issueKey: IssueKey, repositoryIdentity: String): IssueKey {
+  fun validateLookupRequest(issueKey: String, repositoryIdentity: String): String {
     val normalizedIssueKey = normalizeIssueKey(issueKey, "lookup request")
     if (!validRepositoryIdentity(repositoryIdentity)) {
       throw InvalidFeatureTaskExecutionIdentitySchemaError(

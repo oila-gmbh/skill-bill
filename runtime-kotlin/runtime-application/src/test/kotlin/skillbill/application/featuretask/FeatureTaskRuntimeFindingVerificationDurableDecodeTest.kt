@@ -1,4 +1,5 @@
 package skillbill.application.featuretask
+
 import skillbill.application.InMemoryRuntimeWorkflowRepository
 import skillbill.application.RuntimeFakeDatabaseSessionFactory
 import skillbill.application.decomposition.decodeArtifacts
@@ -9,8 +10,6 @@ import skillbill.error.InvalidFeatureTaskRuntimeFindingVerificationRecordError
 import skillbill.ports.diagnostics.NoopRuntimeDiagnostics
 import skillbill.ports.workflow.toRecord
 import skillbill.workflow.engine.WorkflowEngine
-import skillbill.workflow.engine.model.SessionId
-import skillbill.workflow.engine.model.WorkflowId
 import skillbill.workflow.engine.model.WorkflowUpdateInput
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_FINDING_VERIFICATION_CHECKPOINT_ARTIFACT_KEY
 import kotlin.test.Test
@@ -23,7 +22,7 @@ class FeatureTaskRuntimeFindingVerificationDurableDecodeTest {
   @Test
   fun `durable finding verification checkpoint round-trips valid dispositions`() {
     val repository = InMemoryRuntimeWorkflowRepository()
-    val workflowId = WorkflowId("wftr-finding-verification")
+    val workflowId = "wftr-finding-verification"
     seedWorkflow(repository, workflowId, verificationCheckpointArtifactsJson(valid = true))
 
     val recorder = recorderFor(repository)
@@ -35,7 +34,7 @@ class FeatureTaskRuntimeFindingVerificationDurableDecodeTest {
   @Test
   fun `malformed durable finding verification checkpoint loud-fails instead of coercing to absent`() {
     val repository = InMemoryRuntimeWorkflowRepository()
-    val workflowId = WorkflowId("wftr-finding-verification-malformed")
+    val workflowId = "wftr-finding-verification-malformed"
     seedWorkflow(
       repository,
       workflowId,
@@ -53,7 +52,7 @@ class FeatureTaskRuntimeFindingVerificationDurableDecodeTest {
   @Test
   fun `extra census severity in durable finding verification checkpoint is ignored`() {
     val repository = InMemoryRuntimeWorkflowRepository()
-    val workflowId = WorkflowId("wftr-finding-verification-severity")
+    val workflowId = "wftr-finding-verification-severity"
     seedWorkflow(
       repository,
       workflowId,
@@ -68,7 +67,7 @@ class FeatureTaskRuntimeFindingVerificationDurableDecodeTest {
   @Test
   fun `retired disposition field in durable finding verification checkpoint loud-fails with named error`() {
     val repository = InMemoryRuntimeWorkflowRepository()
-    val workflowId = WorkflowId("wftr-finding-verification-retired")
+    val workflowId = "wftr-finding-verification-retired"
     seedWorkflow(
       repository,
       workflowId,
@@ -96,7 +95,7 @@ private fun seedWorkflow(repository: InMemoryRuntimeWorkflowRepository, workflow
       currentStepId = "verify_findings",
       stepUpdates = null,
       artifactsPatch = artifacts,
-      sessionId = SessionId("ftr-finding-verification"),
+      sessionId = "ftr-finding-verification",
     ),
   ).toRecord()
   repository.saveFeatureTaskRuntimeWorkflow(seeded)

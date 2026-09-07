@@ -1,4 +1,5 @@
 package skillbill.application.diagnostics
+
 import skillbill.application.diagnostics.model.RejectedOutputDiagnosticConfig
 import skillbill.application.diagnostics.model.RejectedOutputDiagnosticRequest
 import skillbill.ports.diagnostics.ProducerOutputEvidenceValidator
@@ -11,7 +12,6 @@ import skillbill.ports.diagnostics.model.RejectedOutputDiagnosticError
 import skillbill.ports.diagnostics.model.RejectedOutputDiagnosticRecord
 import skillbill.ports.diagnostics.model.RejectedOutputDiagnosticSelector
 import skillbill.ports.diagnostics.model.RejectedOutputLifecycle
-import skillbill.workflow.engine.model.WorkflowId
 import java.io.IOException
 import java.security.MessageDigest
 import java.time.Clock
@@ -111,7 +111,7 @@ class RejectedOutputDiagnosticService(
 
   private fun validate(selector: RejectedOutputDiagnosticSelector): RejectedOutputDiagnosticSelector {
     val issue = when {
-      selector.workflowId.value.isBlank() -> "workflowId must be non-blank"
+      selector.workflowId.isBlank() -> "workflowId must be non-blank"
       selector.phaseId?.isBlank() == true -> "phaseId must be non-blank when present"
       selector.attempt?.let { it <= 0 } == true -> "attempt must be positive when present"
       else -> null
@@ -130,7 +130,7 @@ class RejectedOutputDiagnosticService(
     // need distinct identities; every ordinary attempt stays at turn 0 and therefore keeps hashing the
     // exact preimage it always did, which is what keeps an identity already persisted on a quarantine
     // entry resolvable.
-    fun stableIdentity(workflowId: WorkflowId, phaseId: String, attempt: Int, repairTurn: Int = 0): String {
+    fun stableIdentity(workflowId: String, phaseId: String, attempt: Int, repairTurn: Int = 0): String {
       val base = "$workflowId\u0000$phaseId\u0000$attempt"
       val preimage = if (repairTurn == 0) base else "$base\u0000$repairTurn"
       return "rod_${sha256(preimage.encodeToByteArray())}"

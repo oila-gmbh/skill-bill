@@ -1,8 +1,8 @@
 package skillbill.application.featuretask.validation.model
+
 import skillbill.application.featuretask.model.FeatureTaskRuntimeRunRequest
 import skillbill.ports.validation.model.ValidationGateFinding
 import skillbill.scaffold.model.ValidationGateDeclaration
-import skillbill.workflow.engine.model.WorkflowId
 import skillbill.workflow.goal.model.ValidationDepth
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFailureDisposition
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutput
@@ -93,9 +93,9 @@ sealed interface ValidationGateCycleTerminalOutcome {
 
 /** Durable (or test) sink for live validate-gate progress, including remaining findings on exhaust. */
 fun interface ValidationGateProgressStore {
-  fun persist(workflowId: WorkflowId, progress: FeatureTaskRuntimeValidationGateProgress)
+  fun persist(workflowId: String, progress: FeatureTaskRuntimeValidationGateProgress, dbOverride: String?)
 
-  fun load(workflowId: WorkflowId): FeatureTaskRuntimeValidationGateProgress? = null
+  fun load(workflowId: String, dbOverride: String?): FeatureTaskRuntimeValidationGateProgress? = null
 }
 
 data class ValidationGateProgressWrite(

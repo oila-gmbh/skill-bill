@@ -1,8 +1,6 @@
 package skillbill.application.telemetry
 
-import skillbill.workflow.engine.model.WorkflowId
-import skillbill.agent.model.AgentId
-
+import skillbill.contracts.issuekey.normalizeRequiredIssueKey
 import skillbill.application.telemetry.model.GoalFinishedRequest
 import skillbill.application.telemetry.model.GoalIssueFinishedRequest
 import skillbill.application.telemetry.model.GoalStartedRequest
@@ -13,7 +11,7 @@ import skillbill.telemetry.model.GoalStartedRecord
 import skillbill.telemetry.model.GoalSubtaskFinishedRecord
 
 fun GoalStartedRequest.toRecord(): GoalStartedRecord = GoalStartedRecord(
-  issueKey = issueKey,
+  issueKey = normalizeRequiredIssueKey(issueKey),
   featureName = featureName,
   workflowId = workflowId,
   subtaskTotal = subtaskTotal,
@@ -25,7 +23,7 @@ fun GoalStartedRequest.toRecord(): GoalStartedRecord = GoalStartedRecord(
 )
 
 fun GoalSubtaskFinishedRequest.toRecord(): GoalSubtaskFinishedRecord = GoalSubtaskFinishedRecord(
-  issueKey = issueKey,
+  issueKey = normalizeRequiredIssueKey(issueKey),
   workflowId = workflowId,
   subtaskId = subtaskId,
   subtaskName = subtaskName,
@@ -40,7 +38,7 @@ fun GoalSubtaskFinishedRequest.toRecord(): GoalSubtaskFinishedRecord = GoalSubta
 )
 
 fun GoalFinishedRequest.toRecord(): GoalFinishedRecord = GoalFinishedRecord(
-  issueKey = issueKey,
+  issueKey = normalizeRequiredIssueKey(issueKey),
   workflowId = workflowId,
   status = status,
   startedAt = startedAt,
@@ -55,7 +53,7 @@ fun GoalFinishedRequest.toRecord(): GoalFinishedRecord = GoalFinishedRecord(
 )
 
 fun GoalIssueFinishedRequest.toRecord(): GoalIssueFinishedRecord = GoalIssueFinishedRecord(
-  issueKey = issueKey,
+  issueKey = normalizeRequiredIssueKey(issueKey),
   parentWorkflowId = parentWorkflowId,
   status = status,
   subtasksComplete = subtasksComplete,

@@ -1,4 +1,5 @@
 package skillbill.review
+
 import skillbill.infrastructure.sqlite.review.ReviewRuntime
 import skillbill.infrastructure.sqlite.review.ensureTerminalReviewState
 import skillbill.infrastructure.sqlite.review.fetchReviewRunLanes
@@ -6,7 +7,6 @@ import skillbill.infrastructure.sqlite.review.queryReviewLaneEffectiveness
 import skillbill.infrastructure.sqlite.review.recordFindingLaneAttribution
 import skillbill.review.model.ImportedFinding
 import skillbill.review.model.ImportedReview
-import skillbill.review.model.ReviewRunId
 import skillbill.review.model.ReviewRunLane
 import skillbill.tempDbConnection
 import java.sql.Connection
@@ -150,7 +150,7 @@ class ReviewRunLaneAttributionTest {
   }
 
   private fun reviewWithLanes() = ImportedReview(
-    reviewRunId = ReviewRunId(RUN_ID),
+    reviewRunId = RUN_ID,
     reviewSessionId = "rvs-lane-001",
     rawText = "raw",
     routedSkill = "bill-kmp-code-review",

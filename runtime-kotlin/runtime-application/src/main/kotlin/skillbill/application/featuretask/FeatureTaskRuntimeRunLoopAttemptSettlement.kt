@@ -1,7 +1,6 @@
 package skillbill.application.featuretask
 
-import skillbill.agent.model.AgentId
-
+import skillbill.ports.workflow.gitops.model.WorkflowGitOperationResult
 import skillbill.application.diagnostics.model.FeatureTaskRuntimeRejectedOutputWrite
 import skillbill.application.diagnostics.model.RejectedOutputDiagnosticRequest
 import skillbill.application.featuretask.model.FeatureTaskRuntimeCommitPushHandoffInvalid
@@ -124,6 +123,7 @@ object FeatureTaskRuntimeRunLoopAttemptSettlement {
         truncated = captured.truncated,
         repairTurn = targeting.repairTurn,
       ),
+      run.request.dbPathOverride,
       runLoop.state.evidenceGeneration(targeting.phaseId),
     )
   }
@@ -231,6 +231,7 @@ object FeatureTaskRuntimeRunLoopAttemptSettlement {
       workflowId = run.request.workflowId,
       phaseId = run.phaseId,
       attempt = args.iteration,
+      dbPathOverride = run.request.dbPathOverride,
     ) ?: return null
     return try {
       val acceptedOutput = runLoop.outputValidator
@@ -269,6 +270,7 @@ object FeatureTaskRuntimeRunLoopAttemptSettlement {
       workflowId = run.request.workflowId,
       phaseId = run.phaseId,
       attempt = args.iteration,
+      dbPathOverride = run.request.dbPathOverride,
     )
     FeatureTaskRuntimeRunLoopOutputVerification.persistVerifyFindingsCheckpointIfPresent(
       runLoop,
@@ -394,7 +396,7 @@ object FeatureTaskRuntimeRunLoopAttemptSettlement {
       runLoop,
       run,
     ) ?: return RepositoryFingerprintResolution(null, null)
-    if (!result.ok) {
+    if (result !is WorkflowGitOperationResult.Ok) {
       val blocked = AttemptResult.settled(
         FeatureTaskRuntimeRunLoopPhaseAttempts.blockInPhase(
           runLoop,
@@ -649,6 +651,7 @@ object FeatureTaskRuntimeRunLoopAttemptSettlement {
         generation = runLoop.state.evidenceGeneration(run.phaseId),
         repairTurn = run.validationGateRepairTurn,
       ),
+      run.request.dbPathOverride,
     )
   }
 

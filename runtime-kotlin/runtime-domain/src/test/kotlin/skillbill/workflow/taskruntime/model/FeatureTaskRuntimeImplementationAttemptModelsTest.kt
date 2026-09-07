@@ -1,5 +1,5 @@
 package skillbill.workflow.taskruntime.model
-import skillbill.agent.model.AgentId
+
 import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_IMPLEMENTATION_ATTEMPT_CONTRACT_VERSION
 import skillbill.error.InvalidWorkflowStateSchemaError
 import kotlin.test.Test
@@ -112,7 +112,7 @@ class FeatureTaskRuntimeImplementationAttemptModelsTest {
     sequenceNumber = sequenceNumber,
     phaseId = "implement",
     attemptNumber = 1,
-    agentId = AgentId("claude"),
+    agentId = "claude",
     status = status,
     recordedAt = "2026-08-04T10:00:00Z",
     value = "segment-$sequenceNumber prose",

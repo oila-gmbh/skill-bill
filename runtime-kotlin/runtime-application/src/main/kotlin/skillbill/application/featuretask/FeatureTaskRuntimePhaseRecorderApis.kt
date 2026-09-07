@@ -1,4 +1,5 @@
 package skillbill.application.featuretask
+
 import skillbill.application.diagnostics.model.FeatureTaskRuntimeRejectedOutputWrite
 import skillbill.application.diagnostics.model.RejectedOutputDiagnosticRequest
 import skillbill.application.featuretask.model.AppendCheckpointIdentityArgs
@@ -15,9 +16,6 @@ import skillbill.ports.diagnostics.model.ProducerOutputEvidence
 import skillbill.ports.featuretask.model.FeatureTaskRuntimeWorkerOwnership
 import skillbill.ports.workflow.model.FeatureTaskWorkflowMode
 import skillbill.review.model.ReviewFindingVerdict
-import skillbill.workflow.decomposition.model.IssueKey
-import skillbill.workflow.engine.model.SessionId
-import skillbill.workflow.engine.model.WorkflowId
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditGapPause
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditGapProgress
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeCheckpointIdentity
@@ -37,67 +35,92 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeVerificationBounda
 import skillbill.workflow.taskruntime.model.PhaseHandoffProjectionDeclaration
 
 interface FeatureTaskRuntimePhaseWorkflowApi {
-  fun existingWorkflowMode(workflowId: WorkflowId): FeatureTaskWorkflowMode?
-  fun workerOwnership(workflowId: WorkflowId): FeatureTaskRuntimeWorkerOwnership?
-  fun ensureWorkflowOpen(workflowId: WorkflowId, sessionId: SessionId, issueKey: IssueKey? = null): Boolean
+  fun existingWorkflowMode(workflowId: String, dbOverride: String? = null): FeatureTaskWorkflowMode?
+  fun workerOwnership(workflowId: String, dbOverride: String? = null): FeatureTaskRuntimeWorkerOwnership?
+  fun ensureWorkflowOpen(
+    workflowId: String,
+    sessionId: String,
+    dbOverride: String? = null,
+    issueKey: String? = null,
+  ): Boolean
 }
 
 interface FeatureTaskRuntimePhaseRejectedApi {
   fun recordRejectedOutput(
     request: RejectedOutputDiagnosticRequest,
+    dbOverride: String? = null,
     producerGeneration: Int = 0,
   ): FeatureTaskRuntimeRejectedOutputWrite
-  fun retainProducerOutput(evidence: ProducerOutputEvidence)
+  fun retainProducerOutput(evidence: ProducerOutputEvidence, dbOverride: String? = null)
   fun producerOutput(args: ProducerOutputQueryArgs): FeatureTaskRuntimeProducerOutputRead
-  fun loadDiagnosticSignals(workflowId: WorkflowId): List<FeatureTaskRuntimeDiagnosticSignal>
+  fun loadDiagnosticSignals(workflowId: String, dbOverride: String? = null): List<FeatureTaskRuntimeDiagnosticSignal>
 }
 
 interface FeatureTaskRuntimePhaseStateApi {
-  fun recordPhaseState(request: FeatureTaskRuntimePhaseStateRequest): Boolean
-  fun recordCompletedPhase(request: FeatureTaskRuntimePhaseStateRequest): Boolean
-  fun recordIncompleteImplementationAttempt(request: FeatureTaskRuntimePhaseStateRequest): Boolean
-  fun loadImplementationAttempts(workflowId: WorkflowId): List<FeatureTaskRuntimeImplementationAttempt>?
-  fun clearBackwardEdgeContext(workflowId: WorkflowId, phaseIds: Collection<String>): Boolean
-  fun loadPhaseRecords(workflowId: WorkflowId): Map<String, FeatureTaskRuntimePhaseRecord>?
-  fun loadOperatorBlockRetry(workflowId: WorkflowId): FeatureTaskRuntimeOperatorBlockRetry?
-  fun loadPhaseLedger(workflowId: WorkflowId): List<FeatureTaskRuntimePhaseLedgerEntry>?
+  fun recordPhaseState(request: FeatureTaskRuntimePhaseStateRequest, dbOverride: String? = null): Boolean
+  fun recordCompletedPhase(request: FeatureTaskRuntimePhaseStateRequest, dbOverride: String? = null): Boolean
+  fun recordIncompleteImplementationAttempt(
+    request: FeatureTaskRuntimePhaseStateRequest,
+    dbOverride: String? = null,
+  ): Boolean
+  fun loadImplementationAttempts(
+    workflowId: String,
+    dbOverride: String? = null,
+  ): List<FeatureTaskRuntimeImplementationAttempt>?
+  fun clearBackwardEdgeContext(workflowId: String, phaseIds: Collection<String>, dbOverride: String? = null): Boolean
+  fun loadPhaseRecords(workflowId: String, dbOverride: String? = null): Map<String, FeatureTaskRuntimePhaseRecord>?
+  fun loadOperatorBlockRetry(workflowId: String, dbOverride: String? = null): FeatureTaskRuntimeOperatorBlockRetry?
+  fun loadPhaseLedger(workflowId: String, dbOverride: String? = null): List<FeatureTaskRuntimePhaseLedgerEntry>?
 }
 
 interface FeatureTaskRuntimePhaseReviewApi {
-  fun completeGoalReviewPhase(completion: GoalReviewPhaseCompletionRequest): Boolean
+  fun completeGoalReviewPhase(completion: GoalReviewPhaseCompletionRequest, dbOverride: String? = null): Boolean
 }
 
 interface FeatureTaskRuntimePhaseReviewGenerationApi {
-  fun persistReviewGenerationInvalidation(workflowId: WorkflowId): Int?
-  fun reconcileReviewGeneration(workflowId: WorkflowId): Int
+  fun persistReviewGenerationInvalidation(workflowId: String, dbOverride: String? = null): Int?
+  fun reconcileReviewGeneration(workflowId: String, dbOverride: String? = null): Int
   fun invalidateQuarantinedProducerRecord(
-    workflowId: WorkflowId,
+    workflowId: String,
     producerPhaseId: String,
     loopId: String,
     edgeIteration: Int,
+    dbOverride: String? = null,
   ): Boolean
-  fun recordedFindingVerdicts(output: Map<String, Any?>): List<ReviewFindingVerdict>
-  fun fetchUnaddressedLedger(workflowId: WorkflowId): List<UnaddressedFinding>
-  fun appendRejectedVerificationFindings(workflowId: WorkflowId, passNumber: Int, rejected: List<UnaddressedFinding>)
+  fun recordedFindingVerdicts(output: Map<String, Any?>, dbOverride: String? = null): List<ReviewFindingVerdict>
+  fun fetchUnaddressedLedger(workflowId: String, dbOverride: String? = null): List<UnaddressedFinding>
+  fun appendRejectedVerificationFindings(
+    workflowId: String,
+    passNumber: Int,
+    rejected: List<UnaddressedFinding>,
+    dbOverride: String? = null,
+  )
 }
 
 interface FeatureTaskRuntimePhaseFindingVerificationApi {
-  fun loadFindingVerificationCheckpoint(workflowId: WorkflowId): List<FeatureTaskRuntimeFindingVerificationDisposition>?
+  fun loadFindingVerificationCheckpoint(
+    workflowId: String,
+    dbOverride: String? = null,
+  ): List<FeatureTaskRuntimeFindingVerificationDisposition>?
   fun loadFindingVerificationBoundarySelection(
-    workflowId: WorkflowId,
+    workflowId: String,
+    dbOverride: String? = null,
   ): Map<String, List<FeatureTaskRuntimeVerificationBoundaryHeadingProvenance>>?
   fun persistFindingVerificationBoundarySelection(
-    workflowId: WorkflowId,
+    workflowId: String,
     selections: Map<String, List<FeatureTaskRuntimeVerificationBoundaryHeadingProvenance>>,
+    dbOverride: String? = null,
   ): Boolean
   fun loadFindingVerificationDispositions(
-    workflowId: WorkflowId,
+    workflowId: String,
+    dbOverride: String? = null,
   ): List<FeatureTaskRuntimeFindingVerificationDisposition>?
   fun persistFindingVerificationCheckpoint(
-    workflowId: WorkflowId,
+    workflowId: String,
     dispositions: List<FeatureTaskRuntimeFindingVerificationDisposition>,
+    dbOverride: String? = null,
   ): Boolean
-  fun clearFindingVerificationCheckpoint(workflowId: WorkflowId): Boolean
+  fun clearFindingVerificationCheckpoint(workflowId: String, dbOverride: String? = null): Boolean
 }
 
 interface FeatureTaskRuntimePhaseReviewCheckpointApi :
@@ -106,42 +129,79 @@ interface FeatureTaskRuntimePhaseReviewCheckpointApi :
 
 interface FeatureTaskRuntimePhaseBriefingApi {
   fun recordPhaseBriefing(
-    workflowId: WorkflowId,
+    workflowId: String,
     briefing: FeatureTaskRuntimePhaseLaunchBriefing,
+    dbOverride: String? = null,
     sharedEvidenceMeasurement: FeatureTaskRuntimeSharedEvidenceMeasurement? = null,
   ): Boolean
   fun recordProjectionRejection(
-    workflowId: WorkflowId,
+    workflowId: String,
     consumerPhaseId: String,
     error: InvalidFeatureTaskRuntimeHandoffProjectionError,
     repositoryCheckpointFingerprint: String?,
+    dbOverride: String? = null,
   ): Boolean
-  fun recordProjectionRejection(rejection: FeatureTaskRuntimeProjectionRejection): Boolean
+  fun recordProjectionRejection(rejection: FeatureTaskRuntimeProjectionRejection, dbOverride: String? = null): Boolean
   fun validateHandoffDeclarations(declarations: List<PhaseHandoffProjectionDeclaration>)
-  fun loadPhaseBriefings(workflowId: WorkflowId): Map<String, FeatureTaskRuntimePhaseLaunchBriefing>?
-  fun loadDeliveredProjections(workflowId: WorkflowId): Map<String, FeatureTaskRuntimeDeliveredProjectionRecord>?
+  fun loadPhaseBriefings(
+    workflowId: String,
+    dbOverride: String? = null,
+  ): Map<String, FeatureTaskRuntimePhaseLaunchBriefing>?
+  fun loadDeliveredProjections(
+    workflowId: String,
+    dbOverride: String? = null,
+  ): Map<String, FeatureTaskRuntimeDeliveredProjectionRecord>?
 }
 
 interface FeatureTaskRuntimePhaseGateApi {
-  fun loadValidationGateProgress(workflowId: WorkflowId): FeatureTaskRuntimeValidationGateProgress?
-  fun persistValidationGateProgress(workflowId: WorkflowId, progress: FeatureTaskRuntimeValidationGateProgress)
-  fun loadAuditGapProgress(workflowId: WorkflowId): FeatureTaskRuntimeAuditGapProgress?
-  fun persistAuditGapProgress(workflowId: WorkflowId, progress: FeatureTaskRuntimeAuditGapProgress)
-  fun loadAuditGapPause(workflowId: WorkflowId): FeatureTaskRuntimeAuditGapPause?
-  fun persistAuditGapPause(workflowId: WorkflowId, pause: FeatureTaskRuntimeAuditGapPause)
-  fun loadBuildGateProgress(workflowId: WorkflowId): FeatureTaskRuntimeValidationGateProgress?
-  fun loadGoalContinuationQualityGateSelection(workflowId: WorkflowId): FeatureTaskRuntimeQualityGateSelection?
-  fun persistBuildGateProgress(workflowId: WorkflowId, progress: FeatureTaskRuntimeValidationGateProgress)
+  fun loadValidationGateProgress(
+    workflowId: String,
+    dbOverride: String? = null,
+  ): FeatureTaskRuntimeValidationGateProgress?
+  fun persistValidationGateProgress(
+    workflowId: String,
+    progress: FeatureTaskRuntimeValidationGateProgress,
+    dbOverride: String? = null,
+  )
+  fun loadAuditGapProgress(workflowId: String, dbOverride: String? = null): FeatureTaskRuntimeAuditGapProgress?
+  fun persistAuditGapProgress(
+    workflowId: String,
+    progress: FeatureTaskRuntimeAuditGapProgress,
+    dbOverride: String? = null,
+  )
+  fun loadAuditGapPause(workflowId: String, dbOverride: String? = null): FeatureTaskRuntimeAuditGapPause?
+  fun persistAuditGapPause(workflowId: String, pause: FeatureTaskRuntimeAuditGapPause, dbOverride: String? = null)
+  fun loadBuildGateProgress(workflowId: String, dbOverride: String? = null): FeatureTaskRuntimeValidationGateProgress?
+  fun loadGoalContinuationQualityGateSelection(
+    workflowId: String,
+    dbOverride: String? = null,
+  ): FeatureTaskRuntimeQualityGateSelection?
+  fun persistBuildGateProgress(
+    workflowId: String,
+    progress: FeatureTaskRuntimeValidationGateProgress,
+    dbOverride: String? = null,
+  )
 }
 
 interface FeatureTaskRuntimePhaseEvidenceApi {
-  fun appendLedgerEntry(request: FeatureTaskRuntimePhaseLedgerRequest): Boolean
-  fun appendQuarantineEntry(workflowId: WorkflowId, entry: FeatureTaskRuntimeQuarantineEntry): Boolean
-  fun loadQuarantinedRecords(workflowId: WorkflowId): List<FeatureTaskRuntimeQuarantineEntry>?
-  fun recordResolvedBranch(workflowId: WorkflowId, resolvedBranch: FeatureTaskRuntimeResolvedBranch): Boolean
-  fun loadResolvedBranch(workflowId: WorkflowId): FeatureTaskRuntimeResolvedBranch?
+  fun appendLedgerEntry(request: FeatureTaskRuntimePhaseLedgerRequest, dbOverride: String? = null): Boolean
+  fun appendQuarantineEntry(
+    workflowId: String,
+    entry: FeatureTaskRuntimeQuarantineEntry,
+    dbOverride: String? = null,
+  ): Boolean
+  fun loadQuarantinedRecords(workflowId: String, dbOverride: String? = null): List<FeatureTaskRuntimeQuarantineEntry>?
+  fun recordResolvedBranch(
+    workflowId: String,
+    resolvedBranch: FeatureTaskRuntimeResolvedBranch,
+    dbOverride: String? = null,
+  ): Boolean
+  fun loadResolvedBranch(workflowId: String, dbOverride: String? = null): FeatureTaskRuntimeResolvedBranch?
   fun appendCheckpointIdentity(args: AppendCheckpointIdentityArgs): Boolean
-  fun loadCheckpointIdentities(workflowId: WorkflowId): List<FeatureTaskRuntimeCheckpointIdentity>?
-  fun quarantineCheckpointIdentities(workflowId: WorkflowId): Boolean
-  fun recordWorkflowOwnedPaths(workflowId: WorkflowId, ownedPaths: List<String>): Boolean
+  fun loadCheckpointIdentities(
+    workflowId: String,
+    dbOverride: String? = null,
+  ): List<FeatureTaskRuntimeCheckpointIdentity>?
+  fun quarantineCheckpointIdentities(workflowId: String, dbOverride: String? = null): Boolean
+  fun recordWorkflowOwnedPaths(workflowId: String, ownedPaths: List<String>, dbOverride: String? = null): Boolean
 }

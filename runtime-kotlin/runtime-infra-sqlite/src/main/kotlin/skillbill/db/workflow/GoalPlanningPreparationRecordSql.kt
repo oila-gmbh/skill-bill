@@ -5,7 +5,6 @@ import skillbill.error.IncompatibleGoalPlanningPreparationRecoveryError
 import skillbill.ports.goalrunner.model.GoalPlanningPreparationRecord
 import skillbill.ports.goalrunner.model.GoalPlanningPreparationState
 import skillbill.ports.goalrunner.model.GoalPlanningPreparationStatus
-import skillbill.workflow.decomposition.model.SubtaskId
 import java.sql.Connection
 
 internal class GoalPlanningPreparationRecordSql(
@@ -15,19 +14,19 @@ internal class GoalPlanningPreparationRecordSql(
     requirePreparedEnvelope(record)
     connection.inImmediateTransaction {
       if (connection.upsertPreparedRow(record)) return@inImmediateTransaction
-      val stored = connection.selectStoredRecoveryIdentity(record.parentGoalWorkflowId.value, record.subtaskId.value)
+      val stored = connection.selectStoredRecoveryIdentity(record.parentGoalWorkflowId, record.subtaskId)
         ?: return@inImmediateTransaction
       val reason = recoveryIdentityFailure(stored, record) ?: return@inImmediateTransaction
       throw IncompatibleGoalPlanningPreparationRecoveryError(
-        workflowId = record.parentGoalWorkflowId.value,
-        subtaskId = record.subtaskId.value,
+        workflowId = record.parentGoalWorkflowId,
+        subtaskId = record.subtaskId,
         reason = reason,
       )
     }
   }
 
-  fun findByGoalAndSubtask(parentGoalWorkflowId: String, subtaskId: SubtaskId): GoalPlanningPreparationRecord? =
-    connection.selectRecord(parentGoalWorkflowId, subtaskId.value)
+  fun findByGoalAndSubtask(parentGoalWorkflowId: String, subtaskId: Int): GoalPlanningPreparationRecord? =
+    connection.selectRecord(parentGoalWorkflowId, subtaskId)
 
   fun listPreparedByGoalOrdered(parentGoalWorkflowId: String): List<GoalPlanningPreparationRecord> =
     connection.selectOrderedByGoal(parentGoalWorkflowId)
@@ -40,8 +39,8 @@ internal class GoalPlanningPreparationRecordSql(
     return orderedSubtaskIds.firstOrNull { id -> prepared[id] != GoalPlanningPreparationState.PREPARED.wireValue }
   }
 
-  fun preparedStatus(parentGoalWorkflowId: String, subtaskId: SubtaskId): GoalPlanningPreparationStatus? =
-    connection.selectStatus(parentGoalWorkflowId, subtaskId.value)
+  fun preparedStatus(parentGoalWorkflowId: String, subtaskId: Int): GoalPlanningPreparationStatus? =
+    connection.selectStatus(parentGoalWorkflowId, subtaskId)
 
   fun deletePreparedByGoal(parentGoalWorkflowId: String): Int = connection.deletePreparedByGoal(parentGoalWorkflowId)
 }

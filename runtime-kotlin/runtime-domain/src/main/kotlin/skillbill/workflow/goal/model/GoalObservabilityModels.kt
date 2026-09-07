@@ -3,9 +3,6 @@ package skillbill.workflow.goal.model
 import skillbill.boundary.OpenBoundaryMap
 import skillbill.contracts.workflow.GOAL_OBSERVABILITY_EVENT_CONTRACT_VERSION
 import skillbill.contracts.workflow.GOAL_PROGRESS_EVENT_CONTRACT_VERSION
-import skillbill.workflow.decomposition.model.IssueKey
-import skillbill.workflow.decomposition.model.SubtaskId
-import skillbill.workflow.engine.model.WorkflowId
 
 const val GOAL_OBSERVABILITY_LATEST_EVENT_ARTIFACT_KEY: String = "goal_observability_latest_event"
 const val GOAL_OBSERVABILITY_RUN_HISTORY_ARTIFACT_KEY: String = "goal_observability_run_history"
@@ -62,7 +59,7 @@ enum class GoalProgressOutcome(val wireValue: String) {
  */
 data class GoalProgressEvent(
   val eventKind: GoalProgressEventKind,
-  val workflowId: WorkflowId,
+  val workflowId: String,
   val workflowPhase: String,
   val processAlive: Boolean,
   val sequenceNumber: Int,
@@ -75,7 +72,7 @@ data class GoalProgressEvent(
   val contractVersion: String = GOAL_PROGRESS_EVENT_CONTRACT_VERSION,
 ) {
   init {
-    require(workflowId.value.isNotBlank()) { "GoalProgressEvent.workflowId is required." }
+    require(workflowId.isNotBlank()) { "GoalProgressEvent.workflowId is required." }
     require(workflowPhase.isNotBlank()) { "GoalProgressEvent.workflowPhase is required." }
     require(sequenceNumber >= 0) { "GoalProgressEvent.sequenceNumber must be non-negative." }
     require(timestamp.isNotBlank()) { "GoalProgressEvent.timestamp is required." }
@@ -90,7 +87,7 @@ data class GoalProgressEvent(
   fun toArtifactMap(): Map<String, Any?> = linkedMapOf<String, Any?>(
     "contract_version" to contractVersion,
     "event_kind" to eventKind.wireValue,
-    "workflow_id" to workflowId.value,
+    "workflow_id" to workflowId,
     "workflow_phase" to workflowPhase,
     "process_alive" to processAlive,
     "sequence_number" to sequenceNumber,
@@ -158,15 +155,15 @@ data class GoalObservabilitySelectedDiffHunks(
 )
 
 data class GoalObservabilityEvent(
-  val issueKey: IssueKey,
-  val subtaskId: SubtaskId,
+  val issueKey: String,
+  val subtaskId: Int,
   val workflowPhase: String,
   val workerRole: String,
   val livenessClass: String,
   val activitySummary: String,
   val timestamp: String,
   val sequenceNumber: Int,
-  val workflowId: WorkflowId? = null,
+  val workflowId: String? = null,
   val changedFileSummary: GoalObservabilityChangedFileSummary? = null,
   val diffStat: GoalObservabilityDiffStat? = null,
   val changedFiles: List<String> = emptyList(),
@@ -176,9 +173,9 @@ data class GoalObservabilityEvent(
   @OpenBoundaryMap("Goal observability event artifact map at durable workflow-artifact/schema seams")
   fun toArtifactMap(includeHeavyFields: Boolean = false): Map<String, Any?> = linkedMapOf<String, Any?>(
     "contract_version" to contractVersion,
-    "issue_key" to issueKey.value,
-    "subtask_id" to subtaskId.value,
-    "workflow_id" to workflowId?.value,
+    "issue_key" to issueKey,
+    "subtask_id" to subtaskId,
+    "workflow_id" to workflowId,
     "workflow_phase" to workflowPhase,
     "worker_role" to workerRole,
     "liveness_class" to livenessClass,
@@ -223,8 +220,8 @@ data class GoalObservabilityEvent(
 
   @OpenBoundaryMap("Compact goal observability summary map rendered by CLI/MCP workflow adapters")
   fun toCompactSummaryMap(): Map<String, Any?> = linkedMapOf<String, Any?>(
-    "issue_key" to issueKey.value,
-    "subtask_id" to subtaskId.value,
+    "issue_key" to issueKey,
+    "subtask_id" to subtaskId,
     "workflow_phase" to workflowPhase,
     "worker_role" to workerRole,
     "liveness_class" to livenessClass,

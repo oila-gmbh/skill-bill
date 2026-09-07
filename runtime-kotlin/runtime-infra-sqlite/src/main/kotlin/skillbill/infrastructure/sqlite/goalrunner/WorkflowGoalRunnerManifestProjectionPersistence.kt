@@ -14,9 +14,7 @@ import skillbill.ports.workflow.model.toSnapshot
 import skillbill.ports.workflow.saveRecord
 import skillbill.ports.workflow.toRecord
 import skillbill.workflow.decomposition.DecompositionManifestValidator
-import skillbill.workflow.decomposition.model.IssueKey
 import skillbill.workflow.engine.WorkflowEngine
-import skillbill.workflow.engine.model.WorkflowId
 import skillbill.workflow.engine.model.WorkflowUpdateInput
 
 internal data class SavedManifestProjection(
@@ -30,8 +28,8 @@ internal class WorkflowGoalRunnerManifestProjectionPersistence(
   private val parentProjection: GoalParentProjectionWriter,
   private val decompositionManifestValidator: DecompositionManifestValidator,
 ) {
-  fun save(state: GoalRunnerManifestState): SavedManifestProjection =
-    database.transaction { unitOfWork -> saveInTransaction(unitOfWork, state) }
+  fun save(state: GoalRunnerManifestState, dbPathOverride: String?): SavedManifestProjection =
+    database.transaction(dbPathOverride) { unitOfWork -> saveInTransaction(unitOfWork, state) }
 
   fun saveInTransaction(
     unitOfWork: UnitOfWork,
@@ -39,7 +37,7 @@ internal class WorkflowGoalRunnerManifestProjectionPersistence(
     clearOutOfBandAcceptances: Boolean = false,
     mergeConcurrentProgress: Boolean = true,
   ): SavedManifestProjection {
-    val existingRecord = unitOfWork.workflowStates.getFeatureTaskWorkflow(WorkflowId(state.parentWorkflowId))
+    val existingRecord = unitOfWork.workflowStates.getFeatureTaskWorkflow(state.parentWorkflowId)
       ?: unitOfWork.workflowStates.findDecomposedParentWorkflow(
         state.manifest.issueKey,
         decompositionManifestValidator,
@@ -68,18 +66,15 @@ internal class WorkflowGoalRunnerManifestProjectionPersistence(
         currentStepId = existingSnapshot.currentStepId,
         stepUpdates = null,
         artifactsPatch = parentProjection.artifacts(manifest, existingSnapshot.artifactsJson),
-        sessionId = existingSnapshot.sessionId,
+        sessionId = existingSnapshot.sessionId.orEmpty(),
         replaceArtifacts = true,
       ),
     )
     WorkflowFamily.TASK_RUNTIME.saveRecord(
       unitOfWork.workflowStates,
-      updated.toRecord().copy(issueKey = IssueKey(normalizeRequiredIssueKey(manifest.issueKey.value))),
+      updated.toRecord().copy(issueKey = normalizeRequiredIssueKey(manifest.issueKey)),
     )
-    val refreshed = WorkflowFamily.TASK_RUNTIME.get(
-      unitOfWork.workflowStates,
-      WorkflowId(updated.workflowId),
-    ) ?: updated
+    val refreshed = WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, updated.workflowId) ?: updated
     reconcileControlStateForManifest(unitOfWork, refreshed.workflowId, decompositionManifestValidator)
     return SavedManifestProjection(
       state = GoalRunnerManifestState(

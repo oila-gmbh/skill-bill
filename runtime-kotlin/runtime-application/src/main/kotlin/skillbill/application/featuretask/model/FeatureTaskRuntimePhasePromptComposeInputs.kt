@@ -1,15 +1,15 @@
 package skillbill.application.featuretask.model
+
 import skillbill.application.featuretask.validation.model.ValidationFindingSetProjection
 import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewInput
 import skillbill.review.context.model.CodeReviewExecutionMode
-import skillbill.workflow.decomposition.model.IssueKey
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeCorrectiveRepairContext
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeOperatorBlockRetry
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePriorReviewContext
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairLedger
 
 data class FeatureTaskRuntimePhasePromptComposeInputs(
-  val issueKey: IssueKey,
+  val issueKey: String,
   val briefing: FeatureTaskRuntimePhaseLaunchBriefing,
   val suppressDecomposition: Boolean = false,
   val codeReviewMode: CodeReviewExecutionMode = CodeReviewExecutionMode.DEFAULT,

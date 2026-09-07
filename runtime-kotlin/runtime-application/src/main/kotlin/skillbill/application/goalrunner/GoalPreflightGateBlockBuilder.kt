@@ -1,8 +1,5 @@
 package skillbill.application.goalrunner
 
-import skillbill.workflow.engine.model.WorkflowId
-import skillbill.agent.model.AgentId
-
 import skillbill.agentaddon.model.AgentAddonConsumer
 import skillbill.agentaddon.model.HydratedAgentAddonSelection
 import skillbill.application.goalrunner.model.GoalPreflightAgentAddon
@@ -37,11 +34,11 @@ class GoalPreflightGateBlockBuilder(
     request: GoalPreflightRequest,
     root: Path,
     receivingAgents: List<String>,
-    parentWorkflowId: WorkflowId?,
+    parentWorkflowId: String?,
   ): HydratedAgentAddonSelection {
     val persisted = parentWorkflowId
-      ?.takeIf { it.value.isNotBlank() }
-      ?.let { manifestStore.reviewPolicy(it)?.agentAddonSelection }
+      ?.takeIf(String::isNotBlank)
+      ?.let { manifestStore.reviewPolicy(it, request.dbPathOverride)?.agentAddonSelection }
     if (request.requestedAgentAddonSlugs.isNotEmpty()) {
       if (persisted != null && persisted.entries.map { it.slug } != request.requestedAgentAddonSlugs) {
         throw InvalidAgentAddonSelectionError(
@@ -74,14 +71,14 @@ class GoalPreflightGateBlockBuilder(
     request: GoalPreflightRequest,
     manifest: DecompositionManifest,
     root: Path,
-    parentWorkflowId: WorkflowId?,
+    parentWorkflowId: String?,
   ): GoalPreflightGateBlock {
     val durablePolicy = parentWorkflowId
-      ?.takeIf { it.value.isNotBlank() }
-      ?.let { manifestStore.reviewPolicy(it) }
+      ?.takeIf(String::isNotBlank)
+      ?.let { manifestStore.reviewPolicy(it, request.dbPathOverride) }
     val mismatch = durablePolicy?.let {
       goalRunnerReviewPolicyMismatch(
-        parentWorkflowId = parentWorkflowId,
+        parentWorkflowId = parentWorkflowId.orEmpty(),
         requestedReviewMode = request.requestedReviewMode,
         persisted = it,
       )
@@ -103,7 +100,7 @@ class GoalPreflightGateBlockBuilder(
       request = request,
       root = root,
       receivingAgents = listOfNotNull(
-        request.invokedAgentId.value,
+        request.invokedAgentId,
         request.agentOverrideId,
       ).filter(String::isNotBlank).distinct(),
       parentWorkflowId = parentWorkflowId,
@@ -113,7 +110,7 @@ class GoalPreflightGateBlockBuilder(
       featureName = manifest.featureName,
       subtasks = manifest.subtasks.map(::subtaskBlock),
       expectedFirstRunnableSubtask = firstRunnable,
-      childAgent = request.agentOverrideId?.takeIf(String::isNotBlank) ?: request.invokedAgentId.value,
+      childAgent = request.agentOverrideId?.takeIf(String::isNotBlank) ?: request.invokedAgentId,
       childAgentOverride = request.agentOverrideId?.takeIf(String::isNotBlank),
       reviewMode = effectiveReviewPolicy.codeReviewMode.displayName(request.requestedReviewMode == null),
       agentAddons = selection.entries.map { entry ->

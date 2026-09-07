@@ -1,4 +1,5 @@
 package skillbill.infrastructure.fs.featuretask
+
 import skillbill.application.featuretask.FeatureTaskRuntimeGoalContinuationRecorder
 import skillbill.application.featuretask.model.RemediationBaseBlocked
 import skillbill.application.featuretask.model.RemediationBaseCoherent
@@ -10,11 +11,7 @@ import skillbill.ports.workflow.gitops.WorkflowGitOperations
 import skillbill.ports.workflow.gitops.model.WorkflowGitOperationResult
 import skillbill.ports.workflow.toRecord
 import skillbill.review.context.model.CodeReviewExecutionMode
-import skillbill.workflow.decomposition.model.IssueKey
-import skillbill.workflow.decomposition.model.SubtaskId
 import skillbill.workflow.engine.WorkflowEngine
-import skillbill.workflow.engine.model.SessionId
-import skillbill.workflow.engine.model.WorkflowId
 import skillbill.workflow.engine.model.WorkflowUpdateInput
 import skillbill.workflow.goal.model.GOAL_REVIEW_BASE_RECOVERIES_ARTIFACT_KEY
 import skillbill.workflow.goal.model.GOAL_SUBTASK_REVIEW_RESULTS_ARTIFACT_KEY
@@ -41,9 +38,9 @@ import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
 class RemediationBaseReconciliationUnderAmendTest {
-  private val workflowId = WorkflowId("wftr-skill190-reconcile")
-  private val issueKey = IssueKey("SKILL-190")
-  private val subtaskId = SubtaskId("4".toInt())
+  private val workflowId = "wftr-skill190-reconcile"
+  private val issueKey = "SKILL-190"
+  private val subtaskId = "4"
   private val goalBranch = "feat/skill-190"
 
   @Test
@@ -64,7 +61,7 @@ class RemediationBaseReconciliationUnderAmendTest {
     val coherent = assertIs<RemediationBaseCoherent>(result)
     assertEquals(preFixSha, coherent.state?.remediationBaseSha)
     val ancestry = git.isCommitAncestor(fixture.repoRoot, preFixSha, fixture.postRemediationSha)
-    assertFalse(ancestry.ok && ancestry.value == "true")
+    assertFalse(ancestry is WorkflowGitOperationResult.Ok && ancestry.value == "true")
   }
 
   @Test
@@ -131,7 +128,7 @@ class RemediationBaseReconciliationUnderAmendTest {
     val recorder = recorderWith(state, emptyList())
     val git = object : WorkflowGitOperations by realGitOps() {
       override fun headCommitSha(repoRoot: Path): WorkflowGitOperationResult =
-        WorkflowGitOperationResult(status = "error", error = "HEAD read forbidden on cheap path")
+        WorkflowGitOperationResult.Failed(error = "HEAD read forbidden on cheap path")
     }
     val result = recorder.remediationReconciler.reconcileRemediationBaseCoherence(workflowId, git, repoRoot)
     assertIs<RemediationBaseCoherent>(result)
@@ -315,7 +312,7 @@ class RemediationBaseReconciliationUnderAmendTest {
     val artifactsPatch = linkedMapOf<String, Any?>(
       FEATURE_TASK_RUNTIME_GOAL_CONTINUATION_ARTIFACT_KEY to FeatureTaskRuntimeGoalContinuationArtifact(
         issueKey = issueKey,
-        subtaskId = SubtaskId(4),
+        subtaskId = 4,
         suppressPr = true,
         goalBranch = goalBranch,
         codeReviewMode = CodeReviewExecutionMode.INLINE,
@@ -338,7 +335,7 @@ class RemediationBaseReconciliationUnderAmendTest {
         currentStepId = "review",
         stepUpdates = null,
         artifactsPatch = artifactsPatch,
-        sessionId = SessionId("fis-001"),
+        sessionId = "fis-001",
       ),
     ).toRecord()
     repository.saveFeatureTaskRuntimeWorkflow(seeded)
@@ -358,7 +355,7 @@ class RemediationBaseReconciliationUnderAmendTest {
     identities: List<FeatureTaskRuntimeCheckpointIdentity>,
   ) {
     val head = realGitOps().headCommitSha(repoRoot)
-    if (!head.ok || head.value.trim() != commitSha.trim()) return
+    if (head !is WorkflowGitOperationResult.Ok || head.value.trim() != commitSha.trim()) return
     val predecessor = when {
       identityRecorded -> {
         val current = identities.lastOrNull { it.commitSha == commitSha }
@@ -379,7 +376,7 @@ class RemediationBaseReconciliationUnderAmendTest {
           parentSha?.trim()?.takeIf(String::isNotBlank)
         } else {
           val resolved = realGitOps().resolveCommit(repoRoot, predecessorCommitSha)
-          resolved.value.orEmpty().trim().takeIf { resolved.ok && it.isNotBlank() } ?: parentSha?.trim()
+          resolved.value.orEmpty().trim().takeIf { resolved is WorkflowGitOperationResult.Ok && it.isNotBlank() } ?: parentSha?.trim()
         }
       }
     }

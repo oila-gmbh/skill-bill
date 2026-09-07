@@ -1,5 +1,6 @@
 package skillbill.application.featuretask
 
+import skillbill.ports.workflow.gitops.model.WorkflowGitOperationResult
 import skillbill.goalrunner.model.UNADDRESSED_FINDING_REJECTED_DISPOSITION
 import skillbill.ports.workflow.gitops.captureIndexState
 import skillbill.ports.workflow.gitops.stagePaths
@@ -15,6 +16,7 @@ object FeatureTaskRuntimeRunLoopRepairReceipt {
   ): String? = runCatching {
     runLoop.goalContinuationRecorder.updateReviewState(
       runLoop.request.workflowId,
+      runLoop.request.dbPathOverride,
     ) { state ->
       state.upsertRepairReceipt(receipt)
     }
@@ -106,7 +108,7 @@ object FeatureTaskRuntimeRunLoopRepairReceipt {
   fun refutedCarriedFindingIds(runLoop: FeatureTaskRuntimeRunLoop, reviewState: GoalSubtaskReviewState): Set<String> {
     val passNumber = reviewState.passResults.lastOrNull()?.passNumber ?: return emptySet()
     return runCatching {
-      runLoop.recorder.fetchUnaddressedLedger(runLoop.request.workflowId)
+      runLoop.recorder.fetchUnaddressedLedger(runLoop.request.workflowId, runLoop.request.dbPathOverride)
         .asSequence()
         .filter { finding -> finding.reviewPassNumber == passNumber }
         .filter { finding -> finding.verificationDisposition == UNADDRESSED_FINDING_REJECTED_DISPOSITION }
@@ -211,7 +213,7 @@ object FeatureTaskRuntimeRunLoopRepairReceipt {
     val ownedPaths = args.ownedPaths
     val blockedReason = args.blockedReason
     val snapshot = runLoop.phaseGates.gitOperations.captureIndexState(runLoop.request.repoRoot, ownedPaths)
-    if (!snapshot.ok) {
+    if (snapshot !is WorkflowGitOperationResult.Ok) {
       return FeatureTaskRuntimeRunLoopCheckpoint.blockCheckpoint(
         runLoop,
         precedingPhaseId,
@@ -221,9 +223,9 @@ object FeatureTaskRuntimeRunLoopRepairReceipt {
       )
     }
     val parentSha = runLoop.phaseGates.gitOperations.headCommitSha(runLoop.request.repoRoot)
-      .takeIf { it.ok }?.value?.trim()?.takeIf(String::isNotBlank)
+      .takeIf { it is WorkflowGitOperationResult.Ok }?.value?.trim()?.takeIf(String::isNotBlank)
     val staged = runLoop.phaseGates.gitOperations.stagePaths(runLoop.request.repoRoot, ownedPaths)
-    if (!staged.ok) {
+    if (staged !is WorkflowGitOperationResult.Ok) {
       return blockCheckpointAfterIndexMutation(runLoop, args, staged.error, snapshot.value.orEmpty())
     }
     val subtaskIdentity = FeatureTaskRuntimeRunLoopCheckpoint.subtaskCommitIdentity(runLoop)
@@ -238,7 +240,7 @@ object FeatureTaskRuntimeRunLoopRepairReceipt {
       ),
     )
     val commit = FeatureTaskRuntimeRunLoopCheckpoint.writeSubtaskCommit(runLoop, branch, message, subtaskIdentity)
-    if (!commit.ok) {
+    if (commit !is WorkflowGitOperationResult.Ok) {
       return blockCheckpointAfterIndexMutation(runLoop, args, commit.error, snapshot.value.orEmpty())
     }
     return FeatureTaskRuntimeRunLoopCheckpoint.recordCheckpointIdentity(

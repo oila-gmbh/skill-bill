@@ -1,7 +1,5 @@
 package skillbill.application.featuretask
 
-import skillbill.agent.model.AgentId
-
 import skillbill.application.featuretask.model.FeatureTaskRuntimeProducerOutputRead
 import skillbill.application.featuretask.model.ProducerOutputQueryArgs
 import skillbill.ports.diagnostics.model.ProducerOutputEvidence
@@ -192,6 +190,7 @@ object FeatureTaskRuntimeRunLoopRecordRejection {
           phaseId = output.phaseId,
           attempt = output.iteration.coerceAtLeast(1),
           agentId = agentId,
+          dbOverride = runLoop.request.dbPathOverride,
           generation = state.evidenceGeneration(output.phaseId),
         ),
       )

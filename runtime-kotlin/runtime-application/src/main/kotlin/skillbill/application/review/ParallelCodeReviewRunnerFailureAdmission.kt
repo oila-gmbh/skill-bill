@@ -1,5 +1,5 @@
 package skillbill.application.review
-import skillbill.agent.model.AgentId
+
 import skillbill.application.agentoutput.agentFailureExcerpt
 import skillbill.application.review.model.ReviewSpecialistLaunchRequest
 import skillbill.ports.agentrun.model.AgentRunLaunchFacts
@@ -124,7 +124,7 @@ internal fun parseLaneRegisterSeam(
   throw ReviewRegisterParseSeamException(seam = INLINE_FINDING_PARSE_SEAM, lane = lane, cause = thrown)
 }
 
-internal fun parallelCodeReviewNoOpResumeOutcome(agentId: AgentId) = ParallelReviewLaneOutcome(
+internal fun parallelCodeReviewNoOpResumeOutcome(agentId: String) = ParallelReviewLaneOutcome(
   success = true,
   rawOutput = "",
   accounting = ReviewLaneAccounting(

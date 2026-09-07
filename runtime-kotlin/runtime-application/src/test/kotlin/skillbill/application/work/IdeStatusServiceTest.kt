@@ -1,4 +1,5 @@
 package skillbill.application.work
+
 import skillbill.application.goalrunner.goalRepositoryIdentity
 import skillbill.application.idestatus.model.IdeStatusCurrentPhaseExecutionKind
 import skillbill.application.idestatus.model.IdeStatusFreshness
@@ -14,7 +15,6 @@ import skillbill.ports.work.model.WorkItemKind
 import skillbill.ports.workflow.model.FeatureTaskExecutionIdentity
 import skillbill.ports.workflow.model.FeatureTaskRouteScope
 import skillbill.ports.workflow.model.FeatureTaskWorkflowMode
-import skillbill.workflow.engine.model.WorkflowId
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_RECORDS_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_RUN_INVARIANTS_ARTIFACT_KEY
@@ -137,7 +137,7 @@ class IdeStatusServiceTest {
     workflows.saveFeatureImplementWorkflow(runtimeRecord("w-foreign", "2026-08-06T11:00:00Z"))
     workflows.saveFeatureTaskExecutionIdentity(
       FeatureTaskExecutionIdentity(
-        workflowId = WorkflowId("w-foreign"),
+        workflowId = "w-foreign",
         normalizedIssueKey = "SKILL-148",
         repositoryIdentity = "repo-root-realpath-v1:/other-repo",
         governedSpecPath = "spec.md",

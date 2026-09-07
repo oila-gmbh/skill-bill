@@ -5,15 +5,15 @@ import java.nio.file.Path
 
 internal object NoopWorkflowGitBranchOperations : WorkflowGitBranchOperations {
   override fun checkoutBranch(repoRoot: Path, branch: String, baseBranch: String?): WorkflowGitOperationResult {
-    return WorkflowGitOperationResult(status = "ok", value = branch)
+    return WorkflowGitOperationResult.Ok(value = branch)
   }
 
   override fun branchExists(repoRoot: Path, branch: String): WorkflowGitOperationResult {
-    return WorkflowGitOperationResult(status = "ok", value = "false")
+    return WorkflowGitOperationResult.Ok(value = "false")
   }
 
   override fun currentBranch(repoRoot: Path): WorkflowGitOperationResult {
-    return WorkflowGitOperationResult(status = "ok", value = "")
+    return WorkflowGitOperationResult.Ok(value = "")
   }
 
   override fun validateBranchBase(
@@ -21,6 +21,6 @@ internal object NoopWorkflowGitBranchOperations : WorkflowGitBranchOperations {
     branch: String,
     expectedBaseBranch: String,
   ): WorkflowGitOperationResult {
-    return WorkflowGitOperationResult(status = "ok", value = expectedBaseBranch)
+    return WorkflowGitOperationResult.Ok(value = expectedBaseBranch)
   }
 }

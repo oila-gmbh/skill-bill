@@ -1,4 +1,5 @@
 package skillbill.infrastructure.sqlite.goalrunner
+
 import skillbill.db.decomposition.decodeArtifacts
 import skillbill.db.goalrunner.featureTaskRecordForLegacyControls
 import skillbill.db.goalrunner.migrateLegacyGoalRunnerControls
@@ -9,67 +10,77 @@ import skillbill.ports.goalrunner.runner.model.GoalRunnerReviewPolicy
 import skillbill.ports.workflow.get
 import skillbill.ports.workflow.model.WorkflowFamily
 import skillbill.review.context.model.CodeReviewExecutionMode
-import skillbill.workflow.engine.model.WorkflowId
 
 internal class WorkflowGoalRunnerManifestReviewOpsImpl(
   private val ctx: WorkflowGoalRunnerManifestStoreContext,
 ) : GoalRunnerManifestReviewCommands {
-  override fun reviewMode(parentWorkflowId: String): CodeReviewExecutionMode? = ctx.database.read { unitOfWork ->
-    unitOfWork.goalRunnerControls.reviewPolicy(parentWorkflowId)?.codeReviewMode
-      ?: featureTaskRecordForLegacyControls(unitOfWork.workflowStates, parentWorkflowId)
-        ?.let { record -> reviewPolicyFromLegacyArtifacts(decodeArtifacts(record.artifactsJson))?.codeReviewMode }
+  override fun reviewMode(parentWorkflowId: String, dbPathOverride: String?): CodeReviewExecutionMode? =
+    ctx.database.read(dbPathOverride) { unitOfWork ->
+      unitOfWork.goalRunnerControls.reviewPolicy(parentWorkflowId)?.codeReviewMode
+        ?: featureTaskRecordForLegacyControls(unitOfWork.workflowStates, parentWorkflowId)
+          ?.let { record -> reviewPolicyFromLegacyArtifacts(decodeArtifacts(record.artifactsJson))?.codeReviewMode }
+    }
+  override fun persistReviewMode(
+    parentWorkflowId: String,
+    mode: CodeReviewExecutionMode,
+    dbPathOverride: String?,
+  ): CodeReviewExecutionMode = ctx.database.transaction(dbPathOverride) { unitOfWork ->
+    val record = WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, parentWorkflowId)
+      ?: error("Goal parent workflow '$parentWorkflowId' no longer exists.")
+    migrateLegacyGoalRunnerControls(unitOfWork, record)
+    val existing = unitOfWork.goalRunnerControls.reviewPolicy(parentWorkflowId)?.codeReviewMode
+    if (existing != null) {
+      ctx.parentProjection.rewrite(unitOfWork, record)
+      existing
+    } else {
+      unitOfWork.goalRunnerControls.persistReviewPolicy(
+        parentWorkflowId,
+        GoalRunnerReviewPolicy(codeReviewMode = mode),
+      )
+      ctx.parentProjection.rewrite(unitOfWork, record)
+      mode
+    }
   }
-  override fun persistReviewMode(parentWorkflowId: String, mode: CodeReviewExecutionMode): CodeReviewExecutionMode =
-    ctx.database.transaction { unitOfWork ->
-      val record = WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, WorkflowId(parentWorkflowId))
-        ?: error("Goal parent workflow '$parentWorkflowId' no longer exists.")
-      migrateLegacyGoalRunnerControls(unitOfWork, record)
-      val existing = unitOfWork.goalRunnerControls.reviewPolicy(parentWorkflowId)?.codeReviewMode
-      if (existing != null) {
-        ctx.parentProjection.rewrite(unitOfWork, record)
-        existing
-      } else {
-        unitOfWork.goalRunnerControls.persistReviewPolicy(
-          parentWorkflowId,
-          GoalRunnerReviewPolicy(codeReviewMode = mode),
-        )
-        ctx.parentProjection.rewrite(unitOfWork, record)
-        mode
-      }
+  override fun reviewPolicy(parentWorkflowId: String, dbPathOverride: String?): GoalRunnerReviewPolicy? =
+    ctx.database.read(dbPathOverride) { unitOfWork ->
+      unitOfWork.goalRunnerControls.reviewPolicy(parentWorkflowId)
+        ?: featureTaskRecordForLegacyControls(unitOfWork.workflowStates, parentWorkflowId)
+          ?.let { record -> reviewPolicyFromLegacyArtifacts(decodeArtifacts(record.artifactsJson)) }
     }
-  override fun reviewPolicy(parentWorkflowId: String): GoalRunnerReviewPolicy? = ctx.database.read { unitOfWork ->
-    unitOfWork.goalRunnerControls.reviewPolicy(parentWorkflowId)
-      ?: featureTaskRecordForLegacyControls(unitOfWork.workflowStates, parentWorkflowId)
-        ?.let { record -> reviewPolicyFromLegacyArtifacts(decodeArtifacts(record.artifactsJson)) }
+  override fun persistReviewPolicy(
+    parentWorkflowId: String,
+    policy: GoalRunnerReviewPolicy,
+    dbPathOverride: String?,
+  ): GoalRunnerReviewPolicy = ctx.database.transaction(dbPathOverride) { unitOfWork ->
+    val record = WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, parentWorkflowId)
+      ?: error("Goal parent workflow '$parentWorkflowId' no longer exists.")
+    migrateLegacyGoalRunnerControls(unitOfWork, record)
+    val existing = unitOfWork.goalRunnerControls.reviewPolicy(parentWorkflowId)
+    if (existing == policy) {
+      ctx.parentProjection.rewrite(unitOfWork, record)
+      existing
+    } else {
+      unitOfWork.goalRunnerControls.persistReviewPolicy(parentWorkflowId, policy)
+      ctx.parentProjection.rewrite(unitOfWork, record)
+      policy
+    }
   }
-  override fun persistReviewPolicy(parentWorkflowId: String, policy: GoalRunnerReviewPolicy): GoalRunnerReviewPolicy =
-    ctx.database.transaction { unitOfWork ->
-      val record = WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, WorkflowId(parentWorkflowId))
-        ?: error("Goal parent workflow '$parentWorkflowId' no longer exists.")
-      migrateLegacyGoalRunnerControls(unitOfWork, record)
-      val existing = unitOfWork.goalRunnerControls.reviewPolicy(parentWorkflowId)
-      if (existing == policy) {
-        ctx.parentProjection.rewrite(unitOfWork, record)
-        existing
-      } else {
-        unitOfWork.goalRunnerControls.persistReviewPolicy(parentWorkflowId, policy)
-        ctx.parentProjection.rewrite(unitOfWork, record)
-        policy
-      }
+  override fun outOfBandAcceptances(
+    parentWorkflowId: String,
+    dbPathOverride: String?,
+  ): Map<Int, GoalRunnerOutOfBandAcceptance> = ctx.database.read(dbPathOverride) { unitOfWork ->
+    unitOfWork.goalRunnerControls.outOfBandAcceptances(parentWorkflowId).ifEmpty {
+      featureTaskRecordForLegacyControls(unitOfWork.workflowStates, parentWorkflowId)
+        ?.let { record -> outOfBandAcceptancesFromLegacyArtifacts(decodeArtifacts(record.artifactsJson)) }
+        .orEmpty()
     }
-  override fun outOfBandAcceptances(parentWorkflowId: String): Map<Int, GoalRunnerOutOfBandAcceptance> =
-    ctx.database.read { unitOfWork ->
-      unitOfWork.goalRunnerControls.outOfBandAcceptances(parentWorkflowId).ifEmpty {
-        featureTaskRecordForLegacyControls(unitOfWork.workflowStates, parentWorkflowId)
-          ?.let { record -> outOfBandAcceptancesFromLegacyArtifacts(decodeArtifacts(record.artifactsJson)) }
-          .orEmpty()
-      }
-    }
+  }
   override fun persistOutOfBandAcceptance(
     parentWorkflowId: String,
     acceptance: GoalRunnerOutOfBandAcceptance,
-  ): GoalRunnerOutOfBandAcceptance = ctx.database.transaction { unitOfWork ->
-    val record = WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, WorkflowId(parentWorkflowId))
+    dbPathOverride: String?,
+  ): GoalRunnerOutOfBandAcceptance = ctx.database.transaction(dbPathOverride) { unitOfWork ->
+    val record = WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, parentWorkflowId)
       ?: error("Goal parent workflow '$parentWorkflowId' no longer exists.")
     migrateLegacyGoalRunnerControls(unitOfWork, record)
     unitOfWork.goalRunnerControls.persistOutOfBandAcceptance(parentWorkflowId, acceptance)

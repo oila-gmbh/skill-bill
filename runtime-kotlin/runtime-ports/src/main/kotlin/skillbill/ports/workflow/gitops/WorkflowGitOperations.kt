@@ -27,7 +27,7 @@ fun WorkflowGitOperations.deleteCheckpointRefsUnderPrefix(
   subtaskRefPrefix: String,
 ): WorkflowGitOperationResult {
   val listed = listCheckpointRefs(repoRoot, subtaskRefPrefix)
-  if (!listed.ok) return listed
+  if (listed !is WorkflowGitOperationResult.Ok) return listed
   val refs = listed.value.orEmpty()
     .split('\u0000')
     .filter(String::isNotBlank)
@@ -35,9 +35,9 @@ fun WorkflowGitOperations.deleteCheckpointRefsUnderPrefix(
     .mapNotNull { parts -> parts.getOrNull(1)?.trim()?.takeIf(String::isNotBlank) }
   refs.forEach { refName ->
     val deleted = deleteCheckpointRef(repoRoot, namespacePrefix, refName)
-    if (!deleted.ok) return deleted
+    if (deleted !is WorkflowGitOperationResult.Ok) return deleted
   }
-  return WorkflowGitOperationResult(status = "ok", value = refs.size.toString())
+  return WorkflowGitOperationResult.Ok(value = refs.size.toString())
 }
 
 fun WorkflowGitOperations.amendHeadCommit(

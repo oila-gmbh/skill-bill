@@ -1,7 +1,7 @@
 package skillbill.review
+
 import skillbill.review.model.ImportedReview
 import skillbill.review.model.ReviewIssueCategory
-import skillbill.review.model.ReviewRunId
 
 object ReviewParser {
   fun parseReview(text: String): ImportedReview {
@@ -20,7 +20,7 @@ object ReviewParser {
     val rawRoutedSkill = extractSummaryValue(text, "routed_skill")
     val specialistReviews = extractSpecialistReviews(text)
     return ImportedReview(
-      reviewRunId = ReviewRunId(reviewRunId),
+      reviewRunId = reviewRunId,
       reviewSessionId = reviewSessionId,
       rawText = text,
       routedSkill = rawRoutedSkill,

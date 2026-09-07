@@ -1,25 +1,12 @@
 package skillbill.db.workflow
+
 import skillbill.error.InvalidWorkflowStateSchemaError
 import skillbill.ports.workflow.model.FeatureTaskWorkflowMode
 import skillbill.ports.workflow.model.WorkflowStateRecord
-import skillbill.workflow.decomposition.model.IssueKey
-import skillbill.workflow.engine.model.SessionId
-import skillbill.workflow.engine.model.WorkflowId
 import java.sql.Connection
 import java.sql.ResultSet
 
 internal object WorkflowStateSqlReads
-
-internal fun Connection.getWorkflowRow(tableName: String, workflowId: WorkflowId): WorkflowStateRecord? =
-  getWorkflowRow(tableName, workflowId.value)
-
-internal fun Connection.getFeatureTaskWorkflowRow(workflowId: WorkflowId): WorkflowStateRecord? =
-  getFeatureTaskWorkflowRow(workflowId.value)
-
-internal fun Connection.getFeatureTaskWorkflowRowAsMode(
-  workflowId: WorkflowId,
-  mode: FeatureTaskWorkflowMode,
-): WorkflowStateRecord? = getFeatureTaskWorkflowRowAsMode(workflowId.value, mode)
 
 internal fun Connection.getWorkflowRow(tableName: String, workflowId: String): WorkflowStateRecord? = prepareStatement(
   """
@@ -113,7 +100,7 @@ internal fun Connection.getWorkflowRows(tableName: String, workflowIds: Set<Stri
       buildMap {
         while (resultSet.next()) {
           val row = resultSet.toWorkflowStateRecord()
-          put(row.workflowId.value, row)
+          put(row.workflowId, row)
         }
       }
     }
@@ -156,7 +143,7 @@ internal fun Connection.getFeatureTaskWorkflowRows(
       buildMap {
         while (resultSet.next()) {
           val row = resultSet.toFeatureTaskWorkflowStateRecord()
-          put(row.workflowId.value, row)
+          put(row.workflowId, row)
         }
       }
     }
@@ -254,15 +241,15 @@ internal fun Connection.listFeatureTaskWorkflowRows(
 }
 
 internal fun ResultSet.toWorkflowStateRecord(): WorkflowStateRecord = WorkflowStateRecord(
-  workflowId = WorkflowId(getString("workflow_id")),
-  sessionId = SessionId(getString("session_id")),
+  workflowId = getString("workflow_id"),
+  sessionId = getString("session_id"),
   workflowName = getString("workflow_name"),
   contractVersion = getString("contract_version"),
   workflowStatus = getString("workflow_status"),
   currentStepId = getString("current_step_id"),
   stepsJson = getString("steps_json"),
   artifactsJson = getString("artifacts_json"),
-  issueKey = getString("issue_key")?.let(::IssueKey),
+  issueKey = getString("issue_key"),
   startedAt = getString("started_at"),
   updatedAt = getString("updated_at"),
   stateEnteredAt = getString("state_entered_at"),
@@ -284,15 +271,15 @@ internal fun ResultSet.toFeatureTaskWorkflowStateRecord(): WorkflowStateRecord {
       "Feature-task workflow '$workflowId' has unknown mode '$rawMode'.",
     )
   return WorkflowStateRecord(
-    workflowId = WorkflowId(workflowId),
-    sessionId = SessionId(getString("session_id")),
+    workflowId = workflowId,
+    sessionId = getString("session_id"),
     workflowName = workflowName,
     contractVersion = getString("contract_version"),
     workflowStatus = getString("workflow_status"),
     currentStepId = getString("current_step_id"),
     stepsJson = getString("steps_json"),
     artifactsJson = getString("artifacts_json"),
-    issueKey = getString("issue_key")?.let(::IssueKey),
+    issueKey = getString("issue_key"),
     startedAt = getString("started_at"),
     updatedAt = getString("updated_at"),
     stateEnteredAt = getString("state_entered_at"),

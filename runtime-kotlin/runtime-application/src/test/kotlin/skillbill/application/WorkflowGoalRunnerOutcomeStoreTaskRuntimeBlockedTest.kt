@@ -1,11 +1,9 @@
 package skillbill.application
+
 import skillbill.application.decomposition.decodeArtifacts
 import skillbill.application.goalrunner.testWorkflowGoalRunnerOutcomeStore
 import skillbill.goalrunner.model.GoalRunnerTerminalStatus
 import skillbill.ports.goalrunner.runner.model.GoalRunnerReconcileGate
-import skillbill.workflow.decomposition.model.IssueKey
-import skillbill.workflow.decomposition.model.SubtaskId
-import skillbill.workflow.engine.model.WorkflowId
 import java.nio.file.Path
 import java.time.Instant
 import kotlin.test.Test
@@ -21,7 +19,7 @@ class WorkflowGoalRunnerOutcomeStoreTaskRuntimeBlockedTest {
     workflows.saveFeatureTaskRuntimeWorkflow(
       blockedContinuationRecord(
         BlockedContinuationRecordFixture(
-          workflowId = WorkflowId("wftr-standing-block"),
+          workflowId = "wftr-standing-block",
           workflowStatus = "blocked",
           stepStatus = "blocked",
           blockedReasonArtifact = reason,
@@ -47,7 +45,7 @@ class WorkflowGoalRunnerOutcomeStoreTaskRuntimeBlockedTest {
     workflows.saveFeatureTaskRuntimeWorkflow(
       blockedContinuationRecord(
         BlockedContinuationRecordFixture(
-          workflowId = WorkflowId("wftr-standing-nested-reason"),
+          workflowId = "wftr-standing-nested-reason",
           workflowStatus = "blocked",
           stepStatus = "blocked",
           blockedReasonArtifact = null,
@@ -66,9 +64,9 @@ class WorkflowGoalRunnerOutcomeStoreTaskRuntimeBlockedTest {
 
     val recovered = requireNotNull(
       store.recoverAndPersistTerminalOutcome(
-        workflowId = WorkflowId("wftr-standing-nested-reason"),
-        issueKey = IssueKey("SKILL-176.4"),
-        subtaskId = SubtaskId(4),
+        workflowId = "wftr-standing-nested-reason",
+        issueKey = "SKILL-176.4",
+        subtaskId = 4,
         repoRoot = Path.of("."),
         dbPathOverride = null,
       ),
@@ -90,7 +88,7 @@ class WorkflowGoalRunnerOutcomeStoreTaskRuntimeBlockedTest {
     workflows.saveFeatureTaskRuntimeWorkflow(
       blockedContinuationRecord(
         BlockedContinuationRecordFixture(
-          workflowId = WorkflowId("wftr-20260808-175505-c5po"),
+          workflowId = "wftr-20260808-175505-c5po",
           workflowStatus = "running",
           stepStatus = "running",
           blockedReasonArtifact = null,
@@ -113,9 +111,9 @@ class WorkflowGoalRunnerOutcomeStoreTaskRuntimeBlockedTest {
 
     val recovered = requireNotNull(
       store.recoverAndPersistTerminalOutcome(
-        workflowId = WorkflowId("wftr-20260808-175505-c5po"),
-        issueKey = IssueKey("SKILL-176.4"),
-        subtaskId = SubtaskId(4),
+        workflowId = "wftr-20260808-175505-c5po",
+        issueKey = "SKILL-176.4",
+        subtaskId = 4,
         repoRoot = Path.of("."),
         dbPathOverride = null,
       ),
@@ -139,7 +137,7 @@ class WorkflowGoalRunnerOutcomeStoreTaskRuntimeBlockedTest {
     workflows.saveFeatureTaskRuntimeWorkflow(
       blockedContinuationRecord(
         BlockedContinuationRecordFixture(
-          workflowId = WorkflowId("wftr-stale-idempotent"),
+          workflowId = "wftr-stale-idempotent",
           workflowStatus = "running",
           stepStatus = "running",
           blockedReasonArtifact = null,
@@ -154,7 +152,7 @@ class WorkflowGoalRunnerOutcomeStoreTaskRuntimeBlockedTest {
     )
 
     val first = store.reconcileAuthoritativeOutcomes(
-      issueKey = IssueKey("SKILL-176.4"),
+      issueKey = "SKILL-176.4",
       activeWorkflowIds = setOf("wftr-stale-idempotent"),
       gate = GoalRunnerReconcileGate(requireStalenessEvidence = true),
     )
@@ -172,7 +170,7 @@ class WorkflowGoalRunnerOutcomeStoreTaskRuntimeBlockedTest {
     )
 
     val second = store.reconcileAuthoritativeOutcomes(
-      issueKey = IssueKey("SKILL-176.4"),
+      issueKey = "SKILL-176.4",
       activeWorkflowIds = setOf("wftr-stale-idempotent"),
       gate = GoalRunnerReconcileGate(requireStalenessEvidence = true),
     )
@@ -206,9 +204,9 @@ class WorkflowGoalRunnerOutcomeStoreTaskRuntimeBlockedTest {
 
     val recovered = requireNotNull(
       store.recoverAndPersistTerminalOutcome(
-        workflowId = WorkflowId("wftr-complete-no-sha"),
-        issueKey = IssueKey("SKILL-176.4"),
-        subtaskId = SubtaskId(4),
+        workflowId = "wftr-complete-no-sha",
+        issueKey = "SKILL-176.4",
+        subtaskId = 4,
         repoRoot = Path.of("."),
         dbPathOverride = null,
       ),

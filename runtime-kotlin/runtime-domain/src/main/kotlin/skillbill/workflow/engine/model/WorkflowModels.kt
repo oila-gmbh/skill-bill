@@ -28,14 +28,14 @@ data class WorkflowUpdateInput(
    */
   @OpenBoundaryMap("Caller-supplied JSON patch for durable workflow artifacts")
   val artifactsPatch: Map<String, Any?>?,
-  val sessionId: SessionId,
+  val sessionId: String,
   /** Replace the durable artifact map before applying [artifactsPatch]. */
   val replaceArtifacts: Boolean = false,
 )
 
 data class WorkflowStateSnapshot(
-  val workflowId: WorkflowId,
-  val sessionId: SessionId,
+  val workflowId: String,
+  val sessionId: String,
   val workflowName: String,
   val contractVersion: String,
   val workflowStatus: String,

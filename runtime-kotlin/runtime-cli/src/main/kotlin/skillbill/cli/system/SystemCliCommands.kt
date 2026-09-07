@@ -186,7 +186,7 @@ class DoctorCliCommand(
 
   override fun run() {
     if (subject == null) {
-      state.complete(service.doctor().toPayload(), format)
+      state.complete(service.doctor(inputs.dbPathOverride).toPayload(), format)
     } else {
       state.result = retiredSubjectResult(subject.orEmpty(), skillName.orEmpty(), repoRoot, content)
     }

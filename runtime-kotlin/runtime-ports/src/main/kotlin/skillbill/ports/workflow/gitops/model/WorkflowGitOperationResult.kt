@@ -3,30 +3,36 @@ package skillbill.ports.workflow.gitops.model
 sealed interface WorkflowGitOperationResult {
   val value: String
   val error: String
-  val ok: Boolean
-    get() = this is WorkflowGitOperationResult.Ok
+  val wireValue: String
 
-  fun recordsNothingToCommit(): Boolean {
-    val text = "$error $value"
-    return NOTHING_TO_COMMIT_MARKERS.any { marker -> marker in text }
-  }
-
-  data class Ok(override val value: String = "") : WorkflowGitOperationResult {
-    override val error: String = ""
+  data class Ok(
+    override val value: String = "",
+    override val error: String = "",
+  ) : WorkflowGitOperationResult {
+    override val wireValue: String = "ok"
   }
 
   data class Failed(
-    override val error: String,
+    override val error: String = "",
     override val value: String = "",
-  ) : WorkflowGitOperationResult
+  ) : WorkflowGitOperationResult {
+    override val wireValue: String = "error"
+  }
 
   companion object {
-    operator fun invoke(status: String, value: String = "", error: String = ""): WorkflowGitOperationResult =
-      if (status == OK_STATUS) Ok(value) else Failed(error.ifBlank { status }, value)
+    fun fromWire(status: String, value: String = "", error: String = ""): WorkflowGitOperationResult =
+      when (status) {
+        "ok" -> Ok(value = value, error = error)
+        "error" -> Failed(error = error, value = value)
+        else -> kotlin.error("Unknown workflow Git operation result '$status'.")
+      }
   }
 }
 
-private const val OK_STATUS = "ok"
+fun WorkflowGitOperationResult.recordsNothingToCommit(): Boolean {
+  val text = "$error $value"
+  return NOTHING_TO_COMMIT_MARKERS.any { marker -> marker in text }
+}
 
 private val NOTHING_TO_COMMIT_MARKERS = listOf(
   "no changes added to commit",

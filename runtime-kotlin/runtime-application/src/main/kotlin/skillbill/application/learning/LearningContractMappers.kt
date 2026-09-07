@@ -1,7 +1,5 @@
 package skillbill.application.learning
 
-import skillbill.review.model.ReviewRunId
-
 import skillbill.application.learning.model.LearningDeleteResult
 import skillbill.application.learning.model.LearningListResult
 import skillbill.application.learning.model.LearningRecordResult

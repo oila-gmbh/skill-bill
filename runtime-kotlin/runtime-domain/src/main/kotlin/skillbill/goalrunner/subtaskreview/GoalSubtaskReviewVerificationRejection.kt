@@ -9,7 +9,6 @@ import skillbill.goalrunner.model.normalizedUnaddressedFindingCategory
 import skillbill.goalrunner.model.normalizedUnaddressedFindingSeverity
 import skillbill.goalrunner.subtaskreview.model.UnaddressedFindingLedgerScope
 import skillbill.review.model.ReviewFindingVerdict
-import skillbill.review.model.ReviewRunId
 import skillbill.text.Utf8Text
 
 object GoalSubtaskReviewVerificationRejection {
@@ -34,7 +33,7 @@ object GoalSubtaskReviewVerificationRejection {
         RejectedVerificationFindingInput(
           entry = entry,
           index = index,
-          reviewRunId = reviewRunId?.let(::ReviewRunId),
+          reviewRunId = reviewRunId,
           reviewFindings = reviewFindings,
           reviewById = reviewById,
           scope = scope,

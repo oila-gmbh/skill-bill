@@ -1,4 +1,6 @@
 package skillbill.application.workflow
+
+import skillbill.ports.workflow.gitops.model.WorkflowGitOperationResult
 import skillbill.application.decomposition.DECOMPOSITION_RUNTIME_ARTIFACT_KEY
 import skillbill.application.decomposition.decodeArtifacts
 import skillbill.application.decomposition.encodeDecompositionManifestMap
@@ -12,10 +14,7 @@ import skillbill.workflow.decomposition.DecompositionManifestValidator
 import skillbill.workflow.decomposition.model.DecompositionContinuationSelection
 import skillbill.workflow.decomposition.model.DecompositionManifest
 import skillbill.workflow.decomposition.model.DecompositionSubtask
-import skillbill.workflow.decomposition.model.IssueKey
-import skillbill.workflow.decomposition.model.SubtaskId
 import skillbill.workflow.engine.WorkflowEngine
-import skillbill.workflow.engine.model.WorkflowId
 import skillbill.workflow.engine.model.WorkflowStateSnapshot
 import java.nio.file.Path
 
@@ -57,7 +56,7 @@ internal fun WorkflowEngine.advanceCompletedSubtasks(request: AdvanceCompletedSu
 
 internal fun commitCompletedSubtask(
   manifest: DecompositionManifest,
-  subtaskId: SubtaskId,
+  subtaskId: Int,
   subtaskName: String,
   gitOperations: WorkflowGitOperations,
   repoRootProvider: () -> Path,
@@ -68,12 +67,12 @@ internal fun commitCompletedSubtask(
   } else {
     null
   }
-  return if (checkout?.ok == false) {
+  return if (checkout is WorkflowGitOperationResult.Failed) {
     CommitAdvanceResult(manifest, checkout.error.ifBlank { "Git branch checkout failed." })
   } else {
     val commitMessage = "${manifest.issueKey} subtask $subtaskId: $subtaskName"
     val commit = gitOperations.createCommit(repoRootProvider(), commitMessage)
-    if (commit.ok) {
+    if (commit is WorkflowGitOperationResult.Ok) {
       CommitAdvanceResult(manifest.withCommittedSubtask(subtaskId, commit.value))
     } else {
       CommitAdvanceResult(manifest, commit.error.ifBlank { "Git commit failed." })
@@ -100,14 +99,14 @@ fun WorkflowEngine.checkoutAndValidateBranch(request: CheckoutAndValidateBranchR
       branchPlan.branch,
       branchPlan.baseBranch,
     )
-    errorResult = checkout.takeUnless { it.ok }?.let { blockedBranchStartResult(it.error) }
+    errorResult = checkout.takeUnless { it is WorkflowGitOperationResult.Ok }?.let { blockedBranchStartResult(it.error) }
     if (errorResult == null && branchPlan.validateBase) {
       errorResult = request.gitOperations.validateBranchBase(
         request.repoRootProvider(),
         branchPlan.branch,
         branchPlan.baseBranch,
       )
-        .takeUnless { it.ok }
+        .takeUnless { it is WorkflowGitOperationResult.Ok }
         ?.let { blockedBranchStartResult(it.error) }
     }
   }
@@ -172,13 +171,12 @@ fun terminalSubtaskResult(
   outcome = selection.subtask.toGoalContinuationOutcome(manifest.issueKey),
 )
 
-fun DecompositionSubtask.toGoalContinuationOutcome(issueKey: IssueKey): GoalContinuationOutcome =
-  GoalContinuationOutcome(
-    issueKey = issueKey,
-    subtaskId = id,
-    status = status,
-    workflowId = workflowId ?: WorkflowId(""),
-    commitSha = commitSha,
-    blockedReason = blockedReason,
-    lastResumableStep = lastResumableStep,
-  )
+fun DecompositionSubtask.toGoalContinuationOutcome(issueKey: String): GoalContinuationOutcome = GoalContinuationOutcome(
+  issueKey = issueKey,
+  subtaskId = id,
+  status = status,
+  workflowId = workflowId.orEmpty(),
+  commitSha = commitSha,
+  blockedReason = blockedReason,
+  lastResumableStep = lastResumableStep,
+)

@@ -1,4 +1,5 @@
 package skillbill.application
+
 import skillbill.application.review.ReviewService
 import skillbill.application.review.model.GoalStatsResult
 import skillbill.application.telemetry.toRecord
@@ -13,9 +14,6 @@ import skillbill.ports.workflow.WorkflowStatsRepository
 import skillbill.review.model.GoalBlockedSubtaskSummary
 import skillbill.review.model.GoalRunSummary
 import skillbill.review.model.GoalWorkflowStats
-import skillbill.workflow.decomposition.model.IssueKey
-import skillbill.workflow.decomposition.model.SubtaskId
-import skillbill.workflow.engine.model.WorkflowId
 import java.nio.file.Files
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -72,8 +70,8 @@ class ApplicationPersistencePortGoalTest {
         averageAttemptCount = 1.25,
         mostRecentRun =
         GoalRunSummary(
-          workflowId = WorkflowId("wf-goal-9"),
-          issueKey = IssueKey("SKILL-66"),
+          workflowId = "wf-goal-9",
+          issueKey = "SKILL-66",
           featureName = "goal telemetry",
           status = "completed",
           startedAt = "2026-06-04T10:00:00Z",
@@ -93,9 +91,9 @@ class ApplicationPersistencePortGoalTest {
   @Test
   fun `review service goalStats returns GoalStatsResult from seeded repository`() {
     val blockedSummary = GoalBlockedSubtaskSummary(
-      subtaskId = SubtaskId(2),
+      subtaskId = 2,
       subtaskName = "persistence",
-      issueKey = IssueKey("SKILL-66"),
+      issueKey = "SKILL-66",
       blockedReason = "validation failed",
       attemptCount = 3,
     )
@@ -138,9 +136,9 @@ class ApplicationPersistencePortGoalTest {
   @Test
   fun `goal stats all-blocked store has blocked rate 1 and non-empty topBlockedSubtasks`() {
     val blockedEntry = GoalBlockedSubtaskSummary(
-      subtaskId = SubtaskId(1),
+      subtaskId = 1,
       subtaskName = "implement",
-      issueKey = IssueKey("SKILL-99"),
+      issueKey = "SKILL-99",
       blockedReason = "compile error",
       attemptCount = 2,
     )
@@ -195,8 +193,8 @@ class ApplicationPersistencePortGoalTest {
   @Test
   fun `goal stats single-run store has non-null mostRecentRun and totalRuns equals 1`() {
     val singleRunSummary = GoalRunSummary(
-      workflowId = WorkflowId("wf-single"),
-      issueKey = IssueKey("SKILL-1"),
+      workflowId = "wf-single",
+      issueKey = "SKILL-1",
       featureName = "single run feature",
       status = "completed",
       startedAt = "2026-06-05T10:00:00Z",

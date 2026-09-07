@@ -1,4 +1,5 @@
 package skillbill.application.featuretask
+
 import skillbill.application.decomposition.decodeArtifacts
 import skillbill.application.featuretask.model.FeatureTaskRuntimePhaseLaunchBriefing
 import skillbill.application.featuretask.model.FeatureTaskRuntimeProjectionRejection
@@ -7,7 +8,6 @@ import skillbill.error.InvalidFeatureTaskRuntimeHandoffProjectionError
 import skillbill.ports.db.DatabaseSessionFactory
 import skillbill.ports.persistence.UnitOfWork
 import skillbill.ports.workflow.get
-import skillbill.workflow.engine.model.WorkflowId
 import skillbill.workflow.taskruntime.FeatureTaskRuntimeHandoffEnvelopeValidator
 import skillbill.workflow.taskruntime.FeatureTaskRuntimeHandoffFoundationValidator
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_DELIVERED_PROJECTIONS_ARTIFACT_KEY
@@ -25,10 +25,11 @@ class FeatureTaskRuntimePhaseBriefingRecorder(
   val handoffFoundationValidator: FeatureTaskRuntimeHandoffFoundationValidator,
 ) : FeatureTaskRuntimePhaseBriefingApi {
   override fun recordPhaseBriefing(
-    workflowId: WorkflowId,
+    workflowId: String,
     briefing: FeatureTaskRuntimePhaseLaunchBriefing,
+    dbOverride: String?,
     sharedEvidenceMeasurement: FeatureTaskRuntimeSharedEvidenceMeasurement?,
-  ): Boolean = database.transaction { unitOfWork ->
+  ): Boolean = database.transaction(dbOverride) { unitOfWork ->
     val record = WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, workflowId)
       ?: return@transaction false
     handoffEnvelopeValidator.validateEnvelope(briefing.handoffEnvelope.toEnvelopeMap(), workflowId)
@@ -63,11 +64,12 @@ class FeatureTaskRuntimePhaseBriefingRecorder(
   }
 
   override fun recordProjectionRejection(
-    workflowId: WorkflowId,
+    workflowId: String,
     consumerPhaseId: String,
     error: InvalidFeatureTaskRuntimeHandoffProjectionError,
     repositoryCheckpointFingerprint: String?,
-  ): Boolean = database.transaction { unitOfWork ->
+    dbOverride: String?,
+  ): Boolean = database.transaction(dbOverride) { unitOfWork ->
     recordProjectionRejectionMeasurement(
       unitOfWork,
       FeatureTaskRuntimeProjectionRejection(
@@ -82,10 +84,12 @@ class FeatureTaskRuntimePhaseBriefingRecorder(
     )
   }
 
-  override fun recordProjectionRejection(rejection: FeatureTaskRuntimeProjectionRejection): Boolean =
-    database.transaction { unitOfWork ->
-      recordProjectionRejectionMeasurement(unitOfWork, rejection)
-    }
+  override fun recordProjectionRejection(
+    rejection: FeatureTaskRuntimeProjectionRejection,
+    dbOverride: String?,
+  ): Boolean = database.transaction(dbOverride) { unitOfWork ->
+    recordProjectionRejectionMeasurement(unitOfWork, rejection)
+  }
 
   override fun validateHandoffDeclarations(declarations: List<PhaseHandoffProjectionDeclaration>) {
     declarations.forEach { declaration ->
@@ -95,17 +99,20 @@ class FeatureTaskRuntimePhaseBriefingRecorder(
       )
     }
   }
-  override fun loadPhaseBriefings(workflowId: WorkflowId): Map<String, FeatureTaskRuntimePhaseLaunchBriefing>? =
-    database.read { unitOfWork ->
-      val record = WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, workflowId)
-        ?: return@read null
-      phaseBriefingsFrom(decodeArtifacts(record.artifactsJson)) { envelope ->
-        handoffEnvelopeValidator.validateEnvelope(envelope, workflowId)
-      }
+  override fun loadPhaseBriefings(
+    workflowId: String,
+    dbOverride: String?,
+  ): Map<String, FeatureTaskRuntimePhaseLaunchBriefing>? = database.read(dbOverride) { unitOfWork ->
+    val record = WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, workflowId)
+      ?: return@read null
+    phaseBriefingsFrom(decodeArtifacts(record.artifactsJson)) { envelope ->
+      handoffEnvelopeValidator.validateEnvelope(envelope, workflowId)
     }
+  }
   override fun loadDeliveredProjections(
-    workflowId: WorkflowId,
-  ): Map<String, FeatureTaskRuntimeDeliveredProjectionRecord>? = database.read { unitOfWork ->
+    workflowId: String,
+    dbOverride: String?,
+  ): Map<String, FeatureTaskRuntimeDeliveredProjectionRecord>? = database.read(dbOverride) { unitOfWork ->
     val record = WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, workflowId)
       ?: return@read null
     deliveredProjectionsFrom(
@@ -119,7 +126,7 @@ class FeatureTaskRuntimePhaseBriefingRecorder(
 }
 
 fun FeatureTaskRuntimePhaseBriefingRecorder.nextDeliveredProjectionRecord(
-  workflowId: WorkflowId,
+  workflowId: String,
   briefing: FeatureTaskRuntimePhaseLaunchBriefing,
   deliveredHistory: Map<String, FeatureTaskRuntimeDeliveredProjectionRecord>,
 ): FeatureTaskRuntimeDeliveredProjectionRecord {
@@ -136,7 +143,7 @@ fun FeatureTaskRuntimePhaseBriefingRecorder.nextDeliveredProjectionRecord(
 
 fun FeatureTaskRuntimePhaseBriefingRecorder.recordProjectionMeasurements(
   unitOfWork: UnitOfWork,
-  workflowId: WorkflowId,
+  workflowId: String,
   briefing: FeatureTaskRuntimePhaseLaunchBriefing,
   delivered: FeatureTaskRuntimeDeliveredProjectionRecord,
   artifacts: Map<String, Any?>,

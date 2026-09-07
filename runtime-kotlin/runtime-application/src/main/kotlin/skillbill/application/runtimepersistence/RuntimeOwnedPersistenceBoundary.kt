@@ -11,32 +11,46 @@ class RuntimeOwnedPersistenceBoundary(
   private val database: DatabaseSessionFactory,
   private val diagnostics: RuntimeDiagnostics,
 ) {
-  fun <T> read(block: (UnitOfWork) -> T): T = database.read { unitOfWork -> block(unitOfWork) }
+  fun <T> read(dbOverride: String? = null, block: (UnitOfWork) -> T): T =
+    database.read(dbOverride) { unitOfWork -> block(unitOfWork) }
 
-  fun <T> transaction(block: (UnitOfWork) -> T): T = database.transaction { unitOfWork -> block(unitOfWork) }
+  fun <T> transaction(dbOverride: String? = null, block: (UnitOfWork) -> T): T =
+    database.transaction(dbOverride) { unitOfWork -> block(unitOfWork) }
 
-  fun <T> requiredRead(seam: String, expected: String, block: (UnitOfWork) -> T): T =
+  fun <T> requiredRead(seam: String, expected: String, dbOverride: String? = null, block: (UnitOfWork) -> T): T =
     invokeOrHandle({ fail(seam, expected, "read_error", it) }) {
-      read(block)
+      read(dbOverride, block)
     }
 
-  fun <T> requiredWrite(seam: String, expected: String, block: (UnitOfWork) -> T): T =
+  fun <T> requiredWrite(seam: String, expected: String, dbOverride: String? = null, block: (UnitOfWork) -> T): T =
     invokeOrHandle({ fail(seam, expected, "blocked", it) }) {
-      transaction(block)
+      transaction(dbOverride, block)
     }
 
-  fun <T> optionalRead(seam: String, expected: String, fallback: T, block: (UnitOfWork) -> T): T = invokeOrHandle({
+  fun <T> optionalRead(
+    seam: String,
+    expected: String,
+    fallback: T,
+    dbOverride: String? = null,
+    block: (UnitOfWork) -> T,
+  ): T = invokeOrHandle({
     recordFailure(seam, expected, "degraded", it)
     fallback
   }) {
-    read(block)
+    read(dbOverride, block)
   }
 
-  fun <T> optionalWrite(seam: String, expected: String, fallback: T, block: (UnitOfWork) -> T): T = invokeOrHandle({
+  fun <T> optionalWrite(
+    seam: String,
+    expected: String,
+    fallback: T,
+    dbOverride: String? = null,
+    block: (UnitOfWork) -> T,
+  ): T = invokeOrHandle({
     recordFailure(seam, expected, "degraded", it)
     fallback
   }) {
-    transaction(block)
+    transaction(dbOverride, block)
   }
 
   private inline fun <T> invokeOrHandle(onFailure: (Exception) -> T, block: () -> T): T {

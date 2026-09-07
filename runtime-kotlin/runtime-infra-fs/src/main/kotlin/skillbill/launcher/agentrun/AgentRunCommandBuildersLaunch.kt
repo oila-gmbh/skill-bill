@@ -53,22 +53,26 @@ internal fun goalContinuationCommand(request: SkillRunRequest, agent: InstallAge
 
 internal fun goalContinuationArguments(request: SkillRunRequest, agent: InstallAgent): List<String> {
   val context = requireNotNull(request.goalContinuation)
-  val childWorkflowId = context.childWorkflowId?.takeIf { it.value.isNotBlank() }
-  val assignedWorkflowId = context.assignedWorkflowId?.takeIf { it.value.isNotBlank() }
+  val childWorkflowId = context.childWorkflowId?.takeIf(String::isNotBlank)
+  val assignedWorkflowId = context.assignedWorkflowId?.takeIf(String::isNotBlank)
   return buildList {
     add("skill-bill")
+    request.dbPathOverride?.let { db ->
+      add("--db")
+      add(db)
+    }
     add("feature-task")
     if (childWorkflowId != null) {
       add("resume")
-      add(childWorkflowId.value)
+      add(childWorkflowId)
     } else {
       add("run")
     }
-    add(request.issueKey.value)
+    add(request.issueKey)
     add(context.specPath)
     if (childWorkflowId == null && assignedWorkflowId != null) {
       add("--workflow-id")
-      add(assignedWorkflowId.value)
+      add(assignedWorkflowId)
     }
     addGoalContinuationArguments(context)
     add("--agent")
@@ -82,15 +86,15 @@ internal fun goalContinuationArguments(request: SkillRunRequest, agent: InstallA
 
 internal fun MutableList<String>.addGoalContinuationArguments(context: SkillRunGoalContinuationContext) {
   add("--goal-parent-issue-key")
-  add(context.parentIssueKey.value)
+  add(context.parentIssueKey)
   add("--goal-subtask-id")
-  add(context.subtaskId.value.toString())
+  add(context.subtaskId.toString())
   add("--goal-branch")
   add(context.goalBranch)
   add("--suppress-pr")
-  context.parentWorkflowId?.takeIf { it.value.isNotBlank() }?.let { parentWorkflowId ->
+  context.parentWorkflowId?.takeIf(String::isNotBlank)?.let { parentWorkflowId ->
     add("--goal-parent-workflow-id")
-    add(parentWorkflowId.value)
+    add(parentWorkflowId)
   }
   context.lastResumableStep?.takeIf(String::isNotBlank)?.let { step ->
     add("--goal-last-resumable-step")

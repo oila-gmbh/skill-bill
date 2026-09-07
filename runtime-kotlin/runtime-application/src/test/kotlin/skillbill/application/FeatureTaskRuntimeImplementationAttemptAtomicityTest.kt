@@ -1,7 +1,7 @@
 package skillbill.application
+
 import skillbill.application.featuretask.model.FeatureTaskRuntimePhaseStateRequest
 import skillbill.application.featuretask.model.FeatureTaskRuntimeRunReport
-import skillbill.workflow.engine.model.WorkflowId
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_IMPLEMENTATION_ATTEMPTS_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeImplementationAttemptStatus
 import kotlin.test.Test
@@ -45,7 +45,7 @@ class FeatureTaskRuntimeImplementationAttemptAtomicityTest {
 
     val persisted = harness.recorder.recordIncompleteImplementationAttempt(
       FeatureTaskRuntimePhaseStateRequest(
-        workflowId = WorkflowId("wftr-no-such-workflow"),
+        workflowId = "wftr-no-such-workflow",
         phaseId = "implement",
         status = "running",
         attemptCount = 1,

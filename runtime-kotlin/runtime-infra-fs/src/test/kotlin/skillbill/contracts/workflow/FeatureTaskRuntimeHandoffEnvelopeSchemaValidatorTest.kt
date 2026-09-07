@@ -1,8 +1,8 @@
 package skillbill.contracts.workflow
+
 import skillbill.error.FeatureTaskRuntimeHandoffProjectionFailureKind
 import skillbill.error.InvalidFeatureTaskRuntimeHandoffProjectionError
 import skillbill.infrastructure.fs.FeatureTaskRuntimeHandoffEnvelopeValidatorInfraAdapter
-import skillbill.workflow.engine.model.WorkflowId
 import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertEquals
@@ -13,13 +13,13 @@ class FeatureTaskRuntimeHandoffEnvelopeSchemaValidatorTest {
 
   @Test
   fun `a well-formed envelope validates through the domain port`() {
-    validator.validateEnvelope(envelope(), workflowId = WorkflowId("wftr-1"))
+    validator.validateEnvelope(envelope(), workflowId = "wftr-1")
   }
 
   @Test
   fun `a wrong contract version is rejected`() {
     val error = assertFailsWith<InvalidFeatureTaskRuntimeHandoffProjectionError> {
-      validator.validateEnvelope(envelope(contractVersion = "9.9"), workflowId = WorkflowId("wftr-1"))
+      validator.validateEnvelope(envelope(contractVersion = "9.9"), workflowId = "wftr-1")
     }
 
     assertEquals(FeatureTaskRuntimeHandoffProjectionFailureKind.SCHEMA_INVALID, error.failureKind)
@@ -54,7 +54,7 @@ class FeatureTaskRuntimeHandoffEnvelopeSchemaValidatorTest {
 
   @Test
   fun `a delivered prior_gap_memory source ref passes the schema gate`() {
-    validator.validateEnvelope(priorGapMemoryEnvelope(), workflowId = WorkflowId("wftr-1"))
+    validator.validateEnvelope(priorGapMemoryEnvelope(), workflowId = "wftr-1")
   }
 
   private fun priorGapMemoryEnvelope(): Map<String, Any?> = envelope().toMutableMap().apply {

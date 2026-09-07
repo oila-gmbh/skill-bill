@@ -249,4 +249,23 @@ class FeatureTaskRuntimeSharedReviewEvidenceResolverTest {
     assertTrue(small.reference.fileHunkIndex.single().startsWith("modified a.kt hunks="))
     assertTrue(large.reference.fileHunkIndex.single().startsWith("modified a.kt hunks="))
   }
+
+  @Test
+  fun `owned worktree paths derive against the base revision`() {
+    val store = InMemoryStore()
+    val git = FakeGit(mapOf("git diff base -- src/A.kt" to diffFor("src/A.kt", "working")))
+    val checkpoint = FeatureTaskRuntimeRepositoryCheckpoint(
+      fingerprint = "fp-working-tree",
+      baseRef = "base",
+      headRef = "checkpoint-head",
+      workingTreeOwnedPaths = listOf("src/A.kt"),
+    )
+
+    val reference = FeatureTaskRuntimeSharedReviewEvidenceResolver(store, git)
+      .resolve(repoRoot, "wf-working-tree", checkpoint, "audit")
+
+    assertNotNull(reference)
+    assertEquals(listOf("git diff base -- src/A.kt"), git.invoked)
+    assertTrue(reference.reference.fileHunkIndex.any { "src/A.kt" in it })
+  }
 }

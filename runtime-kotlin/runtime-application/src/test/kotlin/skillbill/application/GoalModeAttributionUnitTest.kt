@@ -1,4 +1,5 @@
 package skillbill.application
+
 import skillbill.application.goalrunner.GoalRunner
 import skillbill.application.goalrunner.goalRunnerDeps
 import skillbill.application.goalrunner.model.GoalRunnerEventSink
@@ -11,8 +12,6 @@ import skillbill.application.telemetry.model.GoalStartedRequest
 import skillbill.application.telemetry.model.GoalSubtaskFinishedRequest
 import skillbill.application.telemetry.toRecord
 import skillbill.goalrunner.model.GoalRunnerRunReport
-import skillbill.workflow.decomposition.model.IssueKey
-import skillbill.workflow.engine.model.WorkflowId
 import java.nio.file.Path
 import java.time.Clock
 import java.time.Instant
@@ -27,9 +26,9 @@ class GoalModeAttributionUnitTest {
   @Test
   fun `GoalStartedRequest mode field passes through toRecord`() {
     val request = GoalStartedRequest(
-      issueKey = IssueKey("SKILL-92"),
+      issueKey = "SKILL-92",
       featureName = "test",
-      workflowId = WorkflowId("wf-1"),
+      workflowId = "wf-1",
       subtaskTotal = 1,
       resumed = false,
       startedAt = "2026-06-23T10:00:00Z",
@@ -43,9 +42,9 @@ class GoalModeAttributionUnitTest {
   @Test
   fun `goal telemetry records normalize safe issue keys and reject control characters`() {
     val request = GoalStartedRequest(
-      issueKey = IssueKey("  SKILL-92  "),
+      issueKey = "  SKILL-92  ",
       featureName = "test",
-      workflowId = WorkflowId("wf-1"),
+      workflowId = "wf-1",
       subtaskTotal = 1,
       resumed = false,
       startedAt = "2026-06-23T10:00:00Z",
@@ -53,14 +52,14 @@ class GoalModeAttributionUnitTest {
     )
 
     assertEquals("SKILL-92", request.toRecord().issueKey)
-    assertFailsWith<IllegalArgumentException> { request.copy(issueKey = IssueKey("SKILL-92\nspoofed")).toRecord() }
+    assertFailsWith<IllegalArgumentException> { request.copy(issueKey = "SKILL-92\nspoofed").toRecord() }
   }
 
   @Test
   fun `GoalFinishedRequest mode field passes through toRecord`() {
     val request = GoalFinishedRequest(
-      issueKey = IssueKey("SKILL-92"),
-      workflowId = WorkflowId("wf-1"),
+      issueKey = "SKILL-92",
+      workflowId = "wf-1",
       status = "completed",
       startedAt = "2026-06-23T10:00:00Z",
       finishedAt = "2026-06-23T11:00:00Z",
@@ -131,7 +130,7 @@ class GoalModeAttributionUnitTest {
   }
 
   private fun runRequest(): GoalRunnerRunRequest = GoalRunnerRunRequest(
-    issueKey = IssueKey("SKILL-56"),
+    issueKey = "SKILL-56",
     repoRoot = Path.of("/tmp/skillbill-goal-runner"),
     invokedAgentId = "claude",
     dbPathOverride = "/tmp/skillbill-goal-runner/metrics.db",

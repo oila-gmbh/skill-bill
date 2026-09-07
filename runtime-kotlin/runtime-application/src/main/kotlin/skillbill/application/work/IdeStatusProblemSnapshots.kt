@@ -1,11 +1,11 @@
 package skillbill.application.work
+
 import skillbill.application.idestatus.model.IdeStatusFreshness
 import skillbill.application.idestatus.model.IdeStatusLifecycleState
 import skillbill.application.idestatus.model.IdeStatusProblem
 import skillbill.application.idestatus.model.IdeStatusProblemCode
 import skillbill.application.idestatus.model.IdeStatusSnapshot
 import skillbill.application.idestatus.model.IdeStatusStep
-import skillbill.workflow.engine.model.WorkflowId
 import java.time.Instant
 
 object IdeStatusProblemSnapshots {
@@ -74,7 +74,7 @@ object IdeStatusProblemSnapshots {
     repositoryIdentity: String,
     observedAt: Instant,
     message: String,
-    workflowId: WorkflowId? = null,
+    workflowId: String? = null,
   ): IdeStatusSnapshot = problemSnapshot(
     ProblemParts(
       repositoryIdentity = repositoryIdentity,
@@ -113,7 +113,7 @@ object IdeStatusProblemSnapshots {
     val repositoryIdentity: String,
     val observedAt: Instant,
     val content: ProblemContent,
-    val workflowId: WorkflowId? = null,
+    val workflowId: String? = null,
     val exitLifecycle: IdeStatusLifecycleState = IdeStatusLifecycleState.IDLE,
     val freshness: IdeStatusFreshness = IdeStatusFreshness.FRESH,
   )

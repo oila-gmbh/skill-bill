@@ -1,6 +1,5 @@
 package skillbill.ports.featuretask
 
-import WorkflowId
 import skillbill.ports.featuretask.model.FeatureTaskRuntimeAuditGenerationRow
 
 /**
@@ -12,7 +11,7 @@ object EmptyFeatureTaskRuntimeAuditGenerationRepository : FeatureTaskRuntimeAudi
   override fun append(row: FeatureTaskRuntimeAuditGenerationRow): Nothing =
     error("This audit-generation fixture is read-only; use a recording fake to exercise appends.")
 
-  override fun listOrdered(workflowId: WorkflowId): List<FeatureTaskRuntimeAuditGenerationRow> = emptyList()
+  override fun listOrdered(workflowId: String): List<FeatureTaskRuntimeAuditGenerationRow> = emptyList()
 
-  override fun quarantineAll(workflowId: WorkflowId): Int = 0
+  override fun quarantineAll(workflowId: String): Int = 0
 }

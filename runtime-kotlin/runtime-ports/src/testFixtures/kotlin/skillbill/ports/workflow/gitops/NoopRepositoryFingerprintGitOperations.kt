@@ -5,7 +5,7 @@ import java.nio.file.Path
 
 internal object NoopRepositoryFingerprintGitOperations : RepositoryFingerprintGitOperations {
   override fun repositoryFingerprint(repoRoot: Path): WorkflowGitOperationResult {
-    return WorkflowGitOperationResult(status = "ok", value = NOOP_REPOSITORY_FINGERPRINT)
+    return WorkflowGitOperationResult.Ok(value = NOOP_REPOSITORY_FINGERPRINT)
   }
 }
 

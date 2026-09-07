@@ -1,5 +1,5 @@
 package skillbill.application
-import skillbill.agent.model.AgentId
+
 import skillbill.application.decomposition.decompositionManifestPath
 import skillbill.application.decomposition.parentSpecPath
 import skillbill.application.diagnostics.RejectedOutputDiagnosticService
@@ -44,14 +44,12 @@ import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewBaseline
 import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewInputFailureReason
 import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewInputResult
 import skillbill.ports.workflow.gitops.model.WorkflowGitOperationResult
+import skillbill.ports.workflow.gitops.model.WorkflowGitOperationStatus
 import skillbill.review.context.model.CodeReviewExecutionMode
 import skillbill.review.model.ParallelReviewMergeResult
 import skillbill.review.model.ParallelReviewMergedFinding
 import skillbill.review.model.ParallelReviewSeverity.MAJOR
-import skillbill.workflow.decomposition.model.IssueKey
 import skillbill.workflow.decomposition.model.SpecSource
-import skillbill.workflow.decomposition.model.SubtaskId
-import skillbill.workflow.engine.model.WorkflowId
 import skillbill.workflow.goal.model.GOAL_REVIEW_BASE_RECOVERIES_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseOutputValidator
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
@@ -151,10 +149,10 @@ class FeatureTaskRuntimeRunnerTest {
   @Test
   fun `runtime issue-key reopen conflict fails before run events or agents start`() {
     val harness = runnerHarness(RuntimeHarnessConfig(agentAssignment = phasePerAgentAssignment()))
-    harness.recorder.ensureWorkflowOpen(WORKFLOW_ID, SESSION_ID, issueKey = IssueKey(RUNNER_TEST_ISSUE_KEY))
+    harness.recorder.ensureWorkflowOpen(WORKFLOW_ID, SESSION_ID, issueKey = RUNNER_TEST_ISSUE_KEY)
 
     assertFailsWith<WorkflowIssueKeyConflictError> {
-      harness.runner.run(harness.request().copy(issueKey = IssueKey("SKILL-118")))
+      harness.runner.run(harness.request().copy(issueKey = "SKILL-118"))
     }
 
     assertTrue(harness.events.isEmpty())
@@ -452,7 +450,7 @@ class FeatureTaskRuntimeRunnerTest {
         repoRoot = repoRoot,
         goalContinuation = FeatureTaskRuntimeGoalContinuationContext(
           parentIssueKey = RUNNER_TEST_ISSUE_KEY,
-          subtaskId = SubtaskId(5),
+          subtaskId = 5,
           goalBranch = "feat/existing-runtime-branch",
           suppressPr = true,
           parentWorkflowId = "wfl-parent",
@@ -1891,7 +1889,7 @@ class FeatureTaskRuntimeGoalContinuationPersistenceTest {
         repoRoot = repoRoot,
         goalContinuation = FeatureTaskRuntimeGoalContinuationContext(
           parentIssueKey = RUNNER_TEST_ISSUE_KEY,
-          subtaskId = SubtaskId(5),
+          subtaskId = 5,
           goalBranch = "feat/existing-runtime-branch",
           suppressPr = true,
           parentWorkflowId = "wfl-parent",
@@ -1969,7 +1967,7 @@ class FeatureTaskRuntimeGoalContinuationPersistenceTest {
         branchSetup = committedRepoBranchSetup(),
         goalContinuation = FeatureTaskRuntimeGoalContinuationContext(
           parentIssueKey = RUNNER_TEST_ISSUE_KEY,
-          subtaskId = SubtaskId(5),
+          subtaskId = 5,
           goalBranch = "feat/existing-runtime-branch",
           suppressPr = true,
           parentWorkflowId = "wfl-parent",
@@ -1994,7 +1992,7 @@ class FeatureTaskRuntimeGoalContinuationPersistenceTest {
       RuntimeHarnessConfig(
         goalContinuation = FeatureTaskRuntimeGoalContinuationContext(
           parentIssueKey = RUNNER_TEST_ISSUE_KEY,
-          subtaskId = SubtaskId(5),
+          subtaskId = 5,
           goalBranch = "feat/existing-runtime-branch",
           suppressPr = true,
           parentWorkflowId = "wfl-parent",
@@ -2028,7 +2026,7 @@ class FeatureTaskRuntimeGoalContinuationPersistenceTest {
         branchSetup = committedRepoBranchSetup(),
         goalContinuation = FeatureTaskRuntimeGoalContinuationContext(
           parentIssueKey = RUNNER_TEST_ISSUE_KEY,
-          subtaskId = SubtaskId(5),
+          subtaskId = 5,
           goalBranch = "feat/existing-runtime-branch",
           suppressPr = true,
           parentWorkflowId = "wfl-parent",
@@ -2079,7 +2077,7 @@ class FeatureTaskRuntimeGoalContinuationPersistenceTest {
       .also { it.headCommitShaValue = COMMITTED_HEAD_SHA }
     val recoveredBaseline = GoalSubtaskReviewBaseline("1".repeat(40), listOf("preexisting.tmp"))
     git.goalReviewBuildResults += GoalSubtaskReviewInputResult(
-      status = "error",
+      status = WorkflowGitOperationStatus.ERROR,
       error = "Persisted review base '${"0".repeat(40)}' is not an ancestor of current HEAD.",
       failureReason = GoalSubtaskReviewInputFailureReason.BASE_NOT_ANCESTOR,
     )
@@ -2116,10 +2114,10 @@ class FeatureTaskRuntimeGoalContinuationReviewPrepTest {
     check(
       harness.goalContinuationRecorder.recordGoalContinuationState(
         GoalContinuationStateRecordRequest(
-          workflowId = WorkflowId(WORKFLOW_ID),
+          workflowId = WORKFLOW_ID,
           continuation = FeatureTaskRuntimeGoalContinuationArtifact(
-            issueKey = IssueKey(RUNNER_TEST_ISSUE_KEY),
-            subtaskId = SubtaskId(5),
+            issueKey = RUNNER_TEST_ISSUE_KEY,
+            subtaskId = 5,
             suppressPr = true,
             goalBranch = "feat/existing-runtime-branch",
             parentWorkflowId = "wfl-parent",
@@ -2164,7 +2162,7 @@ class FeatureTaskRuntimeGoalContinuationReviewPrepTest {
     val unreachableRemediation = "7".repeat(40)
     val recoveredRemediation = "8".repeat(40)
     git.goalReviewBuildResults += GoalSubtaskReviewInputResult(
-      status = "error",
+      status = WorkflowGitOperationStatus.ERROR,
       error = "Persisted review base '$unreachableRemediation' is not an ancestor of current HEAD.",
       failureReason = GoalSubtaskReviewInputFailureReason.BASE_NOT_ANCESTOR,
     )
@@ -2174,10 +2172,10 @@ class FeatureTaskRuntimeGoalContinuationReviewPrepTest {
     check(
       harness.goalContinuationRecorder.recordGoalContinuationState(
         GoalContinuationStateRecordRequest(
-          workflowId = WorkflowId(WORKFLOW_ID),
+          workflowId = WORKFLOW_ID,
           continuation = FeatureTaskRuntimeGoalContinuationArtifact(
-            issueKey = IssueKey(RUNNER_TEST_ISSUE_KEY),
-            subtaskId = SubtaskId(5),
+            issueKey = RUNNER_TEST_ISSUE_KEY,
+            subtaskId = 5,
             suppressPr = true,
             goalBranch = "feat/existing-runtime-branch",
             parentWorkflowId = "wfl-parent",
@@ -2222,7 +2220,7 @@ class FeatureTaskRuntimeGoalContinuationReviewPrepTest {
     val git = RecordingWorkflowGitOperations(currentBranchValue = "feat/existing-runtime-branch")
       .also { it.headCommitShaValue = COMMITTED_HEAD_SHA }
     git.goalReviewBuildResults += GoalSubtaskReviewInputResult(
-      status = "error",
+      status = WorkflowGitOperationStatus.ERROR,
       error = "Goal-subtask review must run on durable child branch 'feat/existing-runtime-branch'.",
       failureReason = null,
     )
@@ -2232,10 +2230,10 @@ class FeatureTaskRuntimeGoalContinuationReviewPrepTest {
     check(
       harness.goalContinuationRecorder.recordGoalContinuationState(
         GoalContinuationStateRecordRequest(
-          workflowId = WorkflowId(WORKFLOW_ID),
+          workflowId = WORKFLOW_ID,
           continuation = FeatureTaskRuntimeGoalContinuationArtifact(
-            issueKey = IssueKey(RUNNER_TEST_ISSUE_KEY),
-            subtaskId = SubtaskId(5),
+            issueKey = RUNNER_TEST_ISSUE_KEY,
+            subtaskId = 5,
             suppressPr = true,
             goalBranch = "feat/existing-runtime-branch",
             parentWorkflowId = "wfl-parent",
@@ -2270,7 +2268,7 @@ class FeatureTaskRuntimeGoalContinuationStaleReviewTest {
       RuntimeHarnessConfig(
         goalContinuation = FeatureTaskRuntimeGoalContinuationContext(
           parentIssueKey = RUNNER_TEST_ISSUE_KEY,
-          subtaskId = SubtaskId(5),
+          subtaskId = 5,
           goalBranch = "feat/existing-runtime-branch",
           suppressPr = true,
           parentWorkflowId = "wfl-parent",
@@ -2381,7 +2379,7 @@ class FeatureTaskRuntimeCheckpointScopeTest {
   fun `linear checkpoint inventory excludes runtime spec scratch while preserving code paths`() {
     val paths = reconcileCheckpointPathInventory(
       repoRoot = Path.of("/repo"),
-      issueKey = IssueKey("SKILL-146"),
+      issueKey = "SKILL-146",
       specReference = ".feature-specs/SKILL-146-least-context/spec.md",
       paths = listOf(
         ".feature-specs/SKILL-146-least-context/spec.md",
@@ -2397,7 +2395,7 @@ class FeatureTaskRuntimeCheckpointScopeTest {
   fun `local checkpoint inventory excludes feature spec scratch while preserving code paths`() {
     val paths = reconcileCheckpointPathInventory(
       repoRoot = Path.of("/repo"),
-      issueKey = IssueKey("SKILL-146"),
+      issueKey = "SKILL-146",
       specReference = ".feature-specs/SKILL-146-least-context/spec.md",
       paths = listOf(
         ".feature-specs/SKILL-146-least-context/spec.md",
@@ -2413,7 +2411,7 @@ class FeatureTaskRuntimeCheckpointScopeTest {
   fun `checkpoint inventory excludes the collapsed feature-specs directory`() {
     val paths = reconcileCheckpointPathInventory(
       repoRoot = Path.of("/repo"),
-      issueKey = IssueKey("SKILL-146"),
+      issueKey = "SKILL-146",
       specReference = ".feature-specs/SKILL-146-least-context/spec.md",
       paths = listOf(
         ".feature-specs",
@@ -2483,7 +2481,7 @@ class FeatureTaskRuntimeCheckpointScopeTest {
         branchSetup = BranchSetupTestConfig(gitOperations = git),
         goalContinuation = FeatureTaskRuntimeGoalContinuationContext(
           parentIssueKey = RUNNER_TEST_ISSUE_KEY,
-          subtaskId = SubtaskId(5),
+          subtaskId = 5,
           goalBranch = "feat/existing-runtime-branch",
           suppressPr = true,
           parentWorkflowId = "wfl-parent",
@@ -2517,7 +2515,7 @@ class FeatureTaskRuntimeCheckpointScopeTest {
     // it drops the checkpoint, and the refresh_from_repository receipt edge then rejects the launch.
     val git = RecordingWorkflowGitOperations(currentBranchValue = "feat/existing-runtime-branch")
     git.repositoryFingerprintValue = "child-fingerprint-1"
-    git.ownedPathsResult = WorkflowGitOperationResult(status = "error", value = "")
+    git.ownedPathsResult = WorkflowGitOperationResult.Failed(value = "")
     val harness = runnerHarness(
       RuntimeHarnessConfig(
         branchSetup = BranchSetupTestConfig(gitOperations = git),
@@ -2574,7 +2572,7 @@ class FeatureTaskRuntimeRunnerSpecLifecycleTest {
         repoRoot = repoRoot,
         goalContinuation = FeatureTaskRuntimeGoalContinuationContext(
           parentIssueKey = RUNNER_TEST_ISSUE_KEY,
-          subtaskId = SubtaskId(5),
+          subtaskId = 5,
           goalBranch = "feat/existing-runtime-branch",
           suppressPr = true,
           parentWorkflowId = "wfl-parent",
@@ -2658,7 +2656,7 @@ class FeatureTaskRuntimeRunnerSpecLifecycleTest {
         repoRoot = repoRoot,
         goalContinuation = FeatureTaskRuntimeGoalContinuationContext(
           parentIssueKey = RUNNER_TEST_ISSUE_KEY,
-          subtaskId = SubtaskId(5),
+          subtaskId = 5,
           goalBranch = "feat/existing-runtime-branch",
           suppressPr = true,
           parentWorkflowId = "wfl-parent",
@@ -2957,7 +2955,7 @@ class FeatureTaskRuntimeReviewFixLoopTest {
       RuntimeHarnessConfig(
         goalContinuation = FeatureTaskRuntimeGoalContinuationContext(
           parentIssueKey = RUNNER_TEST_ISSUE_KEY,
-          subtaskId = SubtaskId(5),
+          subtaskId = 5,
           goalBranch = "feat/existing-runtime-branch",
           suppressPr = true,
           parentWorkflowId = "wfl-parent",
@@ -2984,7 +2982,7 @@ class FeatureTaskRuntimeReviewFixLoopTest {
       RuntimeHarnessConfig(
         goalContinuation = FeatureTaskRuntimeGoalContinuationContext(
           parentIssueKey = RUNNER_TEST_ISSUE_KEY,
-          subtaskId = SubtaskId(5),
+          subtaskId = 5,
           goalBranch = "feat/existing-runtime-branch",
           suppressPr = true,
           parentWorkflowId = "wfl-parent",
@@ -3522,7 +3520,7 @@ class FeatureTaskRuntimeBranchSetupRunnerTest {
   fun `cannot establish a feature branch blocks loudly and launches no file-mutating phase`() {
     val git = RecordingWorkflowGitOperations(
       currentBranchValue = "main",
-      checkoutResult = WorkflowGitOperationResult(status = "error", error = "checkout exploded"),
+      checkoutResult = WorkflowGitOperationResult.Failed(error = "checkout exploded"),
     )
     val harness = runnerHarness(conventionRuntimeConfig(git))
 
@@ -3541,7 +3539,7 @@ class FeatureTaskRuntimeBranchSetupRunnerTest {
   @Test
   fun `unreadable current branch blocks loudly and launches no file-mutating phase`() {
     val git = RecordingWorkflowGitOperations(
-      currentBranchResult = WorkflowGitOperationResult(status = "error", error = "git HEAD unreadable"),
+      currentBranchResult = WorkflowGitOperationResult.Failed(error = "git HEAD unreadable"),
     )
     val harness = runnerHarness(conventionRuntimeConfig(git))
 
@@ -3648,7 +3646,7 @@ class FeatureTaskRuntimeBranchSetupRunnerTest {
     val persistedBranch = "feat/existence-unreadable"
     val git = RecordingWorkflowGitOperations(
       currentBranchValue = "main",
-      branchExistsResult = WorkflowGitOperationResult(status = "error", error = "rev-parse exploded"),
+      branchExistsResult = WorkflowGitOperationResult.Failed(error = "rev-parse exploded"),
     )
     val harness = runnerHarness(conventionRuntimeConfig(git))
     harness.seedResolvedBranch(persistedBranch, baseBranch = "main", created = true)
@@ -3737,7 +3735,7 @@ class FeatureTaskRuntimeBranchSetupRunnerTest {
   fun `no file-mutating phase launches while on the default branch`() {
     val git = RecordingWorkflowGitOperations(
       currentBranchValue = "main",
-      checkoutResult = WorkflowGitOperationResult(status = "error", error = "denied"),
+      checkoutResult = WorkflowGitOperationResult.Failed(error = "denied"),
     )
     val harness = runnerHarness(conventionRuntimeConfig(git))
 
@@ -3754,7 +3752,7 @@ class FeatureTaskRuntimeBranchSetupRunnerTest {
   fun `branch-setup block is durably visible to status, observability, and the ledger`() {
     val git = RecordingWorkflowGitOperations(
       currentBranchValue = "main",
-      checkoutResult = WorkflowGitOperationResult(status = "error", error = "checkout exploded"),
+      checkoutResult = WorkflowGitOperationResult.Failed(error = "checkout exploded"),
     )
     val harness = runnerHarness(conventionRuntimeConfig(git))
 
@@ -4003,7 +4001,7 @@ class FeatureTaskRuntimeReconcileOnResumeTest {
   @Test
   fun `dirty tree checkpoint that fails to stage blocks loudly and never commits`() {
     val git = RecordingWorkflowGitOperations(currentBranchValue = "feat/existing-runtime-branch")
-    git.stagePathsResult = WorkflowGitOperationResult(status = "error", error = "stage failed")
+    git.stagePathsResult = WorkflowGitOperationResult.Failed(error = "stage failed")
     val harness = runnerHarness(
       RuntimeHarnessConfig(
         branchSetup = BranchSetupTestConfig(gitOperations = git),
@@ -4087,7 +4085,7 @@ class FeatureTaskRuntimeReconcileOnResumeTest {
   fun `a failed checkpoint commit restores the pre-checkpoint index and reports the restore outcome`() {
     val git = checkpointGit(ownedPaths = listOf("src/Owned.kt"))
     git.indexSnapshotValue = "100644 ${"a".repeat(40)} 0\tsrc/Owned.kt"
-    git.createCommitResult = WorkflowGitOperationResult(status = "error", error = "commit failed")
+    git.createCommitResult = WorkflowGitOperationResult.Failed(error = "commit failed")
     val harness = checkpointRunHarness(git)
 
     val report = harness.runner.run(harness.request(IMPLEMENT_FIX_CYCLE))
@@ -4102,8 +4100,8 @@ class FeatureTaskRuntimeReconcileOnResumeTest {
   @Test
   fun `a restore failure is reported in the checkpoint block reason rather than swallowed`() {
     val git = checkpointGit(ownedPaths = listOf("src/Owned.kt"))
-    git.createCommitResult = WorkflowGitOperationResult(status = "error", error = "commit failed")
-    git.restoreIndexStateResult = WorkflowGitOperationResult(status = "error", error = "restore failed")
+    git.createCommitResult = WorkflowGitOperationResult.Failed(error = "commit failed")
+    git.restoreIndexStateResult = WorkflowGitOperationResult.Failed(error = "restore failed")
     val harness = checkpointRunHarness(git)
 
     val report = harness.runner.run(harness.request(IMPLEMENT_FIX_CYCLE))
@@ -4185,7 +4183,7 @@ class FeatureTaskRuntimeReconcileOnResumeTest {
   @Test
   fun `a failed pre-amend ref write blocks the checkpoint and leaves HEAD unchanged`() {
     val git = checkpointGit(ownedPaths = listOf("src/Owned.kt"))
-    git.updateCheckpointRefResult = WorkflowGitOperationResult(status = "error", error = "ref write refused")
+    git.updateCheckpointRefResult = WorkflowGitOperationResult.Failed(error = "ref write refused")
     val harness = checkpointRunHarness(git)
 
     val report = harness.runner.run(harness.request(IMPLEMENT_FIX_CYCLE))
@@ -4277,7 +4275,7 @@ class FeatureTaskRuntimeReconcileOnResumeTest {
   @Test
   fun `an amend whose checkpoint ref occupancy cannot be determined is refused before HEAD is rewritten`() {
     val git = checkpointGit(ownedPaths = listOf("src/Owned.kt"))
-    git.resolveCheckpointRefResult = WorkflowGitOperationResult(status = "error", error = "ref lookup failed")
+    git.resolveCheckpointRefResult = WorkflowGitOperationResult.Failed(error = "ref lookup failed")
     val harness = checkpointRunHarness(git)
 
     val report = harness.runner.run(harness.request(IMPLEMENT_FIX_CYCLE))
@@ -4301,8 +4299,8 @@ class FeatureTaskRuntimeReconcileOnResumeTest {
 
     val appended = harness.recorder.appendCheckpointIdentity(
       AppendCheckpointIdentityArgs(
-        workflowId = WorkflowId(WORKFLOW_ID),
-        issueKey = IssueKey(RUNNER_TEST_ISSUE_KEY),
+        workflowId = WORKFLOW_ID,
+        issueKey = RUNNER_TEST_ISSUE_KEY,
         subtaskId = FEATURE_TASK_RUNTIME_STANDALONE_SUBTASK_ID,
         branch = "feat/existing-runtime-branch",
         phaseId = "implement",
@@ -4333,8 +4331,8 @@ class FeatureTaskRuntimeReconcileOnResumeTest {
     assertFailsWith<InvalidWorkflowStateSchemaError> {
       harness.recorder.appendCheckpointIdentity(
         AppendCheckpointIdentityArgs(
-          workflowId = WorkflowId(WORKFLOW_ID),
-          issueKey = IssueKey(RUNNER_TEST_ISSUE_KEY),
+          workflowId = WORKFLOW_ID,
+          issueKey = RUNNER_TEST_ISSUE_KEY,
           subtaskId = FEATURE_TASK_RUNTIME_STANDALONE_SUBTASK_ID,
           branch = "feat/existing-runtime-branch",
           phaseId = "implement",
@@ -4461,7 +4459,7 @@ class FeatureTaskRuntimeCheckpointHistoryOnResumeTest {
             it.createCommitMessages.any { message -> message.contains("remediation checkpoint") } &&
             revision.trim() != parentSha.trim()
           ) {
-            WorkflowGitOperationResult(status = "ok", value = "")
+            WorkflowGitOperationResult.Ok(value = "")
           } else {
             null
           }
@@ -4652,7 +4650,7 @@ class FeatureTaskRuntimeCheckpointHistoryOnResumeTest {
         repoRoot = repoRoot,
         goalContinuation = FeatureTaskRuntimeGoalContinuationContext(
           parentIssueKey = RUNNER_TEST_ISSUE_KEY,
-          subtaskId = SubtaskId(5),
+          subtaskId = 5,
           goalBranch = "feat/existing-runtime-branch",
           suppressPr = true,
           parentWorkflowId = "wfl-parent",
@@ -4820,10 +4818,10 @@ class FeatureTaskRuntimeProducerEvidenceIdentityTest {
 
     harness.io.database.retainProducerEvidence(
       ProducerOutputEvidence(
-        workflowId = WorkflowId(WORKFLOW_ID),
+        workflowId = WORKFLOW_ID,
         phaseId = "review",
         attempt = 2,
-        agentId = AgentId("claude"),
+        agentId = "claude",
         model = "claude-opus",
         recordedAt = recordedAt,
         byteSize = claudePayload.size.toLong(),
@@ -4835,10 +4833,10 @@ class FeatureTaskRuntimeProducerEvidenceIdentityTest {
 
     harness.io.database.retainProducerEvidence(
       ProducerOutputEvidence(
-        workflowId = WorkflowId(WORKFLOW_ID),
+        workflowId = WORKFLOW_ID,
         phaseId = "review",
         attempt = 2,
-        agentId = AgentId("cursor"),
+        agentId = "cursor",
         model = "gpt",
         recordedAt = recordedAt.plusSeconds(60),
         byteSize = cursorPayload.size.toLong(),
@@ -4866,10 +4864,10 @@ class FeatureTaskRuntimeProducerEvidenceIdentityTest {
     val recordedAt = Instant.parse("2026-08-08T18:49:48Z")
     harness.io.database.retainProducerEvidence(
       ProducerOutputEvidence(
-        workflowId = WorkflowId(WORKFLOW_ID),
+        workflowId = WORKFLOW_ID,
         phaseId = "review",
         attempt = 2,
-        agentId = AgentId("claude"),
+        agentId = "claude",
         model = "claude-opus",
         recordedAt = recordedAt,
         byteSize = first.size.toLong(),
@@ -4882,10 +4880,10 @@ class FeatureTaskRuntimeProducerEvidenceIdentityTest {
     assertFailsWith<Conflict> {
       harness.io.database.retainProducerEvidence(
         ProducerOutputEvidence(
-          workflowId = WorkflowId(WORKFLOW_ID),
+          workflowId = WORKFLOW_ID,
           phaseId = "review",
           attempt = 2,
-          agentId = AgentId("claude"),
+          agentId = "claude",
           model = "claude-opus",
           recordedAt = recordedAt.plusSeconds(1),
           byteSize = second.size.toLong(),
@@ -5255,7 +5253,7 @@ class FeatureTaskRuntimeReservedPassLedgerRecoveryTest {
         branchSetup = committedRepoBranchSetup(),
         goalContinuation = FeatureTaskRuntimeGoalContinuationContext(
           parentIssueKey = RUNNER_TEST_ISSUE_KEY,
-          subtaskId = SubtaskId(5),
+          subtaskId = 5,
           goalBranch = "feat/existing-runtime-branch",
           suppressPr = true,
           parentWorkflowId = "wfl-parent",
@@ -5289,7 +5287,7 @@ class FeatureTaskRuntimeReservedPassLedgerRecoveryTest {
     val recovered = requireNotNull(harness.goalContinuationRecorder.reviewStateRecorder.reviewState(WORKFLOW_ID))
     assertEquals(1, recovered.completedPassCount)
     assertEquals(null, recovered.reservedPassNumber)
-    assertFullyAssociatedLedgerRows(harness, passNumber = 1, subtaskId = SubtaskId(5))
+    assertFullyAssociatedLedgerRows(harness, passNumber = 1, subtaskId = 5)
   }
 }
 
@@ -5349,7 +5347,7 @@ class FeatureTaskRuntimeOperatorBlockSettlementTest {
       RuntimeHarnessConfig(
         goalContinuation = FeatureTaskRuntimeGoalContinuationContext(
           parentIssueKey = RUNNER_TEST_ISSUE_KEY,
-          subtaskId = SubtaskId(5),
+          subtaskId = 5,
           goalBranch = "feat/existing-runtime-branch",
           suppressPr = true,
           parentWorkflowId = "wfl-parent",

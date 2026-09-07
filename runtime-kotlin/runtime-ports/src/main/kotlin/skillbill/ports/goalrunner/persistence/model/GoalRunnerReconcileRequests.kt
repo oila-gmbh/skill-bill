@@ -1,7 +1,4 @@
 package skillbill.ports.goalrunner.persistence.model
-
-import skillbill.workflow.decomposition.model.IssueKey
-
 import skillbill.goalrunner.model.GoalContinuation
 import skillbill.goalrunner.model.GoalRunnerStoredOutcome
 import skillbill.ports.featuretask.model.FeatureTaskRuntimeWorkerOwnership
@@ -10,7 +7,6 @@ import skillbill.ports.goalrunner.runner.model.GoalRunnerReconcileGate
 import skillbill.ports.taskruntime.FeatureTaskRuntimeWorkerSupervisor
 import skillbill.ports.workflow.WorkflowStateRepository
 import skillbill.ports.workflow.model.WorkflowStateRecord
-import skillbill.workflow.engine.model.WorkflowId
 import skillbill.workflow.engine.model.WorkflowStateSnapshot
 import skillbill.workflow.goal.model.GoalSubtaskReviewState
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeGoalContinuationArtifact
@@ -18,7 +14,7 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeGoalContinuationAr
 data class CrashReconcileExpiredWorkerRequest(
   val workflowStates: WorkflowStateRepository,
   val workerSupervisor: FeatureTaskRuntimeWorkerSupervisor,
-  val workflowId: WorkflowId,
+  val workflowId: String,
   val continuation: GoalContinuation,
   val ownership: FeatureTaskRuntimeWorkerOwnership,
   val row: WorkflowStateRecord,
@@ -26,7 +22,7 @@ data class CrashReconcileExpiredWorkerRequest(
 
 data class StaleRunningCandidatesBlockRequest(
   val unitOfWork: GoalRunnerPersistenceSession,
-  val normalizedIssueKey: IssueKey,
+  val normalizedIssueKey: String,
   val candidates: List<GoalContinuationCandidate>,
   val initialAuthoritative: Map<Int, GoalRunnerStoredOutcome>,
   val activeSet: Set<String>,

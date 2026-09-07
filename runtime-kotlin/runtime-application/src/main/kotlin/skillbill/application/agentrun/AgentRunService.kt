@@ -1,7 +1,5 @@
 package skillbill.application.agentrun
 
-import skillbill.agent.model.AgentId
-
 import me.tatarka.inject.annotations.Inject
 import skillbill.application.agentrun.model.AgentRunAgentResolution
 import skillbill.application.agentrun.model.AgentRunResult
@@ -15,7 +13,7 @@ class AgentRunService(
   private val agentRunLauncher: AgentRunLauncher,
 ) {
   fun launch(request: AgentRunStartRequest): AgentRunResult {
-    val invokedAgent = InstallAgent.fromNormalizedId(request.invokedAgentId.value, label = "invokedAgentId")
+    val invokedAgent = InstallAgent.fromNormalizedId(request.invokedAgentId, label = "invokedAgentId")
     val overrideAgent = request.configuredAgentOverrideId
       ?.let { id -> InstallAgent.fromNormalizedId(id, label = "configuredAgentOverrideId") }
     val effectiveAgent = overrideAgent ?: invokedAgent

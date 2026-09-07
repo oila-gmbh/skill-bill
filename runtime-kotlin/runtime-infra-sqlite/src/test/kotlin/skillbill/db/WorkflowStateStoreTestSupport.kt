@@ -1,4 +1,5 @@
 package skillbill.db
+
 import skillbill.db.core.DatabaseRuntime
 import skillbill.db.workflow.WorkflowStateRow
 import skillbill.db.workflow.WorkflowStateStore
@@ -7,8 +8,6 @@ import skillbill.ports.featuretask.model.FeatureTaskRuntimeWorkerOwnership
 import skillbill.ports.workflow.model.FeatureTaskExecutionIdentity
 import skillbill.ports.workflow.model.FeatureTaskRouteScope
 import skillbill.ports.workflow.model.FeatureTaskWorkflowMode
-import skillbill.workflow.engine.model.SessionId
-import skillbill.workflow.engine.model.WorkflowId
 import java.nio.file.Path
 import java.sql.Connection
 import java.time.Instant
@@ -22,8 +21,8 @@ internal fun assertRuntimeAndVerifyStateTransitions(
   startedAt: String,
 ) {
   val runtimeInitial = initial.copy(
-    workflowId = WorkflowId("wftr-state-entry"),
-    sessionId = SessionId("ftr-state-entry"),
+    workflowId = "wftr-state-entry",
+    sessionId = "ftr-state-entry",
     mode = FeatureTaskWorkflowMode.RUNTIME,
   )
   store.saveFeatureTaskRuntimeWorkflow(runtimeInitial)
@@ -36,8 +35,8 @@ internal fun assertRuntimeAndVerifyStateTransitions(
   assertEquals(false, runtimeTransitioned.stateEnteredAtEstimated)
 
   val verifyInitial = WorkflowStateRow(
-    workflowId = WorkflowId("wfv-state-entry"),
-    sessionId = SessionId("fvr-state-entry"),
+    workflowId = "wfv-state-entry",
+    sessionId = "fvr-state-entry",
     workflowName = "bill-feature-verify",
     contractVersion = "0.1",
     workflowStatus = "running",
@@ -271,7 +270,7 @@ internal fun workflowRow(
 
 internal fun goalChildWorkflow(workflowId: String, parentWorkflowId: String): WorkflowStateRow = workflowRow(
   workflowId = workflowId,
-  sessionId = SessionId("ftr-$workflowId"),
+  sessionId = "ftr-$workflowId",
   workflowName = "bill-feature-task",
   currentStepId = "preplan",
   mode = FeatureTaskWorkflowMode.RUNTIME,

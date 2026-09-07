@@ -1,8 +1,6 @@
 package skillbill.application.featuretask
 
-import skillbill.workflow.engine.model.WorkflowId
-import skillbill.agent.model.AgentId
-
+import skillbill.ports.workflow.gitops.model.WorkflowGitOperationResult
 import skillbill.application.featuretask.model.FeatureTaskRuntimePhaseLaunchBriefing
 import skillbill.application.featuretask.model.FeatureTaskRuntimeProjectionRejection
 import skillbill.application.review.toProjectionPayload
@@ -50,9 +48,11 @@ object FeatureTaskRuntimeRunLoopLaunch {
     if (run.phaseId != FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VERIFY_FINDINGS) return ""
     val checkpoint = runLoop.recorder.loadFindingVerificationCheckpoint(
       run.request.workflowId,
+      run.request.dbPathOverride,
     )
     val boundarySelection = runLoop.recorder.loadFindingVerificationBoundarySelection(
       run.request.workflowId,
+      run.request.dbPathOverride,
     )?.takeIf { it.isNotEmpty() }
     val resolution = runLoop.phaseGates.specIntentProjectionResolver.resolve(
       SpecIntentProjectionResolveRequest(
@@ -161,10 +161,10 @@ object FeatureTaskRuntimeRunLoopLaunch {
 
   fun capturePhaseContentIdentities(runLoop: FeatureTaskRuntimeRunLoop, phaseId: String) {
     val owned = runLoop.gitOperations.repositoryOwnedPaths(runLoop.request.repoRoot)
-    if (!owned.ok) return
+    if (owned !is WorkflowGitOperationResult.Ok) return
     val paths = owned.value.orEmpty().split(OWNED_PATH_DELIMITER).map(String::trim).filter(String::isNotBlank)
     val identities = runLoop.gitOperations.pathContentIdentities(runLoop.request.repoRoot, paths)
-    if (!identities.ok) return
+    if (identities !is WorkflowGitOperationResult.Ok) return
     runLoop.session.phaseContentIdentities[phaseId] = parseContentIdentities(identities.value.orEmpty())
   }
 
@@ -237,11 +237,11 @@ object FeatureTaskRuntimeRunLoopLaunch {
     run: PhaseRun,
   ): FeatureTaskRuntimeRunLoopLaunch.LaunchCaptureBeforeResult {
     val before = runLoop.gitOperations.worktreeStatus(run.request.repoRoot)
-    if (!before.ok) {
+    if (before !is WorkflowGitOperationResult.Ok) {
       return FeatureTaskRuntimeRunLoopLaunch.LaunchCaptureBeforeResult.Failed("before-file manifest: ${before.error}")
     }
     val beforeCommit = runLoop.gitOperations.runtimePhaseHeadCommit(run.request.repoRoot)
-    if (!beforeCommit.ok) {
+    if (beforeCommit !is WorkflowGitOperationResult.Ok) {
       return FeatureTaskRuntimeRunLoopLaunch.LaunchCaptureBeforeResult.Failed("before commit")
     }
     return FeatureTaskRuntimeRunLoopLaunch.LaunchCaptureBeforeResult.Ready(
@@ -273,6 +273,7 @@ object FeatureTaskRuntimeRunLoopLaunch {
         skillRunRequest = SkillRunRequest(
           issueKey = run.request.issueKey,
           repoRoot = run.request.repoRoot,
+          dbPathOverride = run.request.dbPathOverride,
           timeout = run.request.timeout,
           modelOverride = launched.modelOverride,
           effortOverride = launched.effortOverride,
@@ -284,6 +285,7 @@ object FeatureTaskRuntimeRunLoopLaunch {
           activityStampSink = runLoop.activityStampWriter.sink(
             workflowId = run.request.workflowId,
             parentWorkflowId = run.request.goalContinuation?.parentWorkflowId,
+            dbOverride = run.request.dbPathOverride,
           ),
         ),
       ),
@@ -296,15 +298,15 @@ object FeatureTaskRuntimeRunLoopLaunch {
     before: FeatureTaskRuntimeRunLoopLaunch.LaunchCaptureBeforeState,
   ): FeatureTaskRuntimeRunLoopLaunch.LaunchCaptureAfterResult {
     val after = runLoop.gitOperations.worktreeStatus(run.request.repoRoot)
-    if (!after.ok) return FeatureTaskRuntimeRunLoopLaunch.LaunchCaptureAfterResult.Failed("after-file manifest")
+    if (after !is WorkflowGitOperationResult.Ok) return FeatureTaskRuntimeRunLoopLaunch.LaunchCaptureAfterResult.Failed("after-file manifest")
     val afterCommit = runLoop.gitOperations.runtimePhaseHeadCommit(run.request.repoRoot)
-    if (!afterCommit.ok) return FeatureTaskRuntimeRunLoopLaunch.LaunchCaptureAfterResult.Failed("after commit")
+    if (afterCommit !is WorkflowGitOperationResult.Ok) return FeatureTaskRuntimeRunLoopLaunch.LaunchCaptureAfterResult.Failed("after commit")
     val committedPaths = runLoop.gitOperations.runtimePhaseChangedPathsBetweenCommits(
       run.request.repoRoot,
       before.beforeCommit,
       afterCommit.value.orEmpty(),
     )
-    if (!committedPaths.ok) {
+    if (committedPaths !is WorkflowGitOperationResult.Ok) {
       return FeatureTaskRuntimeRunLoopLaunch.LaunchCaptureAfterResult.Failed("committed file changes")
     }
     return FeatureTaskRuntimeRunLoopLaunch.LaunchCaptureAfterResult.Ready(
@@ -439,6 +441,7 @@ object FeatureTaskRuntimeRunLoopLaunch {
         failureClassification = classification,
         sourceLabel = sourceLabel,
       ),
+      run.request.dbPathOverride,
     )
   }
 

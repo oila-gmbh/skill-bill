@@ -4,6 +4,7 @@ import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewBaseline
 import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewBaselineRecoveryRequest
 import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewBaselineResult
 import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewInputResult
+import skillbill.ports.workflow.gitops.model.WorkflowGitOperationStatus
 import java.nio.file.Path
 
 interface GoalSubtaskReviewGitOperations {
@@ -20,7 +21,7 @@ interface GoalSubtaskReviewGitOperations {
     request: GoalSubtaskReviewBaselineRecoveryRequest,
     expectedBranch: String,
   ): GoalSubtaskReviewBaselineResult = GoalSubtaskReviewBaselineResult(
-    status = "error",
+    status = WorkflowGitOperationStatus.ERROR,
     error = "Goal-subtask review baseline recovery is not supported by this git adapter.",
   )
 }

@@ -1,12 +1,11 @@
 package skillbill.scaffold
+
 import skillbill.application.workflow.WorkflowWireProjections
 import skillbill.contracts.workflow.CanonicalWorkflowStateSchemaValidator
 import skillbill.contracts.workflow.WorkflowStateSchemaValidator
 import skillbill.infrastructure.fs.WorkflowSnapshotValidatorInfraAdapter
 import skillbill.workflow.engine.WorkflowEngine
-import skillbill.workflow.engine.model.SessionId
 import skillbill.workflow.engine.model.WorkflowDefinition
-import skillbill.workflow.engine.model.WorkflowId
 import skillbill.workflow.engine.model.WorkflowUpdateInput
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import skillbill.workflow.verify.FeatureVerifyWorkflowDefinition
@@ -81,8 +80,8 @@ class WorkflowStateSchemaValidatesExistingWorkflowsTest {
     definition.stepIds.forEach { activeStepId ->
       val record = engine.openRecord(
         definition = definition,
-        workflowId = WorkflowId("wftr-19700101-000000-aaaa"),
-        sessionId = SessionId(""),
+        workflowId = "wftr-19700101-000000-aaaa",
+        sessionId = "",
         currentStepId = activeStepId,
       )
       // fullPayload: validates internally, and the emitted map is the
@@ -114,8 +113,8 @@ class WorkflowStateSchemaValidatesExistingWorkflowsTest {
     definition.workflowStatuses.forEach { status ->
       val opened = engine.openRecord(
         definition = definition,
-        workflowId = WorkflowId("wftr-19700101-000000-aaaa"),
-        sessionId = SessionId(""),
+        workflowId = "wftr-19700101-000000-aaaa",
+        sessionId = "",
         currentStepId = definition.defaultInitialStepId,
       )
       val terminal = status in definition.terminalStatuses
@@ -141,7 +140,7 @@ class WorkflowStateSchemaValidatesExistingWorkflowsTest {
           currentStepId = definition.defaultInitialStepId,
           stepUpdates = stepUpdates,
           artifactsPatch = null,
-          sessionId = SessionId(""),
+          sessionId = "",
         ),
       )
       val withFinishedAt = if (terminal) {

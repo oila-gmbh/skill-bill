@@ -1,4 +1,5 @@
 package skillbill.application
+
 import skillbill.application.featuretask.FeatureTaskRuntimePhaseBriefingAssembler
 import skillbill.application.featuretask.GoalContinuationStateRecordRequest
 import skillbill.application.featuretask.model.FeatureTaskRuntimePhaseLaunchBriefing
@@ -9,10 +10,8 @@ import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewBaseline
 import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewInput
 import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewInputFailureReason
 import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewInputResult
+import skillbill.ports.workflow.gitops.model.WorkflowGitOperationStatus
 import skillbill.review.context.model.CodeReviewExecutionMode
-import skillbill.workflow.decomposition.model.IssueKey
-import skillbill.workflow.decomposition.model.SubtaskId
-import skillbill.workflow.engine.model.WorkflowId
 import skillbill.workflow.goal.model.GoalSubtaskReviewCompactFinding
 import skillbill.workflow.goal.model.GoalSubtaskReviewDisposition
 import skillbill.workflow.goal.model.GoalSubtaskReviewState
@@ -119,10 +118,10 @@ private fun inlineGoalContinuationHarness(
   check(
     harness.goalContinuationRecorder.recordGoalContinuationState(
       GoalContinuationStateRecordRequest(
-        workflowId = WorkflowId(WORKFLOW_ID),
+        workflowId = WORKFLOW_ID,
         continuation = FeatureTaskRuntimeGoalContinuationArtifact(
-          issueKey = IssueKey(RUNNER_BRIEFING_ISSUE_KEY),
-          subtaskId = SubtaskId(5),
+          issueKey = RUNNER_BRIEFING_ISSUE_KEY,
+          subtaskId = 5,
           suppressPr = true,
           goalBranch = "feat/existing-runtime-branch",
           parentWorkflowId = "wfl-parent",
@@ -171,12 +170,12 @@ private fun seedStaleReviewHarness(
   val git = RecordingWorkflowGitOperations(currentBranchValue = "feat/existing-runtime-branch")
     .also { it.headCommitShaValue = COMMITTED_HEAD_SHA }
   git.goalReviewBuildResults += GoalSubtaskReviewInputResult(
-    status = "error",
+    status = WorkflowGitOperationStatus.ERROR,
     error = "Persisted review base '${"9".repeat(40)}' is not an ancestor of current HEAD.",
     failureReason = GoalSubtaskReviewInputFailureReason.BASE_NOT_ANCESTOR,
   )
   git.goalReviewBuildResults += GoalSubtaskReviewInputResult(
-    status = "ok",
+    status = WorkflowGitOperationStatus.OK,
     input = GoalSubtaskReviewInput(
       reviewBaseSha = "0".repeat(40),
       currentHeadSha = COMMITTED_HEAD_SHA,

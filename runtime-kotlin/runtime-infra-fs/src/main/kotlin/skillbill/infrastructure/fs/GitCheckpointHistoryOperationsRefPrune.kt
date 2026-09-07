@@ -6,31 +6,28 @@ import java.nio.file.Path
 
 internal fun gitCheckpointProtectedBranchFailure(repoRoot: Path): WorkflowGitOperationResult? {
   val branch = runGitCommand(repoRoot, "branch", "--show-current")
-  if (!branch.ok) {
-    return WorkflowGitOperationResult(
-      status = "error",
+  if (branch !is WorkflowGitOperationResult.Ok) {
+    return WorkflowGitOperationResult.Failed(
       error = "Could not read the current branch; refusing to amend. ${branch.error}".trim(),
     )
   }
   val protected = ProtectedBranches.protectedName(branch.value) ?: return null
-  return WorkflowGitOperationResult(
-    status = "error",
+  return WorkflowGitOperationResult.Failed(
     error = "HEAD is on protected branch '$protected'; refusing to amend shared history.",
   )
 }
 
 internal fun gitCheckpointOwnedHeadFailure(repoRoot: Path, expected: String): WorkflowGitOperationResult? {
   if (expected.isBlank()) {
-    return WorkflowGitOperationResult(status = "error", error = "An owned HEAD sha is required to amend.")
+    return WorkflowGitOperationResult.Failed(error = "An owned HEAD sha is required to amend.")
   }
   val head = runGitCommand(repoRoot, "rev-parse", "--verify", "--quiet", "HEAD")
   val currentHead = head.value.orEmpty().trim()
-  if (!head.ok || currentHead.isBlank()) {
-    return WorkflowGitOperationResult(status = "error", error = "HEAD does not name a commit; nothing to amend.")
+  if (head !is WorkflowGitOperationResult.Ok || currentHead.isBlank()) {
+    return WorkflowGitOperationResult.Failed(error = "HEAD does not name a commit; nothing to amend.")
   }
   if (currentHead == expected) return null
-  return WorkflowGitOperationResult(
-    status = "error",
+  return WorkflowGitOperationResult.Failed(
     error = "HEAD is '$currentHead' but the caller owns '$expected'; refusing to amend an unowned commit.",
   )
 }
@@ -38,14 +35,12 @@ internal fun gitCheckpointOwnedHeadFailure(repoRoot: Path, expected: String): Wo
 internal fun gitCheckpointStagedContentFailure(repoRoot: Path, currentHead: String): WorkflowGitOperationResult? {
   val staged = runGitProcess(repoRoot, listOf("diff", "--cached", "--quiet"))
   if (staged.timedOut || staged.readFailure != null) {
-    return WorkflowGitOperationResult(
-      status = "error",
+    return WorkflowGitOperationResult.Failed(
       error = staged.readFailure?.message ?: gitTimedOutError(listOf("diff", "--cached")),
     )
   }
   if (staged.exitCode != 0) return null
-  return WorkflowGitOperationResult(
-    status = "error",
+  return WorkflowGitOperationResult.Failed(
     error = "The index carries no staged content; refusing to amend '$currentHead'.",
   )
 }
@@ -64,8 +59,7 @@ internal fun gitCheckpointValidatedRef(namespacePrefix: String, refName: String)
   return ref.takeIf { !segmentRejected && !charRejected }
 }
 
-internal fun gitCheckpointRejectedRef(namespacePrefix: String, refName: String) = WorkflowGitOperationResult(
-  status = "error",
+internal fun gitCheckpointRejectedRef(namespacePrefix: String, refName: String) = WorkflowGitOperationResult.Failed(
   error = "Ref '${refName.trim()}' is not a valid ref inside namespace '${namespacePrefix.trim()}'.",
 )
 

@@ -1,9 +1,8 @@
 package skillbill.application.goalrunner
+
 import skillbill.contracts.JsonCodec
 import skillbill.workflow.decomposition.runtime.decodeArtifactKeys
 import skillbill.workflow.engine.artifactsFingerprint
-import skillbill.workflow.engine.model.SessionId
-import skillbill.workflow.engine.model.WorkflowId
 import skillbill.workflow.engine.model.WorkflowStateSnapshot
 import skillbill.workflow.engine.progressToken
 import skillbill.workflow.goal.model.GOAL_PROGRESS_LATEST_EVENT_ARTIFACT_KEY
@@ -62,8 +61,8 @@ class AttemptLedgerWorkflowDecodingTest {
   }
 
   private fun progressSnapshot(artifactsJson: String): WorkflowStateSnapshot = WorkflowStateSnapshot(
-    workflowId = WorkflowId("wfl-child"),
-    sessionId = SessionId("session-1"),
+    workflowId = "wfl-child",
+    sessionId = "session-1",
     workflowName = "bill-feature-task",
     contractVersion = "1.0",
     workflowStatus = "running",

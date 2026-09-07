@@ -104,8 +104,8 @@ checkable.
 
 The outcome is a runtime where a reader can open one file and see one
 responsibility, where `runtime-ports` is interfaces and their DTOs and nothing
-else, where an identifier or a status is a type the compiler checks, where a
-run's database location is decided once, where the feature engine is a module
+else, where status handling is explicit and consistent, where a run's database
+location is decided once, where the feature engine is a module
 with a named inbound API, where a package name tells you the module, and where
 the domain compiles against the Kotlin standard library alone.
 
@@ -158,11 +158,9 @@ is that decision for one module, `runtime-engine`, in subtask 4.
    no longer exposes kotlinx serialization as an `api` edge. JSON and YAML
    codecs live in `runtime-contracts` or an infrastructure module.
 8. Workflow id, issue key, subtask id, review run id, session id, and agent id
-   are `@JvmInline value class` types in `runtime-domain`, used in every port
-   and application signature that carries them. Wire boundaries (CLI, MCP,
-   SQLite, contracts DTOs) convert at the edge. The `String`-typed count for
-   those six names in `runtime-ports` and `runtime-application` main source
-   is zero.
+   remain primitive values throughout the runtime. No value class, data class,
+   wrapper, or equivalent identifier type may be introduced for these six
+   concepts. Existing wire shapes and boundary conversions remain unchanged.
 9. Every `status`, `mode`, `kind`, `phase`, and `outcome` field in
    `runtime-ports` and `runtime-domain` models is an enum or sealed type with
    one `wireValue` and one `fromWire` companion, or is inventoried in

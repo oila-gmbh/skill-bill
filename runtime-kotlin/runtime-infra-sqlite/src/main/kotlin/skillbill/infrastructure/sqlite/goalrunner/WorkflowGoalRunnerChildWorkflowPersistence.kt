@@ -22,9 +22,7 @@ import skillbill.ports.workflow.model.toSnapshot
 import skillbill.ports.workflow.saveRecord
 import skillbill.ports.workflow.toRecord
 import skillbill.workflow.decomposition.DecompositionManifestValidator
-import skillbill.workflow.decomposition.model.IssueKey
 import skillbill.workflow.engine.WorkflowEngine
-import skillbill.workflow.engine.model.WorkflowId
 import skillbill.workflow.engine.model.WorkflowStateSnapshot
 import skillbill.workflow.engine.model.WorkflowUpdateInput
 import skillbill.workflow.goal.model.GOAL_SUBTASK_REVIEW_STATE_ARTIFACT_KEY
@@ -59,7 +57,7 @@ internal class WorkflowGoalRunnerChildWorkflowPersistence(
       if (persistedIdentity != expectedIdentity) {
         throw IncompatibleGoalPlanningPreparationRecoveryError(
           state.parentWorkflowId,
-          setup.subtaskId.value,
+          setup.subtaskId,
           "existing child execution identity conflicts with goal-child setup",
         )
       }
@@ -74,17 +72,14 @@ internal class WorkflowGoalRunnerChildWorkflowPersistence(
     if (existingChild == null) {
       WorkflowFamily.TASK_RUNTIME.saveRecord(
         unitOfWork.workflowStates,
-        childUpdated.toRecord().copy(issueKey = IssueKey(normalizeRequiredIssueKey(state.manifest.issueKey.value))),
+        childUpdated.toRecord().copy(issueKey = normalizeRequiredIssueKey(state.manifest.issueKey)),
       )
       val identity = expectedIdentity
       FeatureTaskExecutionIdentityPolicy.validate(identity)
       unitOfWork.workflowStates.saveFeatureTaskExecutionIdentity(identity)
     }
     val refreshedParent =
-      WorkflowFamily.TASK_RUNTIME.get(
-        unitOfWork.workflowStates,
-        WorkflowId(parentUpdated.workflowId),
-      ) ?: parentUpdated
+      WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, parentUpdated.workflowId) ?: parentUpdated
     return SavedGoalChildWorkflow(
       state = GoalRunnerManifestState(
         parentWorkflowId = refreshedParent.workflowId,
@@ -107,12 +102,12 @@ internal class WorkflowGoalRunnerChildWorkflowPersistence(
 
   private fun requireConsistentChildSetup(state: GoalRunnerManifestState, setup: GoalRunnerChildWorkflowSetup) {
     val request = setup.planningHydration ?: return
-    val selected = state.manifest.subtasks.singleOrNull { it.id == setup.subtaskId.value }
+    val selected = state.manifest.subtasks.singleOrNull { it.id == setup.subtaskId }
     val failures = listOfNotNull(
       "parent workflow".takeIf { request.identity.parentGoalWorkflowId != state.parentWorkflowId },
       "issue key".takeIf {
         request.identity.normalizedIssueKey != setup.normalizedIssueKey ||
-          setup.normalizedIssueKey.value != normalizeRequiredIssueKey(state.manifest.issueKey.value)
+          setup.normalizedIssueKey != normalizeRequiredIssueKey(state.manifest.issueKey)
       },
       "repository".takeIf { request.identity.repositoryIdentity != setup.repositoryIdentity },
       "subtask".takeIf { request.descriptor.subtaskId != setup.subtaskId },
@@ -125,7 +120,7 @@ internal class WorkflowGoalRunnerChildWorkflowPersistence(
     if (failures.isNotEmpty()) {
       throw IncompatibleGoalPlanningPreparationRecoveryError(
         state.parentWorkflowId,
-        setup.subtaskId.value,
+        setup.subtaskId,
         "hydration ${failures.joinToString()} does not match child setup",
       )
     }
@@ -147,13 +142,13 @@ internal class WorkflowGoalRunnerChildWorkflowPersistence(
     val continuation = decodeArtifacts(existing.artifactsJson)[FEATURE_TASK_RUNTIME_GOAL_CONTINUATION_ARTIFACT_KEY]
       as? Map<*, *>
     val matches = continuation?.get("issue_key") == state.manifest.issueKey &&
-      (continuation["subtask_id"] as? Number)?.toInt() == setup.subtaskId.value &&
+      (continuation["subtask_id"] as? Number)?.toInt() == setup.subtaskId &&
       continuation["parent_workflow_id"] == state.parentWorkflowId &&
       continuation["goal_branch"] == setup.goalBranch && continuation["suppress_pr"] == true
     if (!matches) {
       throw IncompatibleGoalPlanningPreparationRecoveryError(
         state.parentWorkflowId,
-        setup.subtaskId.value,
+        setup.subtaskId,
         "existing child goal continuation conflicts with child setup",
       )
     }
@@ -163,9 +158,7 @@ internal class WorkflowGoalRunnerChildWorkflowPersistence(
     unitOfWork: UnitOfWork,
     state: GoalRunnerManifestState,
   ): WorkflowStateSnapshot {
-    val existingRecord = unitOfWork.workflowStates.getFeatureTaskWorkflow(
-      WorkflowId(state.parentWorkflowId),
-    )
+    val existingRecord = unitOfWork.workflowStates.getFeatureTaskWorkflow(state.parentWorkflowId)
       ?: unitOfWork.workflowStates.findDecomposedParentWorkflow(
         state.manifest.issueKey,
         decompositionManifestValidator,
@@ -188,13 +181,13 @@ internal class WorkflowGoalRunnerChildWorkflowPersistence(
           ),
           existingParent.artifactsJson,
         ),
-        sessionId = existingParent.sessionId,
+        sessionId = existingParent.sessionId.orEmpty(),
         replaceArtifacts = true,
       ),
     )
     WorkflowFamily.TASK_RUNTIME.saveRecord(
       unitOfWork.workflowStates,
-      parentUpdated.toRecord().copy(issueKey = IssueKey(normalizeRequiredIssueKey(state.manifest.issueKey.value))),
+      parentUpdated.toRecord().copy(issueKey = normalizeRequiredIssueKey(state.manifest.issueKey)),
     )
     return parentUpdated
   }
@@ -207,7 +200,7 @@ internal class WorkflowGoalRunnerChildWorkflowPersistence(
   ): WorkflowStateSnapshot {
     val openedChild = engine.openRecord(
       WorkflowFamily.TASK_RUNTIME.definition,
-      setup.workflowId.value,
+      setup.workflowId,
       "${WorkflowFamily.TASK_RUNTIME.definition.defaultSessionPrefix}-${state.manifest.issueKey}",
       WorkflowFamily.TASK_RUNTIME.definition.defaultInitialStepId,
     )
@@ -226,7 +219,7 @@ internal class WorkflowGoalRunnerChildWorkflowPersistence(
         currentStepId = hydration.currentStepId,
         stepUpdates = hydration.stepUpdates,
         artifactsPatch = childWorkflowArtifacts(state, setup, parentWorkflowId) + hydration.artifacts,
-        sessionId = openedChild.sessionId,
+        sessionId = openedChild.sessionId.orEmpty(),
       ),
     )
   }
@@ -238,15 +231,14 @@ internal class WorkflowGoalRunnerChildWorkflowPersistence(
   ): Map<String, Any?> = mapOf(
     FEATURE_TASK_RUNTIME_GOAL_CONTINUATION_ARTIFACT_KEY to FeatureTaskRuntimeGoalContinuationArtifact(
       issueKey = state.manifest.issueKey,
-      subtaskId = setup.subtaskId.value,
+      subtaskId = setup.subtaskId,
       suppressPr = true,
       goalBranch = setup.goalBranch,
       parentWorkflowId = parentWorkflowId,
       codeReviewMode = setup.reviewPolicy.codeReviewMode,
       validationDepth = ValidationDepth.FULL,
-      qualityGateSelection = GoalRunnerQualityGateSelectionResolver.resolve(state.manifest, setup.subtaskId.value),
-      subtaskName = state.manifest.subtasks.firstOrNull { it.id == setup.subtaskId.value }?.name
-        ?.takeIf(String::isNotBlank),
+      qualityGateSelection = GoalRunnerQualityGateSelectionResolver.resolve(state.manifest, setup.subtaskId),
+      subtaskName = state.manifest.subtasks.firstOrNull { it.id == setup.subtaskId }?.name?.takeIf(String::isNotBlank),
     ).toArtifactMap(),
     GOAL_SUBTASK_REVIEW_STATE_ARTIFACT_KEY to GoalSubtaskReviewState.initial(
       reviewBaseSha = setup.reviewBaseline.reviewBaseSha,

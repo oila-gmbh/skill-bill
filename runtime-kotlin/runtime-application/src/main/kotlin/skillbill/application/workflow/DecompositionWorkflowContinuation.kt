@@ -1,6 +1,5 @@
 package skillbill.application.workflow
 
-import skillbill.workflow.engine.model.WorkflowId
 import skillbill.application.decomposition.DecompositionManifestWriter
 import skillbill.application.decomposition.resolveDecompositionManifest
 import skillbill.application.workflow.model.AdvanceCompletedSubtasksRequest
@@ -19,7 +18,6 @@ import skillbill.workflow.decomposition.DecompositionContinuationSelector
 import skillbill.workflow.decomposition.DecompositionManifestValidator
 import skillbill.workflow.decomposition.model.DecompositionContinuationSelection
 import skillbill.workflow.decomposition.model.DecompositionManifest
-import skillbill.workflow.decomposition.model.IssueKey
 import skillbill.workflow.engine.WorkflowEngine
 import skillbill.workflow.engine.model.WorkflowStateSnapshot
 import skillbill.workflow.engine.model.WorkflowUpdateInput
@@ -34,7 +32,7 @@ class DecompositionWorkflowContinuation(
   private val manifestWriter: DecompositionManifestWriter,
 ) {
   internal fun continueDecomposedParentByIssueKey(
-    issueKey: IssueKey,
+    issueKey: String,
     unitOfWork: UnitOfWork,
     requestedSubtaskId: Int? = null,
   ): ContinuationStepResult {
@@ -53,7 +51,7 @@ class DecompositionWorkflowContinuation(
       ContinuationStepResult(
         WorkflowContinueResult.UnknownWorkflow(
           dbPath = unitOfWork.dbPath.toString(),
-          workflowId = WorkflowId(issueKey.value),
+          workflowId = issueKey,
         ),
       )
     } else {
@@ -64,7 +62,7 @@ class DecompositionWorkflowContinuation(
     return result
   }
 
-  private fun findProjectedManifestByIssueKey(issueKey: IssueKey): DecompositionManifest? {
+  private fun findProjectedManifestByIssueKey(issueKey: String): DecompositionManifest? {
     val store = fileStore ?: return null
     return resolveDecompositionManifest(
       repoRoot = repoRoot,
@@ -78,7 +76,7 @@ class DecompositionWorkflowContinuation(
     manifest: DecompositionManifest,
     unitOfWork: UnitOfWork,
   ): WorkflowStateSnapshot {
-    val issueKey = normalizeRequiredIssueKey(manifest.issueKey.value)
+    val issueKey = normalizeRequiredIssueKey(manifest.issueKey)
     val existingRecord = unitOfWork.workflowStates.findDecomposedParentOrCorruptFallback(
       manifest.issueKey,
       validator,
@@ -108,7 +106,7 @@ class DecompositionWorkflowContinuation(
           )
         },
         artifactsPatch = parentProjectionArtifacts(manifest, validator, base.artifactsJson),
-        sessionId = base.sessionId,
+        sessionId = base.sessionId.orEmpty(),
         replaceArtifacts = true,
       ),
     )
@@ -176,7 +174,7 @@ class DecompositionWorkflowContinuation(
     unitOfWork: UnitOfWork,
   ): ContinuationStepResult {
     val record = selection.workflowId
-      .takeIf { it.toString().isNotBlank() }
+      .takeIf(String::isNotBlank)
       ?.let { WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, it) }
     return if (record == null) {
       missingSubtaskWorkflowResult(selection, unitOfWork)
@@ -207,7 +205,7 @@ class DecompositionWorkflowContinuation(
     selection: DecompositionContinuationSelection.Start,
     unitOfWork: UnitOfWork,
   ): ContinuationStepResult {
-    val issueKey = normalizeRequiredIssueKey(manifest.issueKey.value)
+    val issueKey = normalizeRequiredIssueKey(manifest.issueKey)
     val branchError = engine.checkoutAndValidateBranch(
       CheckoutAndValidateBranchRequest(
         parentRecord = parentRecord,
@@ -230,7 +228,7 @@ class DecompositionWorkflowContinuation(
     parentRecord: WorkflowStateSnapshot,
     manifest: DecompositionManifest,
     selection: DecompositionContinuationSelection.Start,
-    issueKey: IssueKey,
+    issueKey: String,
     unitOfWork: UnitOfWork,
   ): ContinuationStepResult {
     val workflowId = generateWorkflowId(WorkflowFamily.TASK_RUNTIME.definition.workflowIdPrefix)
@@ -238,7 +236,7 @@ class DecompositionWorkflowContinuation(
     val opened = engine.openRecord(
       WorkflowFamily.TASK_RUNTIME.definition,
       workflowId,
-      parentRecord.sessionId,
+      parentRecord.sessionId.orEmpty(),
       "preplan",
     )
     val started = engine.updateRecord(
@@ -251,7 +249,7 @@ class DecompositionWorkflowContinuation(
           mapOf("step_id" to "preplan", "status" to "running", "attempt_count" to 1),
         ),
         artifactsPatch = subtaskStartArtifacts(selection, updatedManifest, validator),
-        sessionId = parentRecord.sessionId,
+        sessionId = parentRecord.sessionId.orEmpty(),
       ),
     )
     WorkflowFamily.TASK_RUNTIME.saveRecord(

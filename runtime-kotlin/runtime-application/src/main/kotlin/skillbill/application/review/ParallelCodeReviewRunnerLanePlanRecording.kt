@@ -1,7 +1,5 @@
 package skillbill.application.review
 
-import skillbill.review.model.ReviewRunId
-
 import skillbill.application.review.model.ReviewSpecialistLaunchRequest
 import skillbill.application.runtimepersistence.RuntimeOwnedPersistenceBoundary
 import skillbill.contracts.review.REVIEW_CONTEXT_CONTRACT_VERSION
@@ -20,7 +18,7 @@ internal class ParallelCodeReviewRunnerLanePlanRecording(
   private val runtimeOwnedPersistence: RuntimeOwnedPersistenceBoundary,
   private val clock: Clock,
 ) {
-  fun recordSpecIntent(reviewRunId: ReviewRunId?, resolution: SpecIntentResolution) {
+  fun recordSpecIntent(reviewRunId: String?, resolution: SpecIntentResolution) {
     if (reviewRunId == null) return
     val reference = when (resolution) {
       is SpecIntentResolution.Resolved -> ReviewSpecProjectionReference(
@@ -49,7 +47,7 @@ internal class ParallelCodeReviewRunnerLanePlanRecording(
   }
 
   fun selectLaunchesForResume(
-    reviewRunId: ReviewRunId?,
+    reviewRunId: String?,
     launches: List<ReviewSpecialistLaunchRequest>,
   ): List<ReviewSpecialistLaunchRequest> {
     if (reviewRunId == null || launches.isEmpty()) return launches
@@ -68,7 +66,7 @@ internal class ParallelCodeReviewRunnerLanePlanRecording(
   }
 
   fun recordPlannedLanes(
-    reviewRunId: ReviewRunId?,
+    reviewRunId: String?,
     plannedRubrics: List<PlannedReviewRubric>,
     launches: List<ReviewSpecialistLaunchRequest>,
   ) {

@@ -4,9 +4,6 @@ import skillbill.goalrunner.model.UNADDRESSED_FINDING_CATEGORIES
 import skillbill.goalrunner.model.UNADDRESSED_FINDING_SEVERITIES
 import skillbill.goalrunner.subtaskreview.model.StructuredGoalReviewFinding
 import skillbill.goalrunner.subtaskreview.model.UnaddressedFindingLedgerScope
-import skillbill.workflow.decomposition.model.IssueKey
-import skillbill.workflow.decomposition.model.SubtaskId
-import skillbill.workflow.engine.model.WorkflowId
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
@@ -62,7 +59,7 @@ class GoalSubtaskReviewStructuredFindingTest {
 
     val ledgerFindings = GoalSubtaskReviewSummaryReducer.unaddressedFindings(
       output = output,
-      scope = UnaddressedFindingLedgerScope(IssueKey("SKILL-135"), SubtaskId(3), WorkflowId("workflow-1"), 1),
+      scope = UnaddressedFindingLedgerScope("SKILL-135", 3, "workflow-1", 1),
     )
 
     assertEquals(listOf("other", "data_persistence"), ledgerFindings.map { it.issueCategory })
@@ -92,7 +89,7 @@ class GoalSubtaskReviewStructuredFindingTest {
 
     val ledgerFindings = GoalSubtaskReviewSummaryReducer.unaddressedFindings(
       output = output,
-      scope = UnaddressedFindingLedgerScope(IssueKey("SKILL-135"), SubtaskId(3), WorkflowId("workflow-1"), 1),
+      scope = UnaddressedFindingLedgerScope("SKILL-135", 3, "workflow-1", 1),
     )
 
     assertEquals(listOf("nit", "blocker"), ledgerFindings.map { it.severity })

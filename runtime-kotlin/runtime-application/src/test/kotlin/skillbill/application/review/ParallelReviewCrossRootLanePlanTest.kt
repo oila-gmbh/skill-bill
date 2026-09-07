@@ -1,7 +1,7 @@
 package skillbill.application.review
+
 import skillbill.error.AmbiguousLaneOwnershipError
 import skillbill.review.context.model.CodeReviewExecutionMode
-import skillbill.review.model.ReviewRunId
 import skillbill.review.plan.ReviewLaunchPlanPolicy
 import skillbill.scaffold.model.PlatformManifest
 import kotlin.test.Test
@@ -82,13 +82,7 @@ class ParallelReviewCrossRootLanePlanTest {
 
     val error = assertFailsWith<AmbiguousLaneOwnershipError> {
       reviewHarness(ReviewHarnessConfig(manifests = listOf(kotlin, swift), diff = diff), recorder)
-        .run(
-          harnessRequest(
-            reviewRunId =
-            ReviewRunId("cross-root-ambiguous"),
-            codeReviewMode = CodeReviewExecutionMode.DELEGATED,
-          ),
-        )
+        .run(harnessRequest(reviewRunId = "cross-root-ambiguous", codeReviewMode = CodeReviewExecutionMode.DELEGATED))
     }
 
     assertTrue(
@@ -104,13 +98,7 @@ class ParallelReviewCrossRootLanePlanTest {
   private fun run(packs: List<PlatformManifest>, diff: String): ReviewRecorder {
     val recorder = ReviewRecorder()
     reviewHarness(ReviewHarnessConfig(manifests = packs, diff = diff), recorder)
-      .run(
-        harnessRequest(
-          reviewRunId =
-          ReviewRunId("cross-root-lane-plan"),
-          codeReviewMode = CodeReviewExecutionMode.DELEGATED,
-        ),
-      )
+      .run(harnessRequest(reviewRunId = "cross-root-lane-plan", codeReviewMode = CodeReviewExecutionMode.DELEGATED))
     return recorder
   }
 }

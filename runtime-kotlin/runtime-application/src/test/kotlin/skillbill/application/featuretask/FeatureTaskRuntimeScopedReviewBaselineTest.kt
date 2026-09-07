@@ -32,8 +32,7 @@ class FeatureTaskRuntimeScopedReviewBaselineTest {
   @Test
   fun `scoped baseline carries the owned inventory and excludes foreign untracked paths`() {
     val git = OwnedPathsGitOperations(
-      WorkflowGitOperationResult(
-        status = "ok",
+      WorkflowGitOperationResult.Ok(
         value = listOf("untracked/owned-new.kt", "foreign/sibling.kt", ".feature-specs/OTHER-1/spec.md")
           .joinToString(NUL.toString()),
       ),
@@ -50,7 +49,7 @@ class FeatureTaskRuntimeScopedReviewBaselineTest {
 
   @Test
   fun `an unreadable owned-path listing falls back to the durable baseline instead of widening`() {
-    val git = OwnedPathsGitOperations(WorkflowGitOperationResult(status = "error", error = "git failed"))
+    val git = OwnedPathsGitOperations(WorkflowGitOperationResult.Failed(error = "git failed"))
 
     val baseline = FeatureTaskRuntimeScopedReviewBaseline.of(git, repoRoot, resolved(), baseSha)
 

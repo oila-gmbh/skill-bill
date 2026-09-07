@@ -1,12 +1,11 @@
 package skillbill.application.goalrunner.planning
-import skillbill.agent.model.AgentId
+
 import skillbill.application.featuretask.FeatureTaskRuntimePhaseSafetyPolicy
 import skillbill.application.goalrunner.planning.model.GoalPlanningPhaseProduction
 import skillbill.application.goalrunner.planning.model.GoalPlanningSweepOutcome
 import skillbill.error.InvalidFeatureTaskRuntimePhaseOutputSchemaError
 import skillbill.goalrunner.model.GoalRunnerStopReason
 import skillbill.ports.time.model.RuntimeWaitResult
-import skillbill.workflow.decomposition.model.SubtaskId
 import skillbill.workflow.taskruntime.model.AcceptedFeatureTaskRuntimePhaseOutput
 import skillbill.workflow.taskruntime.model.requireAcceptedOutput
 import kotlin.time.Duration
@@ -80,7 +79,7 @@ internal fun DefaultGoalPlanningSweep.produceAttemptOrStop(
   GoalPlanningPhaseProduction.Stopped(
     stopped(
       phase.shared,
-      phase.subtask?.id?.toString()?.toInt() ?: 0,
+      phase.subtask?.id ?: 0,
       unexpectedPlanningFailureReason(phase.phaseId, error),
       phase.phaseId,
     ),
@@ -94,18 +93,18 @@ internal fun DefaultGoalPlanningSweep.produceAttempt(
   val shared = phase.shared
   val subtask = phase.subtask
   val phaseId = phase.phaseId
-  val currentSubtaskId = subtask?.id?.toString()?.toInt() ?: 0
+  val currentSubtaskId = subtask?.id ?: 0
   return planningPauseOutcome(shared, currentSubtaskId, phaseId)
     ?: produceAttemptAfterPauseCheck(args, shared, phaseId, currentSubtaskId)
 }
 
 internal fun DefaultGoalPlanningSweep.planningPauseOutcome(
   shared: GoalPlanningSharedContext,
-  subtaskId: SubtaskId,
+  subtaskId: Int,
   phaseId: String,
   pauseReason: String? = null,
 ): GoalPlanningPhaseProduction.Stopped? {
-  val controls = manifestStore.controlState(shared.parentWorkflowId)
+  val controls = manifestStore.controlState(shared.parentWorkflowId, shared.dbPathOverride)
   if (!controls.requiresPauseBoundary(shared.manifest)) return null
   val reason = pauseReason?.let { " (reason=$it)" }.orEmpty()
   return GoalPlanningPhaseProduction.Stopped(
@@ -119,22 +118,10 @@ internal fun DefaultGoalPlanningSweep.planningPauseOutcome(
   )
 }
 
-internal fun DefaultGoalPlanningSweep.planningPauseOutcome(
-  shared: GoalPlanningSharedContext,
-  subtaskId: Int,
-  phaseId: String,
-  pauseReason: String? = null,
-): GoalPlanningPhaseProduction.Stopped? = planningPauseOutcome(
-  shared,
-  SubtaskId(subtaskId),
-  phaseId,
-  pauseReason,
-)
-
 internal fun DefaultGoalPlanningSweep.interruptibleWait(
   duration: Duration,
   shared: GoalPlanningSharedContext,
-  subtaskId: SubtaskId,
+  subtaskId: Int,
   phaseId: String,
 ): GoalPlanningSweepOutcome.Stopped? {
   if (duration <= ZERO) return null
@@ -158,9 +145,9 @@ internal fun DefaultGoalPlanningSweep.interruptibleWait(
 internal fun DefaultGoalPlanningSweep.validatePlanningAttemptOutput(
   stdout: String,
   shared: GoalPlanningSharedContext,
-  subtaskId: SubtaskId,
+  subtaskId: Int,
   phaseId: String,
-  agentId: AgentId,
+  agentId: String,
 ): GoalPlanningPhaseProduction = runCatching {
   outputValidator.validatePhaseOutput(stdout, phaseId).requireAcceptedOutput(phaseId)
 }.fold(

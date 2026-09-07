@@ -1,7 +1,5 @@
 package skillbill.application.goalrunner
 
-import skillbill.workflow.engine.model.WorkflowId
-import skillbill.agent.model.AgentId
 import skillbill.application.telemetry.GoalLifecycleTelemetryEmitter
 import skillbill.application.telemetry.model.GoalFinishedRequest
 import skillbill.application.telemetry.model.GoalIssueFinishedRequest
@@ -13,7 +11,6 @@ import skillbill.goalrunner.model.GoalRunnerStopReason
 import skillbill.ports.goalrunner.runner.model.GoalRunnerManifestState
 import skillbill.workflow.decomposition.model.DecompositionManifest
 import skillbill.workflow.decomposition.model.DecompositionSubtask
-import skillbill.workflow.decomposition.model.SubtaskId
 import java.time.Clock
 import java.time.Duration
 import java.time.Instant
@@ -22,6 +19,7 @@ class GoalRunnerTelemetryEmitter(
   private val telemetry: GoalLifecycleTelemetryEmitter,
   private val clock: Clock,
   private val state: GoalRunnerManifestState,
+  private val dbPathOverride: String?,
 ) {
   private val segmentStartedAt: String = clock.instant().toString()
   private val segmentWorkflowId: String = "${state.parentWorkflowId}:seg:$segmentStartedAt"
@@ -47,10 +45,11 @@ class GoalRunnerTelemetryEmitter(
         mode = "runtime",
         parentWorkflowId = state.parentWorkflowId,
       ),
+      dbPathOverride,
     )
   }
 
-  fun markSubtaskStarted(subtaskId: SubtaskId) {
+  fun markSubtaskStarted(subtaskId: Int) {
     subtaskStartedAt.putIfAbsent(subtaskId, clock.instant().toString())
   }
 
@@ -66,7 +65,7 @@ class GoalRunnerTelemetryEmitter(
         telemetry.goalSubtaskFinished(
           GoalSubtaskFinishedRequest(
             issueKey = manifest.issueKey,
-            workflowId = subtask.workflowId?.takeIf { it.value.isNotBlank() }
+            workflowId = subtask.workflowId?.takeIf(String::isNotBlank)
               ?: "${manifest.issueKey}:subtask:${subtask.id}",
             subtaskId = subtask.id,
             subtaskName = subtask.name,
@@ -79,6 +78,7 @@ class GoalRunnerTelemetryEmitter(
             finalizingAgentId = subtask.finalizingAgentId,
             participatingAgentIds = subtask.participatingAgentIds,
           ),
+          dbPathOverride,
         )
       }
   }
@@ -111,6 +111,7 @@ class GoalRunnerTelemetryEmitter(
         stopReason = stopReason,
         parentWorkflowId = state.parentWorkflowId,
       ),
+      dbPathOverride,
     )
   }
 
@@ -138,6 +139,7 @@ class GoalRunnerTelemetryEmitter(
         finishedAt = clock.instant().toString(),
         mode = "runtime",
       ),
+      dbPathOverride,
     )
   }
 

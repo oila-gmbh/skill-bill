@@ -19,8 +19,8 @@ object FeatureSpecPreparationPolicy {
   )
 
   fun prepare(intake: FeatureSpecPreparationIntake): FeatureSpecPreparationDecision {
-    val issueKey = intake.issueKey
-    if (issueKey.value.isBlank()) {
+    val issueKey = intake.issueKey.trim()
+    if (issueKey.isBlank()) {
       invalidRequest("issue_key", "issue key is required.")
     }
 

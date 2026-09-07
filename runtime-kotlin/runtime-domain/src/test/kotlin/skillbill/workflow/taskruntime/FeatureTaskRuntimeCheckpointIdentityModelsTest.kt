@@ -1,8 +1,7 @@
 package skillbill.workflow.taskruntime
+
 import skillbill.error.InvalidFeatureTaskRuntimeCheckpointIdentityVersionError
 import skillbill.error.InvalidWorkflowStateSchemaError
-import skillbill.workflow.decomposition.model.IssueKey
-import skillbill.workflow.decomposition.model.SubtaskId
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_CHECKPOINT_IDENTITIES_LIMIT
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeCheckpointIdentity
 import skillbill.workflow.taskruntime.model.featureTaskRuntimeAppendCheckpointIdentity
@@ -21,8 +20,8 @@ class FeatureTaskRuntimeCheckpointIdentityModelsTest {
   fun `an identity with a digit-leading tracker key round-trips through the durable artifact shape`() {
     val identity = FeatureTaskRuntimeCheckpointIdentity(
       sequenceNumber = 0,
-      issueKey = IssueKey("0AC-11"),
-      subtaskId = SubtaskId("2".toInt()),
+      issueKey = "0AC-11",
+      subtaskId = "2",
       checkpointRef = featureTaskRuntimeCheckpointRefName("0AC-11", "2", 0),
       branch = "sermilionrestless/0ac-11-be-sessions",
       phaseId = "implement",
@@ -187,8 +186,8 @@ class FeatureTaskRuntimeCheckpointIdentityModelsTest {
   private fun identity(sequenceNumber: Int = 0, commitSuffix: Int = 1): FeatureTaskRuntimeCheckpointIdentity =
     FeatureTaskRuntimeCheckpointIdentity(
       sequenceNumber = sequenceNumber,
-      issueKey = IssueKey("SKILL-150"),
-      subtaskId = SubtaskId("2".toInt()),
+      issueKey = "SKILL-150",
+      subtaskId = "2",
       checkpointRef = featureTaskRuntimeCheckpointRefName("SKILL-150", "2", sequenceNumber),
       branch = "feat/SKILL-150-scoped-checkpoint",
       phaseId = "audit",

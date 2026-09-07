@@ -1,4 +1,5 @@
 package skillbill.application
+
 import skillbill.application.decomposition.DECOMPOSITION_RUNTIME_ARTIFACT_KEY
 import skillbill.application.decomposition.model.DecompositionManifestRuntimeUpdate
 import skillbill.application.decomposition.model.DecompositionManifestWriteRequest
@@ -6,7 +7,6 @@ import skillbill.application.decomposition.parentSpecPath
 import skillbill.contracts.JsonCodec
 import skillbill.workflow.decomposition.model.DecompositionManifest
 import skillbill.workflow.decomposition.toWireMap
-import skillbill.workflow.engine.model.WorkflowId
 import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.test.Test
@@ -41,7 +41,7 @@ class DecompositionManifestPayloadProjectionTest {
         "validation_result" to mapOf("passed" to true),
       ),
       runtimeUpdate = DecompositionManifestRuntimeUpdate(
-        workflowId = WorkflowId("wfl-subtask-1"),
+        workflowId = "wfl-subtask-1",
         workflowStatus = "running",
         currentStepId = "validate",
         stepUpdates = listOf(mapOf("step_id" to "validate", "status" to "completed", "attempt_count" to 1)),

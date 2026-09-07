@@ -10,7 +10,6 @@ import com.github.ajalt.clikt.parameters.options.option
 import com.github.ajalt.clikt.parameters.types.int
 import me.tatarka.inject.annotations.Inject
 import skillbill.agentaddon.model.HydratedAgentAddonSelection
-import skillbill.agent.model.AgentId
 import skillbill.application.goalrunner.GoalRunner
 import skillbill.application.goalrunner.model.DEFAULT_GOAL_PLANNING_BUDGET
 import skillbill.application.goalrunner.model.GoalRunnerRunRequest
@@ -22,7 +21,6 @@ import skillbill.cli.kernel.drainTelemetryOnCompletion
 import skillbill.cli.kernel.invokingAgentResolutionHelp
 import skillbill.cli.model.CliRunInputs
 import skillbill.cli.model.DEFAULT_GOAL_MAX_WALL_CLOCK_MINUTES
-import skillbill.workflow.decomposition.model.IssueKey
 import skillbill.ports.agentaddon.AgentAddonSelectionPort
 import skillbill.ports.agentaddon.ExternalAgentAddonSourceConfigPort
 import skillbill.ports.agentrun.ExecutableLookup
@@ -195,6 +193,7 @@ class GoalRunCommand(
       inputs = inputs,
       liveOutput = !noLiveOutput,
       repoRoot = effectiveRepoRoot,
+      dbOverride = inputs.dbPathOverride,
       runtimeProvenance = runtimeProvenanceService.current(
         executablePathHint = inputs.environment[RUNTIME_EXECUTABLE_ENV],
         classPath = inputs.environment[RUNTIME_CLASSPATH_ENV] ?: hostPlatform.jvmClassPath,
@@ -208,7 +207,7 @@ class GoalRunCommand(
     )
     val payload = report.toGoalRunCliMap()
     state.completeText(goalRunText(payload), payload, exitCode = payload.goalExitCode())
-    drainTelemetryOnCompletion(telemetryService, diagnostics)
+    drainTelemetryOnCompletion(telemetryService, inputs.dbPathOverride, diagnostics)
   }
 
   private fun runRequest(
@@ -218,10 +217,11 @@ class GoalRunCommand(
     presenter: GoalRunPresenter,
     effectiveRepoRoot: Path,
   ): GoalRunnerRunRequest = GoalRunnerRunRequest(
-    issueKey = IssueKey(runIssueKey),
+    issueKey = runIssueKey,
     repoRoot = effectiveRepoRoot,
-    invokedAgentId = AgentId(invokedAgentId),
+    invokedAgentId = invokedAgentId,
     configuredAgentOverrideId = agentOverride,
+    dbPathOverride = inputs.dbPathOverride,
     timeout = maxWallClockMinutes.takeIf { it > 0 }?.minutes,
     progressIdleTimeout = progressIdleTimeoutMinutes.takeIf { it > 0 }?.minutes,
     planningBudget = planningBudgetMinutes.takeIf { it > 0 }?.minutes,

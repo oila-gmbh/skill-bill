@@ -105,7 +105,7 @@ internal class GoalRunnerControlStore(
       statement.setString(
         2,
         JsonCodec.valueToJsonElement(
-          merged.values.sortedBy { it.subtaskId.value }
+          merged.values.sortedBy(GoalRunnerOutOfBandAcceptance::subtaskId)
             .map(GoalRunnerOutOfBandAcceptance::toArtifactMap),
         ).toString(),
       )

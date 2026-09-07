@@ -1,4 +1,5 @@
 package skillbill.application.goalrunner
+
 import skillbill.application.goalrunner.model.GoalContinuationCandidate
 import skillbill.boundary.OpenBoundaryMap
 import skillbill.contracts.JsonCodec
@@ -6,9 +7,6 @@ import skillbill.goalrunner.asGoalRunnerIntOrNull
 import skillbill.goalrunner.goalContinuationTerminalStatus
 import skillbill.goalrunner.model.GoalRunnerStoredOutcome
 import skillbill.goalrunner.model.GoalRunnerTerminalStatus
-import skillbill.workflow.decomposition.model.IssueKey
-import skillbill.workflow.decomposition.model.SubtaskId
-import skillbill.workflow.engine.model.WorkflowId
 
 fun List<GoalContinuationCandidate>.authoritativeOutcomesBySubtask(): Map<Int, GoalRunnerStoredOutcome> =
   groupBy { candidate -> candidate.goalContinuation.subtaskId }
@@ -32,8 +30,8 @@ fun List<GoalContinuationCandidate>.selectAuthoritativeOutcome(): GoalRunnerStor
 
 fun staleRunningReason(
   staleWorkflowId: String,
-  issueKey: IssueKey,
-  subtaskId: SubtaskId,
+  issueKey: String,
+  subtaskId: Int,
   authoritative: GoalRunnerStoredOutcome?,
 ): String = authoritative?.let { outcome ->
   if (outcome.workflowId == staleWorkflowId) {
@@ -41,7 +39,7 @@ fun staleRunningReason(
       "subtask $subtaskId because a terminal outcome was already durable."
   } else {
     "Goal status reconciliation closed stale running child '$staleWorkflowId' for issue '$issueKey' " +
-      "subtask $subtaskId in favor of authoritative ${outcome.status.name.lowercase()} workflow " +
+      "subtask $subtaskId in favor of authoritative ${outcome.status.wireValue} workflow " +
       "'${outcome.workflowId}'."
   }
 } ?: (
@@ -52,9 +50,9 @@ fun staleRunningReason(
 @OpenBoundaryMap("Missing result-prefix terminal outcome artifact reconstruction")
 fun missingResultPrefixTerminalOutcomeArtifact(
   output: Map<String, Any?>,
-  issueKey: IssueKey,
-  subtaskId: SubtaskId,
-  workflowId: WorkflowId,
+  issueKey: String,
+  subtaskId: Int,
+  workflowId: String,
 ): Map<String, Any?>? = (JsonCodec.anyToStringAnyMap(output["subtask_outcome"]) ?: output)
   .takeIf { candidate -> candidate.matchesGoalContinuation(issueKey, subtaskId) }
   ?.let { candidate ->
@@ -63,16 +61,16 @@ fun missingResultPrefixTerminalOutcomeArtifact(
     }
   }
 
-fun Map<String, Any?>.matchesGoalContinuation(issueKey: IssueKey, subtaskId: SubtaskId): Boolean {
+fun Map<String, Any?>.matchesGoalContinuation(issueKey: String, subtaskId: Int): Boolean {
   val candidateIssueKey = this["issue_key"]?.toString()?.takeIf(String::isNotBlank) ?: issueKey
   val candidateSubtaskId = this["subtask_id"].asGoalRunnerIntOrNull() ?: subtaskId
   return candidateIssueKey == issueKey && candidateSubtaskId == subtaskId
 }
 
 fun Map<String, Any?>.toMissingResultPrefixOutcomeArtifact(
-  issueKey: IssueKey,
-  subtaskId: SubtaskId,
-  workflowId: WorkflowId,
+  issueKey: String,
+  subtaskId: Int,
+  workflowId: String,
   status: GoalRunnerTerminalStatus,
 ): Map<String, Any?> = linkedMapOf<String, Any?>(
   "issue_key" to issueKey,
@@ -89,15 +87,7 @@ fun Map<String, Any?>.toMissingResultPrefixOutcomeArtifact(
     ?.let { put("blocked_reason", it) }
 }
 
-fun GoalRunnerTerminalStatus.toGoalContinuationWireStatus(): String = when (this) {
-  GoalRunnerTerminalStatus.COMPLETE -> "complete"
-  GoalRunnerTerminalStatus.FAILED -> "failed"
-  GoalRunnerTerminalStatus.BLOCKED -> "blocked"
-  GoalRunnerTerminalStatus.TIMEOUT -> "timeout"
-  GoalRunnerTerminalStatus.NO_TERMINAL_STORE_OUTCOME -> "no_terminal_store_outcome"
-  GoalRunnerTerminalStatus.RECONCILABLE -> "reconcilable"
-  GoalRunnerTerminalStatus.PAUSED -> "paused"
-}
+fun GoalRunnerTerminalStatus.toGoalContinuationWireStatus(): String = wireValue
 
 @OpenBoundaryMap("Bounded history sequence scan over durable workflow artifacts")
 fun maxHistorySequence(artifacts: Map<String, Any?>, historyKey: String, current: Int?): Int? {

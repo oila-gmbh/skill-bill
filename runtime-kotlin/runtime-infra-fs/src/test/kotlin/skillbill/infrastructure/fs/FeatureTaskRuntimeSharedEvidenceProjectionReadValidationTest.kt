@@ -1,8 +1,8 @@
 package skillbill.infrastructure.fs
+
 import skillbill.ports.taskruntime.FeatureTaskRuntimeSharedEvidenceFingerprintContradictionError
 import skillbill.ports.taskruntime.model.FeatureTaskRuntimeSharedEvidenceRequest
 import skillbill.ports.taskruntime.model.FeatureTaskRuntimeSharedEvidenceResolveOutcome
-import skillbill.workflow.engine.model.WorkflowId
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepositoryCheckpoint
 import java.nio.file.Files
 import java.nio.file.Path
@@ -82,7 +82,7 @@ class FeatureTaskRuntimeSharedEvidenceProjectionReadValidationTest {
 
   private fun request(fingerprint: String) = FeatureTaskRuntimeSharedEvidenceRequest(
     repoRoot = repoRoot,
-    workflowId = WorkflowId("wf-1"),
+    workflowId = "wf-1",
     checkpoint = FeatureTaskRuntimeRepositoryCheckpoint(fingerprint),
   )
 }

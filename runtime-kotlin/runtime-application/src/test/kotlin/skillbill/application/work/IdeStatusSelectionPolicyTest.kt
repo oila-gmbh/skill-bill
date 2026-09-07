@@ -1,11 +1,10 @@
 package skillbill.application.work
+
 import skillbill.application.idestatus.model.IdeStatusCandidate
 import skillbill.application.idestatus.model.IdeStatusFreshness
 import skillbill.application.idestatus.model.IdeStatusLifecycleState
 import skillbill.application.idestatus.model.IdeStatusSelectionTier
 import skillbill.application.idestatus.model.IdeStatusWorkflowFamily
-import skillbill.workflow.decomposition.model.IssueKey
-import skillbill.workflow.engine.model.WorkflowId
 import java.time.Instant
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -44,9 +43,9 @@ class IdeStatusSelectionPolicyTest {
   @Test
   fun `feature-goal outranks child runtime for the same issue within a tier`() {
     val goal = IdeStatusCandidate(
-      workflowId = WorkflowId("goal-1"),
+      workflowId = "goal-1",
       workflowFamily = IdeStatusWorkflowFamily.FEATURE_GOAL,
-      issueKey = IssueKey("SKILL-148"),
+      issueKey = "SKILL-148",
       currentState = "running",
       lifecycleState = IdeStatusLifecycleState.ACTIVE,
       selectionTier = IdeStatusSelectionTier.ACTIVE,
@@ -55,9 +54,9 @@ class IdeStatusSelectionPolicyTest {
       isGoalAuthoritative = true,
     )
     val child = IdeStatusCandidate(
-      workflowId = WorkflowId("runtime-child"),
+      workflowId = "runtime-child",
       workflowFamily = IdeStatusWorkflowFamily.FEATURE_TASK_RUNTIME,
-      issueKey = IssueKey("SKILL-148"),
+      issueKey = "SKILL-148",
       currentState = "running",
       lifecycleState = IdeStatusLifecycleState.ACTIVE,
       selectionTier = IdeStatusSelectionTier.ACTIVE,

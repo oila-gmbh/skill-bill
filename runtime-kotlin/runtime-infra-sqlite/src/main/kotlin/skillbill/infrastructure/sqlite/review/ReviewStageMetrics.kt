@@ -1,5 +1,4 @@
 package skillbill.infrastructure.sqlite.review
-
 import skillbill.db.PARAM_ONE
 import skillbill.review.context.model.ReviewClaimVerdictAdmission
 import skillbill.review.context.model.ReviewSpecAdjudicationAdmission

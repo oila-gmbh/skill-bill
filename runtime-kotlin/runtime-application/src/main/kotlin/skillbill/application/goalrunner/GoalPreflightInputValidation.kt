@@ -1,16 +1,14 @@
 package skillbill.application.goalrunner
 
-import skillbill.agent.model.AgentId
 import skillbill.error.InvalidDecompositionManifestSchemaError
 import skillbill.error.InvalidFeatureTaskExecutionIdentitySchemaError
 import skillbill.ports.repository.RepositoryEnclosingRootPort
 import skillbill.ports.workflow.FeatureTaskExecutionIdentityPolicy
-import skillbill.workflow.decomposition.model.IssueKey
 import java.nio.file.Path
 
 object GoalPreflightInputValidation {
-  fun requireInvokedAgentId(invokedAgentId: AgentId) {
-    if (invokedAgentId.value.isBlank()) {
+  fun requireInvokedAgentId(invokedAgentId: String) {
+    if (invokedAgentId.isBlank()) {
       throw InvalidFeatureTaskExecutionIdentitySchemaError(
         "preflight request",
         "invoked_agent_id is required",
@@ -38,7 +36,7 @@ object GoalPreflightInputValidation {
       )
     }
 
-  fun normalizeIssueKey(issueKey: IssueKey): IssueKey =
+  fun normalizeIssueKey(issueKey: String): String =
     FeatureTaskExecutionIdentityPolicy.normalizeIssueKey(issueKey, "preflight request")
 
   fun requireManifestIssueKey(manifestIssueKey: String, requestedIssueKey: String) {

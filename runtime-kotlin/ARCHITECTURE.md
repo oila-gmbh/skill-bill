@@ -1561,6 +1561,34 @@ or lease across accessor reads (`DatabaseSessionFactory`,
 - Stateless orchestration services (`WorkflowService`, `ReviewService`,
   `ParallelCodeReviewRunner`, and similar) — no cross-call mutable state.
 
+## Workflow Git status inventory
+
+The closed workflow-Git result vocabulary is owned by
+`skillbill.ports.workflow.gitops.model`:
+
+- `WorkflowGitOperationResult` is the sealed `Ok`/`Failed` result. Its
+  non-null `value` and `error` payloads default to empty strings. The result
+  cases own the canonical `wireValue` tokens `ok` and `error`, and
+  `WorkflowGitOperationResult.fromWire` is the only decoder for that result.
+- `WorkflowGitOperationStatus` owns the same `ok` and `error` tokens for
+  structured Git DTOs and is the only decoder for those DTO status fields.
+  `WorkflowScopedPathContentsResult.status`,
+  `WorkflowSelectedDiffHunksResult.status`, and
+  `WorkflowWorktreeActivityResult.status` use this enum; none is an open
+  provider vocabulary.
+- `GoalSubtaskReviewBaselineResult.status` and
+  `GoalSubtaskReviewInputResult.status` remain the legacy Git review
+  operation envelope boundary. Their `ok`/`error` tokens are consumed only
+  by the review adapter and application recovery seams; they are not
+  `WorkflowGitOperationResult` values and do not authorize raw status access
+  on that sealed result.
+
+`recordsNothingToCommit` is a pure result extension that searches both
+  payloads. The Git adapter may normalize a recognized no-change failure to an
+  empty `Ok`, while goal finalization separately accepts a marker-bearing
+  `Failed`; both paths are intentional and preserve their existing payload
+  semantics.
+
 ## SKILL-52.2 — Runtime boundary closure inventory
 
 This section classifies every current public raw-map declaration in
@@ -2016,30 +2044,6 @@ _None — placeholder._
 
 <!-- skill-52-2-inventory:end -->
 # Native-agent installation integrity
-
-# Typed boundary identifiers
-
-`WorkflowId`, `SessionId`, `IssueKey`, `SubtaskId`, `ReviewRunId`, and `AgentId` are domain value
-classes. Identifier strings enter through CLI option parsing, MCP payload parsing, SQLite column
-mapping, or actual contracts DTO mapping. Identity creation wraps the existing generator output
-once and returns the typed value. SQLite mappings use the numeric representation for `SubtaskId`;
-the other five use their existing scalar strings. The architecture census scans runtime-ports and
-runtime-application main signatures, including prefixed aliases, nullable and generic forms,
-callbacks, multiline declarations, inferred identity returns, and known primitive aliases. Domain
-and application conversion helpers, direct serializer inputs, and implicit rendering sites remain
-review evidence rather than conversion roots.
-
-# Open status-family fields
-
-Status-family fields with values authored by an external pack remain open boundaries and are
-inventoried with their producer and reason. Closed runtime-owned status, mode, kind, phase, and
-outcome fields use domain enums or sealed types.
-
-# Wire vocabulary
-
-Runtime-domain wire-token declarations own closed enum tokens and their aliases. Runtime-contracts
-`*Keys` declarations own durable and wire payload keys. `WireVocabularyArchitectureTest` checks
-that declarations are unique and that production code does not restate token sets.
 
 Native-agent rendering promotes artifacts atomically into the installed cache and records each
 Skill Bill-managed link in the user-home `.skill-bill/native-agent-link-inventory.json`. The inventory stores

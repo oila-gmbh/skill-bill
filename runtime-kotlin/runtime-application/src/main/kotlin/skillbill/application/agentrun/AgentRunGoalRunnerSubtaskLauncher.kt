@@ -1,7 +1,5 @@
 package skillbill.application.agentrun
 
-import skillbill.agent.model.AgentId
-
 import me.tatarka.inject.annotations.Inject
 import skillbill.application.agentrun.model.AgentRunStartRequest
 import skillbill.ports.agentrun.model.AgentRunLaunchOutcome

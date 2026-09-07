@@ -2,7 +2,6 @@ package skillbill.workflow.taskruntime
 
 import skillbill.boundary.OpenBoundaryMap
 import skillbill.error.InvalidFeatureTaskRuntimeHandoffProjectionError
-import skillbill.workflow.engine.model.WorkflowId
 
 /**
  * Domain port for schema-validating a delivered handoff envelope. The concrete Draft 2020-12
@@ -16,5 +15,5 @@ interface FeatureTaskRuntimeHandoffEnvelopeValidator {
    * the rejection is diagnosable without echoing projection bodies.
    */
   @OpenBoundaryMap("Feature-task-runtime handoff envelope wire map at the schema-validation seam")
-  fun validateEnvelope(envelope: Map<String, Any?>, workflowId: WorkflowId? = null)
+  fun validateEnvelope(envelope: Map<String, Any?>, workflowId: String? = null)
 }

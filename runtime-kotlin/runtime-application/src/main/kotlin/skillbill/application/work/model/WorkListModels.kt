@@ -1,6 +1,5 @@
 package skillbill.application.work.model
-import skillbill.workflow.decomposition.model.IssueKey
-import skillbill.workflow.engine.model.WorkflowId
+
 import java.time.Instant
 
 enum class WorkListItemKind(val wireValue: String) {
@@ -11,9 +10,9 @@ enum class WorkListItemKind(val wireValue: String) {
 }
 
 data class WorkListItem(
-  val issueKey: IssueKey?,
+  val issueKey: String?,
   val workflowKind: WorkListItemKind,
-  val workflowId: WorkflowId,
+  val workflowId: String,
   val startedAt: Instant,
   val currentState: String,
   val stateEnteredAt: Instant,

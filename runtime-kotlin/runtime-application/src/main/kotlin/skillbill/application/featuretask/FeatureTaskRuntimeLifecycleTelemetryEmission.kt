@@ -44,6 +44,7 @@ fun emitFeatureTaskRuntimeFinished(
       findingVerificationRejectedCount = telemetryPayload.verificationTelemetry.rejectedCount,
       reviewFixCapExhausted = telemetryPayload.verificationTelemetry.reviewFixCapExhausted,
     ),
+    dbOverride = context.dbOverride,
   )
 }
 
@@ -84,6 +85,7 @@ fun emitFeatureTaskRuntimeFinishedError(
       findingVerificationRejectedCount = telemetryPayload.verificationTelemetry.rejectedCount,
       reviewFixCapExhausted = telemetryPayload.verificationTelemetry.reviewFixCapExhausted,
     ),
+    dbOverride = context.dbOverride,
   )
 }
 

@@ -1,12 +1,10 @@
 package skillbill.goalrunner
+
 import skillbill.goalrunner.model.GoalRunnerStatusProjectionRuntimeInputs
 import skillbill.goalrunner.model.GoalRunnerStatusProjector
 import skillbill.workflow.decomposition.model.CurrentSubtaskIntent
 import skillbill.workflow.decomposition.model.DecompositionManifest
 import skillbill.workflow.decomposition.model.DecompositionSubtask
-import skillbill.workflow.decomposition.model.IssueKey
-import skillbill.workflow.decomposition.model.SubtaskId
-import skillbill.workflow.engine.model.WorkflowId
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
@@ -119,19 +117,19 @@ class GoalRunnerStatusProjectorTest {
   }
 
   private fun manifest(currentSubtaskStatus: String): DecompositionManifest = DecompositionManifest(
-    issueKey = IssueKey("SKILL-135"),
+    issueKey = "SKILL-135",
     featureName = "audit-first-review-gate",
     parentSpecPath = ".feature-specs/SKILL-135/spec.md",
     baseBranch = "main",
     featureBranch = "feat/SKILL-135-audit-first-review-gate",
-    currentSubtaskIntent = CurrentSubtaskIntent(subtaskId = SubtaskId(1), action = "resume"),
+    currentSubtaskIntent = CurrentSubtaskIntent(subtaskId = 1, action = "resume"),
     subtasks = listOf(
       DecompositionSubtask(
-        id = SubtaskId(1),
+        id = 1,
         name = "Only subtask",
         specPath = ".feature-specs/SKILL-135/spec_subtask_1.md",
         status = currentSubtaskStatus,
-        workflowId = WorkflowId("wftr-20260720-192238-iwxj"),
+        workflowId = "wftr-20260720-192238-iwxj",
       ),
     ),
   )

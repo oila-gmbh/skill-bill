@@ -1,6 +1,5 @@
 package skillbill.application.featuretask
 
-import skillbill.agent.model.AgentId
 import me.tatarka.inject.annotations.Inject
 import skillbill.application.featuretask.model.FeatureTaskRuntimeAuditRepairStatus
 import skillbill.application.featuretask.model.FeatureTaskRuntimeDecomposeTerminalStatus
@@ -8,7 +7,6 @@ import skillbill.application.featuretask.model.FeatureTaskRuntimeDegradedDiagnos
 import skillbill.application.featuretask.model.FeatureTaskRuntimePhaseStatus
 import skillbill.application.featuretask.model.FeatureTaskRuntimeStatusProjection
 import skillbill.application.featuretask.model.FeatureTaskRuntimeStatusRequest
-import skillbill.workflow.engine.model.WorkflowId
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditGapPause
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditProgress
@@ -32,9 +30,9 @@ class FeatureTaskRuntimeStatusService(
   val currentPhaseExecutionDeriver = FeatureTaskRuntimeCurrentPhaseExecutionDeriver()
 
   fun status(request: FeatureTaskRuntimeStatusRequest): FeatureTaskRuntimeStatusProjection? {
-    val records = recorder.loadPhaseRecords(request.workflowId) ?: return null
-    val decomposeTerminal = decomposeTerminalRecorder.loadDecomposeTerminal(request.workflowId)
-    val ledger = recorder.loadPhaseLedger(request.workflowId).orEmpty()
+    val records = recorder.loadPhaseRecords(request.workflowId, request.dbPathOverride) ?: return null
+    val decomposeTerminal = decomposeTerminalRecorder.loadDecomposeTerminal(request.workflowId, request.dbPathOverride)
+    val ledger = recorder.loadPhaseLedger(request.workflowId, request.dbPathOverride).orEmpty()
     return buildStatusProjection(request, records, decomposeTerminal, ledger)
   }
 
@@ -65,7 +63,7 @@ fun FeatureTaskRuntimeStatusService.buildStatusProjection(
   val phases = phaseStatuses(records, blockedPhaseIds, ledger)
   val terminalDecomposeRecorded = decomposeTerminal != null
   val qualityGateSelection = recorder
-    .loadGoalContinuationQualityGateSelection(request.workflowId)
+    .loadGoalContinuationQualityGateSelection(request.workflowId, request.dbPathOverride)
     .orLegacyValidate()
   val currentPhaseId = resolveCurrentPhaseId(
     terminalDecomposeRecorded,
@@ -74,7 +72,7 @@ fun FeatureTaskRuntimeStatusService.buildStatusProjection(
     ledger,
     qualityGateSelection,
   )
-  val auditGapPause = recorder.loadAuditGapPause(request.workflowId)
+  val auditGapPause = recorder.loadAuditGapPause(request.workflowId, request.dbPathOverride)
   val effectiveAuditGapIteration = auditGapPause?.edgeIteration
     ?: auditRepairProgress?.auditGapIterationCount
     ?: ledgerAuditGapIterationCount(ledger)
@@ -121,16 +119,17 @@ private fun FeatureTaskRuntimeStatusService.statusProjectionFrom(
   val terminalDecomposeRecorded = parts.terminalDecomposeRecorded
   return FeatureTaskRuntimeStatusProjection(
     workflowId = request.workflowId,
-    featureSize = runInvariantsStore.resolve(request.workflowId)?.featureSize?.name,
+    featureSize = runInvariantsStore.resolve(request.workflowId, request.dbPathOverride)?.featureSize?.name,
     phases = phases,
     completeCount = phases.count { it.status == PHASE_STATUS_COMPLETED },
     pendingCount = if (terminalDecomposeRecorded) 0 else phases.count { it.status !in PHASE_TERMINAL_STATUSES },
     blockedCount = if (terminalDecomposeRecorded) 0 else phases.count { it.status == PHASE_STATUS_BLOCKED },
     currentPhaseId = parts.currentPhaseId,
-    resolvedBranch = recorder.loadResolvedBranch(request.workflowId)?.branch,
+    resolvedBranch = recorder.loadResolvedBranch(request.workflowId, request.dbPathOverride)?.branch,
     finalizingAgentId = agentAttributionFromPhaseState(
       recorder,
       request.workflowId,
+      request.dbPathOverride,
     ).finalizingAgentId,
     decomposeTerminal = decomposeTerminalStatus(parts.decomposeTerminal),
     auditRepair = parts.auditRepair,
@@ -145,7 +144,7 @@ private fun FeatureTaskRuntimeStatusService.statusProjectionFrom(
         gateRunCount = parts.gateRunCount,
       ),
     ),
-    degradedDiagnostic = degradedDiagnosticStatus(request.workflowId),
+    degradedDiagnostic = degradedDiagnosticStatus(request.workflowId, request.dbPathOverride),
     operatorDecisionPause = operatorDecisionPause(parts.records, parts.auditGapPause),
   )
 }
@@ -154,9 +153,9 @@ private fun FeatureTaskRuntimeStatusService.gateRunCountFor(
   request: FeatureTaskRuntimeStatusRequest,
   currentPhaseId: String?,
 ): Int? {
-  val validationGateRunCount = recorder.loadValidationGateProgress(request.workflowId)
+  val validationGateRunCount = recorder.loadValidationGateProgress(request.workflowId, request.dbPathOverride)
     ?.gateRunCount
-  val buildGateRunCount = recorder.loadBuildGateProgress(request.workflowId)
+  val buildGateRunCount = recorder.loadBuildGateProgress(request.workflowId, request.dbPathOverride)
     ?.gateRunCount
   return when (currentPhaseId) {
     FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_BUILD -> buildGateRunCount
@@ -166,9 +165,10 @@ private fun FeatureTaskRuntimeStatusService.gateRunCountFor(
 }
 
 fun FeatureTaskRuntimeStatusService.degradedDiagnosticStatus(
-  workflowId: WorkflowId,
+  workflowId: String,
+  dbPathOverride: String?,
 ): FeatureTaskRuntimeDegradedDiagnosticStatus? {
-  val diagnosticSignals = recorder.loadDiagnosticSignals(workflowId)
+  val diagnosticSignals = recorder.loadDiagnosticSignals(workflowId, dbPathOverride)
   val latest = diagnosticSignals.lastOrNull() ?: return null
   return FeatureTaskRuntimeDegradedDiagnosticStatus(
     count = diagnosticSignals.size,

@@ -20,7 +20,7 @@ internal fun composedRunLanes(
   if (routedPackSlug == null) {
     diagnostics.warning(
       "review lane composition: routed skill '${review.routedSkillCanonical}' names no platform pack; " +
-        "run ${review.reviewRunId.value} imports with unresolved lanes.",
+        "run ${review.reviewRunId} imports with unresolved lanes.",
     )
     return ReviewRunLaneResolver.resolve(
       ReviewLaunchPlan(review.routedSkillCanonical, emptyList()),
@@ -32,7 +32,7 @@ internal fun composedRunLanes(
   } catch (error: ShellContentContractException) {
     diagnostics.warning(
       "review lane composition: pack '$routedPackSlug' failed to compose " +
-        "(${error::class.simpleName}); run ${review.reviewRunId.value} imports with unresolved lanes " +
+        "(${error::class.simpleName}); run ${review.reviewRunId} imports with unresolved lanes " +
         "instead of the composed launch plan.",
       error,
     )

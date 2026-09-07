@@ -1,4 +1,5 @@
 package skillbill.db
+
 import skillbill.contracts.workflow.WORKFLOW_STATE_CONTRACT_VERSION
 import skillbill.db.core.DatabaseRuntime
 import skillbill.db.core.DbConstants
@@ -9,9 +10,6 @@ import skillbill.error.InvalidWorkflowStateSchemaError
 import skillbill.error.ProseFeatureTaskWorkflowWriteRefusedError
 import skillbill.ports.workflow.model.FeatureTaskRouteScope
 import skillbill.ports.workflow.model.FeatureTaskWorkflowMode
-import skillbill.workflow.decomposition.model.IssueKey
-import skillbill.workflow.engine.model.SessionId
-import skillbill.workflow.engine.model.WorkflowId
 import java.nio.file.Files
 import java.sql.DriverManager
 import java.time.Instant
@@ -44,14 +42,14 @@ class WorkflowStateStoreTest {
           FeatureTaskWorkflowMode.RUNTIME,
         )
           .copy(
-            issueKey = IssueKey("SKILL-128"),
+            issueKey = "SKILL-128",
             workflowStatus = "paused",
             artifactsJson = """{"plan":{"mode":"decompose"},"decomposition_runtime":{"issue_key":"SKILL-128"}}""",
           ),
       )
       store.saveFeatureTaskRuntimeWorkflow(
         workflowRow("wftr-legacy", "ftr-legacy", "bill-feature-task", "plan", FeatureTaskWorkflowMode.RUNTIME)
-          .copy(issueKey = IssueKey("SKILL-128"), workflowStatus = "paused"),
+          .copy(issueKey = "SKILL-128", workflowStatus = "paused"),
       )
 
       val candidates = store.findStandaloneFeatureTaskCandidates("SKILL-128", "repo")
@@ -205,8 +203,8 @@ class WorkflowStateStoreTest {
     DatabaseRuntime.ensureDatabase(dbPath).use { connection ->
       val store = WorkflowStateStore(connection)
       val row = workflowRow(
-        workflowId = WorkflowId("wftr-worker"),
-        sessionId = SessionId("ftr-worker"),
+        workflowId = "wftr-worker",
+        sessionId = "ftr-worker",
         workflowName = "bill-feature-task",
         currentStepId = "implement",
         mode = FeatureTaskWorkflowMode.RUNTIME,
@@ -233,8 +231,8 @@ class WorkflowStateStoreTest {
     DatabaseRuntime.ensureDatabase(dbPath).use { connection ->
       val store = WorkflowStateStore(connection)
       val row = workflowRow(
-        workflowId = WorkflowId("wftr-contention"),
-        sessionId = SessionId("ftr-contention"),
+        workflowId = "wftr-contention",
+        sessionId = "ftr-contention",
         workflowName = "bill-feature-task",
         currentStepId = "implement",
         mode = FeatureTaskWorkflowMode.RUNTIME,
@@ -255,8 +253,8 @@ class WorkflowStateStoreTest {
     DatabaseRuntime.ensureDatabase(dbPath).use { connection ->
       val store = WorkflowStateStore(connection)
       val row = workflowRow(
-        workflowId = WorkflowId("wftr-invalid-lease"),
-        sessionId = SessionId("ftr-invalid-lease"),
+        workflowId = "wftr-invalid-lease",
+        sessionId = "ftr-invalid-lease",
         workflowName = "bill-feature-task",
         currentStepId = "implement",
         mode = FeatureTaskWorkflowMode.RUNTIME,
@@ -316,8 +314,8 @@ class WorkflowStateStoreTest {
 
       store.saveFeatureVerifyWorkflow(
         WorkflowStateRow(
-          workflowId = WorkflowId("wfv-001"),
-          sessionId = SessionId("fvr-001"),
+          workflowId = "wfv-001",
+          sessionId = "fvr-001",
           workflowName = "bill-feature-verify",
           contractVersion = "0.1",
           workflowStatus = "running",
@@ -346,8 +344,8 @@ class WorkflowStateStoreTest {
       val store = WorkflowStateStore(connection)
       val initialRow =
         workflowRow(
-          workflowId = WorkflowId("wftr-terminal"),
-          sessionId = SessionId("ftr-terminal"),
+          workflowId = "wftr-terminal",
+          sessionId = "ftr-terminal",
           workflowName = "bill-feature-task",
           currentStepId = "preplan",
           mode = FeatureTaskWorkflowMode.RUNTIME,
@@ -380,8 +378,8 @@ class WorkflowStateStoreTest {
     DatabaseRuntime.ensureDatabase(dbPath).use { connection ->
       val store = WorkflowStateStore(connection)
       val initialRow = workflowRow(
-        workflowId = WorkflowId("wftr-paused-parent"),
-        sessionId = SessionId("ftr-paused-parent"),
+        workflowId = "wftr-paused-parent",
+        sessionId = "ftr-paused-parent",
         workflowName = "bill-feature-task",
         currentStepId = "plan",
         mode = FeatureTaskWorkflowMode.RUNTIME,
@@ -409,8 +407,8 @@ class WorkflowStateStoreLifecycleTest {
     DatabaseRuntime.ensureDatabase(dbPath).use { connection ->
       val store = WorkflowStateStore(connection)
       val initial = workflowRow(
-        workflowId = WorkflowId("wftr-state-entry-main"),
-        sessionId = SessionId("ftr-state-entry-main"),
+        workflowId = "wftr-state-entry-main",
+        sessionId = "ftr-state-entry-main",
         workflowName = "bill-feature-task",
         currentStepId = "preplan",
         mode = FeatureTaskWorkflowMode.RUNTIME,
@@ -445,8 +443,8 @@ class WorkflowStateStoreLifecycleTest {
       val store = WorkflowStateStore(connection)
       store.saveFeatureTaskRuntimeWorkflow(
         workflowRow(
-          workflowId = WorkflowId("wftr-insert"),
-          sessionId = SessionId("ftr-insert"),
+          workflowId = "wftr-insert",
+          sessionId = "ftr-insert",
           workflowName = "bill-feature-task",
           currentStepId = "preplan",
           mode = FeatureTaskWorkflowMode.RUNTIME,
@@ -471,8 +469,8 @@ class WorkflowStateStoreLifecycleTest {
   fun `concurrent workflow status transitions serialize strictly increasing state entry times`() {
     val dbPath = Files.createTempDirectory("runtime-kotlin-db-workflow-concurrent-state").resolve("metrics.db")
     val initial = workflowRow(
-      workflowId = WorkflowId("wftr-concurrent-state-entry"),
-      sessionId = SessionId("ftr-concurrent-state-entry"),
+      workflowId = "wftr-concurrent-state-entry",
+      sessionId = "ftr-concurrent-state-entry",
       workflowName = "bill-feature-task",
       currentStepId = "preplan",
       mode = FeatureTaskWorkflowMode.RUNTIME,
@@ -531,7 +529,7 @@ class WorkflowStateStoreLifecycleTest {
         store.saveFeatureTaskRuntimeWorkflow(
           workflowRow(
             workflowId = workflowId,
-            sessionId = SessionId("ftr-00$index"),
+            sessionId = "ftr-00$index",
             workflowName = "bill-feature-task",
             currentStepId = "preplan",
             mode = FeatureTaskWorkflowMode.RUNTIME,
@@ -542,7 +540,7 @@ class WorkflowStateStoreLifecycleTest {
         store.saveFeatureVerifyWorkflow(
           workflowRow(
             workflowId = workflowId,
-            sessionId = SessionId("fvr-00$index"),
+            sessionId = "fvr-00$index",
             workflowName = "bill-feature-verify",
             currentStepId = "gather_diff",
           ),
@@ -566,8 +564,8 @@ class WorkflowStateStoreLifecycleTest {
 
       val initialRow =
         WorkflowStateRow(
-          workflowId = WorkflowId("wftr-001"),
-          sessionId = SessionId("ftr-001"),
+          workflowId = "wftr-001",
+          sessionId = "ftr-001",
           workflowName = "bill-feature-task",
           mode = FeatureTaskWorkflowMode.RUNTIME,
           contractVersion = "",
@@ -605,8 +603,8 @@ class WorkflowStateStoreLifecycleTest {
     DatabaseRuntime.ensureDatabase(dbPath).use { connection ->
       val store = WorkflowStateStore(connection)
       val row = workflowRow(
-        workflowId = WorkflowId("wftr-audit-repair"),
-        sessionId = SessionId("ftr-audit-repair"),
+        workflowId = "wftr-audit-repair",
+        sessionId = "ftr-audit-repair",
         workflowName = "bill-feature-task",
         currentStepId = "implement",
         mode = FeatureTaskWorkflowMode.RUNTIME,
@@ -636,8 +634,8 @@ class WorkflowStateStoreLifecycleTest {
       val store = WorkflowStateStore(connection)
       val initialRow =
         workflowRow(
-          workflowId = WorkflowId("wftr-started"),
-          sessionId = SessionId("ftr-started"),
+          workflowId = "wftr-started",
+          sessionId = "ftr-started",
           workflowName = "bill-feature-task",
           currentStepId = "plan",
           mode = FeatureTaskWorkflowMode.RUNTIME,
@@ -670,7 +668,7 @@ class WorkflowStateStoreLifecycleTest {
         store.saveFeatureTaskRuntimeWorkflow(
           workflowRow(
             workflowId = workflowId,
-            sessionId = SessionId("ftr-00$index"),
+            sessionId = "ftr-00$index",
             workflowName = "bill-feature-task",
             currentStepId = "plan",
             mode = FeatureTaskWorkflowMode.RUNTIME,

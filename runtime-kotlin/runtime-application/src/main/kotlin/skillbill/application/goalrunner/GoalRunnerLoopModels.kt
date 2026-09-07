@@ -1,4 +1,5 @@
 package skillbill.application.goalrunner
+
 import skillbill.application.goalrunner.model.GoalRunnerRunEvent
 import skillbill.application.goalrunner.model.GoalRunnerRunRequest
 import skillbill.goalrunner.model.GoalAttemptLedgerAction
@@ -10,9 +11,6 @@ import skillbill.ports.agentrun.model.AgentRunLaunchFacts
 import skillbill.ports.goalrunner.runner.model.GoalRunnerManifestState
 import skillbill.ports.goalrunner.runner.model.GoalRunnerWorkflowProgress
 import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewBaseline
-import skillbill.workflow.decomposition.model.IssueKey
-import skillbill.workflow.decomposition.model.SubtaskId
-import skillbill.workflow.engine.model.WorkflowId
 
 internal data class GoalRunnerIterationPendingState(
   val validationQualityState: GoalRunnerValidationQualityPendingState,
@@ -28,7 +26,7 @@ internal data class GoalRunnerIterationSession(
 
 internal data class StoppedIterationArgs(
   val state: GoalRunnerManifestState,
-  val subtaskId: SubtaskId,
+  val subtaskId: Int,
   val reconciled: GoalRunnerReconciledOutcome.Stop,
   val session: GoalRunnerIterationSession,
   val launchDiagnostics: GoalRunnerLaunchDiagnostics? = null,
@@ -36,7 +34,7 @@ internal data class StoppedIterationArgs(
 
 internal data class CompletedIterationArgs(
   val state: GoalRunnerManifestState,
-  val subtaskId: SubtaskId,
+  val subtaskId: Int,
   val reconciled: GoalRunnerReconciledOutcome.Complete,
   val session: GoalRunnerIterationSession,
 )
@@ -48,14 +46,14 @@ internal data class GoalRunnerIterationResult(
 
 internal data class PreparedLaunch(
   val state: GoalRunnerManifestState,
-  val openWithAssignedId: WorkflowId?,
+  val openWithAssignedId: String?,
 )
 
 internal sealed interface SelectedSubtaskPreparation {
   class Ready(
-    val subtaskId: SubtaskId,
+    val subtaskId: Int,
     val attemptedState: GoalRunnerManifestState,
-    val openWithAssignedId: WorkflowId?,
+    val openWithAssignedId: String?,
     val reviewBaseline: GoalSubtaskReviewBaseline,
   ) : SelectedSubtaskPreparation
 
@@ -73,9 +71,9 @@ internal sealed interface SelectedSubtaskLaunch {
 }
 
 internal data class LaunchRecordingContext(
-  val workflowId: WorkflowId,
+  val workflowId: String,
   val refreshed: GoalRunnerManifestState,
-  val subtaskId: SubtaskId,
+  val subtaskId: Int,
   val selection: GoalRunnerSelection.Run,
   val launchReconciliation: GoalRunnerLaunchReconciliation,
   val reAttemptCause: String? = null,
@@ -121,8 +119,8 @@ internal fun recordLaunchObservabilityAndLedger(
 }
 
 fun GoalRunnerRunRequest.emitStoppedSubtaskEvent(
-  issueKey: IssueKey,
-  subtaskId: SubtaskId,
+  issueKey: String,
+  subtaskId: Int,
   stoppedOutcome: GoalRunnerReconciledOutcome.Stop,
 ) {
   eventSink.emit(
@@ -139,8 +137,8 @@ fun GoalRunnerRunRequest.emitStoppedSubtaskEvent(
 internal data class StoppedIterationResultArgs(
   val saved: GoalRunnerManifestState,
   val attempted: List<Int>,
-  val subtaskId: SubtaskId,
+  val subtaskId: Int,
   val stoppedOutcome: GoalRunnerReconciledOutcome.Stop,
-  val knownWorkflowId: WorkflowId?,
+  val knownWorkflowId: String?,
   val request: GoalRunnerRunRequest,
 )

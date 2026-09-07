@@ -1,16 +1,15 @@
 package skillbill.application.goalrunner.model
 
-import skillbill.agent.model.AgentId
 import skillbill.ports.workflow.gitops.model.DEFAULT_SELECTED_DIFF_MAX_BYTES
 import skillbill.ports.workflow.gitops.model.DEFAULT_SELECTED_DIFF_MAX_HUNKS
 import skillbill.ports.workflow.gitops.model.DEFAULT_SELECTED_DIFF_MAX_LINES
-import skillbill.workflow.decomposition.model.IssueKey
 import java.nio.file.Path
 
 data class GoalRunnerStatusRequest(
-  val issueKey: IssueKey,
-  val invokedAgentId: AgentId? = null,
+  val issueKey: String,
+  val invokedAgentId: String? = null,
   val configuredAgentOverrideId: String? = null,
+  val dbPathOverride: String? = null,
   val repoRoot: Path? = null,
   val includeDiffStat: Boolean = false,
   val selectedDiffHunkPaths: List<String> = emptyList(),
@@ -19,8 +18,8 @@ data class GoalRunnerStatusRequest(
   val selectedDiffMaxBytes: Int = DEFAULT_SELECTED_DIFF_MAX_BYTES,
 ) {
   init {
-    require(issueKey.value.isNotBlank()) { "issueKey is required." }
-    invokedAgentId?.let { require(it.value.isNotBlank()) { "invokedAgentId must not be blank." } }
+    require(issueKey.isNotBlank()) { "issueKey is required." }
+    invokedAgentId?.let { require(it.isNotBlank()) { "invokedAgentId must not be blank." } }
     configuredAgentOverrideId?.let { require(it.isNotBlank()) { "configuredAgentOverrideId must not be blank." } }
     require(selectedDiffHunkPaths.all { it.isNotBlank() }) { "selectedDiffHunkPaths must not contain blanks." }
     require(selectedDiffMaxHunks > 0) { "selectedDiffMaxHunks must be positive." }

@@ -1,12 +1,10 @@
 package skillbill.application
+
 import skillbill.application.goalrunner.GoalRunnerBackwardEdge
 import skillbill.application.goalrunner.GoalRunnerLedgerRecorder
 import skillbill.application.goalrunner.model.GoalRunnerRunRequest
 import skillbill.ports.diagnostics.NoopRuntimeDiagnostics
 import skillbill.ports.goalrunner.runner.model.GoalRunnerLedgerSequenceWatermarks
-import skillbill.workflow.decomposition.model.IssueKey
-import skillbill.workflow.decomposition.model.SubtaskId
-import skillbill.workflow.engine.model.WorkflowId
 import java.nio.file.Path
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -15,7 +13,7 @@ class GoalRunnerLedgerRecorderBackwardEdgeTest {
   private fun recorder(outcomes: RecordingOutcomeStore): GoalRunnerLedgerRecorder = GoalRunnerLedgerRecorder(
     outcomes,
     GoalRunnerRunRequest(
-      issueKey = IssueKey("SKILL-142"),
+      issueKey = "SKILL-142",
       repoRoot = Path.of("/tmp/skillbill-goal-runner"),
       invokedAgentId = "claude",
       dbPathOverride = "/tmp/skillbill-goal-runner/metrics.db",
@@ -31,9 +29,9 @@ class GoalRunnerLedgerRecorderBackwardEdgeTest {
 
     recorder.recordBackwardEdgeEntry(
       GoalRunnerBackwardEdge(
-        workflowId = WorkflowId("wfl-1"),
-        issueKey = IssueKey("SKILL-142"),
-        subtaskId = SubtaskId(1),
+        workflowId = "wfl-1",
+        issueKey = "SKILL-142",
+        subtaskId = 1,
         loopId = "regenerate_implement",
         edgeIteration = 2,
         progress = null,
@@ -72,9 +70,9 @@ class GoalRunnerLedgerRecorderBackwardEdgeTest {
 
     recorder.recordBackwardEdgeEntry(
       GoalRunnerBackwardEdge(
-        workflowId = WorkflowId("wfl-1"),
-        issueKey = IssueKey("SKILL-142"),
-        subtaskId = SubtaskId(1),
+        workflowId = "wfl-1",
+        issueKey = "SKILL-142",
+        subtaskId = 1,
         loopId = "regenerate_implement",
         edgeIteration = 2,
         progress = null,

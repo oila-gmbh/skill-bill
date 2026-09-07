@@ -3,7 +3,6 @@ package skillbill.db.workflow
 import skillbill.ports.goalrunner.LegacyGoalPlanningPreparationRepository
 import skillbill.ports.goalrunner.model.GoalPlanningPreparationRecord
 import skillbill.ports.goalrunner.model.GoalPlanningPreparationStatus
-import skillbill.workflow.decomposition.model.SubtaskId
 
 internal class LegacyGoalPlanningPreparationStore(
   private val preparationRecord: GoalPlanningPreparationRecordSql,
@@ -12,10 +11,8 @@ internal class LegacyGoalPlanningPreparationStore(
     preparationRecord.markPrepared(record)
   }
 
-  override fun findByGoalAndSubtask(
-    parentGoalWorkflowId: String,
-    subtaskId: SubtaskId,
-  ): GoalPlanningPreparationRecord? = preparationRecord.findByGoalAndSubtask(parentGoalWorkflowId, subtaskId)
+  override fun findByGoalAndSubtask(parentGoalWorkflowId: String, subtaskId: Int): GoalPlanningPreparationRecord? =
+    preparationRecord.findByGoalAndSubtask(parentGoalWorkflowId, subtaskId)
 
   override fun listPreparedByGoalOrdered(parentGoalWorkflowId: String): List<GoalPlanningPreparationRecord> =
     preparationRecord.listPreparedByGoalOrdered(parentGoalWorkflowId)
@@ -25,7 +22,7 @@ internal class LegacyGoalPlanningPreparationStore(
   override fun firstMissingOrIncompleteSubtask(parentGoalWorkflowId: String, orderedSubtaskIds: List<Int>): Int? =
     preparationRecord.firstMissingOrIncompleteSubtask(parentGoalWorkflowId, orderedSubtaskIds)
 
-  override fun preparedStatus(parentGoalWorkflowId: String, subtaskId: SubtaskId): GoalPlanningPreparationStatus? =
+  override fun preparedStatus(parentGoalWorkflowId: String, subtaskId: Int): GoalPlanningPreparationStatus? =
     preparationRecord.preparedStatus(parentGoalWorkflowId, subtaskId)
 
   override fun deleteByGoal(parentGoalWorkflowId: String): Int =

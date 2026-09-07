@@ -1,13 +1,11 @@
 package skillbill.ports.diagnostics
 
-import skillbill.agent.model.AgentId
 import skillbill.ports.diagnostics.model.ProducerOutputEvidence
 import skillbill.ports.diagnostics.model.RejectedOutputDiagnostic
 import skillbill.ports.diagnostics.model.RejectedOutputDiagnosticError
 import skillbill.ports.diagnostics.model.RejectedOutputDiagnosticRecord
 import skillbill.ports.diagnostics.model.RejectedOutputDiagnosticSelector
 import skillbill.ports.diagnostics.model.RejectedOutputLifecycle
-import skillbill.workflow.engine.model.WorkflowId
 import java.time.Instant
 
 typealias RejectedOutputLifecycle = RejectedOutputLifecycle
@@ -26,10 +24,10 @@ interface RejectedOutputDiagnosticRepository {
     throw RejectedOutputDiagnosticError.Persistence("producer-evidence-unavailable")
   }
   fun readProducerOutput(
-    workflowId: WorkflowId,
+    workflowId: String,
     phaseId: String,
     attempt: Int,
-    agentId: AgentId,
+    agentId: String,
     generation: Int = 0,
   ): ProducerOutputEvidence? = null
   fun deleteProducerOutputsBefore(before: Instant): Int = 0

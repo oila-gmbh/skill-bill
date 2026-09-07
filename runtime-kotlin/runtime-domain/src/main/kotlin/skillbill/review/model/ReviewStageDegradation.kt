@@ -36,14 +36,14 @@ data class ReviewEvidenceBoundaryAccounting(
 }
 
 data class ReviewStageDegradationMeasurement(
-  val reviewRunId: ReviewRunId,
+  val reviewRunId: String,
   val seam: String,
   val expected: String,
   val actual: String,
   val reason: ReviewStageDegradationReason,
 ) {
   init {
-    require(reviewRunId.value.isNotBlank()) { "Review stage degradation review_run_id must not be blank." }
+    require(reviewRunId.isNotBlank()) { "Review stage degradation review_run_id must not be blank." }
     require(seam.isNotBlank()) { "Review stage degradation seam must not be blank." }
     require(expected.isNotBlank()) { "Review stage degradation expected must not be blank." }
     require(actual.isNotBlank()) { "Review stage degradation actual must not be blank." }

@@ -12,8 +12,6 @@ import skillbill.ports.workflow.WorkflowStateRepository
 import skillbill.ports.workflow.get
 import skillbill.ports.workflow.model.WorkflowFamily
 import skillbill.ports.workflow.model.toSnapshot
-import skillbill.review.model.ReviewRunId
-import skillbill.workflow.engine.model.WorkflowId
 import skillbill.workflow.engine.model.WorkflowStateSnapshot
 import skillbill.workflow.goal.model.GOAL_SUBTASK_REVIEW_STATE_ARTIFACT_KEY
 import skillbill.workflow.goal.model.GoalSubtaskReviewArtifactDecoder
@@ -53,7 +51,7 @@ fun validatedGoalReviewPasses(
     val rawResult = review.rawResults.getValue(pass.passNumber.toString())
     val output = goalReviewEmissionEnvelope(rawResult, phaseOutputValidator)
     val recordedVerdicts = GoalSubtaskReviewStructuredFindingsParse.recordedVerdicts(
-      { runId -> unitOfWork.reviews.fetchFindingVerdicts(ReviewRunId(runId)) },
+      unitOfWork.reviews::fetchFindingVerdicts,
       output,
     )
     val findings = GoalSubtaskReviewSummaryReducer.fromOutput(output, recordedVerdicts)
@@ -89,7 +87,7 @@ fun goalReviewEmissionEnvelope(
 }
 
 fun taskRuntimeRecordOrNull(workflowStates: WorkflowStateRepository, workflowId: String): WorkflowStateSnapshot? = try {
-  WorkflowFamily.TASK_RUNTIME.get(workflowStates, WorkflowId(workflowId))
+  WorkflowFamily.TASK_RUNTIME.get(workflowStates, workflowId)
 } catch (error: InvalidWorkflowStateSchemaError) {
   if (error.message.orEmpty().contains("mode='")) {
     null
@@ -101,4 +99,4 @@ fun taskRuntimeRecordOrNull(workflowStates: WorkflowStateRepository, workflowId:
 fun featureTaskRecordForLegacyControls(
   workflowStates: WorkflowStateRepository,
   workflowId: String,
-): WorkflowStateSnapshot? = workflowStates.getFeatureTaskWorkflow(WorkflowId(workflowId))?.toSnapshot()
+): WorkflowStateSnapshot? = workflowStates.getFeatureTaskWorkflow(workflowId)?.toSnapshot()

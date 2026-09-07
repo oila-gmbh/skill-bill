@@ -1,7 +1,5 @@
 package skillbill.application.featuretask
 
-import skillbill.agent.model.AgentId
-
 import skillbill.application.featuretask.model.FeatureTaskRuntimePhaseStateRequest
 import skillbill.application.featuretask.model.FeatureTaskRuntimePlanningStopDecision
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
@@ -52,6 +50,7 @@ object FeatureTaskRuntimeRunLoopBackwardEdge {
         destinationPhaseId,
         loopId,
         edgeIteration,
+        runLoop.request.dbPathOverride,
       )
     }
     runLoop.state.recordEdgeIteration(loopId, edgeIteration)
@@ -216,6 +215,7 @@ object FeatureTaskRuntimeRunLoopBackwardEdge {
         loopId = reentry.loopId,
         edgeIteration = reentry.edgeIteration,
       ),
+      runLoop.request.dbPathOverride,
     )
     runLoop.observability.blocked(phaseId, resolvedAgentId, attempt, reason)
     FeatureTaskRuntimeRunLoopPlanningBranch.blockAt(runLoop, phaseId, reason)
@@ -270,6 +270,7 @@ object FeatureTaskRuntimeRunLoopBackwardEdge {
         outputArtifact = null,
         blockedReason = reason,
       ),
+      runLoop.request.dbPathOverride,
     )
     runLoop.observability.blocked(phaseId, resolvedAgentId, 1, reason)
   }

@@ -1,7 +1,7 @@
 package skillbill.application.featuretask.model
+
 import skillbill.application.continuation.model.GoalContinuationCandidate
 import skillbill.ports.workflow.model.FeatureTaskWorkflowMode
-import skillbill.workflow.engine.model.WorkflowId
 
 sealed interface FeatureTaskContinuationLookupResult {
   data object NoMatch : FeatureTaskContinuationLookupResult
@@ -23,13 +23,13 @@ sealed interface FeatureTaskContinuationLookupResult {
    * row and point the operator at `feature-task repair-identity` instead of throwing out of the gate.
    */
   data class NeedsIdentityRepair(
-    val workflowId: WorkflowId,
+    val workflowId: String,
     val summary: String,
   ) : FeatureTaskContinuationLookupResult
 }
 
 data class FeatureTaskContinuationCandidate(
-  val workflowId: WorkflowId,
+  val workflowId: String,
   val mode: FeatureTaskWorkflowMode,
   val status: String,
   val currentStep: String,

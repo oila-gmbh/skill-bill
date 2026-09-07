@@ -5,9 +5,6 @@ import skillbill.db.core.DbConstants
 import skillbill.error.InvalidWorkflowStateSchemaError
 import skillbill.ports.workflow.model.FeatureTaskWorkflowMode
 import skillbill.ports.workflow.model.WorkflowStateRecord
-import skillbill.workflow.decomposition.model.IssueKey
-import skillbill.workflow.engine.model.SessionId
-import skillbill.workflow.engine.model.WorkflowId
 import java.sql.Connection
 import java.sql.PreparedStatement
 import java.time.ZoneOffset
@@ -229,12 +226,6 @@ private class SqlParameterBinder(
     statement.setString(nextIndex, value)
     nextIndex += INDEX_INCREMENT
   }
-
-  fun text(value: WorkflowId?) = text(value?.value)
-
-  fun text(value: SessionId?) = text(value?.value)
-
-  fun text(value: IssueKey?) = text(value?.value)
 
   fun boolean(value: Boolean) {
     statement.setBoolean(nextIndex, value)

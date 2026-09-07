@@ -1,21 +1,19 @@
 package skillbill.application.goalrunner.model
 
-import skillbill.agent.model.AgentId
 import skillbill.agentaddon.model.HydratedAgentAddonSelection
 import skillbill.ports.agentrun.model.AgentRunOutputSink
 import skillbill.review.context.model.CodeReviewExecutionMode
-import skillbill.workflow.decomposition.model.IssueKey
-import skillbill.workflow.decomposition.model.SubtaskId
 import skillbill.workflow.goal.model.GoalSubtaskReviewCompactFinding
 import java.nio.file.Path
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.minutes
 
 data class GoalRunnerRunRequest(
-  val issueKey: IssueKey,
+  val issueKey: String,
   val repoRoot: Path,
-  val invokedAgentId: AgentId,
+  val invokedAgentId: String,
   val configuredAgentOverrideId: String? = null,
+  val dbPathOverride: String? = null,
   val timeout: Duration? = null,
   val progressIdleTimeout: Duration? = null,
   val planningBudget: Duration? = DEFAULT_GOAL_PLANNING_BUDGET,
@@ -27,8 +25,8 @@ data class GoalRunnerRunRequest(
   val observabilitySequenceStart: Int = DEFAULT_GOAL_OBSERVABILITY_SEQUENCE_START,
 ) {
   init {
-    require(issueKey.value.isNotBlank()) { "issueKey is required." }
-    require(invokedAgentId.value.isNotBlank()) { "invokedAgentId is required." }
+    require(issueKey.isNotBlank()) { "issueKey is required." }
+    require(invokedAgentId.isNotBlank()) { "invokedAgentId is required." }
     configuredAgentOverrideId?.let { require(it.isNotBlank()) { "configuredAgentOverrideId must not be blank." } }
     stopAfterSubtaskId?.let { require(it > 0) { "stopAfterSubtaskId must be positive when provided." } }
     timeout?.let { maxWallClockTimeout ->
@@ -45,34 +43,34 @@ data class GoalRunnerRunRequest(
 }
 
 sealed interface GoalRunnerRunEvent {
-  val issueKey: IssueKey
+  val issueKey: String
 
-  data class Started(override val issueKey: IssueKey) : GoalRunnerRunEvent
+  data class Started(override val issueKey: String) : GoalRunnerRunEvent
 
   data class SubtaskStarted(
-    override val issueKey: IssueKey,
-    val subtaskId: SubtaskId,
+    override val issueKey: String,
+    val subtaskId: Int,
     val action: String,
     val currentStepId: String? = null,
   ) : GoalRunnerRunEvent
 
   data class SubtaskCompleted(
-    override val issueKey: IssueKey,
-    val subtaskId: SubtaskId,
+    override val issueKey: String,
+    val subtaskId: Int,
     val currentStepId: String? = null,
   ) : GoalRunnerRunEvent
 
   data class SubtaskStopped(
-    override val issueKey: IssueKey,
-    val subtaskId: SubtaskId,
+    override val issueKey: String,
+    val subtaskId: Int,
     val reason: String,
     val blockedReason: String,
     val currentStepId: String? = null,
   ) : GoalRunnerRunEvent
 
   data class SubtaskReviewSummary(
-    override val issueKey: IssueKey,
-    val subtaskId: SubtaskId,
+    override val issueKey: String,
+    val subtaskId: Int,
     val passNumber: Int,
     val verdict: String,
     val findingCount: Int,
@@ -81,7 +79,7 @@ sealed interface GoalRunnerRunEvent {
   ) : GoalRunnerRunEvent
 
   data class Completed(
-    override val issueKey: IssueKey,
+    override val issueKey: String,
     val completedCount: Int,
     val pendingCount: Int,
     val blockedCount: Int,

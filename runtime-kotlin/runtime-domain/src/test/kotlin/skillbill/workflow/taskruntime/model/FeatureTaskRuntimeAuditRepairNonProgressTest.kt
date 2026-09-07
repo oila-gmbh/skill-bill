@@ -65,4 +65,30 @@ class FeatureTaskRuntimeAuditRepairNonProgressTest {
     assertFalse(decision.blocked)
     assertEquals(null, decision.reason)
   }
+
+  @Test
+  fun `changed unresolved criterion set proves progress even when fingerprint is unchanged`() {
+    val decision = detectAuditRepairNonProgress(
+      previousHadGaps = true,
+      currentHasGaps = true,
+      previousRepositoryFingerprint = "same",
+      currentRepositoryFingerprint = "same",
+      previousCriterionRefs = setOf("AC-001", "AC-002"),
+      currentCriterionRefs = setOf("AC-002"),
+    )
+    assertFalse(decision.blocked)
+  }
+
+  @Test
+  fun `unchanged unresolved criterion set still blocks`() {
+    val decision = detectAuditRepairNonProgress(
+      previousHadGaps = true,
+      currentHasGaps = true,
+      previousRepositoryFingerprint = "before",
+      currentRepositoryFingerprint = "after",
+      previousCriterionRefs = setOf("AC-001"),
+      currentCriterionRefs = setOf("AC-001"),
+    )
+    assertTrue(decision.blocked)
+  }
 }

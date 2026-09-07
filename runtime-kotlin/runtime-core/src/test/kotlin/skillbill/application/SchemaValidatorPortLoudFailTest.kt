@@ -1,4 +1,5 @@
 package skillbill.application
+
 import skillbill.application.decomposition.encodeDecompositionManifestYaml
 import skillbill.contracts.JsonCodec
 import skillbill.contracts.install.INSTALL_PLAN_CONTRACT_VERSION
@@ -15,8 +16,6 @@ import skillbill.workflow.decomposition.model.DecompositionExecutionModel
 import skillbill.workflow.decomposition.model.DecompositionManifest
 import skillbill.workflow.decomposition.model.DecompositionStackBranch
 import skillbill.workflow.decomposition.model.DecompositionSubtask
-import skillbill.workflow.decomposition.model.IssueKey
-import skillbill.workflow.decomposition.model.SubtaskId
 import skillbill.workflow.decomposition.toWireMap
 import kotlin.test.Test
 import kotlin.test.assertContains
@@ -93,16 +92,7 @@ class SchemaValidatorPortLoudFailTest {
     val manifest = validSameBranchManifest().copy(
       subtasks = listOf(
         subtask(1, "spec_subtask_1_foundation.md"),
-        subtask(
-          1,
-          "spec_subtask_2_runtime.md",
-          dependencies = listOf(
-            DecompositionDependency(
-              subtaskId =
-              SubtaskId(1),
-            ),
-          ),
-        ),
+        subtask(1, "spec_subtask_2_runtime.md", dependencies = listOf(DecompositionDependency(subtaskId = 1))),
       ),
     )
     val error = assertFailsWith<InvalidDecompositionManifestSchemaError> {
@@ -115,16 +105,7 @@ class SchemaValidatorPortLoudFailTest {
   fun `dangling decomposition dependency loud-fails through the injected port`() {
     val manifest = validSameBranchManifest().copy(
       subtasks = listOf(
-        subtask(
-          1,
-          "spec_subtask_1_foundation.md",
-          dependencies = listOf(
-            DecompositionDependency(
-              subtaskId =
-              SubtaskId(2),
-            ),
-          ),
-        ),
+        subtask(1, "spec_subtask_1_foundation.md", dependencies = listOf(DecompositionDependency(subtaskId = 2))),
         subtask(2, "spec_subtask_2_runtime.md"),
       ),
     )
@@ -152,8 +133,8 @@ class SchemaValidatorPortLoudFailTest {
       executionModel = DecompositionExecutionModel.STACKED_BRANCHES,
       featureBranch = null,
       stackBranches = listOf(
-        DecompositionStackBranch(subtaskId = SubtaskId(2), branch = "feature/SKILL-52-02", baseBranch = "main"),
-        DecompositionStackBranch(subtaskId = SubtaskId(1), branch = "feature/SKILL-52-01", baseBranch = "main"),
+        DecompositionStackBranch(subtaskId = 2, branch = "feature/SKILL-52-02", baseBranch = "main"),
+        DecompositionStackBranch(subtaskId = 1, branch = "feature/SKILL-52-01", baseBranch = "main"),
       ),
     )
     val error = assertFailsWith<InvalidDecompositionManifestSchemaError> {
@@ -174,24 +155,15 @@ class SchemaValidatorPortLoudFailTest {
   )
 
   private fun validSameBranchManifest(): DecompositionManifest = DecompositionManifest(
-    issueKey = IssueKey("SKILL-52"),
+    issueKey = "SKILL-52",
     featureName = "decomposition",
     parentSpecPath = ".feature-specs/SKILL-52-decomposition/spec.md",
     baseBranch = "main",
     featureBranch = "feature/SKILL-52-decomposition",
-    currentSubtaskIntent = CurrentSubtaskIntent(subtaskId = SubtaskId(1), action = "start"),
+    currentSubtaskIntent = CurrentSubtaskIntent(subtaskId = 1, action = "start"),
     subtasks = listOf(
       subtask(1, "spec_subtask_1_foundation.md"),
-      subtask(
-        2,
-        "spec_subtask_2_runtime.md",
-        dependencies = listOf(
-          DecompositionDependency(
-            subtaskId =
-            SubtaskId(1),
-          ),
-        ),
-      ),
+      subtask(2, "spec_subtask_2_runtime.md", dependencies = listOf(DecompositionDependency(subtaskId = 1))),
     ),
   )
 

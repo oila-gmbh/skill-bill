@@ -1,7 +1,7 @@
 package skillbill.workflow
+
 import skillbill.infrastructure.fs.WorkflowSnapshotValidatorInfraAdapter
 import skillbill.workflow.engine.WorkflowEngine
-import skillbill.workflow.engine.model.SessionId
 import skillbill.workflow.engine.model.WorkflowUpdateInput
 import skillbill.workflow.verify.FeatureVerifyWorkflowDefinition
 import kotlin.test.Test
@@ -36,7 +36,7 @@ class FeatureVerifyWorkflowRuntimeTest {
           currentStepId = "finish",
           stepUpdates = listOf(mapOf("step_id" to "finish", "status" to "completed", "attempt_count" to 1)),
           artifactsPatch = mapOf("verdict_result" to mapOf("verdict" to "pass")),
-          sessionId = SessionId(""),
+          sessionId = "",
         ),
       )
     val failed = completed.copy(workflowStatus = "failed")
@@ -73,7 +73,7 @@ class FeatureVerifyWorkflowRuntimeTest {
               "changed_files" to listOf("Changed.kt"),
             ),
           ),
-          sessionId = SessionId(""),
+          sessionId = "",
         ),
       )
 
@@ -101,7 +101,7 @@ class FeatureVerifyWorkflowRuntimeTest {
         currentStepId = "code_review",
         stepUpdates = listOf(mapOf("step_id" to "code_review", "status" to "failed", "attempt_count" to 1)),
         artifactsPatch = null,
-        sessionId = SessionId(""),
+        sessionId = "",
       )
     val abandoned = pending.copy(workflowStatus = "abandoned")
 
@@ -141,7 +141,7 @@ class FeatureVerifyWorkflowRuntimeTest {
       currentStepId = "finish",
       stepUpdates = listOf(mapOf("step_id" to "finish", "status" to "completed", "attempt_count" to 1)),
       artifactsPatch = mapOf("verdict_result" to emptyMap<String, Any?>()),
-      sessionId = SessionId(""),
+      sessionId = "",
     ),
   )
 }

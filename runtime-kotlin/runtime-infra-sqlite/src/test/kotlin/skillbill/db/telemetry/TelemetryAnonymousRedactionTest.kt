@@ -1,4 +1,5 @@
 package skillbill.db.telemetry
+
 import skillbill.contracts.JsonCodec
 import skillbill.db.core.DatabaseRuntime
 import skillbill.db.core.reconcileStaleTelemetrySessions
@@ -7,10 +8,6 @@ import skillbill.telemetry.model.GoalFinishedRecord
 import skillbill.telemetry.model.GoalIssueFinishedRecord
 import skillbill.telemetry.model.GoalStartedRecord
 import skillbill.telemetry.model.GoalSubtaskFinishedRecord
-import skillbill.workflow.decomposition.model.IssueKey
-import skillbill.workflow.decomposition.model.SubtaskId
-import skillbill.workflow.engine.model.SessionId
-import skillbill.workflow.engine.model.WorkflowId
 import java.nio.file.Files
 import java.sql.Connection
 import kotlin.test.Test
@@ -122,9 +119,9 @@ class TelemetryAnonymousRedactionTest {
         val store = LifecycleTelemetryStore(connection)
         store.goalSubtaskFinished(
           GoalSubtaskFinishedRecord(
-            issueKey = IssueKey(ISSUE_KEY),
-            workflowId = WorkflowId("$ISSUE_KEY:subtask:2"),
-            subtaskId = SubtaskId(2),
+            issueKey = ISSUE_KEY,
+            workflowId = "$ISSUE_KEY:subtask:2",
+            subtaskId = 2,
             subtaskName = "skipped-subtask",
             status = "skipped",
             startedAt = "2026-06-23T10:00:00Z",
@@ -167,9 +164,9 @@ class TelemetryAnonymousRedactionTest {
     store.goalStarted(startedRecord("wf-1", parentWorkflowId = "parent-1"), level)
     store.goalSubtaskFinished(
       GoalSubtaskFinishedRecord(
-        issueKey = IssueKey(ISSUE_KEY),
-        workflowId = WorkflowId("wf-1"),
-        subtaskId = SubtaskId(1),
+        issueKey = ISSUE_KEY,
+        workflowId = "wf-1",
+        subtaskId = 1,
         subtaskName = "subtask-1",
         status = "complete",
         startedAt = "2026-06-23T10:00:00Z",
@@ -182,8 +179,8 @@ class TelemetryAnonymousRedactionTest {
     )
     store.goalFinished(
       GoalFinishedRecord(
-        issueKey = IssueKey(ISSUE_KEY),
-        workflowId = WorkflowId("wf-1"),
+        issueKey = ISSUE_KEY,
+        workflowId = "wf-1",
         status = "completed",
         startedAt = "2026-06-23T10:00:00Z",
         finishedAt = "2026-06-23T10:30:00Z",
@@ -198,7 +195,7 @@ class TelemetryAnonymousRedactionTest {
     )
     store.goalIssueFinished(
       GoalIssueFinishedRecord(
-        issueKey = IssueKey(ISSUE_KEY),
+        issueKey = ISSUE_KEY,
         parentWorkflowId = "parent-1",
         status = "completed",
         subtasksComplete = 1,
@@ -211,9 +208,9 @@ class TelemetryAnonymousRedactionTest {
     )
     store.featureTaskRuntimeStarted(
       FeatureTaskRuntimeStartedRecord(
-        sessionId = SessionId("session-1"),
+        sessionId = "session-1",
         featureSize = "MEDIUM",
-        issueKey = IssueKey(ISSUE_KEY),
+        issueKey = ISSUE_KEY,
         featureName = "anonymous redaction",
       ),
       level,
@@ -221,7 +218,7 @@ class TelemetryAnonymousRedactionTest {
   }
 
   private fun startedRecord(workflowId: String, parentWorkflowId: String): GoalStartedRecord = GoalStartedRecord(
-    issueKey = IssueKey(ISSUE_KEY),
+    issueKey = ISSUE_KEY,
     featureName = "anonymous redaction",
     workflowId = workflowId,
     subtaskTotal = 1,

@@ -1,9 +1,14 @@
 package skillbill.workflow.taskruntime
 
 import skillbill.contracts.JsonCodec
-import skillbill.workflow.taskruntime.model.PhaseOutputStatus
 
 internal object ProsePhaseOutputParse {
+  private val STATUS_TOKENS: Set<String> = setOf("completed", "blocked", "failed")
+  private val STATUS_ALIASES: Map<String, String> = mapOf(
+    "complete" to "completed",
+    "block" to "blocked",
+    "fail" to "failed",
+  )
   private val FENCED_JSON: Regex =
     Regex("```[ \\t]*[A-Za-z0-9_-]*\\r?\\n(.*?)```", RegexOption.DOT_MATCHES_ALL)
 
@@ -34,7 +39,7 @@ internal object ProsePhaseOutputParse {
   }
 
   private fun canonicalStatus(lowercased: String): String? =
-    runCatching { PhaseOutputStatus.fromWire(lowercased).wireValue }.getOrNull()
+    lowercased.takeIf { it in STATUS_TOKENS } ?: STATUS_ALIASES[lowercased]
 }
 
 private fun parseObject(raw: String): Map<String, Any?>? {

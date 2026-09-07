@@ -1,4 +1,5 @@
 package skillbill.application.featuretask
+
 import me.tatarka.inject.annotations.Inject
 import skillbill.application.featuretask.model.FeatureTaskPhaseSettlementAuditRequest
 import skillbill.application.featuretask.model.FeatureTaskPhaseSettlementBlockRequest
@@ -7,10 +8,8 @@ import skillbill.boundary.OpenBoundaryMap
 import skillbill.contracts.JsonCodec
 import skillbill.ports.featuretask.FeatureTaskPhaseSettlementRepository
 import skillbill.ports.featuretask.model.FeatureTaskPhaseSettlement
-import skillbill.workflow.engine.model.WorkflowId
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import skillbill.workflow.taskruntime.ProsePhaseOutputSynthesizer
-import skillbill.workflow.taskruntime.model.PhaseOutputStatus
 import skillbill.workflow.taskruntime.model.SettlementEnvelopeRequest
 import java.time.Clock
 
@@ -30,7 +29,7 @@ class FeatureTaskPhaseSettlementService(
     val envelope = ProsePhaseOutputSynthesizer.envelopeFromSettlement(
       SettlementEnvelopeRequest(
         phaseId = request.phaseId,
-        status = PhaseOutputStatus.COMPLETED,
+        status = "completed",
         value = request.value,
         summary = request.summary?.takeIf { it.any { ch -> !ch.isWhitespace() } } ?: truncateSummary(request.value),
         prompt = request.prompt,
@@ -43,6 +42,7 @@ class FeatureTaskPhaseSettlementService(
         attempt = request.attempt,
         kind = KIND_COMPLETE,
         envelope = envelope,
+        dbPathOverride = request.dbPathOverride,
       ),
     )
   }
@@ -55,7 +55,7 @@ class FeatureTaskPhaseSettlementService(
     val envelope = ProsePhaseOutputSynthesizer.envelopeFromSettlement(
       SettlementEnvelopeRequest(
         phaseId = request.phaseId,
-        status = PhaseOutputStatus.BLOCKED,
+        status = "blocked",
         value = request.reason,
         summary = truncateSummary(request.reason),
         failureDisposition = request.failureDisposition,
@@ -69,6 +69,7 @@ class FeatureTaskPhaseSettlementService(
         attempt = request.attempt,
         kind = KIND_BLOCK,
         envelope = envelope,
+        dbPathOverride = request.dbPathOverride,
       ),
     )
   }
@@ -81,7 +82,7 @@ class FeatureTaskPhaseSettlementService(
     val envelope = ProsePhaseOutputSynthesizer.envelopeFromSettlement(
       SettlementEnvelopeRequest(
         phaseId = request.phaseId,
-        status = PhaseOutputStatus.COMPLETED,
+        status = "completed",
         value = request.value,
         summary = request.summary?.takeIf { it.any { ch -> !ch.isWhitespace() } } ?: truncateSummary(request.value),
         verdict = request.verdict,
@@ -94,19 +95,25 @@ class FeatureTaskPhaseSettlementService(
         attempt = request.attempt,
         kind = KIND_AUDIT_SETTLE,
         envelope = envelope,
+        dbPathOverride = request.dbPathOverride,
       ),
     )
   }
 
   @OpenBoundaryMap("Durable MCP phase-settlement envelope wire map for gate consumption")
-  fun findEnvelope(workflowId: WorkflowId, phaseId: String, attempt: Int): Map<String, Any?>? {
-    val settlement = repository.find(workflowId, phaseId, attempt) ?: return null
+  fun findEnvelope(
+    workflowId: String,
+    phaseId: String,
+    attempt: Int,
+    dbPathOverride: String? = null,
+  ): Map<String, Any?>? {
+    val settlement = repository.find(workflowId, phaseId, attempt, dbPathOverride) ?: return null
     return JsonCodec.parseObjectOrNull(settlement.envelopeJson)
       ?.let { JsonCodec.anyToStringAnyMap(JsonCodec.jsonElementToValue(it)) }
   }
 
-  fun clear(workflowId: WorkflowId, phaseId: String, attempt: Int): Boolean =
-    repository.delete(workflowId, phaseId, attempt)
+  fun clear(workflowId: String, phaseId: String, attempt: Int, dbPathOverride: String? = null): Boolean =
+    repository.delete(workflowId, phaseId, attempt, dbPathOverride)
 
   private fun persist(request: PersistRequest): Map<String, Any?> {
     val envelopeJson = JsonCodec.mapToJsonString(request.envelope)
@@ -119,6 +126,7 @@ class FeatureTaskPhaseSettlementService(
         envelopeJson = envelopeJson,
         recordedAt = clock.instant().toString(),
       ),
+      dbPathOverride = request.dbPathOverride,
     )
     return linkedMapOf(
       "status" to "ok",
@@ -140,11 +148,12 @@ class FeatureTaskPhaseSettlementService(
   }
 
   private data class PersistRequest(
-    val workflowId: WorkflowId,
+    val workflowId: String,
     val phaseId: String,
     val attempt: Int,
     val kind: String,
     val envelope: Map<String, Any?>,
+    val dbPathOverride: String?,
   )
 
   companion object {

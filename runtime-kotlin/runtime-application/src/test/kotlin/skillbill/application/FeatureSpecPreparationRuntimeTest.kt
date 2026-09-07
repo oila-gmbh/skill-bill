@@ -1,9 +1,9 @@
 package skillbill.application
+
 import skillbill.application.featurespec.FeatureSpecPreparationRuntime
 import skillbill.featurespec.model.FeatureSpecPreparationDecision
 import skillbill.featurespec.model.FeatureSpecPreparationIntake
 import skillbill.featurespec.model.FeatureSpecPreparationMode
-import skillbill.workflow.decomposition.model.IssueKey
 import kotlin.test.Test
 import kotlin.test.assertEquals
 
@@ -24,7 +24,7 @@ class FeatureSpecPreparationRuntimeTest {
     }
 
     val intake = FeatureSpecPreparationIntake(
-      issueKey = IssueKey("SKILL-59"),
+      issueKey = "SKILL-59",
       intendedOutcome = "decomposed",
       acceptanceCriteria = listOf("AC1"),
       constraints = listOf("Constraint 1"),

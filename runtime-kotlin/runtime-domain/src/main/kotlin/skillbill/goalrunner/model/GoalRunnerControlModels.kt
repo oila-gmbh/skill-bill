@@ -102,6 +102,6 @@ data class GoalRunnerControlState(
   fun requiresPauseBoundary(manifest: DecompositionManifest): Boolean = pauseRequested || paused || (
     stopAfterSubtaskId != null &&
       !stopAfterConsumed &&
-      manifest.subtasks.any { it.id.toString().toInt() == stopAfterSubtaskId && it.status == "complete" }
+      manifest.subtasks.any { it.id == stopAfterSubtaskId && it.status == "complete" }
     )
 }

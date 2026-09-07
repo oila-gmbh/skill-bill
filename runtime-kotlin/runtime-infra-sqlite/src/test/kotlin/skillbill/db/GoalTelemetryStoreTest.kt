@@ -1,4 +1,5 @@
 package skillbill.db
+
 import skillbill.contracts.JsonCodec
 import skillbill.db.core.DatabaseRuntime
 import skillbill.db.telemetry.LifecycleTelemetryStore
@@ -10,9 +11,6 @@ import skillbill.telemetry.model.GoalFinishedRecord
 import skillbill.telemetry.model.GoalIssueFinishedRecord
 import skillbill.telemetry.model.GoalStartedRecord
 import skillbill.telemetry.model.GoalSubtaskFinishedRecord
-import skillbill.workflow.decomposition.model.IssueKey
-import skillbill.workflow.decomposition.model.SubtaskId
-import skillbill.workflow.engine.model.WorkflowId
 import java.nio.file.Files
 import java.sql.Connection
 import kotlin.test.Test
@@ -110,8 +108,8 @@ class GoalTelemetryStoreTest {
       )
       store.goalFinished(
         GoalFinishedRecord(
-          issueKey = IssueKey("SKILL-66"),
-          workflowId = WorkflowId("wf-x"),
+          issueKey = "SKILL-66",
+          workflowId = "wf-x",
           status = "blocked",
           startedAt = "2026-06-04T10:00:00Z",
           finishedAt = "2026-06-04T10:01:00Z",
@@ -127,9 +125,9 @@ class GoalTelemetryStoreTest {
       store.goalStarted(startedRecord("wf-y", subtaskTotal = 1, resumed = false), level = "full")
       store.goalSubtaskFinished(
         GoalSubtaskFinishedRecord(
-          issueKey = IssueKey("SKILL-77"),
-          workflowId = WorkflowId("wf-y"),
-          subtaskId = SubtaskId(3),
+          issueKey = "SKILL-77",
+          workflowId = "wf-y",
+          subtaskId = 3,
           subtaskName = "subtask-3",
           status = "blocked",
           startedAt = "2026-06-04T11:00:00Z",
@@ -312,10 +310,7 @@ class GoalTelemetryStoreTest {
 
       val store = LifecycleTelemetryStore(connection)
       store.goalSubtaskFinished(
-        subtask(id = 1, status = "complete", durationMs = 60_000, attempts = 1).copy(
-          workflowId =
-          WorkflowId("wfl-history"),
-        ),
+        subtask(id = 1, status = "complete", durationMs = 60_000, attempts = 1).copy(workflowId = "wfl-history"),
         "full",
       )
 
@@ -332,10 +327,7 @@ class GoalTelemetryStoreTest {
     withConnection { connection ->
       val store = LifecycleTelemetryStore(connection)
       store.goalSubtaskFinished(
-        subtask(id = 1, status = "complete", durationMs = 60_000, attempts = 1).copy(
-          workflowId =
-          WorkflowId("wfl-unknown"),
-        ),
+        subtask(id = 1, status = "complete", durationMs = 60_000, attempts = 1).copy(workflowId = "wfl-unknown"),
         "full",
       )
 
@@ -395,7 +387,7 @@ class GoalTelemetryStoreTest {
       )
 
       val issueFinished = GoalIssueFinishedRecord(
-        issueKey = IssueKey("SKILL-66"),
+        issueKey = "SKILL-66",
         parentWorkflowId = "wf-parent",
         status = "completed",
         subtasksComplete = 1,
@@ -431,8 +423,8 @@ class GoalTelemetryStoreTest {
     store.goalSubtaskFinished(subtask(id = 3, status = "skipped", durationMs = 0, attempts = 0), "full")
     store.goalFinished(
       GoalFinishedRecord(
-        issueKey = IssueKey("SKILL-66"),
-        workflowId = WorkflowId("wf-1"),
+        issueKey = "SKILL-66",
+        workflowId = "wf-1",
         status = "blocked",
         startedAt = "2026-06-04T10:00:00Z",
         finishedAt = "2026-06-04T10:30:00Z",
@@ -492,7 +484,7 @@ class GoalTelemetryStoreTest {
     store.goalStarted(startedRecord(workflowId, subtaskTotal = 1, resumed = false, startedAt = startedAt), "full")
     store.goalFinished(
       GoalFinishedRecord(
-        issueKey = IssueKey("SKILL-66"),
+        issueKey = "SKILL-66",
         workflowId = workflowId,
         status = status,
         startedAt = startedAt,
@@ -509,7 +501,7 @@ class GoalTelemetryStoreTest {
 
   private fun finishedRecord(workflowId: String, status: String, startedAt: String): GoalFinishedRecord =
     GoalFinishedRecord(
-      issueKey = IssueKey("SKILL-66"),
+      issueKey = "SKILL-66",
       workflowId = workflowId,
       status = status,
       startedAt = startedAt,
@@ -528,7 +520,7 @@ class GoalTelemetryStoreTest {
     startedAt: String = "2026-06-04T10:00:00Z",
     mode: String = "runtime",
   ): GoalStartedRecord = GoalStartedRecord(
-    issueKey = IssueKey("SKILL-66"),
+    issueKey = "SKILL-66",
     featureName = "goal telemetry",
     workflowId = workflowId,
     subtaskTotal = subtaskTotal,
@@ -545,8 +537,8 @@ class GoalTelemetryStoreTest {
     attempts: Int,
     blockedReason: String? = null,
   ): GoalSubtaskFinishedRecord = GoalSubtaskFinishedRecord(
-    issueKey = IssueKey("SKILL-66"),
-    workflowId = WorkflowId("wf-1"),
+    issueKey = "SKILL-66",
+    workflowId = "wf-1",
     subtaskId = id,
     subtaskName = "subtask-$id",
     status = status,

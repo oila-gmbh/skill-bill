@@ -1,10 +1,9 @@
 package skillbill.application.work
+
 import skillbill.application.idestatus.model.IdeStatusWorkflowFamily
 import skillbill.ports.persistence.UnitOfWork
 import skillbill.ports.work.model.WorkItem
 import skillbill.ports.work.model.WorkItemKind
-import skillbill.workflow.decomposition.model.IssueKey
-import skillbill.workflow.engine.model.WorkflowId
 
 class IdeStatusRepositoryCorrelation(
   private val unitOfWork: UnitOfWork,
@@ -19,7 +18,7 @@ class IdeStatusRepositoryCorrelation(
       matchesVerifyRepository(item)
   }
 
-  private fun matchesFeatureTaskRepository(workflowId: WorkflowId): Boolean? {
+  private fun matchesFeatureTaskRepository(workflowId: String): Boolean? {
     val identity = unitOfWork.workflowStates.getFeatureTaskExecutionIdentity(workflowId) ?: return null
     return identity.repositoryIdentity == repositoryIdentity
   }
@@ -28,7 +27,7 @@ class IdeStatusRepositoryCorrelation(
     val bound = unitOfWork.goalRunnerControls.controlState(item.workflowId).repositoryIdentity
     return when {
       bound == null -> {
-        val issueKey = item.issueKey?.toString()?.trim()?.uppercase() ?: return null
+        val issueKey = item.issueKey?.trim()?.uppercase() ?: return null
         val childrenHere = unitOfWork.workflowStates
           .findGoalChildFeatureTaskCandidates(issueKey, repositoryIdentity)
         val childCountAnywhere = unitOfWork.workflowStates.countGoalChildIdentities(issueKey)
@@ -40,7 +39,7 @@ class IdeStatusRepositoryCorrelation(
   }
 
   private fun matchesVerifyRepository(item: WorkItem): Boolean? {
-    val issueKey = item.issueKey?.toString()?.trim()?.takeIf { it.isNotEmpty() } ?: return null
+    val issueKey = item.issueKey?.trim()?.takeIf { it.isNotEmpty() } ?: return null
     return when (verifyIssueRepositoryCorrelation(issueKey)) {
       VerifyRepoCorrelation.SAME_REPO -> true
       VerifyRepoCorrelation.OTHER_REPO -> false
@@ -48,12 +47,12 @@ class IdeStatusRepositoryCorrelation(
     }
   }
 
-  private fun verifyIssueRepositoryCorrelation(issueKey: IssueKey): VerifyRepoCorrelation {
-    val normalized = issueKey.value.trim().uppercase()
+  private fun verifyIssueRepositoryCorrelation(issueKey: String): VerifyRepoCorrelation {
+    val normalized = issueKey.trim().uppercase()
     var sawSameRepo = false
     var sawOtherRepo = false
     for (other in unitOfWork.workList.list(limit = null)) {
-      if (other.issueKey?.toString()?.trim()?.uppercase() != normalized) continue
+      if (other.issueKey?.trim()?.uppercase() != normalized) continue
       when (correlateSameIssueWork(other, normalized)) {
         VerifyRepoCorrelation.SAME_REPO -> sawSameRepo = true
         VerifyRepoCorrelation.OTHER_REPO -> sawOtherRepo = true
@@ -67,7 +66,7 @@ class IdeStatusRepositoryCorrelation(
     }
   }
 
-  private fun correlateSameIssueWork(other: WorkItem, normalizedIssueKey: IssueKey): VerifyRepoCorrelation =
+  private fun correlateSameIssueWork(other: WorkItem, normalizedIssueKey: String): VerifyRepoCorrelation =
     when (other.workflowKind) {
       WorkItemKind.FEATURE_TASK_PROSE,
       WorkItemKind.FEATURE_TASK_RUNTIME,
@@ -83,7 +82,7 @@ class IdeStatusRepositoryCorrelation(
       WorkItemKind.FEATURE_VERIFY -> VerifyRepoCorrelation.UNKNOWN
     }
 
-  private fun correlateGoalForVerify(workflowId: WorkflowId, normalizedIssueKey: IssueKey): VerifyRepoCorrelation {
+  private fun correlateGoalForVerify(workflowId: String, normalizedIssueKey: String): VerifyRepoCorrelation {
     val bound = unitOfWork.goalRunnerControls.controlState(workflowId).repositoryIdentity
     return when {
       bound == repositoryIdentity -> VerifyRepoCorrelation.SAME_REPO

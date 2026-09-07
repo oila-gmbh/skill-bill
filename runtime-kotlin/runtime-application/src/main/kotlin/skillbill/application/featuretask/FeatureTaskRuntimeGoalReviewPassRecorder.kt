@@ -1,4 +1,5 @@
 package skillbill.application.featuretask
+
 import skillbill.application.decomposition.decodeArtifacts
 import skillbill.application.featuretask.model.GoalSubtaskReviewPassCarryForward
 import skillbill.application.featuretask.model.GoalSubtaskReviewPassInFlight
@@ -13,7 +14,6 @@ import skillbill.ports.db.DatabaseSessionFactory
 import skillbill.ports.persistence.UnitOfWork
 import skillbill.ports.workflow.get
 import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewInput
-import skillbill.workflow.engine.model.WorkflowId
 import skillbill.workflow.engine.model.WorkflowStateSnapshot
 import skillbill.workflow.goal.model.GOAL_SUBTASK_REVIEW_INPUT_ARTIFACT_KEY
 import skillbill.workflow.goal.model.GOAL_SUBTASK_REVIEW_RESULTS_ARTIFACT_KEY
@@ -26,8 +26,8 @@ class FeatureTaskRuntimeGoalReviewPassRecorder(
   private val patcher: FeatureTaskRuntimeGoalContinuationArtifactPatcher,
   private val runtimeOwnedPersistence: RuntimeOwnedPersistenceBoundary,
 ) {
-  fun reserveGoalReviewPass(workflowId: WorkflowId): GoalSubtaskReviewPassReservation =
-    database.transaction { unitOfWork ->
+  fun reserveGoalReviewPass(workflowId: String, dbOverride: String? = null): GoalSubtaskReviewPassReservation =
+    database.transaction(dbOverride) { unitOfWork ->
       val record = WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, workflowId)
         ?: return@transaction GoalSubtaskReviewPassReservation.MissingState
       val artifacts = decodeArtifacts(record.artifactsJson)
@@ -50,38 +50,42 @@ class FeatureTaskRuntimeGoalReviewPassRecorder(
       GoalSubtaskReviewPassReserved(reserved)
     }
 
-  fun persistGoalReviewInput(workflowId: WorkflowId, input: GoalSubtaskReviewInput): GoalSubtaskReviewState? =
-    database.transaction { unitOfWork ->
-      val record = WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, workflowId) ?: return@transaction null
-      val artifacts = decodeArtifacts(record.artifactsJson)
-      val state = reviewStateFromArtifacts(artifacts)
-        ?: return@transaction null
-      check(input.reviewBaseSha == state.reviewBaseSha || input.reviewBaseSha == state.remediationBaseSha) {
-        "Goal-subtask review input does not match the durable review baseline or its recorded remediation base."
-      }
-      val updated = state.copy(
-        reviewInputArtifact = GOAL_SUBTASK_REVIEW_INPUT_ARTIFACT_KEY,
-        reviewedDeltaDigest = if (input.reviewBaseSha == state.reviewBaseSha) {
-          input.deltaDigest
-        } else {
-          state.reviewedDeltaDigest
-        },
-      )
-      patcher.save(
-        record,
-        unitOfWork.workflowStates,
-        mapOf(
-          GOAL_SUBTASK_REVIEW_STATE_ARTIFACT_KEY to updated.toArtifactMap(),
-          GOAL_SUBTASK_REVIEW_INPUT_ARTIFACT_KEY to input.toArtifactMap(),
-        ),
-      )
-      updated
+  fun persistGoalReviewInput(
+    workflowId: String,
+    input: GoalSubtaskReviewInput,
+    dbOverride: String? = null,
+  ): GoalSubtaskReviewState? = database.transaction(dbOverride) { unitOfWork ->
+    val record = WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, workflowId) ?: return@transaction null
+    val artifacts = decodeArtifacts(record.artifactsJson)
+    val state = reviewStateFromArtifacts(artifacts)
+      ?: return@transaction null
+    check(input.reviewBaseSha == state.reviewBaseSha || input.reviewBaseSha == state.remediationBaseSha) {
+      "Goal-subtask review input does not match the durable review baseline or its recorded remediation base."
     }
+    val updated = state.copy(
+      reviewInputArtifact = GOAL_SUBTASK_REVIEW_INPUT_ARTIFACT_KEY,
+      reviewedDeltaDigest = if (input.reviewBaseSha == state.reviewBaseSha) {
+        input.deltaDigest
+      } else {
+        state.reviewedDeltaDigest
+      },
+    )
+    patcher.save(
+      record,
+      unitOfWork.workflowStates,
+      mapOf(
+        GOAL_SUBTASK_REVIEW_STATE_ARTIFACT_KEY to updated.toArtifactMap(),
+        GOAL_SUBTASK_REVIEW_INPUT_ARTIFACT_KEY to input.toArtifactMap(),
+      ),
+    )
+    updated
+  }
 
   fun updateReviewState(
-    workflowId: WorkflowId,
+    workflowId: String,
+    dbOverride: String? = null,
     transform: (GoalSubtaskReviewState) -> GoalSubtaskReviewState,
-  ): GoalSubtaskReviewState? = database.transaction { unitOfWork ->
+  ): GoalSubtaskReviewState? = database.transaction(dbOverride) { unitOfWork ->
     val record = WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, workflowId) ?: return@transaction null
     val state = reviewStateFromArtifacts(decodeArtifacts(record.artifactsJson)) ?: return@transaction null
     val updated = transform(state)
@@ -94,31 +98,35 @@ class FeatureTaskRuntimeGoalReviewPassRecorder(
     updated
   }
 
-  internal fun completeGoalReviewPass(request: GoalReviewPassCompletionRequest): GoalSubtaskReviewState? =
-    runtimeOwnedPersistence.requiredWrite(
-      seam = "FeatureTaskRuntimeGoalContinuationRecorder.completeGoalReviewPass",
-      expected = "runtime-owned review completion persistence",
-    ) { unitOfWork ->
-      val loaded = loadGoalReviewPassWrite(unitOfWork, request) ?: return@requiredWrite null
-      val completed = loaded.state.completeReservedPass(
-        request.verdict,
-        request.unresolvedFindingCount,
-        request.findings,
-        loaded.dispositions,
-        request.commitFocusedAccounting,
-      )
-      persistGoalReviewPassWrite(unitOfWork, loaded, request, completed)
-      completed
-    }
-
-  fun lastGoalReviewResult(workflowId: WorkflowId): String? = database.read { unitOfWork ->
-    val record = WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, workflowId) ?: return@read null
-    val artifacts = decodeArtifacts(record.artifactsJson)
-    val state = reviewStateFromArtifacts(artifacts)
-      ?: return@read null
-    val passNumber = state.passResults.lastOrNull()?.passNumber ?: return@read null
-    rawReviewResultsFromArtifacts(artifacts, state)[passNumber.toString()]
+  internal fun completeGoalReviewPass(
+    request: GoalReviewPassCompletionRequest,
+    dbOverride: String? = null,
+  ): GoalSubtaskReviewState? = runtimeOwnedPersistence.requiredWrite(
+    seam = "FeatureTaskRuntimeGoalContinuationRecorder.completeGoalReviewPass",
+    expected = "runtime-owned review completion persistence",
+    dbOverride = dbOverride,
+  ) { unitOfWork ->
+    val loaded = loadGoalReviewPassWrite(unitOfWork, request) ?: return@requiredWrite null
+    val completed = loaded.state.completeReservedPass(
+      request.verdict,
+      request.unresolvedFindingCount,
+      request.findings,
+      loaded.dispositions,
+      request.commitFocusedAccounting,
+    )
+    persistGoalReviewPassWrite(unitOfWork, loaded, request, completed)
+    completed
   }
+
+  fun lastGoalReviewResult(workflowId: String, dbOverride: String? = null): String? =
+    database.read(dbOverride) { unitOfWork ->
+      val record = WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, workflowId) ?: return@read null
+      val artifacts = decodeArtifacts(record.artifactsJson)
+      val state = reviewStateFromArtifacts(artifacts)
+        ?: return@read null
+      val passNumber = state.passResults.lastOrNull()?.passNumber ?: return@read null
+      rawReviewResultsFromArtifacts(artifacts, state)[passNumber.toString()]
+    }
 
   private data class GoalReviewPassWrite(
     val record: WorkflowStateSnapshot,

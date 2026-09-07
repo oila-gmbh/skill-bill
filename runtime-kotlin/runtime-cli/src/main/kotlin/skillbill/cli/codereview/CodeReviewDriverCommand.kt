@@ -26,7 +26,6 @@ import skillbill.cli.model.CliRunInputs
 import skillbill.contracts.JsonCodec
 import skillbill.error.ReviewAggregationIntegrityError
 import skillbill.error.ShellContentContractException
-import skillbill.review.model.ReviewRunId
 import java.nio.file.Path
 import kotlin.time.Duration.Companion.minutes
 
@@ -114,7 +113,7 @@ open class CodeReviewDriverCommand(
       timeout = timeoutMinutes?.minutes,
       codeReviewMode = parseExecutionMode(codeReviewMode),
       suppliedDiffPath = suppliedDiffPath(),
-      reviewRunId = reviewRunId?.takeIf(String::isNotBlank)?.let(::ReviewRunId),
+      reviewRunId = reviewRunId?.takeIf(String::isNotBlank),
       baseRevision = resolvedBase,
       headRevision = resolvedHead,
       prelaunchExpansions = expandFiles.map(::parseExpansion),

@@ -4,14 +4,13 @@ import skillbill.db.core.inImmediateTransaction
 import skillbill.ports.featuretask.model.FeatureTaskRuntimeCrashReconciliationCandidate
 import skillbill.ports.featuretask.model.FeatureTaskRuntimeWorkerOwnership
 import skillbill.ports.workflow.FeatureTaskRuntimeWorkerRepository
-import skillbill.workflow.engine.model.WorkflowId
 import java.sql.Connection
 
 internal class FeatureTaskRuntimeWorkerStore(
   private val connection: Connection,
 ) : FeatureTaskRuntimeWorkerRepository {
-  override fun getFeatureTaskRuntimeWorkerOwnership(workflowId: WorkflowId): FeatureTaskRuntimeWorkerOwnership? =
-    connection.featureTaskRuntimeWorkerOwnership(workflowId.value)
+  override fun getFeatureTaskRuntimeWorkerOwnership(workflowId: String): FeatureTaskRuntimeWorkerOwnership? =
+    connection.featureTaskRuntimeWorkerOwnership(workflowId)
 
   override fun acquireFeatureTaskRuntimeWorker(
     ownership: FeatureTaskRuntimeWorkerOwnership,
@@ -42,7 +41,7 @@ internal class FeatureTaskRuntimeWorkerStore(
   }
 
   override fun reserveFeatureTaskRuntimeWorkerTakeover(
-    workflowId: WorkflowId,
+    workflowId: String,
     expectedOwnerToken: String,
     expectedGeneration: Long,
   ): Boolean = connection.prepareStatement(
@@ -98,7 +97,7 @@ internal class FeatureTaskRuntimeWorkerStore(
       statement.executeUpdate() == 1
     }
 
-  override fun releaseFeatureTaskRuntimeWorker(workflowId: WorkflowId, ownerToken: String, generation: Long): Boolean =
+  override fun releaseFeatureTaskRuntimeWorker(workflowId: String, ownerToken: String, generation: Long): Boolean =
     connection.prepareStatement(
       "DELETE FROM feature_task_runtime_worker_leases WHERE workflow_id = ? AND owner_token = ? AND generation = ?",
     ).use { statement ->
@@ -146,7 +145,7 @@ internal class FeatureTaskRuntimeWorkerStore(
   // not open its own transaction, or the nested BEGIN IMMEDIATE would fail on real SQLite.
 
   override fun reconcileFeatureTaskRuntimeCrashedWorker(
-    workflowId: WorkflowId,
+    workflowId: String,
     ownerToken: String,
     generation: Long,
     interruptionReason: String,

@@ -7,7 +7,7 @@ import skillbill.ports.goalrunner.model.GoalPlanningPreparationRecord
 import skillbill.ports.goalrunner.model.GoalPlanningPreparationState
 
 internal fun requirePreparedEnvelope(record: GoalPlanningPreparationRecord) {
-  val label = "${record.parentGoalWorkflowId.value}#${record.subtaskId.value}"
+  val label = "${record.parentGoalWorkflowId}#${record.subtaskId}"
   val failure = envelopeFailure(record) ?: provenanceFailure(record)
   failure?.let {
     throw InvalidGoalPlanningPreparationSchemaError(sourceLabel = label, fieldPath = "", reason = it)
@@ -15,13 +15,13 @@ internal fun requirePreparedEnvelope(record: GoalPlanningPreparationRecord) {
 }
 
 internal fun recoveryIdentityFailure(stored: StoredRecoveryIdentity, record: GoalPlanningPreparationRecord): String? {
-  if (stored.normalizedIssueKey != record.normalizedIssueKey.value ||
+  if (stored.normalizedIssueKey != record.normalizedIssueKey ||
     stored.repositoryIdentity != record.repositoryIdentity
   ) {
     return incompatibleIdentityReason(
       stored.normalizedIssueKey,
       stored.repositoryIdentity,
-      record.normalizedIssueKey.value,
+      record.normalizedIssueKey,
       record.repositoryIdentity,
     )
   }
@@ -36,9 +36,9 @@ private fun envelopeFailure(record: GoalPlanningPreparationRecord): String? = wh
   record.contractVersion != LEGACY_GOAL_PLANNING_PREPARATION_CONTRACT_VERSION ->
     "contract_version must be '$LEGACY_GOAL_PLANNING_PREPARATION_CONTRACT_VERSION' " +
       "but was '${record.contractVersion}'"
-  record.subtaskId.value < 1 -> "subtask_id must be a positive integer"
-  record.parentGoalWorkflowId.value.isBlank() -> "parent_goal_workflow_id is required"
-  record.normalizedIssueKey.value.isBlank() -> "normalized_issue_key is required"
+  record.subtaskId < 1 -> "subtask_id must be a positive integer"
+  record.parentGoalWorkflowId.isBlank() -> "parent_goal_workflow_id is required"
+  record.normalizedIssueKey.isBlank() -> "normalized_issue_key is required"
   record.repositoryIdentity.isBlank() -> "repository_identity is required"
   record.governedSubSpecPath.isBlank() -> "governed_sub_spec_path is required"
   record.preparationStatus != GoalPlanningPreparationState.PREPARED ->

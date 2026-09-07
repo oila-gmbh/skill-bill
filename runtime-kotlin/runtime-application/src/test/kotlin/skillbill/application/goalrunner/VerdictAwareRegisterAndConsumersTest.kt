@@ -1,4 +1,5 @@
 package skillbill.application.goalrunner
+
 import skillbill.goalrunner.subtaskreview.GoalSubtaskReviewSummaryReducer
 import skillbill.goalrunner.subtaskreview.model.UnaddressedFindingLedgerScope
 import skillbill.review.ParallelReviewMerger
@@ -9,7 +10,6 @@ import skillbill.review.model.ReviewClaimVerdict
 import skillbill.review.model.ReviewFindingCitation
 import skillbill.review.model.ReviewFindingVerdict
 import skillbill.review.model.ReviewStage
-import skillbill.workflow.engine.model.WorkflowId
 import skillbill.workflow.goal.model.GoalSubtaskBlockerDispositionVerdict
 import skillbill.workflow.goal.model.ValidationDepth
 import skillbill.workflow.taskruntime.FeatureTaskRuntimeHandoffProjectionValidator
@@ -202,7 +202,7 @@ class VerdictAwareRegisterAndConsumersTest {
         ),
         resolvedCheckpoint = FeatureTaskRuntimeRepositoryCheckpoint("reviewed-tree"),
         expectedCheckpoint = FeatureTaskRuntimeRepositoryCheckpoint("reviewed-tree"),
-        workflowId = WorkflowId("wftr-1"),
+        workflowId = "wftr-1",
         validationDepth = ValidationDepth.DEFAULT,
         recordedFindingVerdicts = recordedVerdicts,
         planningProjectionValidator = NoopFeatureTaskRuntimePlanningProjectionValidator,

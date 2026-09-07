@@ -1,5 +1,6 @@
 package skillbill.ports.workflow.gitops
 
+import skillbill.ports.workflow.gitops.model.WorkflowGitOperationStatus
 import skillbill.ports.workflow.gitops.model.WorkflowGitOperationResult
 import skillbill.ports.workflow.gitops.model.WorkflowSelectedDiffHunksRequest
 import skillbill.ports.workflow.gitops.model.WorkflowSelectedDiffHunksResult
@@ -11,12 +12,12 @@ import java.nio.file.Path
 
 internal object NoopWorkflowGitWorktreeOperations : WorkflowGitWorktreeOperations {
   override fun worktreeStatus(repoRoot: Path): WorkflowGitOperationResult {
-    return WorkflowGitOperationResult(status = "ok", value = "")
+    return WorkflowGitOperationResult.Ok(value = "")
   }
 
   override fun worktreeActivity(repoRoot: Path): WorkflowWorktreeActivityResult {
     return WorkflowWorktreeActivityResult(
-      status = "ok",
+      status = WorkflowGitOperationStatus.OK,
       changedFileSummary = GoalObservabilityChangedFileSummary(
         total = 0,
         added = 0,
@@ -34,7 +35,7 @@ internal object NoopWorkflowGitWorktreeOperations : WorkflowGitWorktreeOperation
     request: WorkflowSelectedDiffHunksRequest,
   ): WorkflowSelectedDiffHunksResult {
     return WorkflowSelectedDiffHunksResult(
-      status = "ok",
+      status = WorkflowGitOperationStatus.OK,
       selectedDiffHunks = GoalObservabilitySelectedDiffHunks(),
     )
   }

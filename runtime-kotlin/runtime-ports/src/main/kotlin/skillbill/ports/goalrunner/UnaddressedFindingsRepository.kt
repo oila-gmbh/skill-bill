@@ -2,11 +2,9 @@ package skillbill.ports.goalrunner
 
 import skillbill.goalrunner.model.ReviewFindingOutcomeRecord
 import skillbill.goalrunner.model.UnaddressedFinding
-import skillbill.workflow.decomposition.model.IssueKey
-import skillbill.workflow.engine.model.WorkflowId
 
 interface UnaddressedFindingsRepository {
-  fun replaceLedgerForPass(workflowId: WorkflowId, reviewPassNumber: Int, findings: List<UnaddressedFinding>)
+  fun replaceLedgerForPass(workflowId: String, reviewPassNumber: Int, findings: List<UnaddressedFinding>)
 
   /**
    * Records the terminal accepted/rejected/carried disposition for findings a run produced. Survives
@@ -14,19 +12,19 @@ interface UnaddressedFindingsRepository {
    */
   fun recordOutcomes(outcomes: List<ReviewFindingOutcomeRecord>)
 
-  fun fetchOutcomes(workflowId: WorkflowId): List<ReviewFindingOutcomeRecord>
+  fun fetchOutcomes(workflowId: String): List<ReviewFindingOutcomeRecord>
 
   /**
    * Review-generation invalidation restarts pass numbering at 1, so pass-scoped retraction can no
    * longer reach the superseded generation's rows; they must be dropped wholesale instead.
    */
-  fun clearWorkflowLedger(workflowId: WorkflowId)
+  fun clearWorkflowLedger(workflowId: String)
 
-  fun fetchLedger(issueKey: IssueKey): List<UnaddressedFinding>
+  fun fetchLedger(issueKey: String): List<UnaddressedFinding>
 
-  fun fetchWorkflowLedger(workflowId: WorkflowId): List<UnaddressedFinding>
+  fun fetchWorkflowLedger(workflowId: String): List<UnaddressedFinding>
 
-  fun workflowIdsForIssue(issueKey: IssueKey): List<String>
+  fun workflowIdsForIssue(issueKey: String): List<String>
 
-  fun issueExists(issueKey: IssueKey): Boolean
+  fun issueExists(issueKey: String): Boolean
 }

@@ -1,7 +1,9 @@
 package skillbill.application.goalrunner
+
 import skillbill.application.featuretask.FeatureTaskRuntimePhaseRecorder
 import skillbill.application.goalrunner.findings.UnaddressedFindingsLedgerService
 import skillbill.application.goalrunner.model.GoalRunnerRunEvent
+import skillbill.application.goalrunner.model.GoalRunnerRunRequest
 import skillbill.goalrunner.model.GoalAttemptLedgerAction
 import skillbill.goalrunner.model.GoalRunnerControlState
 import skillbill.goalrunner.model.GoalRunnerReconciledOutcome
@@ -11,8 +13,6 @@ import skillbill.ports.goalrunner.runner.GoalRunnerWorkflowOutcomeStore
 import skillbill.ports.goalrunner.runner.model.GoalRunnerManifestState
 import skillbill.ports.goalrunner.runner.model.GoalRunnerWorkflowProgress
 import skillbill.workflow.decomposition.model.DecompositionManifest
-import skillbill.workflow.decomposition.model.SubtaskId
-import skillbill.workflow.engine.model.WorkflowId
 import java.time.Clock
 
 internal class GoalRunnerIterationOutcome(
@@ -39,7 +39,7 @@ internal class GoalRunnerIterationOutcome(
     val launchDiagnostics = args.launchDiagnostics
     val attemptStartMillis = session.attemptStartMillis
     val knownWorkflowId = state.manifest.knownWorkflowId(subtaskId, reconciled)
-    val stoppedOutcome = markChildWorkflowBlockedIfNeeded(reconciled, knownWorkflowId)
+    val stoppedOutcome = markChildWorkflowBlockedIfNeeded(reconciled, knownWorkflowId, request)
     val attemptDurationMillis = attemptStartMillis?.let { clock.millis() - it }
     knownWorkflowId?.let { workflowId ->
       recordStoppedLedgerEntries(
@@ -62,12 +62,12 @@ internal class GoalRunnerIterationOutcome(
       state.manifest.withStoppedSubtask(subtaskId, stoppedOutcome, knownWorkflowId)
     }
     val blockedState = state.copy(manifest = blocked)
-    val control = manifestStore.controlState(state.parentWorkflowId)
+    val control = manifestStore.controlState(state.parentWorkflowId, request.dbPathOverride)
     if (!control.pauseRequested && !control.paused) {
-      validationRetryIteration(blocked, stoppedOutcome, subtaskId, state)
+      validationRetryIteration(blocked, stoppedOutcome, subtaskId, state, request)
         ?.let { retry -> return retry }
     }
-    val saved = persistStoppedBoundary(blockedState, control)
+    val saved = persistStoppedBoundary(blockedState, control, request)
     emitStoppedObservability(saved, knownWorkflowId, subtaskId, stoppedOutcome, observability)
     request.emitStoppedSubtaskEvent(saved.manifest.issueKey, subtaskId, stoppedOutcome)
     return stoppedIterationResult(
@@ -85,16 +85,17 @@ internal class GoalRunnerIterationOutcome(
   private fun persistStoppedBoundary(
     blockedState: GoalRunnerManifestState,
     control: GoalRunnerControlState,
+    request: GoalRunnerRunRequest,
   ): GoalRunnerManifestState = if (control.pauseRequested || control.paused) {
-    manifestStore.pauseAtBoundary(blockedState.copy(controlState = control))
+    manifestStore.pauseAtBoundary(blockedState.copy(controlState = control), request.dbPathOverride)
   } else {
-    manifestStore.save(blockedState)
+    manifestStore.save(blockedState, request.dbPathOverride)
   }
 
   private fun emitStoppedObservability(
     saved: GoalRunnerManifestState,
-    knownWorkflowId: WorkflowId?,
-    subtaskId: SubtaskId,
+    knownWorkflowId: String?,
+    subtaskId: Int,
     stoppedOutcome: GoalRunnerReconciledOutcome.Stop,
     observability: GoalRunnerObservabilityEmitter,
   ) {
@@ -134,7 +135,7 @@ internal class GoalRunnerIterationOutcome(
             stoppedOutcome.blockedReason.withStopDiagnostics(
               knownWorkflowId = knownWorkflowId,
               progress = knownWorkflowId?.let { workflowId ->
-                progressReader.safeProgress(workflowId)
+                progressReader.safeProgress(workflowId, request)
               },
               liveness = stoppedOutcome.liveness,
             )
@@ -158,6 +159,7 @@ internal class GoalRunnerIterationOutcome(
     val completedTransition = manifestStore.saveCompletedSubtaskAtBoundary(
       state.copy(manifest = state.manifest.withCompletedSubtask(subtaskId, reconciled)),
       subtaskId,
+      request.dbPathOverride,
     )
     val completed = completedTransition.state
     finalization.pruneCompletedCheckpointRefs(completed, subtaskId, reconciled, request, observability)
@@ -193,7 +195,8 @@ internal class GoalRunnerIterationOutcome(
     }
   }
 
-  fun safeProgress(workflowId: WorkflowId): GoalRunnerWorkflowProgress? = progressReader.safeProgress(workflowId)
+  fun safeProgress(workflowId: String, request: GoalRunnerRunRequest): GoalRunnerWorkflowProgress? =
+    progressReader.safeProgress(workflowId, request)
 
   private fun recordStoppedLedgerEntries(args: RecordStoppedLedgerEntriesArgs) {
     val workflowId = args.workflowId
@@ -205,8 +208,8 @@ internal class GoalRunnerIterationOutcome(
     val attemptDurationMillis = args.attemptDurationMillis
     val ledger = args.ledger
     val request = args.request
-    val progress = progressReader.safeProgress(workflowId)
-    val childLoopIterations = outcomeStore.childWorkflowLoopIterations(workflowId)
+    val progress = progressReader.safeProgress(workflowId, request)
+    val childLoopIterations = outcomeStore.childWorkflowLoopIterations(workflowId, request.dbPathOverride)
     val reAttemptCause = reAttemptCauseFor(stoppedOutcome.reason, childLoopIterations)
     val causingLoopEntry = causingLoopEntryFor(childLoopIterations)
     ledger.recordLedgerEntry(
@@ -235,6 +238,7 @@ internal class GoalRunnerIterationOutcome(
         findingsInScope = resolveUnaddressedFindingsLedger(
           unaddressedFindingsLedgerService,
           state.manifest.issueKey,
+          request.dbPathOverride,
         )?.findings?.count { it.subtaskId == subtaskId },
       ),
     )
@@ -257,10 +261,11 @@ internal class GoalRunnerIterationOutcome(
   private fun validationRetryIteration(
     blocked: DecompositionManifest,
     stoppedOutcome: GoalRunnerReconciledOutcome.Stop,
-    subtaskId: SubtaskId,
+    subtaskId: Int,
     state: GoalRunnerManifestState,
+    request: GoalRunnerRunRequest,
   ): GoalRunnerIterationResult? {
-    if (!stoppedOutcome.isRecoverableValidationBlock(phaseRecorder)) {
+    if (!stoppedOutcome.isRecoverableValidationBlock(phaseRecorder, request.dbPathOverride)) {
       return null
     }
     val priorRetries = validationQualityState.validationQualityRetryCount(subtaskId)
@@ -271,18 +276,20 @@ internal class GoalRunnerIterationOutcome(
     return GoalRunnerIterationResult(
       state = manifestStore.save(
         state.copy(manifest = blocked.withValidationQualityRetrySubtask(subtaskId)),
+        request.dbPathOverride,
       ),
     )
   }
 
   private fun markChildWorkflowBlockedIfNeeded(
     reconciled: GoalRunnerReconciledOutcome.Stop,
-    knownWorkflowId: WorkflowId?,
+    knownWorkflowId: String?,
+    request: GoalRunnerRunRequest,
   ): GoalRunnerReconciledOutcome.Stop {
     if (knownWorkflowId == null || reconciled.reason !in CHILD_WORKFLOW_BLOCK_REASONS) {
       return reconciled
     }
-    val progress = progressReader.safeProgress(knownWorkflowId)
+    val progress = progressReader.safeProgress(knownWorkflowId, request)
     val blockedStepId = outcomeStore.markBlocked(
       workflowId = knownWorkflowId,
       blockedReason = reconciled.blockedReason.withStopDiagnostics(knownWorkflowId, progress, reconciled.liveness),
@@ -293,6 +300,7 @@ internal class GoalRunnerIterationOutcome(
         progress = progress,
         liveness = reconciled.liveness,
       ),
+      dbPathOverride = request.dbPathOverride,
     )
     return blockedStepId?.takeIf(String::isNotBlank)?.let { stepId ->
       reconciled.copy(lastResumableStep = stepId)
@@ -328,7 +336,7 @@ internal class GoalRunnerIterationOutcome(
         action = GoalAttemptLedgerAction.TERMINAL_DONE_CHECK,
         issueKey = completed.manifest.issueKey,
         subtaskId = subtaskId,
-        progress = progressReader.safeProgress(reconciled.workflowId),
+        progress = progressReader.safeProgress(reconciled.workflowId, request),
         finalReconciledResult = "complete commit=${reconciled.commitSha}",
         attemptDurationMillis = attemptStartMillis?.let { clock.millis() - it },
       ),

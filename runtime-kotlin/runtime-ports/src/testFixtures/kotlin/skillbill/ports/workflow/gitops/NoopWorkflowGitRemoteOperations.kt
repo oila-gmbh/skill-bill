@@ -5,10 +5,10 @@ import java.nio.file.Path
 
 internal object NoopWorkflowGitRemoteOperations : WorkflowGitRemoteOperations {
   override fun pushBranch(repoRoot: Path, branch: String): WorkflowGitOperationResult {
-    return WorkflowGitOperationResult(status = "ok", value = branch.trim())
+    return WorkflowGitOperationResult.Ok(value = branch.trim())
   }
 
   override fun localBranchHasUnpushedCommits(repoRoot: Path, branch: String): WorkflowGitOperationResult {
-    return WorkflowGitOperationResult(status = "ok", value = "false")
+    return WorkflowGitOperationResult.Ok(value = "false")
   }
 }

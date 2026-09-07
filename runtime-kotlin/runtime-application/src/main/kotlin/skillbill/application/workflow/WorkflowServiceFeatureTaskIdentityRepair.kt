@@ -1,7 +1,5 @@
 package skillbill.application.workflow
 
-import skillbill.workflow.decomposition.model.IssueKey
-
 import skillbill.application.workflow.model.FeatureTaskIdentityRepairArgs
 import skillbill.application.workflow.model.WorkflowUpdateResult
 import skillbill.contracts.issuekey.normalizeIssueKey

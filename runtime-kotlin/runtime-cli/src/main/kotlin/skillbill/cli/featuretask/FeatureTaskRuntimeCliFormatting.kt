@@ -9,10 +9,12 @@ import skillbill.application.workflow.model.WorkflowFamilyKind
 import skillbill.application.workflow.model.WorkflowOpenResult
 import skillbill.application.workflow.model.WorkflowServiceOpenFeatureTaskArgs
 import skillbill.application.workflow.openFeatureTask
+import skillbill.cli.model.CliRunInputs
 import skillbill.ports.workflow.model.FeatureTaskRouteScope
 import java.nio.file.Path
 
 internal fun WorkflowService.openRuntimeWorkflowId(
+  inputs: CliRunInputs,
   issueKey: String?,
   specPath: String,
   repoRoot: String,
@@ -23,6 +25,7 @@ internal fun WorkflowService.openRuntimeWorkflowId(
       kind = WorkflowFamilyKind.TASK_RUNTIME,
       sessionId = "",
       currentStepId = null,
+      dbOverride = inputs.dbPathOverride,
       issueKey = requireNotNull(issueKey),
       repositoryIdentity = repositoryIdentity(Path.of(repoRoot)),
       governedSpecPath = governedSpecPath(Path.of(repoRoot), Path.of(specPath)),

@@ -1,8 +1,5 @@
 package skillbill.application.review
 
-import skillbill.workflow.engine.model.WorkflowId
-import skillbill.agent.model.AgentId
-
 import skillbill.application.idestatus.AgentActivityStampWriter
 import skillbill.application.review.model.ParallelCodeReviewRequest
 import skillbill.application.review.model.ReviewSpecialistLaunchRequest
@@ -98,7 +95,7 @@ internal class ParallelCodeReviewRunnerLaneLaunch(
   }
 
   private fun launchedBoundParent(args: LaunchedBoundParentArgs): ParallelReviewLaneOutcome {
-    if (args.launch.agentId.value == "cursor" && args.resolvedMode == ResolvedReviewExecutionMode.DELEGATED) {
+    if (args.launch.agentId == "cursor" && args.resolvedMode == ResolvedReviewExecutionMode.DELEGATED) {
       reviewLaunchAgentStaging.stage(
         ReviewLaunchAgentStagingRequest(
           agentId = args.launch.agentId,
@@ -157,11 +154,12 @@ internal class ParallelCodeReviewRunnerLaneLaunch(
         )
       }
     return runCatching {
-      val onEvidenceRead = request.activityWorkflowId?.takeIf { it.value.isNotBlank() }?.let { workflowId ->
+      val onEvidenceRead = request.activityWorkflowId?.takeIf(String::isNotBlank)?.let { workflowId ->
         {
           activityStampWriter.recordEvidenceRead(
             workflowId = workflowId,
             parentWorkflowId = request.activityParentWorkflowId,
+            dbOverride = null,
           )
         }
       }

@@ -1,5 +1,4 @@
 package skillbill.goalrunner
-
 import java.time.Duration
 
 const val STALENESS_EVIDENCE_WINDOW_MINUTES: Long = 30

@@ -5,15 +5,13 @@ import skillbill.goalrunner.derivedTerminalOutcomeFor
 import skillbill.goalrunner.goalContinuationOutcome
 import skillbill.goalrunner.model.GoalRunnerTerminalStatus
 import skillbill.goalrunner.nonCompleteStoredOutcomeIsCorroborated
-import skillbill.workflow.decomposition.model.IssueKey
-import skillbill.workflow.decomposition.model.SubtaskId
 import skillbill.workflow.engine.model.WorkflowStateSnapshot
 
 internal data class GoalRunnerStaleBlockedOutcomeContext(
   val record: WorkflowStateSnapshot,
   val artifacts: Map<String, Any?>,
-  val issueKey: IssueKey,
-  val subtaskId: SubtaskId,
+  val issueKey: String,
+  val subtaskId: Int,
 )
 
 internal fun diagnoseStaleBlockedOutcome(

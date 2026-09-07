@@ -1,4 +1,6 @@
 package skillbill.application
+
+import skillbill.ports.workflow.gitops.model.WorkflowGitOperationStatus
 import skillbill.application.decomposition.DecompositionManifestWriter
 import skillbill.application.decomposition.loadDecompositionManifest
 import skillbill.application.featuretask.FeatureTaskRuntimePhaseRecorder
@@ -95,10 +97,6 @@ import skillbill.telemetry.model.TelemetryConfigDocument
 import skillbill.telemetry.model.TelemetryProxyCapabilities
 import skillbill.telemetry.model.TelemetryRemoteStatsResult
 import skillbill.telemetry.model.TelemetrySettings
-import skillbill.workflow.decomposition.model.IssueKey
-import skillbill.workflow.decomposition.model.SubtaskId
-import skillbill.workflow.engine.model.SessionId
-import skillbill.workflow.engine.model.WorkflowId
 import skillbill.workflow.goal.NoopGoalObservabilityEventValidator
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_GOAL_CONTINUATION_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_BRIEFINGS_ARTIFACT_KEY
@@ -204,18 +202,18 @@ internal class FakeDatabaseSessionFactory(
   val calls = mutableListOf<String>()
   private val dbPath = Path.of("/fake/metrics.db")
 
-  override fun resolveDbPath(): Path = dbPath
+  override fun resolveDbPath(dbOverride: String?): Path = dbPath
 
-  override fun databaseExists(): Boolean = true
+  override fun databaseExists(dbOverride: String?): Boolean = true
 
-  override fun <T> read(block: (UnitOfWork) -> T): T {
+  override fun <T> read(dbOverride: String?, block: (UnitOfWork) -> T): T {
     calls += "read"
     return block(fakeUnitOfWork())
   }
 
-  override fun <T> selfManagedWrite(block: (UnitOfWork) -> T): T = transaction(block)
+  override fun <T> selfManagedWrite(dbOverride: String?, block: (UnitOfWork) -> T): T = transaction(dbOverride, block)
 
-  override fun <T> transaction(block: (UnitOfWork) -> T): T {
+  override fun <T> transaction(dbOverride: String?, block: (UnitOfWork) -> T): T {
     calls += "transaction"
     return block(fakeUnitOfWork())
   }
@@ -271,9 +269,9 @@ internal object ThrowingTelemetryReconciliationRepository : TelemetryReconciliat
 }
 
 internal fun goalStartedRequest(): GoalStartedRequest = GoalStartedRequest(
-  issueKey = IssueKey("SKILL-66"),
+  issueKey = "SKILL-66",
   featureName = "goal telemetry",
-  workflowId = WorkflowId("wf-goal-1"),
+  workflowId = "wf-goal-1",
   subtaskTotal = 4,
   resumed = true,
   startedAt = "2026-06-04T10:00:00Z",
@@ -281,9 +279,9 @@ internal fun goalStartedRequest(): GoalStartedRequest = GoalStartedRequest(
 )
 
 internal fun goalSubtaskFinishedRequest(): GoalSubtaskFinishedRequest = GoalSubtaskFinishedRequest(
-  issueKey = IssueKey("SKILL-66"),
-  workflowId = WorkflowId("wf-goal-1"),
-  subtaskId = SubtaskId(2),
+  issueKey = "SKILL-66",
+  workflowId = "wf-goal-1",
+  subtaskId = 2,
   subtaskName = "persistence",
   status = "blocked",
   startedAt = "2026-06-04T10:05:00Z",
@@ -294,8 +292,8 @@ internal fun goalSubtaskFinishedRequest(): GoalSubtaskFinishedRequest = GoalSubt
 )
 
 internal fun goalFinishedRequest(): GoalFinishedRequest = GoalFinishedRequest(
-  issueKey = IssueKey("SKILL-66"),
-  workflowId = WorkflowId("wf-goal-1"),
+  issueKey = "SKILL-66",
+  workflowId = "wf-goal-1",
   status = "blocked",
   startedAt = "2026-06-04T10:00:00Z",
   finishedAt = "2026-06-04T10:20:00Z",
@@ -689,9 +687,9 @@ internal fun blockedGoalChildRetryFixture(): BlockedGoalChildRetryFixture {
   val childWorkflowId = (
     service.openTestFeatureTask(
       WorkflowFamilyKind.TASK_RUNTIME,
-      sessionId = SessionId("ftr-goal-child"),
+      sessionId = "ftr-goal-child",
       dbOverride = null,
-      issueKey = IssueKey("SKILL-51"),
+      issueKey = "SKILL-51",
     ) as WorkflowOpenResult.Ok
     ).workflowId
   service.update(
@@ -704,8 +702,8 @@ internal fun blockedGoalChildRetryFixture(): BlockedGoalChildRetryFixture {
       artifactsPatch = mapOf(
         FEATURE_TASK_RUNTIME_GOAL_CONTINUATION_ARTIFACT_KEY to
           FeatureTaskRuntimeGoalContinuationArtifact(
-            issueKey = IssueKey("SKILL-51"),
-            subtaskId = SubtaskId(1),
+            issueKey = "SKILL-51",
+            subtaskId = 1,
             suppressPr = true,
             goalBranch = "feat/SKILL-51-demo",
             parentWorkflowId = parentWorkflowId,
@@ -744,12 +742,7 @@ internal fun createDecompositionWorkflow(
   subtaskTwo: Path?,
   executionModel: String = "same_branch_commit_per_subtask",
 ): String {
-  val opened = service.openTestFeatureTask(
-    WorkflowFamilyKind.TASK_RUNTIME,
-    sessionId =
-    SessionId("ftr-001"),
-    dbOverride = null,
-  )
+  val opened = service.openTestFeatureTask(WorkflowFamilyKind.TASK_RUNTIME, sessionId = "ftr-001", dbOverride = null)
     as WorkflowOpenResult.Ok
   val workflowId = opened.workflowId
   service.update(
@@ -1066,25 +1059,25 @@ internal class FakeWorkflowGitOperations(
 
   override fun checkoutBranch(repoRoot: Path, branch: String, baseBranch: String?): WorkflowGitOperationResult {
     checkouts += "$branch@${baseBranch.orEmpty()}"
-    return WorkflowGitOperationResult(status = "ok", value = branch)
+    return WorkflowGitOperationResult.Ok(value = branch)
   }
 
   override fun branchExists(repoRoot: Path, branch: String): WorkflowGitOperationResult =
-    WorkflowGitOperationResult(status = "ok", value = "true")
+    WorkflowGitOperationResult.Ok(value = "true")
 
   override fun currentBranch(repoRoot: Path): WorkflowGitOperationResult =
-    WorkflowGitOperationResult(status = "ok", value = checkouts.lastOrNull()?.substringBefore("@").orEmpty())
+    WorkflowGitOperationResult.Ok(value = checkouts.lastOrNull()?.substringBefore("@").orEmpty())
 
   override fun createCommit(repoRoot: Path, message: String): WorkflowGitOperationResult {
     commits += message
     if (commitError.isNotBlank()) {
-      return WorkflowGitOperationResult(status = "error", error = commitError)
+      return WorkflowGitOperationResult.Failed(error = commitError)
     }
-    return WorkflowGitOperationResult(status = "ok", value = commitSha)
+    return WorkflowGitOperationResult.Ok(value = commitSha)
   }
 
   override fun headCommitSha(repoRoot: Path): WorkflowGitOperationResult =
-    WorkflowGitOperationResult(status = "ok", value = commitSha)
+    WorkflowGitOperationResult.Ok(value = commitSha)
 
   override fun validateBranchBase(
     repoRoot: Path,
@@ -1092,24 +1085,24 @@ internal class FakeWorkflowGitOperations(
     expectedBaseBranch: String,
   ): WorkflowGitOperationResult {
     baseValidations += "$branch@$expectedBaseBranch"
-    return WorkflowGitOperationResult(status = "ok", value = expectedBaseBranch)
+    return WorkflowGitOperationResult.Ok(value = expectedBaseBranch)
   }
 
   override fun worktreeStatus(repoRoot: Path): WorkflowGitOperationResult =
-    WorkflowGitOperationResult(status = "ok", value = "")
+    WorkflowGitOperationResult.Ok(value = "")
 
   override fun worktreeActivity(repoRoot: Path): WorkflowWorktreeActivityResult =
-    WorkflowWorktreeActivityResult(status = "ok")
+    WorkflowWorktreeActivityResult(status = WorkflowGitOperationStatus.OK)
 
   override fun selectedDiffHunks(
     repoRoot: Path,
     request: WorkflowSelectedDiffHunksRequest,
-  ): WorkflowSelectedDiffHunksResult = WorkflowSelectedDiffHunksResult(status = "ok")
+  ): WorkflowSelectedDiffHunksResult = WorkflowSelectedDiffHunksResult(status = WorkflowGitOperationStatus.OK)
 
   override val repositoryFingerprintOperations: RepositoryFingerprintGitOperations =
     object : RepositoryFingerprintGitOperations {
       override fun repositoryFingerprint(repoRoot: Path): WorkflowGitOperationResult =
-        WorkflowGitOperationResult(status = "ok", value = "test-repository-fingerprint")
+        WorkflowGitOperationResult.Ok(value = "test-repository-fingerprint")
     }
 }
 
@@ -1153,7 +1146,7 @@ internal fun testPhaseRecorder(database: DatabaseSessionFactory) = featureTaskRu
 
 internal fun openTaskRuntimeWorkflow(database: DatabaseSessionFactory): String = (
   testWorkflowService(database)
-    .openTestFeatureTask(WorkflowFamilyKind.TASK_RUNTIME, sessionId = SessionId("ftr-envelope"), dbOverride = null)
+    .openTestFeatureTask(WorkflowFamilyKind.TASK_RUNTIME, sessionId = "ftr-envelope", dbOverride = null)
     as WorkflowOpenResult.Ok
   ).workflowId
 

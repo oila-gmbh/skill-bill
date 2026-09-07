@@ -1,4 +1,5 @@
 package skillbill.application.featuretask
+
 import me.tatarka.inject.annotations.Inject
 import skillbill.application.decomposition.decodeArtifacts
 import skillbill.application.workflow.model.WorkflowFamily
@@ -10,7 +11,6 @@ import skillbill.ports.workflow.get
 import skillbill.ports.workflow.save
 import skillbill.workflow.engine.WorkflowEngine
 import skillbill.workflow.engine.WorkflowSnapshotValidator
-import skillbill.workflow.engine.model.WorkflowId
 import skillbill.workflow.engine.model.WorkflowStateSnapshot
 import skillbill.workflow.engine.model.WorkflowUpdateInput
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_RUN_INVARIANTS_ARTIFACT_KEY
@@ -31,19 +31,24 @@ class FeatureTaskRuntimeRunInvariantsStore(
    * Passing null is read-only; passing a value at run creation freezes the invariant for resume.
    */
   fun resolve(
-    workflowId: WorkflowId,
+    workflowId: String,
+    dbOverride: String? = null,
     proposed: FeatureTaskRuntimeRunInvariants? = null,
   ): FeatureTaskRuntimeRunInvariants? {
-    proposed?.let { persistOrUpdateAgentAddons(workflowId, it) }
-    return database.read { unitOfWork ->
+    proposed?.let { persistOrUpdateAgentAddons(workflowId, dbOverride, it) }
+    return database.read(dbOverride) { unitOfWork ->
       val record = WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, workflowId)
         ?: return@read null
       runInvariantsFrom(decodeArtifacts(record.artifactsJson))
     }
   }
 
-  private fun persistOrUpdateAgentAddons(workflowId: WorkflowId, proposed: FeatureTaskRuntimeRunInvariants) {
-    database.transaction { unitOfWork ->
+  private fun persistOrUpdateAgentAddons(
+    workflowId: String,
+    dbOverride: String?,
+    proposed: FeatureTaskRuntimeRunInvariants,
+  ) {
+    database.transaction(dbOverride) { unitOfWork ->
       val record = WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, workflowId)
         ?: return@transaction
       val artifacts = decodeArtifacts(record.artifactsJson)
@@ -72,7 +77,7 @@ class FeatureTaskRuntimeRunInvariantsStore(
         currentStepId = record.currentStepId,
         stepUpdates = null,
         artifactsPatch = mapOf(FEATURE_TASK_RUNTIME_RUN_INVARIANTS_ARTIFACT_KEY to runInvariants.toArtifactMap()),
-        sessionId = record.sessionId,
+        sessionId = record.sessionId.orEmpty(),
       ),
     )
     WorkflowFamily.TASK_RUNTIME.save(workflowStates, updated)

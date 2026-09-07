@@ -1,4 +1,5 @@
 package skillbill.launcher
+
 import skillbill.contracts.time.JvmSystemClock
 import skillbill.goalrunner.model.GoalRunnerLivenessState
 import skillbill.install.model.InstallAgent
@@ -9,7 +10,6 @@ import skillbill.ports.agentrun.model.AgentRunDeclaredProgressProbe
 import skillbill.ports.agentrun.model.AgentRunDeclaredProgressSnapshot
 import skillbill.ports.agentrun.model.AgentRunProgressEmission
 import skillbill.ports.agentrun.model.AgentRunProgressEmitter
-import skillbill.workflow.engine.model.WorkflowId
 import skillbill.workflow.goal.model.GoalProgressEvent
 import skillbill.workflow.goal.model.GoalProgressEventKind
 import skillbill.workflow.goal.model.GoalProgressOutcome
@@ -42,7 +42,7 @@ class AgentRunLauncherActivityTest {
           AgentRunDeclaredProgressSnapshot(
             latestEvent = GoalProgressEvent(
               eventKind = GoalProgressEventKind.OPERATION_STARTED,
-              workflowId = WorkflowId("wfl-child"),
+              workflowId = "wfl-child",
               workflowPhase = "validate",
               processAlive = true,
               sequenceNumber = sequence,
@@ -79,7 +79,7 @@ class AgentRunLauncherActivityTest {
             AgentRunDeclaredProgressSnapshot(
               latestEvent = GoalProgressEvent(
                 eventKind = GoalProgressEventKind.OPERATION_HEARTBEAT,
-                workflowId = WorkflowId("wfl-child"),
+                workflowId = "wfl-child",
                 workflowPhase = "validate",
                 processAlive = true,
                 sequenceNumber = sequence,
@@ -121,7 +121,7 @@ class AgentRunLauncherActivityTest {
           AgentRunDeclaredProgressSnapshot(
             latestEvent = GoalProgressEvent(
               eventKind = GoalProgressEventKind.OPERATION_STARTED,
-              workflowId = WorkflowId("wfl-child"),
+              workflowId = "wfl-child",
               workflowPhase = "implement",
               processAlive = true,
               sequenceNumber = 1,

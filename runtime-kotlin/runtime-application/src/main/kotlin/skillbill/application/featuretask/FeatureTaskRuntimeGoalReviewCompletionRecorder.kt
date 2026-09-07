@@ -1,7 +1,5 @@
 package skillbill.application.featuretask
 
-import skillbill.agent.model.AgentId
-
 import skillbill.application.decomposition.decodeArtifacts
 import skillbill.application.featuretask.model.FeatureTaskRuntimePhaseStateRequest
 import skillbill.application.featuretask.model.GoalReviewPhaseCompletionRequest
@@ -37,9 +35,9 @@ class FeatureTaskRuntimeGoalReviewCompletionRecorder(
   private val workflowPersistence: FeatureTaskRuntimeWorkflowPersistence,
   private val clock: Clock,
 ) : FeatureTaskRuntimePhaseReviewApi {
-  override fun completeGoalReviewPhase(completion: GoalReviewPhaseCompletionRequest): Boolean {
+  override fun completeGoalReviewPhase(completion: GoalReviewPhaseCompletionRequest, dbOverride: String?): Boolean {
     val request = validatedGoalReviewPhaseState(completion)
-    return database.transaction { unitOfWork ->
+    return database.transaction(dbOverride) { unitOfWork ->
       persistCompletedGoalReview(unitOfWork, request, completion)
     }
   }

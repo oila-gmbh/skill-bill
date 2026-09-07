@@ -1,10 +1,10 @@
 package skillbill.application.featuretask
+
 import skillbill.application.featuretask.model.FeatureTaskRuntimeImplementationContinuation
 import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_REPAIR_RECEIPT_CONTRACT_VERSION
 import skillbill.goalrunner.subtaskreview.FeatureTaskRuntimeVerificationSignalKeys
 import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewInput
 import skillbill.review.context.model.CodeReviewExecutionMode
-import skillbill.workflow.decomposition.model.IssueKey
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeCorrectiveRepairContext
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePriorGapMemory
@@ -144,7 +144,7 @@ internal data class ReviewExecutionDirectiveInputs(
 
 // Emits for every commit phase: the runtime and agent never stage feature specs. A human operator
 // may already have committed them; leave those HEAD files alone and leave remaining spec dirt local.
-fun commitExclusionDirective(phaseId: String, issueKey: IssueKey): String {
+fun commitExclusionDirective(phaseId: String, issueKey: String): String {
   if (phaseId != FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_COMMIT_PUSH) {
     return ""
   }

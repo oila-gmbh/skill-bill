@@ -1,10 +1,10 @@
 package skillbill.application
+
 import skillbill.application.goalplanning.toEnvelopeMap
 import skillbill.application.goalplanning.toGoalPlanningPreparationRecord
 import skillbill.ports.goalrunner.model.GoalPlanningPreparationProvenance
 import skillbill.ports.goalrunner.model.GoalPlanningPreparationRecord
 import skillbill.ports.goalrunner.model.GoalPlanningPreparationState
-import skillbill.workflow.decomposition.model.SubtaskId
 import kotlin.test.Test
 import kotlin.test.assertEquals
 
@@ -15,7 +15,7 @@ class GoalPlanningPreparationRecordMappingTest {
       parentGoalWorkflowId = "goal-1",
       normalizedIssueKey = "SKILL-128",
       repositoryIdentity = "repo-root-realpath-v1:/repository",
-      subtaskId = SubtaskId(2),
+      subtaskId = 2,
       governedSubSpecPath = ".feature-specs/SKILL-128/spec_subtask_2.md",
       preparationStatus = GoalPlanningPreparationState.PREPARED,
       provenance = GoalPlanningPreparationProvenance(

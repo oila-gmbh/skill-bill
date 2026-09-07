@@ -1,4 +1,5 @@
 package skillbill.db
+
 import skillbill.contracts.JsonCodec
 import skillbill.db.core.DatabaseRuntime
 import skillbill.db.core.reconcileStaleFeatureTaskRuntimeSessions
@@ -8,7 +9,6 @@ import skillbill.ports.telemetry.model.TelemetryReconciliationRequest
 import skillbill.telemetry.model.FeatureTaskRuntimeFinishedRecord
 import skillbill.telemetry.model.FeatureVerifyFinishedRecord
 import skillbill.telemetry.model.QualityCheckFinishedRecord
-import skillbill.workflow.decomposition.model.IssueKey
 import java.nio.file.Files
 import java.sql.Connection
 import java.time.Instant
@@ -192,7 +192,7 @@ class StaleSessionReconcilerTest {
       assertEquals(1, reconciled.goalIssueAbandonedSessions)
       assertEquals(1, reconciled.emittedTerminalEvents)
       assertEquals(1, eventCount(connection, "skillbill_goal_issue_finished"))
-      val payload = payload(connection, "skillbill_goal_issue_finished", issueKey = IssueKey("SKILL-109"))
+      val payload = payload(connection, "skillbill_goal_issue_finished", issueKey = "SKILL-109")
       assertEquals("abandoned", payload["status"])
       assertEquals(1, payload["subtasks_complete"])
       assertEquals(1, payload["subtasks_blocked"])

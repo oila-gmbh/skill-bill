@@ -1,8 +1,6 @@
 package skillbill.workflow.decomposition.model
 
-import skillbill.agent.model.AgentId
 import skillbill.contracts.workflow.DECOMPOSITION_MANIFEST_CONTRACT_VERSION
-import skillbill.workflow.engine.model.WorkflowId
 
 enum class DecompositionExecutionModel(val wireValue: String) {
   SAME_BRANCH_COMMIT_PER_SUBTASK("same_branch_commit_per_subtask"),
@@ -25,18 +23,18 @@ enum class SpecSource(val wireValue: String) {
 }
 
 data class DecompositionSubtask(
-  val id: SubtaskId,
+  val id: Int,
   val name: String,
   val specPath: String,
   val status: String = "pending",
   val branch: String? = null,
   val commitSha: String? = null,
-  val workflowId: WorkflowId? = null,
+  val workflowId: String? = null,
   val blockedReason: String? = null,
   val lastResumableStep: String? = null,
   val linearIssueId: String? = null,
-  val finalizingAgentId: AgentId? = null,
-  val participatingAgentIds: List<AgentId> = emptyList(),
+  val finalizingAgentId: String? = null,
+  val participatingAgentIds: List<String> = emptyList(),
   val dependencies: List<DecompositionDependency> = emptyList(),
 ) {
   fun hasStarted(): Boolean = status != "pending" ||
@@ -48,19 +46,19 @@ data class DecompositionSubtask(
 }
 
 data class DecompositionDependency(
-  val subtaskId: SubtaskId,
+  val subtaskId: Int,
   val optional: Boolean = false,
   val skipped: Boolean = false,
 )
 
 data class DecompositionStackBranch(
-  val subtaskId: SubtaskId,
+  val subtaskId: Int,
   val branch: String,
   val baseBranch: String,
 )
 
 data class CurrentSubtaskIntent(
-  val subtaskId: SubtaskId,
+  val subtaskId: Int,
   val action: String,
 )
 
@@ -72,13 +70,13 @@ data class DecompositionManifestPlan(
   val specSource: SpecSource,
   val executionModel: DecompositionExecutionModel,
   val stackBranches: List<DecompositionStackBranch>,
-  val currentSubtaskId: SubtaskId,
+  val currentSubtaskId: Int,
   val subtasks: List<DecompositionSubtask>,
 )
 
 data class DecompositionManifest(
   val contractVersion: String = DECOMPOSITION_MANIFEST_CONTRACT_VERSION,
-  val issueKey: IssueKey,
+  val issueKey: String,
   val featureName: String,
   val parentSpecPath: String,
   val specSource: SpecSource = SpecSource.LOCAL,
@@ -90,5 +88,5 @@ data class DecompositionManifest(
   val currentSubtaskIntent: CurrentSubtaskIntent,
   val subtasks: List<DecompositionSubtask>,
 ) {
-  fun nextSubtaskId(): SubtaskId = SubtaskId((subtasks.maxOfOrNull { it.id.toString().toInt() } ?: 0) + 1)
+  fun nextSubtaskId(): Int = (subtasks.maxOfOrNull(DecompositionSubtask::id) ?: 0) + 1
 }

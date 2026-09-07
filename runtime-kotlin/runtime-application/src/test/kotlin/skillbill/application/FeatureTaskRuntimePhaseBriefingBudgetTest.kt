@@ -1,7 +1,7 @@
 package skillbill.application
+
 import skillbill.application.featuretask.FeatureTaskRuntimePhaseBriefingAssembler
 import skillbill.contracts.JsonCodec
-import skillbill.workflow.engine.model.WorkflowId
 import skillbill.workflow.taskruntime.FeatureTaskRuntimeHandoffContract
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_FORBIDDEN_PROJECTION_FIELD_NAMES
@@ -39,7 +39,7 @@ class FeatureTaskRuntimePhaseBriefingBudgetTest {
 
     val briefing = FeatureTaskRuntimePhaseBriefingAssembler.assemble(
       handoff,
-      workflowId = WorkflowId("wftr-1"),
+      workflowId = "wftr-1",
       planningProjectionValidator = realPlanningProjectionValidator,
     )
     assertContains(briefing.briefingText, "r".repeat(64))
@@ -122,7 +122,7 @@ class FeatureTaskRuntimePhaseBriefingBudgetTest {
 
     val briefing = FeatureTaskRuntimePhaseBriefingAssembler.assemble(
       handoff,
-      workflowId = WorkflowId("wftr-1"),
+      workflowId = "wftr-1",
       planningProjectionValidator = realPlanningProjectionValidator,
     )
     assertContains(briefing.briefingText, "AC-huge:")

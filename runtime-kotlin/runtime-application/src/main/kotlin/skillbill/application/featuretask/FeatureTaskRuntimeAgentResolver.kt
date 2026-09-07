@@ -1,7 +1,5 @@
 package skillbill.application.featuretask
 
-import skillbill.agent.model.AgentId
-
 import skillbill.application.featuretask.model.FeatureTaskRuntimeAgentAssignment
 import skillbill.application.featuretask.model.FeatureTaskRuntimeResolvedPhaseAgent
 
@@ -23,14 +21,14 @@ object FeatureTaskRuntimeAgentResolver {
   fun resolve(
     phaseId: String,
     assignment: FeatureTaskRuntimeAgentAssignment,
-    invokedAgentId: AgentId,
+    invokedAgentId: String,
   ): FeatureTaskRuntimeResolvedPhaseAgent {
     require(phaseId.isNotBlank()) { "FeatureTaskRuntimeAgentResolver.resolve requires a non-blank phaseId." }
-    require(invokedAgentId.value.isNotBlank()) {
+    require(invokedAgentId.isNotBlank()) {
       "FeatureTaskRuntimeAgentResolver.resolve requires a non-blank invokedAgentId; the invoking agent is the " +
         "documented default and must always be present (no hardcoded codex fallback)."
     }
-    val resolvedInvoked = assignment.perPhaseAgentIds[phaseId]?.takeIf { it.value.isNotBlank() }
+    val resolvedInvoked = assignment.perPhaseAgentIds[phaseId]?.takeIf(String::isNotBlank)
       ?: invokedAgentId
     return FeatureTaskRuntimeResolvedPhaseAgent(
       phaseId = phaseId,

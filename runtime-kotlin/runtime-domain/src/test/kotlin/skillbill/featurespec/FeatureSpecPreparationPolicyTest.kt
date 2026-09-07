@@ -1,8 +1,8 @@
 package skillbill.featurespec
+
 import skillbill.error.InvalidFeatureSpecPreparationRequestError
 import skillbill.featurespec.model.FeatureSpecPreparationIntake
 import skillbill.featurespec.model.FeatureSpecPreparationMode
-import skillbill.workflow.decomposition.model.IssueKey
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
@@ -11,7 +11,7 @@ class FeatureSpecPreparationPolicyTest {
   @Test
   fun `prepare loud-fails when issue key is missing`() {
     val error = assertFailsWith<InvalidFeatureSpecPreparationRequestError> {
-      FeatureSpecPreparationPolicy.prepare(validIntake().copy(issueKey = IssueKey(" ")))
+      FeatureSpecPreparationPolicy.prepare(validIntake().copy(issueKey = " "))
     }
 
     assertEquals("issue_key", error.fieldPath)
@@ -65,7 +65,7 @@ class FeatureSpecPreparationPolicyTest {
   }
 
   private fun validIntake(): FeatureSpecPreparationIntake = FeatureSpecPreparationIntake(
-    issueKey = IssueKey("SKILL-59"),
+    issueKey = "SKILL-59",
     intendedOutcome = "Prepare one implementation-ready spec.",
     acceptanceCriteria = listOf("AC1"),
     constraints = listOf("Keep runtime layering intact."),

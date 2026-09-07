@@ -1,4 +1,5 @@
 package skillbill.application
+
 import skillbill.application.workflow.model.WorkflowFamily
 import skillbill.contracts.JsonCodec
 import skillbill.ports.featuretask.model.FeatureTaskRuntimeWorkerLeaseState
@@ -15,10 +16,7 @@ import skillbill.ports.workflow.gitops.model.WorkflowGitOperationResult
 import skillbill.ports.workflow.model.WorkflowStateRecord
 import skillbill.ports.workflow.toRecord
 import skillbill.review.context.model.CodeReviewExecutionMode
-import skillbill.workflow.decomposition.model.IssueKey
-import skillbill.workflow.decomposition.model.SubtaskId
 import skillbill.workflow.engine.WorkflowEngine
-import skillbill.workflow.engine.model.SessionId
 import skillbill.workflow.engine.model.WorkflowUpdateInput
 import skillbill.workflow.goal.model.GOAL_SUBTASK_REVIEW_RESULTS_ARTIFACT_KEY
 import skillbill.workflow.goal.model.GOAL_SUBTASK_REVIEW_STATE_ARTIFACT_KEY
@@ -100,7 +98,7 @@ internal fun blockedContinuationRecord(fixture: BlockedContinuationRecordFixture
         mapOf("step_id" to "review", "status" to stepStatus, "attempt_count" to 1),
       ),
       artifactsPatch = artifacts,
-      sessionId = SessionId("ftr-176"),
+      sessionId = "ftr-176",
     ),
   ).toRecord()
 }
@@ -132,7 +130,7 @@ internal fun completeWithoutShaContinuationRecord(workflowId: String): WorkflowS
           "last_resumable_step" to "commit_push",
         ),
       ),
-      sessionId = SessionId("ftr-176"),
+      sessionId = "ftr-176",
     ),
   ).toRecord()
 }
@@ -157,7 +155,7 @@ internal fun runtimeCandidateRecordNoDeclaredEvent(workflowId: String, updatedAt
           "suppress_pr" to true,
         ),
       ),
-      sessionId = SessionId("ftr-001"),
+      sessionId = "ftr-001",
     ),
   ).toRecord().copy(updatedAt = updatedAt)
 }
@@ -179,8 +177,8 @@ internal fun goalReviewWorkflowRecord(
       stepUpdates = null,
       artifactsPatch = mapOf(
         FEATURE_TASK_RUNTIME_GOAL_CONTINUATION_ARTIFACT_KEY to FeatureTaskRuntimeGoalContinuationArtifact(
-          issueKey = IssueKey("SKILL-119"),
-          subtaskId = SubtaskId(2),
+          issueKey = "SKILL-119",
+          subtaskId = 2,
           suppressPr = true,
           goalBranch = "feat/SKILL-119",
           codeReviewMode = CodeReviewExecutionMode.AUTO,
@@ -188,7 +186,7 @@ internal fun goalReviewWorkflowRecord(
         GOAL_SUBTASK_REVIEW_STATE_ARTIFACT_KEY to state.toArtifactMap(),
         GOAL_SUBTASK_REVIEW_RESULTS_ARTIFACT_KEY to mapOf("1" to rawReviewResult),
       ),
-      sessionId = SessionId("ftr-001"),
+      sessionId = "ftr-001",
     ),
   ).toRecord()
 }
@@ -225,7 +223,7 @@ internal fun runtimeCandidateRecord(workflowId: String, declaredProgressTimestam
         ),
         "goal_progress_latest_event" to declaredEvent.toArtifactMap(),
       ),
-      sessionId = SessionId("ftr-001"),
+      sessionId = "ftr-001",
     ),
   ).toRecord()
 }
@@ -242,7 +240,7 @@ internal fun taskRuntimeWorkflowRecord(workflowId: String): WorkflowStateRecord 
       currentStepId = "implement",
       stepUpdates = null,
       artifactsPatch = emptyMap(),
-      sessionId = SessionId("ftr-001"),
+      sessionId = "ftr-001",
     ),
   ).toRecord()
 }
@@ -282,7 +280,7 @@ internal fun tornBlockedReviewRecord(workflowId: String): WorkflowStateRecord {
           "suppress_pr" to true,
         ),
       ),
-      sessionId = SessionId("ftr-001"),
+      sessionId = "ftr-001",
     ),
   ).toRecord()
 }
@@ -305,7 +303,7 @@ internal fun crashedChildRecord(workflowId: String): WorkflowStateRecord {
           "suppress_pr" to true,
         ),
       ),
-      sessionId = SessionId("ftr-001"),
+      sessionId = "ftr-001",
     ),
   ).toRecord()
 }
@@ -355,5 +353,5 @@ internal object LiveProcessSupervisor : FeatureTaskRuntimeWorkerSupervisor {
 
 internal object MeasuringHeadShaGitOperations : WorkflowGitOperations by NoopWorkflowGitOperations {
   override fun headCommitSha(repoRoot: Path): WorkflowGitOperationResult =
-    WorkflowGitOperationResult(status = "ok", value = "measured-head-sha")
+    WorkflowGitOperationResult.Ok(value = "measured-head-sha")
 }

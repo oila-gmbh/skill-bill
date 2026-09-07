@@ -1,5 +1,6 @@
 package skillbill.application.featuretask
 
+import skillbill.ports.workflow.gitops.model.WorkflowGitOperationResult
 import skillbill.application.featuretask.model.AppendCheckpointIdentityArgs
 import skillbill.contracts.JsonCodec
 import skillbill.ports.workflow.gitops.stagedPaths
@@ -14,7 +15,7 @@ object FeatureTaskRuntimeRunLoopSubtaskCommit {
     normalizedOutput: NormalizedFeatureTaskRuntimePhaseOutput,
   ): CommitPushFinalisation {
     val head = runLoop.phaseGates.gitOperations.headCommitSha(runLoop.request.repoRoot)
-    val sha = head.value.orEmpty().trim().takeIf { head.ok && it.isNotBlank() }
+    val sha = head.value.orEmpty().trim().takeIf { head is WorkflowGitOperationResult.Ok && it.isNotBlank() }
       ?: return CommitPushNotApplicable
     runCatching {
       runLoop.diagnostics.warning(
@@ -41,7 +42,7 @@ object FeatureTaskRuntimeRunLoopSubtaskCommit {
       ?.takeIf { FeatureTaskRuntimeBranchSetup.protectedBranchName(it) == null }
       ?: return null
     val head = runLoop.phaseGates.gitOperations.currentBranch(runLoop.request.repoRoot)
-    return branch.takeIf { head.ok && head.value.trim() == branch.trim() }
+    return branch.takeIf { head is WorkflowGitOperationResult.Ok && head.value.trim() == branch.trim() }
   }
 
   internal fun recordFinalisedCheckpointIdentity(
@@ -67,6 +68,7 @@ object FeatureTaskRuntimeRunLoopSubtaskCommit {
           parentSha = ledger.commitSha,
           ownedPaths = stagedPaths,
           commitSha = commitSha,
+          dbOverride = runLoop.request.dbPathOverride,
         ),
       )
     }

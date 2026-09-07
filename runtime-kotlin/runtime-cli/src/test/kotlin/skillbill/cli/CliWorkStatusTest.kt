@@ -1,4 +1,5 @@
 package skillbill.cli
+
 import skillbill.application.idestatus.model.IdeStatusFreshness
 import skillbill.application.idestatus.model.IdeStatusLifecycleState
 import skillbill.application.idestatus.model.IdeStatusPlanning
@@ -11,8 +12,6 @@ import skillbill.cli.model.CliRuntimeContext
 import skillbill.contracts.workflow.IdeStatusSchemaValidator
 import skillbill.db.core.DatabaseRuntime
 import skillbill.goalrunner.model.GoalPlanningStatusState
-import skillbill.workflow.decomposition.model.IssueKey
-import skillbill.workflow.engine.model.WorkflowId
 import java.nio.file.Files
 import java.nio.file.Path
 import java.time.Instant
@@ -109,8 +108,8 @@ class CliWorkStatusTest {
   fun `mid-planning goal emit shape validates against the canonical schema`() {
     val snapshot = IdeStatusSnapshot(
       repositoryIdentity = "repo-root-realpath-v1:/repo",
-      issueKey = IssueKey("SKILL-165"),
-      workflowId = WorkflowId("goal-1"),
+      issueKey = "SKILL-165",
+      workflowId = "goal-1",
       workflowFamily = IdeStatusWorkflowFamily.FEATURE_GOAL,
       lifecycleState = IdeStatusLifecycleState.ACTIVE,
       currentStep = IdeStatusStep(id = "planning", label = "Planning"),

@@ -60,8 +60,8 @@ internal fun GoalModeStats.toPayload(): Map<String, Any?> = linkedMapOf(
 )
 
 internal fun GoalRunSummary.toPayload(): Map<String, Any?> = linkedMapOf(
-  "workflow_id" to workflowId.value,
-  "issue_key" to issueKey.value,
+  "workflow_id" to workflowId,
+  "issue_key" to issueKey,
   "feature_name" to featureName,
   "status" to status,
   "started_at" to startedAt,
@@ -72,9 +72,9 @@ internal fun GoalRunSummary.toPayload(): Map<String, Any?> = linkedMapOf(
 )
 
 internal fun GoalBlockedSubtaskSummary.toPayload(): Map<String, Any?> = linkedMapOf(
-  "subtask_id" to subtaskId.value,
+  "subtask_id" to subtaskId,
   "subtask_name" to subtaskName,
-  "issue_key" to issueKey.value,
+  "issue_key" to issueKey,
   "blocked_reason" to blockedReason,
   "attempt_count" to attemptCount,
 )

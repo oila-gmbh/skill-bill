@@ -1,8 +1,6 @@
 package skillbill.application.goalrunner
 
-import skillbill.workflow.engine.model.WorkflowId
-import skillbill.workflow.decomposition.model.IssueKey
-
+import skillbill.ports.workflow.gitops.model.WorkflowGitOperationResult
 import skillbill.application.goalrunner.model.GoalRunnerAcceptRequest
 import skillbill.application.goalrunner.model.GoalRunnerAcceptResult
 import skillbill.application.goalrunner.model.GoalRunnerAcceptanceEvidence
@@ -26,7 +24,7 @@ class GoalRunnerAcceptanceCoordinator(
     if (rejection != null) {
       return GoalRunnerAcceptResult.Rejected(request.issueKey, rejection)
     }
-    val loaded = requireNotNull(manifestStore.loadDurableByIssueKey(request.issueKey))
+    val loaded = requireNotNull(manifestStore.loadDurableByIssueKey(request.issueKey, request.dbPathOverride))
     val repoRoot = requireNotNull(request.repoRoot)
     val resolvedSha = when (val evidence = acceptanceEvidence(request, loaded.manifest, repoRoot)) {
       is GoalRunnerAcceptanceEvidence.Rejected -> return rejected(request, evidence.reason)
@@ -38,15 +36,16 @@ class GoalRunnerAcceptanceCoordinator(
       reason = request.reason,
       acceptedAt = OffsetDateTime.now(ZoneOffset.UTC).toString(),
     )
-    manifestStore.persistOutOfBandAcceptance(loaded.parentWorkflowId, acceptance)
-    val refreshed = manifestStore.loadDurableByIssueKey(request.issueKey) ?: loaded
+    manifestStore.persistOutOfBandAcceptance(loaded.parentWorkflowId, acceptance, request.dbPathOverride)
+    val refreshed = manifestStore.loadDurableByIssueKey(request.issueKey, request.dbPathOverride) ?: loaded
     val reconciled = reconcileGoalManifest(
       manifest = refreshed.manifest,
-      authoritativeOutcomes = outcomeStore.authoritativeOutcomes(refreshed.manifest.issueKey),
-      acceptances = manifestStore.outOfBandAcceptances(refreshed.parentWorkflowId),
+      dbPathOverride = request.dbPathOverride,
+      authoritativeOutcomes = outcomeStore.authoritativeOutcomes(refreshed.manifest.issueKey, request.dbPathOverride),
+      acceptances = manifestStore.outOfBandAcceptances(refreshed.parentWorkflowId, request.dbPathOverride),
       outcomeStore = outcomeStore,
     )
-    val saved = manifestStore.save(refreshed.copy(manifest = reconciled))
+    val saved = manifestStore.save(refreshed.copy(manifest = reconciled), request.dbPathOverride)
     return GoalRunnerAcceptResult.Accepted(
       issueKey = saved.manifest.issueKey,
       parentWorkflowId = saved.parentWorkflowId,
@@ -63,7 +62,7 @@ class GoalRunnerAcceptanceCoordinator(
       "Out-of-band accept is disabled. Repair or resume the child through the runtime; " +
         "accepting past an incomplete or blocked subtask is not supported. " +
         "Only --restore-after-hard-reset remains for recoveries that hard reset discarded."
-    manifestStore.loadDurableByIssueKey(request.issueKey) == null ->
+    manifestStore.loadDurableByIssueKey(request.issueKey, request.dbPathOverride) == null ->
       "No prepared goal exists for '${request.issueKey}'."
     request.repoRoot == null ->
       "A repository root is required to verify the accepted commit."
@@ -113,7 +112,7 @@ class GoalRunnerAcceptanceCoordinator(
   ): GoalRunnerAcceptanceEvidence {
     val resolved = gitOperations.resolveCommit(repoRoot, request.commitSha)
     val resolvedSha = resolved.value.trim()
-    return if (resolved.ok && resolvedSha.isNotBlank()) {
+    return if (resolved is WorkflowGitOperationResult.Ok && resolvedSha.isNotBlank()) {
       GoalRunnerAcceptanceEvidence.Resolved(resolvedSha)
     } else {
       GoalRunnerAcceptanceEvidence.Rejected(

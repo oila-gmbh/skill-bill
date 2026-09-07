@@ -1,14 +1,12 @@
 package skillbill.application.featuretask
 
-import skillbill.workflow.decomposition.model.IssueKey
-import skillbill.agent.model.AgentId
+import skillbill.ports.workflow.gitops.model.WorkflowGitOperationResult
 import skillbill.application.featuretask.model.FeatureTaskRuntimeGoalContinuationContext
 import skillbill.application.featuretask.model.FeatureTaskRuntimeRunReport
 import skillbill.application.featuretask.model.FeatureTaskRuntimeRunRequest
 import skillbill.application.featuretask.model.FeatureTaskRuntimeSubtaskOutcome
 import skillbill.contracts.JsonCodec
 import skillbill.ports.workflow.gitops.WorkflowGitOperations
-import skillbill.workflow.engine.model.WorkflowId
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_STATUS_BLOCKED
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerAction
@@ -17,8 +15,8 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseRecord
 const val BRANCH_SETUP_AGENT_SENTINEL = "branch-setup"
 const val GOAL_PLANNING_IMPORT_AGENT_SENTINEL = "goal-planning-import"
 
-private fun AgentId.isRuntimeAgentId(): Boolean =
-  value.isNotBlank() && value != BRANCH_SETUP_AGENT_SENTINEL && value != GOAL_PLANNING_IMPORT_AGENT_SENTINEL
+private fun String.isRuntimeAgentId(): Boolean =
+  isNotBlank() && this != BRANCH_SETUP_AGENT_SENTINEL && this != GOAL_PLANNING_IMPORT_AGENT_SENTINEL
 
 // Capture-at-source for a completed goal-continuation run (SKILL-68). Under suppress_pr the
 // per-subtask commit invariant requires a SHA: take it from the phase payload, else measure git
@@ -71,7 +69,7 @@ fun completeSubtaskOutcome(
 // result is ok and non-blank (mirrors GoalRunnerWorkflowStores.measuredCommitSha).
 fun measuredHeadSha(gitOperations: WorkflowGitOperations, request: FeatureTaskRuntimeRunRequest): String? {
   val result = gitOperations.headCommitSha(request.repoRoot)
-  return result.value.trim().takeIf { result.ok && it.isNotBlank() }
+  return result.value.trim().takeIf { result is WorkflowGitOperationResult.Ok && it.isNotBlank() }
 }
 
 /**
@@ -80,8 +78,8 @@ fun measuredHeadSha(gitOperations: WorkflowGitOperations, request: FeatureTaskRu
  * is the order-stable distinct set of resolved agents that actually executed a phase.
  */
 internal data class SubtaskAgentAttribution(
-  val finalizingAgentId: AgentId?,
-  val participatingAgentIds: List<AgentId>,
+  val finalizingAgentId: String?,
+  val participatingAgentIds: List<String>,
 )
 
 // Effect-free rollup over the durable phase ledger + per-phase records. Re-resolves nothing and mints no
@@ -92,20 +90,21 @@ internal data class SubtaskAgentAttribution(
 // entry has been pruned.
 internal fun agentAttributionFromPhaseState(
   recorder: FeatureTaskRuntimePhaseRecorder,
-  workflowId: WorkflowId,
+  workflowId: String,
+  dbOverride: String? = null,
 ): SubtaskAgentAttribution {
-  val ledger = recorder.loadPhaseLedger(workflowId)
+  val ledger = recorder.loadPhaseLedger(workflowId, dbOverride)
     .orEmpty()
     .sortedBy { it.sequenceNumber }
-  val records = recorder.loadPhaseRecords(workflowId).orEmpty()
+  val records = recorder.loadPhaseRecords(workflowId, dbOverride).orEmpty()
 
-  val participating = LinkedHashSet<AgentId>()
+  val participating = LinkedHashSet<String>()
   ledger.forEach { entry ->
-    entry.resolvedAgentId?.takeIf(AgentId::isRuntimeAgentId)
+    entry.resolvedAgentId?.takeIf(String::isRuntimeAgentId)
       ?.let(participating::add)
   }
   records.values.forEach { record ->
-    record.resolvedAgentId.takeIf(AgentId::isRuntimeAgentId)
+    record.resolvedAgentId.takeIf(String::isRuntimeAgentId)
       ?.let(participating::add)
   }
 
@@ -127,7 +126,7 @@ internal fun agentAttributionFromPhaseState(
 // Fallback finalizer when the terminal ledger entry was pruned: prefer the blocked terminal record with the
 // greatest finishedAt (deterministic on multiple blocked), else the last-finished phase record by the same
 // ordering. Branch-setup-sentinel records are excluded: they carry no real agent id.
-private fun terminalRecordAgentId(records: Map<String, FeatureTaskRuntimePhaseRecord>): AgentId? {
+private fun terminalRecordAgentId(records: Map<String, FeatureTaskRuntimePhaseRecord>): String? {
   val realRecords = records.values.filter { it.resolvedAgentId.isRuntimeAgentId() }
   realRecords.filter { it.status == FEATURE_TASK_RUNTIME_PHASE_STATUS_BLOCKED }
     .maxByOrNull { it.finishedAt.orEmpty() }
@@ -142,7 +141,7 @@ fun commitShaFromPhaseRecords(
   recorder: FeatureTaskRuntimePhaseRecorder,
   request: FeatureTaskRuntimeRunRequest,
 ): String? {
-  val commitOutput = recorder.loadPhaseRecords(request.workflowId)
+  val commitOutput = recorder.loadPhaseRecords(request.workflowId, request.dbPathOverride)
     .orEmpty()[FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_COMMIT_PUSH]
     ?.outputArtifact
   val payload = commitOutput

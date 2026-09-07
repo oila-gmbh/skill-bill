@@ -1,5 +1,6 @@
 
 package skillbill.application
+
 import skillbill.application.diagnostics.model.RejectedOutputDiagnosticRequest
 import skillbill.application.featuretask.model.FeatureTaskRuntimeRunEvent
 import skillbill.application.featuretask.model.FeatureTaskRuntimeRunEventSink
@@ -9,7 +10,6 @@ import skillbill.error.InvalidFeatureTaskRuntimePhaseOutputSchemaError
 import skillbill.install.model.InstallAgent.CLAUDE
 import skillbill.ports.agentrun.model.AgentRunLaunchFacts
 import skillbill.ports.diagnostics.RuntimeDiagnostics
-import skillbill.workflow.engine.model.WorkflowId
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseOutputValidator
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFailureDisposition
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutputValidationResult
@@ -462,7 +462,7 @@ class FeatureTaskRuntimeCorrectiveRespawnIntegrationTest {
     harness.recorder.ensureWorkflowOpen(WORKFLOW_ID, SESSION_ID)
     harness.recorder.recordRejectedOutput(
       RejectedOutputDiagnosticRequest(
-        workflowId = WorkflowId(WORKFLOW_ID),
+        workflowId = WORKFLOW_ID,
         phaseId = "audit",
         attempt = 1,
         rule = "divergent-pre-record",

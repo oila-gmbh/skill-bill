@@ -28,6 +28,7 @@ object McpWorkflowRuntime {
           kind = args.kind,
           sessionId = args.sessionId,
           currentStepId = args.currentStepId,
+          dbOverride = null,
           issueKey = args.issueKey,
           repositoryIdentity = requireNotNull(args.repositoryIdentity) {
             "Feature-task workflow opens require repository_identity."
@@ -44,6 +45,7 @@ object McpWorkflowRuntime {
           kind = args.kind,
           sessionId = args.sessionId,
           currentStepId = args.currentStepId,
+          dbOverride = null,
           issueKey = args.issueKey,
           repositoryIdentity = args.repositoryIdentity,
           governedSpecPath = args.governedSpecPath,
@@ -63,6 +65,7 @@ object McpWorkflowRuntime {
     return runtimeServices.workflowService.update(
       kind,
       request,
+      dbOverride = null,
     ).toMcpMap()
   }
 
@@ -72,7 +75,7 @@ object McpWorkflowRuntime {
     context: McpRuntimeContext = McpRuntimeContext(),
   ): Map<String, Any?> {
     val runtimeServices = services(context)
-    return runtimeServices.workflowService.get(kind, workflowId)
+    return runtimeServices.workflowService.get(kind, workflowId, dbOverride = null)
       .toMcpMap(runtimeServices.workflowService.goalObservabilityEventValidator)
   }
 
@@ -80,16 +83,16 @@ object McpWorkflowRuntime {
     kind: WorkflowFamilyKind,
     limit: Int = 20,
     context: McpRuntimeContext = McpRuntimeContext(),
-  ): Map<String, Any?> = services(context).workflowService.list(kind, limit).toMcpMap()
+  ): Map<String, Any?> = services(context).workflowService.list(kind, limit, dbOverride = null).toMcpMap()
 
   fun latest(kind: WorkflowFamilyKind, context: McpRuntimeContext = McpRuntimeContext()): Map<String, Any?> =
-    services(context).workflowService.latest(kind).toMcpMap()
+    services(context).workflowService.latest(kind, dbOverride = null).toMcpMap()
 
   fun resume(
     kind: WorkflowFamilyKind,
     workflowId: String,
     context: McpRuntimeContext = McpRuntimeContext(),
-  ): Map<String, Any?> = services(context).workflowService.resume(kind, workflowId).toMcpMap()
+  ): Map<String, Any?> = services(context).workflowService.resume(kind, workflowId, dbOverride = null).toMcpMap()
 
   fun continueWorkflow(
     kind: WorkflowFamilyKind,
@@ -100,5 +103,6 @@ object McpWorkflowRuntime {
     kind,
     workflowId,
     subtaskId = subtaskId,
+    dbOverride = null,
   ).toMcpMap()
 }

@@ -1,5 +1,5 @@
 package skillbill.cli
-import skillbill.agent.model.AgentId
+
 import skillbill.cli.core.CliRuntime
 import skillbill.error.MalformedMachineConfigError
 import java.nio.file.Files
@@ -687,7 +687,7 @@ class CursorAgentRuntimeCliTest {
 
     val resumedLauncher = RecordingPhaseLauncher()
     val resumed = CliRuntime.run(
-      fixture.resumeCommand(workflowId, agentId = AgentId("cursor")),
+      fixture.resumeCommand(workflowId, agentId = "cursor"),
       fixture.context(resumedLauncher),
     )
 

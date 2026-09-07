@@ -1,11 +1,11 @@
 package skillbill.ports.workflow.decomposition.runtime.model
+
 import skillbill.boundary.OpenBoundaryMap
 import skillbill.ports.workflow.decomposition.DecompositionManifestStore
 import skillbill.workflow.decomposition.DecompositionManifestValidator
 import skillbill.workflow.decomposition.model.DecompositionExecutionModel
 import skillbill.workflow.decomposition.model.DecompositionStackBranch
 import skillbill.workflow.decomposition.model.SpecSource
-import skillbill.workflow.engine.model.WorkflowId
 import java.nio.file.Path
 import skillbill.workflow.decomposition.runtime.model.DecompositionManifestWriteResult as WorkflowDecompositionManifestWriteResult
 
@@ -23,7 +23,7 @@ data class DecompositionManifestWriteRequest(
 )
 
 data class DecompositionManifestRuntimeUpdate(
-  val workflowId: WorkflowId = WorkflowId(""),
+  val workflowId: String = "",
   val workflowStatus: String = "",
   val currentStepId: String = "",
   @OpenBoundaryMap("Caller-supplied JSON patch for workflow step updates")

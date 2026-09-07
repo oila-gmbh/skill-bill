@@ -1,4 +1,5 @@
 package skillbill.application.work
+
 import skillbill.application.TestRepositoryEnclosingRoot
 import skillbill.application.featuretask.AcceptingFeatureTaskRuntimeHandoffEnvelopeValidator
 import skillbill.application.featuretask.AcceptingFeatureTaskRuntimeHandoffFoundationValidator
@@ -62,11 +63,7 @@ import skillbill.ports.workflow.model.WorkflowStateRecord
 import skillbill.workflow.decomposition.model.CurrentSubtaskIntent
 import skillbill.workflow.decomposition.model.DecompositionManifest
 import skillbill.workflow.decomposition.model.DecompositionSubtask
-import skillbill.workflow.decomposition.model.IssueKey
-import skillbill.workflow.decomposition.model.SubtaskId
 import skillbill.workflow.engine.WorkflowSnapshotValidator
-import skillbill.workflow.engine.model.SessionId
-import skillbill.workflow.engine.model.WorkflowId
 import skillbill.workflow.engine.model.WorkflowStateSnapshot
 import skillbill.workflow.goal.model.GoalSubtaskReviewPassResult
 import skillbill.workflow.goal.model.GoalSubtaskReviewState
@@ -167,19 +164,19 @@ internal fun goalManifestState(fixture: Path, identity: String, childWorkflowId:
     parentWorkflowId = "goal-1",
     dbPath = "/fake/ide-status.db",
     manifest = DecompositionManifest(
-      issueKey = IssueKey("SKILL-148"),
+      issueKey = "SKILL-148",
       featureName = "ide-status",
       parentSpecPath = ".feature-specs/SKILL-148/spec.md",
       baseBranch = "main",
       featureBranch = "feat/SKILL-148",
-      currentSubtaskIntent = CurrentSubtaskIntent(subtaskId = SubtaskId(2), action = "start"),
+      currentSubtaskIntent = CurrentSubtaskIntent(subtaskId = 2, action = "start"),
       subtasks = listOf(
         DecompositionSubtask(
           id = 1,
           name = "One",
           specPath = "spec_1.md",
           status = "complete",
-          workflowId = WorkflowId("w-done"),
+          workflowId = "w-done",
         ),
         DecompositionSubtask(
           id = 2,
@@ -264,7 +261,7 @@ internal fun gitRepoFixture(prefix: String, branch: String? = "feat/SKILL-148-fi
 }
 
 internal fun workItem(workflowId: String, kind: WorkItemKind, state: String, updatedAt: String): WorkItem = WorkItem(
-  issueKey = IssueKey("SKILL-148"),
+  issueKey = "SKILL-148",
   workflowKind = kind,
   workflowId = workflowId,
   startedAt = Instant.parse("2026-08-06T08:00:00Z"),
@@ -345,7 +342,7 @@ internal fun runtimeRecord(
   currentStep: String = "implement",
 ): WorkflowStateRecord = WorkflowStateRecord(
   workflowId = workflowId,
-  sessionId = SessionId("session-$workflowId"),
+  sessionId = "session-$workflowId",
   workflowName = "bill-feature-task",
   contractVersion = "0.1",
   workflowStatus = if (currentStep == "pr") "completed" else "running",
@@ -355,7 +352,7 @@ internal fun runtimeRecord(
   startedAt = "2026-08-06T08:00:00Z",
   updatedAt = updatedAt,
   finishedAt = if (currentStep == "pr") updatedAt else null,
-  issueKey = IssueKey("SKILL-148"),
+  issueKey = "SKILL-148",
   mode = FeatureTaskWorkflowMode.RUNTIME,
 )
 
@@ -365,7 +362,7 @@ internal fun verifyRecord(
   currentStep: String = "code_review",
 ): WorkflowStateRecord = WorkflowStateRecord(
   workflowId = workflowId,
-  sessionId = SessionId("session-$workflowId"),
+  sessionId = "session-$workflowId",
   workflowName = "bill-feature-verify",
   contractVersion = "0.1",
   workflowStatus = "running",
@@ -375,7 +372,7 @@ internal fun verifyRecord(
   startedAt = "2026-08-06T08:00:00Z",
   updatedAt = updatedAt,
   finishedAt = null,
-  issueKey = IssueKey("SKILL-148"),
+  issueKey = "SKILL-148",
 )
 
 internal fun pipelineStepsJson(stepIds: List<String>, currentStep: String): String {
@@ -403,21 +400,21 @@ internal class TrackingDatabase(
   var writeCalls: Int = 0
     internal set
 
-  override fun resolveDbPath(): Path = Path.of("/fake/ide-status.db")
+  override fun resolveDbPath(dbOverride: String?): Path = Path.of("/fake/ide-status.db")
 
-  override fun databaseExists(): Boolean = exists
+  override fun databaseExists(dbOverride: String?): Boolean = exists
 
-  override fun <T> read(block: (UnitOfWork) -> T): T {
+  override fun <T> read(dbOverride: String?, block: (UnitOfWork) -> T): T {
     readCalls += 1
     return block(unitOfWork())
   }
 
-  override fun <T> selfManagedWrite(block: (UnitOfWork) -> T): T {
+  override fun <T> selfManagedWrite(dbOverride: String?, block: (UnitOfWork) -> T): T {
     writeCalls += 1
     return block(unitOfWork())
   }
 
-  override fun <T> transaction(block: (UnitOfWork) -> T): T {
+  override fun <T> transaction(dbOverride: String?, block: (UnitOfWork) -> T): T {
     writeCalls += 1
     return block(unitOfWork())
   }

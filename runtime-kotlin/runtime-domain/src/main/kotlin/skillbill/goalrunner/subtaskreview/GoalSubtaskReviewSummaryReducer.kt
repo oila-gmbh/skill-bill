@@ -10,7 +10,6 @@ import skillbill.goalrunner.subtaskreview.model.StructuredGoalReviewFinding
 import skillbill.goalrunner.subtaskreview.model.UnaddressedFindingLedgerScope
 import skillbill.review.ReviewFindingActionability
 import skillbill.review.model.ReviewFindingVerdict
-import skillbill.review.model.ReviewRunId
 import skillbill.workflow.goal.model.GOAL_SUBTASK_REVIEW_PASS_VERDICTS
 import skillbill.workflow.goal.model.GoalSubtaskBlockerDisposition
 import skillbill.workflow.goal.model.GoalSubtaskCommitFocusedAccounting
@@ -68,7 +67,7 @@ object GoalSubtaskReviewSummaryReducer {
           issueCategory = normalizedUnaddressedFindingCategory(finding.issueCategory),
           location = finding.location,
           summary = finding.message,
-          reviewRunId = reviewRunId?.let(::ReviewRunId),
+          reviewRunId = reviewRunId,
           findingId = finding.findingId,
           claimVerdict = finding.claimVerdict,
           scopeDisposition = finding.scopeDisposition,

@@ -16,7 +16,6 @@ import skillbill.mcp.shared.optionalString
 import skillbill.mcp.shared.string
 import skillbill.mcp.shared.stringList
 import skillbill.mcp.telemetry.TELEMETRY_EVENT_CONTRACT_VERSION
-import skillbill.review.model.ReviewRunId
 import skillbill.mcp.telemetry.TelemetryEventSchemaValidator
 import skillbill.mcp.workflow.McpWorkflowRuntime
 import skillbill.mcp.workflow.workflowContinue
@@ -195,7 +194,7 @@ internal fun importReview(arguments: Map<String, Any?>, context: McpRuntimeConte
 
 internal fun triageFindings(arguments: Map<String, Any?>, context: McpRuntimeContext): Map<String, Any?> =
   McpRuntime.triageFindings(
-    reviewRunId = ReviewRunId(arguments.string("review_run_id")),
+    reviewRunId = arguments.string("review_run_id"),
     decisions = arguments.stringList("decisions"),
     orchestrated = arguments.boolean("orchestrated"),
     context = context,

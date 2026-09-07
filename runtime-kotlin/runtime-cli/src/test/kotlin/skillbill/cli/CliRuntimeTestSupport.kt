@@ -1,4 +1,5 @@
 package skillbill.cli
+
 import skillbill.SAMPLE_REVIEW
 import skillbill.SkillBillVersion
 import skillbill.cli.core.CliRuntime
@@ -18,9 +19,6 @@ import skillbill.telemetry.TELEMETRY_PROXY_URL_ENVIRONMENT_KEY
 import skillbill.telemetry.model.GoalFinishedRecord
 import skillbill.telemetry.model.GoalStartedRecord
 import skillbill.telemetry.model.GoalSubtaskFinishedRecord
-import skillbill.workflow.decomposition.model.IssueKey
-import skillbill.workflow.decomposition.model.SubtaskId
-import skillbill.workflow.engine.model.WorkflowId
 import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.test.assertContains
@@ -153,9 +151,9 @@ internal fun seedGoalStatsDb(dbPath: Path) {
     val store = LifecycleTelemetryStore(connection)
     store.goalStarted(
       GoalStartedRecord(
-        issueKey = IssueKey("SKILL-66"),
+        issueKey = "SKILL-66",
         featureName = "goal telemetry",
-        workflowId = WorkflowId("wf-cli-1"),
+        workflowId = "wf-cli-1",
         subtaskTotal = 1,
         resumed = false,
         startedAt = "2026-06-05T10:00:00Z",
@@ -165,9 +163,9 @@ internal fun seedGoalStatsDb(dbPath: Path) {
     )
     store.goalSubtaskFinished(
       GoalSubtaskFinishedRecord(
-        issueKey = IssueKey("SKILL-66"),
-        workflowId = WorkflowId("wf-cli-1"),
-        subtaskId = SubtaskId(1),
+        issueKey = "SKILL-66",
+        workflowId = "wf-cli-1",
+        subtaskId = 1,
         subtaskName = "implement",
         status = "blocked",
         startedAt = "2026-06-05T10:00:00Z",
@@ -180,8 +178,8 @@ internal fun seedGoalStatsDb(dbPath: Path) {
     )
     store.goalFinished(
       GoalFinishedRecord(
-        issueKey = IssueKey("SKILL-66"),
-        workflowId = WorkflowId("wf-cli-1"),
+        issueKey = "SKILL-66",
+        workflowId = "wf-cli-1",
         status = "blocked",
         startedAt = "2026-06-05T10:00:00Z",
         finishedAt = "2026-06-05T10:10:00Z",

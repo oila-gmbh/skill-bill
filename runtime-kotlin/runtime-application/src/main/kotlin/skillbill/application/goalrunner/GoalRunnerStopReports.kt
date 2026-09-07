@@ -1,6 +1,5 @@
 package skillbill.application.goalrunner
 
-import skillbill.workflow.engine.model.WorkflowId
 import skillbill.application.featuretask.FeatureTaskRuntimePhaseRecorder
 import skillbill.goalrunner.model.GoalRunnerLivenessSnapshot
 import skillbill.goalrunner.model.GoalRunnerReconciledOutcome
@@ -11,7 +10,6 @@ import skillbill.goalrunner.model.GoalRunnerSupervisionEvent
 import skillbill.goalrunner.model.UnaddressedFindingsLedger
 import skillbill.ports.goalrunner.runner.model.GoalRunnerWorkflowProgress
 import skillbill.workflow.decomposition.model.DecompositionManifest
-import skillbill.workflow.decomposition.model.IssueKey
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFailureDisposition
 
@@ -49,7 +47,7 @@ fun completed(
   )
 }
 
-fun unknownGoal(issueKey: IssueKey): GoalRunnerRunReport.Stopped = stopped(
+fun unknownGoal(issueKey: String): GoalRunnerRunReport.Stopped = stopped(
   StoppedReportArgs(
     issueKey = issueKey,
     attempted = emptyList(),
@@ -62,7 +60,7 @@ fun unknownGoal(issueKey: IssueKey): GoalRunnerRunReport.Stopped = stopped(
 )
 
 fun String.withStopDiagnostics(
-  knownWorkflowId: WorkflowId?,
+  knownWorkflowId: String?,
   progress: GoalRunnerWorkflowProgress?,
   liveness: GoalRunnerLivenessSnapshot?,
 ): String {
@@ -79,6 +77,7 @@ fun String.withStopDiagnostics(
 
 fun GoalRunnerReconciledOutcome.Stop.isRecoverableValidationBlock(
   phaseRecorder: FeatureTaskRuntimePhaseRecorder? = null,
+  dbPathOverride: String? = null,
 ): Boolean {
   if (reason !in setOf(GoalRunnerStopReason.BLOCKED, GoalRunnerStopReason.FAILED)) {
     return false
@@ -92,7 +91,7 @@ fun GoalRunnerReconciledOutcome.Stop.isRecoverableValidationBlock(
   }
   val workflowId = workflowId
   if (workflowId != null && phaseRecorder != null) {
-    val disposition = phaseRecorder.loadPhaseRecords(workflowId)
+    val disposition = phaseRecorder.loadPhaseRecords(workflowId, dbPathOverride)
       ?.get(lastResumableStep)
       ?.failureDisposition
     if (disposition == FeatureTaskRuntimeFailureDisposition.NEEDS_USER_ACTION) {
@@ -104,7 +103,7 @@ fun GoalRunnerReconciledOutcome.Stop.isRecoverableValidationBlock(
 
 fun supervisionEvent(
   reason: GoalRunnerStopReason,
-  knownWorkflowId: WorkflowId,
+  knownWorkflowId: String,
   progress: GoalRunnerWorkflowProgress?,
   liveness: GoalRunnerLivenessSnapshot?,
 ): GoalRunnerSupervisionEvent = GoalRunnerSupervisionEvent(

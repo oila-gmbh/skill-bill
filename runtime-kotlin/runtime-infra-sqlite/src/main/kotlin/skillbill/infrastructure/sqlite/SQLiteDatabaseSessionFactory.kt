@@ -18,16 +18,16 @@ class SQLiteDatabaseSessionFactory(
 ) : DatabaseSessionFactory {
   private val resolvedContext = context.withProcessDefaults()
 
-  override fun resolveDbPath() = DatabaseRuntime.resolveDbPath(
-    cliValue = resolvedContext.dbPathOverride,
+  override fun resolveDbPath(dbOverride: String?) = DatabaseRuntime.resolveDbPath(
+    cliValue = dbOverride ?: resolvedContext.dbPathOverride,
     environment = resolvedContext.environment,
     userHome = resolvedContext.userHome,
   )
 
-  override fun databaseExists(): Boolean = Files.exists(resolveDbPath())
+  override fun databaseExists(dbOverride: String?): Boolean = Files.exists(resolveDbPath(dbOverride))
 
-  override fun <T> read(block: (UnitOfWork) -> T): T = DatabaseRuntime.openReadDb(
-    cliValue = resolvedContext.dbPathOverride,
+  override fun <T> read(dbOverride: String?, block: (UnitOfWork) -> T): T = DatabaseRuntime.openReadDb(
+    cliValue = dbOverride ?: resolvedContext.dbPathOverride,
     environment = resolvedContext.environment,
     userHome = resolvedContext.userHome,
   ).use { openDb ->
@@ -40,30 +40,31 @@ class SQLiteDatabaseSessionFactory(
     }
   }
 
-  override fun <T> readIfPresent(block: (UnitOfWork) -> T): T? = DatabaseRuntime.openReadDbIfPresent(
-    cliValue = resolvedContext.dbPathOverride,
-    environment = resolvedContext.environment,
-    userHome = resolvedContext.userHome,
-  )?.use { openDb ->
-    try {
-      openDb.connection.inReadTransaction(openDb.dbPath) {
-        block(SQLiteUnitOfWork(openDb.connection, openDb.dbPath))
+  override fun <T> readIfPresent(dbOverride: String?, block: (UnitOfWork) -> T): T? =
+    DatabaseRuntime.openReadDbIfPresent(
+      cliValue = dbOverride ?: resolvedContext.dbPathOverride,
+      environment = resolvedContext.environment,
+      userHome = resolvedContext.userHome,
+    )?.use { openDb ->
+      try {
+        openDb.connection.inReadTransaction(openDb.dbPath) {
+          block(SQLiteUnitOfWork(openDb.connection, openDb.dbPath))
+        }
+      } catch (error: SQLException) {
+        throw databaseAccessError(openDb.dbPath, DatabaseAccessOperation.READ, error)
       }
-    } catch (error: SQLException) {
-      throw databaseAccessError(openDb.dbPath, DatabaseAccessOperation.READ, error)
     }
-  }
 
-  override fun <T> selfManagedWrite(block: (UnitOfWork) -> T): T = DatabaseRuntime.openDb(
-    cliValue = resolvedContext.dbPathOverride,
+  override fun <T> selfManagedWrite(dbOverride: String?, block: (UnitOfWork) -> T): T = DatabaseRuntime.openDb(
+    cliValue = dbOverride ?: resolvedContext.dbPathOverride,
     environment = resolvedContext.environment,
     userHome = resolvedContext.userHome,
   ).use { openDb ->
     block(SQLiteUnitOfWork(openDb.connection, openDb.dbPath))
   }
 
-  override fun <T> transaction(block: (UnitOfWork) -> T): T = DatabaseRuntime.openDb(
-    cliValue = resolvedContext.dbPathOverride,
+  override fun <T> transaction(dbOverride: String?, block: (UnitOfWork) -> T): T = DatabaseRuntime.openDb(
+    cliValue = dbOverride ?: resolvedContext.dbPathOverride,
     environment = resolvedContext.environment,
     userHome = resolvedContext.userHome,
   ).use { openDb ->

@@ -1,19 +1,15 @@
 package skillbill.application.goalplanning
 
-import skillbill.workflow.engine.model.WorkflowId
-import skillbill.workflow.decomposition.model.IssueKey
-import skillbill.workflow.decomposition.model.SubtaskId
-
 import skillbill.ports.goalrunner.model.GoalPlanningPreparationProvenance
 import skillbill.ports.goalrunner.model.GoalPlanningPreparationRecord
 import skillbill.ports.goalrunner.model.GoalPlanningPreparationState
 
 fun GoalPlanningPreparationRecord.toEnvelopeMap(): Map<String, Any?> = linkedMapOf(
   "contract_version" to contractVersion,
-  "parent_goal_workflow_id" to parentGoalWorkflowId.value,
-  "normalized_issue_key" to normalizedIssueKey.value,
+  "parent_goal_workflow_id" to parentGoalWorkflowId,
+  "normalized_issue_key" to normalizedIssueKey,
   "repository_identity" to repositoryIdentity,
-  "subtask_id" to subtaskId.value,
+  "subtask_id" to subtaskId,
   "governed_sub_spec_path" to governedSubSpecPath,
   "preparation_status" to preparationStatus.wireValue,
   "provenance" to linkedMapOf(
@@ -30,10 +26,10 @@ fun GoalPlanningPreparationRecord.toEnvelopeMap(): Map<String, Any?> = linkedMap
 fun Map<String, Any?>.toGoalPlanningPreparationRecord(): GoalPlanningPreparationRecord {
   val provenanceMap = (this["provenance"] as? Map<*, *>).orEmpty()
   return GoalPlanningPreparationRecord(
-    parentGoalWorkflowId = WorkflowId(stringValue("parent_goal_workflow_id")),
-    normalizedIssueKey = IssueKey(stringValue("normalized_issue_key")),
+    parentGoalWorkflowId = stringValue("parent_goal_workflow_id"),
+    normalizedIssueKey = stringValue("normalized_issue_key"),
     repositoryIdentity = stringValue("repository_identity"),
-    subtaskId = SubtaskId((this["subtask_id"] as Number).toInt()),
+    subtaskId = (this["subtask_id"] as Number).toInt(),
     governedSubSpecPath = stringValue("governed_sub_spec_path"),
     preparationStatus = GoalPlanningPreparationState.fromWireValue(stringValue("preparation_status")),
     provenance = GoalPlanningPreparationProvenance(

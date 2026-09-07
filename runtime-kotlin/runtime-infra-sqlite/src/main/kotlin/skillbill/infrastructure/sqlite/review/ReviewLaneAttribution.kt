@@ -1,5 +1,4 @@
 package skillbill.infrastructure.sqlite.review
-
 import skillbill.db.PARAM_FOUR
 import skillbill.db.PARAM_ONE
 import skillbill.db.PARAM_THREE

@@ -128,7 +128,7 @@ internal fun hardResetAcceptanceWarning(issueKey: String, records: List<GoalRunn
         "accept",
         issueKey,
         "--subtask",
-        record.subtaskId.value.toString(),
+        record.subtaskId.toString(),
         "--commit",
         record.commitSha,
         "--reason",

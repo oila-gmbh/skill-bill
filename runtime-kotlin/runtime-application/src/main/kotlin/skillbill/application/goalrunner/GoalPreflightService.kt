@@ -1,8 +1,5 @@
 package skillbill.application.goalrunner
 
-import skillbill.workflow.decomposition.model.IssueKey
-import skillbill.agent.model.AgentId
-
 import me.tatarka.inject.annotations.Inject
 import skillbill.application.decomposition.resolveDecompositionManifest
 import skillbill.application.featuretask.FeatureTaskContinuationLookupService
@@ -48,6 +45,7 @@ class GoalPreflightService(
     )
     val manifestState = manifestStore.readByIssueKeyIfPresent(
       normalizedIssueKey,
+      request.dbPathOverride,
       root,
     )
     val manifest = manifestState?.manifest ?: projectedManifest
@@ -57,6 +55,7 @@ class GoalPreflightService(
     val lookup = continuationLookup.lookupIfPresent(
       issueKey = normalizedIssueKey,
       repositoryIdentity = goalRepositoryIdentity(root, repositoryEnclosingRootPort),
+      dbOverride = request.dbPathOverride,
     )
     return lookupResolver.resolve(
       GoalPreflightLookupInput(

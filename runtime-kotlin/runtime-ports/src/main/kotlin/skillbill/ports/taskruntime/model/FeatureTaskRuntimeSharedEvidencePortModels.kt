@@ -1,6 +1,5 @@
 package skillbill.ports.taskruntime.model
 
-import skillbill.workflow.engine.model.WorkflowId
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepositoryCheckpoint
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeSharedEvidenceArtifact
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeSharedEvidenceFileEntry
@@ -13,11 +12,11 @@ import java.nio.file.Path
  */
 data class FeatureTaskRuntimeSharedEvidenceRequest(
   val repoRoot: Path,
-  val workflowId: WorkflowId,
+  val workflowId: String,
   val checkpoint: FeatureTaskRuntimeRepositoryCheckpoint,
 ) {
   init {
-    require(workflowId.value.isNotBlank()) {
+    require(workflowId.isNotBlank()) {
       "FeatureTaskRuntimeSharedEvidenceRequest.workflowId must be non-blank; an unaddressed " +
         "resolution would share one cache slot across every workflow."
     }

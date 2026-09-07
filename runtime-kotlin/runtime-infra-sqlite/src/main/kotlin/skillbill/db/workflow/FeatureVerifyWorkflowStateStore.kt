@@ -1,10 +1,9 @@
 package skillbill.db.workflow
+
 import skillbill.db.core.DbConstants
 import skillbill.ports.workflow.FeatureVerifyWorkflowStateRepository
 import skillbill.ports.workflow.model.FeatureVerifySessionSummary
 import skillbill.ports.workflow.model.WorkflowStateRecord
-import skillbill.workflow.engine.model.SessionId
-import skillbill.workflow.engine.model.WorkflowId
 import java.sql.Connection
 
 internal class FeatureVerifyWorkflowStateStore(
@@ -18,19 +17,18 @@ internal class FeatureVerifyWorkflowStateStore(
     )
   }
 
-  override fun getFeatureVerifyWorkflow(workflowId: WorkflowId): WorkflowStateRecord? =
+  override fun getFeatureVerifyWorkflow(workflowId: String): WorkflowStateRecord? =
     connection.getWorkflowRow("feature_verify_workflows", workflowId)
 
-  override fun getFeatureVerifyWorkflows(workflowIds: Set<WorkflowId>): Map<WorkflowId, WorkflowStateRecord> =
-    connection.getWorkflowRows("feature_verify_workflows", workflowIds.map { it.value }.toSet())
-      .mapKeys { (workflowId, _) -> WorkflowId(workflowId) }
+  override fun getFeatureVerifyWorkflows(workflowIds: Set<String>): Map<String, WorkflowStateRecord> =
+    connection.getWorkflowRows("feature_verify_workflows", workflowIds)
 
   override fun listFeatureVerifyWorkflows(limit: Int): List<WorkflowStateRecord> =
     connection.listWorkflowRows("feature_verify_workflows", limit)
 
   override fun latestFeatureVerifyWorkflow(): WorkflowStateRecord? = listFeatureVerifyWorkflows(1).firstOrNull()
 
-  override fun getFeatureVerifySessionSummary(sessionId: SessionId): FeatureVerifySessionSummary? =
+  override fun getFeatureVerifySessionSummary(sessionId: String): FeatureVerifySessionSummary? =
     connection.prepareStatement(
       """
       SELECT
@@ -48,7 +46,7 @@ internal class FeatureVerifyWorkflowStateStore(
           return null
         }
         FeatureVerifySessionSummary(
-          sessionId = SessionId(resultSet.getString("session_id")),
+          sessionId = resultSet.getString("session_id"),
           acceptanceCriteriaCount = resultSet.getInt("acceptance_criteria_count"),
           rolloutRelevant = resultSet.getInt("rollout_relevant") == 1,
           specSummary = resultSet.getString("spec_summary"),

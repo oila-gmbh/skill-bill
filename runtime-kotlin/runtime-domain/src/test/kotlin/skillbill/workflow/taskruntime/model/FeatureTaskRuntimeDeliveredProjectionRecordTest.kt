@@ -1,7 +1,7 @@
 package skillbill.workflow.taskruntime.model
+
 import skillbill.contracts.JsonCodec
 import skillbill.error.InvalidWorkflowStateSchemaError
-import skillbill.workflow.engine.model.WorkflowId
 import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertEquals
@@ -98,7 +98,7 @@ class FeatureTaskRuntimeDeliveredProjectionRecordTest {
   fun `an envelope addressed to another consumer phase is rejected at construction`() {
     assertFailsWith<IllegalArgumentException> {
       FeatureTaskRuntimeDeliveredProjectionRecord(
-        workflowId = WorkflowId("wftr-1"),
+        workflowId = "wftr-1",
         consumerPhaseId = "audit",
         iteration = 1,
         envelope = FeatureTaskRuntimeHandoffEnvelope(consumerPhaseId = "implement"),
@@ -122,7 +122,7 @@ class FeatureTaskRuntimeDeliveredProjectionRecordTest {
   }
 
   private fun deliveredProjection() = FeatureTaskRuntimeDeliveredProjectionRecord(
-    workflowId = WorkflowId("wftr-1"),
+    workflowId = "wftr-1",
     consumerPhaseId = "implement",
     iteration = 1,
     envelope = FeatureTaskRuntimeHandoffEnvelope(

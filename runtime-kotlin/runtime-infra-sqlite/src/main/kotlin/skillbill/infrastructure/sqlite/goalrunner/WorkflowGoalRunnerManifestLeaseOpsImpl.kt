@@ -5,15 +5,23 @@ import skillbill.goalrunner.model.GoalRunnerExecutionLease
 internal class WorkflowGoalRunnerManifestLeaseOpsImpl(
   private val ctx: WorkflowGoalRunnerManifestStoreContext,
 ) : GoalRunnerManifestExecutionLease {
-  override fun executionLease(parentWorkflowId: String): GoalRunnerExecutionLease? =
-    ctx.controls.executionLease(parentWorkflowId)
+  override fun executionLease(parentWorkflowId: String, dbPathOverride: String?): GoalRunnerExecutionLease? =
+    ctx.controls.executionLease(parentWorkflowId, dbPathOverride)
   override fun acquireExecutionLease(
     parentWorkflowId: String,
     lease: GoalRunnerExecutionLease,
     expectedOwnerToken: String?,
-  ): Boolean = ctx.controls.acquireExecutionLease(parentWorkflowId, lease, expectedOwnerToken)
-  override fun heartbeatExecutionLease(parentWorkflowId: String, lease: GoalRunnerExecutionLease): Boolean =
-    ctx.controls.heartbeatExecutionLease(parentWorkflowId, lease)
-  override fun releaseExecutionLease(parentWorkflowId: String, ownerToken: String, generation: Long): Boolean =
-    ctx.controls.releaseExecutionLease(parentWorkflowId, ownerToken, generation)
+    dbPathOverride: String?,
+  ): Boolean = ctx.controls.acquireExecutionLease(parentWorkflowId, lease, expectedOwnerToken, dbPathOverride)
+  override fun heartbeatExecutionLease(
+    parentWorkflowId: String,
+    lease: GoalRunnerExecutionLease,
+    dbPathOverride: String?,
+  ): Boolean = ctx.controls.heartbeatExecutionLease(parentWorkflowId, lease, dbPathOverride)
+  override fun releaseExecutionLease(
+    parentWorkflowId: String,
+    ownerToken: String,
+    generation: Long,
+    dbPathOverride: String?,
+  ): Boolean = ctx.controls.releaseExecutionLease(parentWorkflowId, ownerToken, generation, dbPathOverride)
 }

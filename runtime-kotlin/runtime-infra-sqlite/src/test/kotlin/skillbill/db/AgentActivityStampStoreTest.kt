@@ -1,9 +1,9 @@
 package skillbill.db
+
 import skillbill.idestatus.model.AgentActivityLabel
 import skillbill.idestatus.model.AgentActivityStamp
 import skillbill.infrastructure.sqlite.SQLiteDatabaseSessionFactory
 import skillbill.model.EnvironmentContext
-import skillbill.workflow.engine.model.WorkflowId
 import java.nio.file.Files
 import java.time.Instant
 import kotlin.test.Test
@@ -15,7 +15,7 @@ class AgentActivityStampStoreTest {
   fun `record then read returns stamp from fresh connection`() {
     val tempDir = Files.createTempDirectory("agent-activity-store")
     val factory = SQLiteDatabaseSessionFactory(EnvironmentContext(userHome = tempDir))
-    val workflowId = WorkflowId("wfl-activity-1")
+    val workflowId = "wfl-activity-1"
     val stamp = AgentActivityStamp(
       recordedAt = Instant.parse("2026-08-30T10:00:00Z"),
       label = AgentActivityLabel.STDOUT,

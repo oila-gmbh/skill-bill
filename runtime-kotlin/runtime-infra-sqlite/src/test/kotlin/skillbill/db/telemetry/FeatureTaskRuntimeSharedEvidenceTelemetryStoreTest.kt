@@ -1,6 +1,6 @@
 package skillbill.db.telemetry
+
 import skillbill.db.core.DatabaseRuntime
-import skillbill.workflow.engine.model.WorkflowId
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeSharedEvidenceMeasurement
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeSharedEvidenceOutcome
 import java.nio.file.Files
@@ -15,7 +15,7 @@ class FeatureTaskRuntimeSharedEvidenceTelemetryStoreTest {
     DatabaseRuntime.ensureDatabase(dbPath).use { connection ->
       val store = LifecycleTelemetryStore(connection)
       val record = FeatureTaskRuntimeSharedEvidenceMeasurement(
-        workflowId = WorkflowId("wftr-1"),
+        workflowId = "wftr-1",
         checkpointFingerprint = "fp-1",
         consumerPhaseId = "audit",
         outcome = FeatureTaskRuntimeSharedEvidenceOutcome.DERIVATION,

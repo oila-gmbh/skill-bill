@@ -1,10 +1,8 @@
 package skillbill.db.workflow
+
 import skillbill.error.InvalidGoalPlanningPreparationSchemaError
 import skillbill.ports.goalrunner.model.GoalPlanningPreparationProvenance
 import skillbill.ports.goalrunner.model.GoalPlanningPreparationRecord
-import skillbill.workflow.decomposition.model.SubtaskId
-import skillbill.workflow.decomposition.model.IssueKey
-import skillbill.workflow.engine.model.WorkflowId
 import java.sql.ResultSet
 
 internal fun ResultSet.toPreparedRecord(): GoalPlanningPreparationRecord {
@@ -20,10 +18,10 @@ internal fun ResultSet.toPreparedRecord(): GoalPlanningPreparationRecord {
     )
   }
   return GoalPlanningPreparationRecord(
-    parentGoalWorkflowId = WorkflowId(parentGoalWorkflowId),
-    normalizedIssueKey = IssueKey(requireColumn(this, label, "normalized_issue_key")),
+    parentGoalWorkflowId = parentGoalWorkflowId,
+    normalizedIssueKey = requireColumn(this, label, "normalized_issue_key"),
     repositoryIdentity = requireColumn(this, label, "repository_identity"),
-    subtaskId = SubtaskId(subtaskId),
+    subtaskId = subtaskId,
     governedSubSpecPath = requireColumn(this, label, "governed_sub_spec_path"),
     preparationStatus = decodeState(label, getString("preparation_status")),
     provenance = GoalPlanningPreparationProvenance(

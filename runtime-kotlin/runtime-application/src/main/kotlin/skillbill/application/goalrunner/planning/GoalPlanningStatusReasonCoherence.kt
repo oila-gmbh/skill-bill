@@ -1,6 +1,4 @@
 package skillbill.application.goalrunner.planning
-
-import skillbill.workflow.engine.model.WorkflowId
 import me.tatarka.inject.annotations.Inject
 import skillbill.application.goalplanning.GoalPlanningPreparationCheckpoint
 import skillbill.application.goalplanning.sha256HexUtf8
@@ -53,10 +51,10 @@ class LaunchAlignedGoalPlanningStatusReasonCoherence(
     val canonicalRepository = repositoryEnclosingRootPort.canonicalPath(request.repoRoot)
     val identity = GoalPlanningIdentity(
       request.parentWorkflowId,
-      request.issueKey.value.trim().uppercase(),
+      request.issueKey.trim().uppercase(),
       "repo-root-realpath-v1:$canonicalRepository",
     )
-    val existing = checkpoint.findSharedPreplan(identity)
+    val existing = checkpoint.findSharedPreplan(identity, request.dbPathOverride)
       ?: return GoalPlanningProvenanceRecoverability.Reuse(
         GoalPlanningContractProvenance(
           parentSpecHash = "",

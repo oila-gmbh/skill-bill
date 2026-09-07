@@ -1,8 +1,7 @@
 package skillbill.infrastructure.sqlite
+
 import skillbill.db.core.DatabaseRuntime
-import skillbill.model.EnvironmentContext
 import skillbill.ports.featuretask.model.FeatureTaskPhaseSettlement
-import skillbill.workflow.engine.model.WorkflowId
 import java.nio.file.Files
 import java.sql.Connection
 import java.time.Instant
@@ -25,22 +24,21 @@ class SqliteFeatureTaskPhaseSettlementRepositoryTest {
         },
       )
     }
-    val repo = SqliteFeatureTaskPhaseSettlementRepository(
-      EnvironmentContext(dbPathOverride = dbPath.toString()),
-    )
+    val repo = SqliteFeatureTaskPhaseSettlementRepository()
+    val dbOverride = dbPath.toString()
     val settlement = FeatureTaskPhaseSettlement(
-      workflowId = WorkflowId("wftr-1"),
+      workflowId = "wftr-1",
       phaseId = "implement",
       attempt = 1,
       kind = "complete",
       envelopeJson = """{"status":"completed","produced_outputs":{"value":"x"}}""",
       recordedAt = Instant.now().toString(),
     )
-    repo.upsert(settlement)
-    assertEquals("complete", repo.find("wftr-1", "implement", 1)?.kind)
-    assertTrue(repo.delete("wftr-1", "implement", 1))
-    assertNull(repo.find("wftr-1", "implement", 1))
-    assertFalse(repo.delete("wftr-1", "implement", 1))
+    repo.upsert(settlement, dbOverride)
+    assertEquals("complete", repo.find("wftr-1", "implement", 1, dbOverride)?.kind)
+    assertTrue(repo.delete("wftr-1", "implement", 1, dbOverride))
+    assertNull(repo.find("wftr-1", "implement", 1, dbOverride))
+    assertFalse(repo.delete("wftr-1", "implement", 1, dbOverride))
   }
 
   private fun tableExists(connection: Connection, name: String): Boolean =

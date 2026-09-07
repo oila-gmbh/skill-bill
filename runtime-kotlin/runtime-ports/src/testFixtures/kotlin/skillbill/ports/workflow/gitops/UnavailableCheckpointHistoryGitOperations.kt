@@ -30,8 +30,7 @@ object UnavailableCheckpointHistoryGitOperations : CheckpointHistoryGitOperation
   override fun deleteRef(repoRoot: Path, namespacePrefix: String, refName: String): WorkflowGitOperationResult =
     unavailable("delete checkpoint ref '$refName'")
 
-  private fun unavailable(capability: String) = WorkflowGitOperationResult(
-    status = "error",
+  private fun unavailable(capability: String) = WorkflowGitOperationResult.Failed(
     error = "This git operations implementation cannot $capability; checkpoint history requires a git adapter.",
   )
 }

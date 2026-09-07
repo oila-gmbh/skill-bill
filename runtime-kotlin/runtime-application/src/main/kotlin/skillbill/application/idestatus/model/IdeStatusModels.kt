@@ -1,12 +1,11 @@
 package skillbill.application.idestatus.model
+
 import skillbill.boundary.OpenBoundaryMap
 import skillbill.contracts.workflow.GOAL_PLANNING_WAVE_CAP
 import skillbill.contracts.workflow.IDE_STATUS_CONTRACT_VERSION
 import skillbill.goalrunner.model.GoalPlanningStatusState
 import skillbill.idestatus.model.AgentActivityLabel
 import skillbill.ports.workflow.model.FeatureTaskRouteScope
-import skillbill.workflow.decomposition.model.IssueKey
-import skillbill.workflow.engine.model.WorkflowId
 import java.nio.file.Path
 import java.time.Instant
 
@@ -220,9 +219,9 @@ data class IdeStatusProblem(
  * In-process selection candidate for IDE status precedence. Not a wire DTO.
  */
 data class IdeStatusCandidate(
-  val workflowId: WorkflowId,
+  val workflowId: String,
   val workflowFamily: IdeStatusWorkflowFamily,
-  val issueKey: IssueKey?,
+  val issueKey: String?,
   val currentState: String,
   val lifecycleState: IdeStatusLifecycleState,
   val selectionTier: IdeStatusSelectionTier,
@@ -249,8 +248,8 @@ data class IdeStatusSnapshot(
   val updatedAt: Instant,
   val freshness: IdeStatusFreshness,
   val summary: String,
-  val issueKey: IssueKey? = null,
-  val workflowId: WorkflowId? = null,
+  val issueKey: String? = null,
+  val workflowId: String? = null,
   val workflowFamily: IdeStatusWorkflowFamily? = null,
   val progress: IdeStatusProgress? = null,
   val startedAt: Instant? = null,
@@ -422,6 +421,7 @@ data class IdeStatusSnapshot(
 
 data class IdeStatusRequest(
   val repoRoot: String,
+  val dbOverride: String? = null,
   val observedAt: Instant? = null,
 ) {
   init {

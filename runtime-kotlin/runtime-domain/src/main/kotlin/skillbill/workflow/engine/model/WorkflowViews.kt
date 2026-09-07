@@ -13,8 +13,8 @@ import skillbill.boundary.OpenBoundaryMap
  * (`WorkflowEngine.snapshotMap` etc.).
  */
 data class WorkflowSnapshotView(
-  val workflowId: WorkflowId,
-  val sessionId: SessionId,
+  val workflowId: String,
+  val sessionId: String,
   val workflowName: String,
   val contractVersion: String,
   val workflowStatus: String,
@@ -35,8 +35,8 @@ data class WorkflowSnapshotView(
 )
 
 data class WorkflowSummaryView(
-  val workflowId: WorkflowId,
-  val sessionId: SessionId,
+  val workflowId: String,
+  val sessionId: String,
   val workflowName: String,
   val contractVersion: String,
   val workflowStatus: String,
@@ -49,7 +49,7 @@ data class WorkflowSummaryView(
 
 data class WorkflowUpdateAcknowledgementView(
   val status: String,
-  val workflowId: WorkflowId,
+  val workflowId: String,
   val workflowName: String,
   val workflowStatus: String,
   val currentStepId: String,
@@ -89,7 +89,7 @@ data class WorkflowContinuationArtifactSummary(
 )
 
 data class WorkflowCompactContinueView(
-  val workflowId: WorkflowId,
+  val workflowId: String,
   val skillName: String,
   val continueStatus: String,
   val workflowStatusBeforeContinue: String,

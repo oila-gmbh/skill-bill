@@ -1,10 +1,10 @@
 package skillbill.mcp
+
 import skillbill.SAMPLE_REVIEW
 import skillbill.SkillBillVersion
 import skillbill.contracts.JsonCodec
 import skillbill.mcp.core.McpStdioServer
 import skillbill.mcp.shared.McpRuntimeContext
-import skillbill.workflow.engine.model.WorkflowId
 import java.nio.file.Files
 import kotlin.test.Test
 import kotlin.test.assertContains
@@ -138,7 +138,7 @@ class McpStdioServerDispatchTest {
   fun `goal_stats dispatch returns populated payload for a seeded store`() {
     val tempDir = Files.createTempDirectory("skillbill-stdio-goal-stats-seeded")
     val context = McpRuntimeContext(environment = enabledStdioTelemetryEnvironment(tempDir), userHome = tempDir)
-    seedGoalBlockedRun(tempDir.resolve("metrics.db"), workflowId = WorkflowId("wf-stdio-1"))
+    seedGoalBlockedRun(tempDir.resolve("metrics.db"), workflowId = "wf-stdio-1")
 
     val response = decodeResponse(
       McpStdioServer.handleLine(

@@ -1,16 +1,16 @@
 package skillbill.application.goalrunner
+
 import skillbill.ports.agentrun.model.AgentRunDeclaredProgressProbe
 import skillbill.ports.agentrun.model.AgentRunDeclaredProgressSnapshot
 import skillbill.ports.agentrun.model.AgentRunProgressProbe
 import skillbill.workflow.decomposition.model.DecompositionSubtask
-import skillbill.workflow.decomposition.model.SubtaskId
 
-fun progressProbe(reader: GoalRunnerTickProgressReader, subtaskId: SubtaskId): AgentRunProgressProbe =
+fun progressProbe(reader: GoalRunnerTickProgressReader, subtaskId: Int): AgentRunProgressProbe =
   GoalRunnerWorkflowProgressProbe(reader = reader, subtaskId = subtaskId)
 
 class GoalRunnerWorkflowProgressProbe(
   private val reader: GoalRunnerTickProgressReader,
-  private val subtaskId: SubtaskId,
+  private val subtaskId: Int,
 ) : AgentRunProgressProbe {
   override fun progressToken(): String? = reader.progressState()
     ?.let { progress ->
@@ -46,7 +46,7 @@ fun declaredProgressProbe(reader: GoalRunnerTickProgressReader): AgentRunDeclare
 
 fun DecompositionSubtask.progressToken(): String = listOf(
   status,
-  workflowId?.value.orEmpty(),
+  workflowId.orEmpty(),
   branch.orEmpty(),
   commitSha.orEmpty(),
   blockedReason.orEmpty(),

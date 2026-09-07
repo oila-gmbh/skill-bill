@@ -125,12 +125,12 @@ private fun releaseEntry(tag: String, prerelease: Boolean = tag.contains("-")): 
 private class TestDatabaseSessionFactory : DatabaseSessionFactory {
   private val dbPath = Files.createTempDirectory("skillbill-update-check-db").resolve("metrics.db")
 
-  override fun resolveDbPath(): Path = dbPath
-  override fun databaseExists(): Boolean = Files.exists(resolveDbPath())
-  override fun <T> read(block: (UnitOfWork) -> T): T = error("unused")
-  override fun <T> selfManagedWrite(block: (UnitOfWork) -> T): T = transaction(block)
+  override fun resolveDbPath(dbOverride: String?): Path = dbOverride?.let(Path::of) ?: dbPath
+  override fun databaseExists(dbOverride: String?): Boolean = Files.exists(resolveDbPath(dbOverride))
+  override fun <T> read(dbOverride: String?, block: (UnitOfWork) -> T): T = error("unused")
+  override fun <T> selfManagedWrite(dbOverride: String?, block: (UnitOfWork) -> T): T = transaction(dbOverride, block)
 
-  override fun <T> transaction(block: (UnitOfWork) -> T): T = error("unused")
+  override fun <T> transaction(dbOverride: String?, block: (UnitOfWork) -> T): T = error("unused")
 }
 
 private object TestTelemetrySettingsProvider : TelemetrySettingsProvider {

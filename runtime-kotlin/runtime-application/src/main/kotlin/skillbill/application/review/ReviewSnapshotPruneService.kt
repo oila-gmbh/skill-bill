@@ -27,8 +27,8 @@ class ReviewSnapshotPruneService(
   private val gateway: ReviewSnapshotGateway,
   private val diagnostics: RuntimeDiagnostics,
 ) {
-  fun prune(confirmed: Boolean): ReviewSnapshotPruneResult {
-    val liveDbPath = database.resolveDbPath()
+  fun prune(confirmed: Boolean, dbOverride: String? = null): ReviewSnapshotPruneResult {
+    val liveDbPath = database.resolveDbPath(dbOverride)
     val candidates = gateway.listSnapshots(liveDbPath)
     val deleted = mutableListOf<ReviewSnapshot>()
     val failed = mutableListOf<ReviewSnapshot>()

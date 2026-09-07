@@ -1,4 +1,5 @@
 package skillbill.application.featurespec
+
 import com.fasterxml.jackson.dataformat.yaml.YAMLMapper
 import skillbill.application.TestDecompositionManifestStore
 import skillbill.application.decomposition.encodeDecompositionManifestYaml
@@ -21,9 +22,7 @@ import skillbill.workflow.decomposition.model.DecompositionManifestRepairOperati
 import skillbill.workflow.decomposition.model.DecompositionManifestValidationFormat
 import skillbill.workflow.decomposition.model.DecompositionManifestValidationResult
 import skillbill.workflow.decomposition.model.DecompositionManifestValidationSourceLocation
-import skillbill.workflow.decomposition.model.IssueKey
 import skillbill.workflow.decomposition.model.SpecSource
-import skillbill.workflow.decomposition.model.SubtaskId
 import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.test.Test
@@ -452,7 +451,7 @@ class FeatureSpecPreparationWriterTest {
     val manifestPath = repoRoot.resolve(first.decompositionManifestPath)
     val blocked = loadTestManifest(manifestPath).copy(
       status = "blocked",
-      currentSubtaskIntent = CurrentSubtaskIntent(subtaskId = SubtaskId(1), action = "blocked"),
+      currentSubtaskIntent = CurrentSubtaskIntent(subtaskId = 1, action = "blocked"),
       subtasks = loadTestManifest(manifestPath).subtasks.map { subtask ->
         subtask.copy(status = "blocked", blockedReason = "operator action required")
       },
@@ -491,7 +490,7 @@ class FeatureSpecPreparationWriterTest {
   )
 
   private fun singleSpecDecision(): FeatureSpecPreparationDecision = FeatureSpecPreparationDecision(
-    issueKey = IssueKey("SKILL-59"),
+    issueKey = "SKILL-59",
     intendedOutcome = "single_spec",
     acceptanceCriteria = listOf("Write parent spec."),
     constraints = listOf("Represent one implementation unit as exactly one manifest subtask."),
@@ -500,7 +499,7 @@ class FeatureSpecPreparationWriterTest {
   )
 
   private fun decomposedDecision(): FeatureSpecPreparationDecision = FeatureSpecPreparationDecision(
-    issueKey = IssueKey("SKILL-59"),
+    issueKey = "SKILL-59",
     intendedOutcome = "decomposed",
     acceptanceCriteria = listOf("Write parent spec and decomposition artifacts."),
     constraints = listOf("Reuse manifest writer."),

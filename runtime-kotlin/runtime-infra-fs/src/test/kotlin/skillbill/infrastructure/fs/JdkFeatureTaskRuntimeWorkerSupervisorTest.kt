@@ -1,4 +1,5 @@
 package skillbill.infrastructure.fs
+
 import skillbill.ports.diagnostics.RuntimeDiagnostics
 import skillbill.ports.featuretask.model.FeatureTaskRuntimeWorkerLeaseState
 import skillbill.ports.featuretask.model.FeatureTaskRuntimeWorkerOwnership
@@ -6,7 +7,6 @@ import skillbill.ports.taskruntime.model.FeatureTaskRuntimeHeartbeatPlan
 import skillbill.ports.taskruntime.model.FeatureTaskRuntimeHeartbeatTick
 import skillbill.ports.taskruntime.model.FeatureTaskRuntimeProcessIdentity
 import skillbill.ports.taskruntime.model.FeatureTaskRuntimeProcessInspection
-import skillbill.workflow.engine.model.WorkflowId
 import java.nio.file.Files
 import java.nio.file.Path
 import java.time.Duration
@@ -38,7 +38,7 @@ class JdkFeatureTaskRuntimeWorkerSupervisorTest {
     val supervisor = JdkFeatureTaskRuntimeWorkerSupervisor(RecordingDiagnostics())
     val current = supervisor.currentProcess()
     val ownership = FeatureTaskRuntimeWorkerOwnership(
-      workflowId = WorkflowId("wftr-test"),
+      workflowId = "wftr-test",
       generation = 1,
       ownerToken = "owner-token-0001",
       hostIdentity = current.hostIdentity,
@@ -77,7 +77,7 @@ class JdkFeatureTaskRuntimeWorkerSupervisorTest {
     val childHandle = child.toHandle()
     val birth = childHandle.info().startInstant().orElseThrow().toEpochMilli().toString()
     val ownership = FeatureTaskRuntimeWorkerOwnership(
-      workflowId = WorkflowId("wftr-test"),
+      workflowId = "wftr-test",
       generation = 1,
       ownerToken = "owner-token-0001",
       hostIdentity = current.hostIdentity,
@@ -108,7 +108,7 @@ class JdkFeatureTaskRuntimeWorkerSupervisorTest {
     val childHandle = child.toHandle()
     val birth = childHandle.info().startInstant().orElseThrow().toEpochMilli().toString()
     val ownership = FeatureTaskRuntimeWorkerOwnership(
-      workflowId = WorkflowId("wftr-test"),
+      workflowId = "wftr-test",
       generation = 1,
       ownerToken = "owner-token-0001",
       hostIdentity = current.hostIdentity,
@@ -185,7 +185,7 @@ class JdkFeatureTaskRuntimeWorkerSupervisorTest {
     bootIdentity: String,
     processBirthToken: String = current.processBirthToken,
   ) = FeatureTaskRuntimeWorkerOwnership(
-    workflowId = WorkflowId("wftr-test"),
+    workflowId = "wftr-test",
     generation = 1,
     ownerToken = "owner-token-0001",
     hostIdentity = current.hostIdentity,

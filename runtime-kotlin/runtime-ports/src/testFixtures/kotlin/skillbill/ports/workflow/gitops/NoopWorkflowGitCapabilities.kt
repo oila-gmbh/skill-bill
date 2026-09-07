@@ -21,21 +21,20 @@ object UnavailableScopedStagingGitOperations : ScopedStagingGitOperations {
   override fun pathContentIdentities(repoRoot: Path, paths: List<String>): WorkflowGitOperationResult =
     unavailable("read owned-path content identities")
 
-  private fun unavailable(capability: String) = WorkflowGitOperationResult(
-    status = "error",
+  private fun unavailable(capability: String) = WorkflowGitOperationResult.Failed(
     error = "This git operations implementation cannot $capability; scoped checkpoints require a git adapter.",
   )
 }
 
 object NoopRuntimePhaseFileManifestGitOperations : RuntimePhaseFileManifestGitOperations {
   override fun headCommit(repoRoot: Path): WorkflowGitOperationResult =
-    WorkflowGitOperationResult(status = "ok", value = "")
+    WorkflowGitOperationResult.Ok(value = "")
 
   override fun changedPathsBetweenCommits(
     repoRoot: Path,
     beforeCommit: String,
     afterCommit: String,
-  ): WorkflowGitOperationResult = WorkflowGitOperationResult(status = "ok", value = "")
+  ): WorkflowGitOperationResult = WorkflowGitOperationResult.Ok(value = "")
 }
 
 object UnavailableRepositoryOwnedPathsGitOperations : RepositoryOwnedPathsGitOperations {

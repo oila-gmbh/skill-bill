@@ -1,4 +1,5 @@
 package skillbill.infrastructure.fs.featuretask
+
 import skillbill.application.featuretask.FeatureTaskRuntimeGoalContinuationRecorder
 import skillbill.application.featuretask.featureTaskRuntimeParseRepairReceiptOrNull
 import skillbill.application.featuretask.model.GoalSubtaskReviewInputBlocked
@@ -13,11 +14,7 @@ import skillbill.ports.diagnostics.NoopRuntimeDiagnostics
 import skillbill.ports.workflow.gitops.WorkflowGitOperations
 import skillbill.ports.workflow.toRecord
 import skillbill.review.context.model.CodeReviewExecutionMode
-import skillbill.workflow.decomposition.model.IssueKey
-import skillbill.workflow.decomposition.model.SubtaskId
 import skillbill.workflow.engine.WorkflowEngine
-import skillbill.workflow.engine.model.SessionId
-import skillbill.workflow.engine.model.WorkflowId
 import skillbill.workflow.engine.model.WorkflowUpdateInput
 import skillbill.workflow.goal.model.GOAL_REVIEW_BASE_RECOVERIES_ARTIFACT_KEY
 import skillbill.workflow.goal.model.GOAL_SUBTASK_REVIEW_RESULTS_ARTIFACT_KEY
@@ -58,7 +55,7 @@ import kotlin.test.assertTrue
  * objects the test constructs itself.
  */
 class GoalSubtaskReviewStateDurablePersistenceTest {
-  private val workflowId = WorkflowId("wftr-skill142-1")
+  private val workflowId = "wftr-skill142-1"
 
   @Test
   fun `the resolved tier, deciding rule, and remediation base sha all survive a reload`() {
@@ -100,8 +97,8 @@ class GoalSubtaskReviewStateDurablePersistenceTest {
     val opened = engine.openRecord(definition, workflowId, "fis-001", "preplan")
     val artifactsPatch = linkedMapOf<String, Any?>(
       FEATURE_TASK_RUNTIME_GOAL_CONTINUATION_ARTIFACT_KEY to FeatureTaskRuntimeGoalContinuationArtifact(
-        issueKey = IssueKey("SKILL-142"),
-        subtaskId = SubtaskId(5),
+        issueKey = "SKILL-142",
+        subtaskId = 5,
         suppressPr = true,
         goalBranch = goalBranch,
         codeReviewMode = CodeReviewExecutionMode.INLINE,
@@ -123,7 +120,7 @@ class GoalSubtaskReviewStateDurablePersistenceTest {
         currentStepId = "review",
         stepUpdates = null,
         artifactsPatch = artifactsPatch,
-        sessionId = SessionId("fis-001"),
+        sessionId = "fis-001",
       ),
     ).toRecord()
     repository.saveFeatureTaskRuntimeWorkflow(seeded)
@@ -455,8 +452,8 @@ class GoalSubtaskReviewStateDurablePersistenceTest {
     val repository = FeatureTaskGitIntegrationWorkflowRepository()
     val identity = FeatureTaskRuntimeCheckpointIdentity(
       sequenceNumber = 0,
-      issueKey = IssueKey("SKILL-176"),
-      subtaskId = SubtaskId("15".toInt()),
+      issueKey = "SKILL-176",
+      subtaskId = "15",
       checkpointRef = "refs/skill-bill/checkpoints/SKILL-176/15/0",
       branch = "feat/skill-15",
       phaseId = "review",
@@ -516,8 +513,8 @@ class GoalSubtaskReviewStateDurablePersistenceTest {
     val repository = FeatureTaskGitIntegrationWorkflowRepository()
     val identity = FeatureTaskRuntimeCheckpointIdentity(
       sequenceNumber = 0,
-      issueKey = IssueKey("SKILL-176"),
-      subtaskId = SubtaskId("15".toInt()),
+      issueKey = "SKILL-176",
+      subtaskId = "15",
       checkpointRef = "refs/skill-bill/checkpoints/SKILL-176/15/0",
       branch = "feat/skill-15",
       phaseId = "review",

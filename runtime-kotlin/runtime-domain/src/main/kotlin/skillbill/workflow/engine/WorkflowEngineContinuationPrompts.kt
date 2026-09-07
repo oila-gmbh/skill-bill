@@ -1,8 +1,6 @@
 package skillbill.workflow.engine
 
-import skillbill.workflow.engine.model.SessionId
 import skillbill.workflow.engine.model.WorkflowDefinition
-import skillbill.workflow.engine.model.WorkflowId
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 
 internal data class ContinuationArtifactKeys(
@@ -12,7 +10,7 @@ internal data class ContinuationArtifactKeys(
 
 internal data class ContinuationBriefRequest(
   val definition: WorkflowDefinition,
-  val workflowId: WorkflowId,
+  val workflowId: String,
   val resumeStepId: String,
   val continueStatus: String,
   val nextAction: String,
@@ -37,8 +35,8 @@ internal fun continuationBrief(request: ContinuationBriefRequest): String {
 }
 
 internal data class ContinuationIdentity(
-  val workflowId: WorkflowId,
-  val sessionId: SessionId,
+  val workflowId: String,
+  val sessionId: String,
   val resumeStepId: String,
   val continueStatus: String,
   val nextAction: String,
@@ -69,7 +67,7 @@ internal fun continuationEntryPrompt(request: ContinuationEntryPromptRequest): S
     mutableListOf(
       "Use `${request.definition.skillName}` in continuation mode.",
       "Workflow id: ${identity.workflowId}",
-      "Session id: ${identity.sessionId.value.ifBlank { "(none)" }}",
+      "Session id: ${identity.sessionId.ifBlank { "(none)" }}",
       "Continue status: ${identity.continueStatus}",
       "Resume step: ${identity.resumeStepId} " +
         "(${request.definition.stepLabels[identity.resumeStepId] ?: identity.resumeStepId})",

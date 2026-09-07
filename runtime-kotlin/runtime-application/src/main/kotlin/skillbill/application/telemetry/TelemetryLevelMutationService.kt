@@ -15,11 +15,11 @@ class TelemetryLevelMutationService(
   private val settingsProvider: TelemetrySettingsProvider,
   private val configStore: TelemetryConfigStore,
 ) : TelemetryLevelMutator {
-  override fun setLevel(level: String): TelemetryLevelMutationResult {
+  override fun setLevel(level: String, dbOverride: String?): TelemetryLevelMutationResult {
     val currentLevel = settingsProvider.load(materialize = false).level
     val (settings, clearedEvents) =
-      if (clearsPendingOutbox(currentLevel, level) && database.databaseExists()) {
-        database.transaction { unitOfWork ->
+      if (clearsPendingOutbox(currentLevel, level) && database.databaseExists(dbOverride)) {
+        database.transaction(dbOverride) { unitOfWork ->
           TelemetryConfigMutations.setTelemetryLevel(
             level = level,
             configStore = configStore,

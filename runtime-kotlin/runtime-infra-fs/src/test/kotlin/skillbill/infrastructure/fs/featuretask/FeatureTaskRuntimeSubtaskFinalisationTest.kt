@@ -1,4 +1,5 @@
 package skillbill.infrastructure.fs.featuretask
+
 import skillbill.application.featuretask.FeatureTaskRuntimeCheckpointMessage
 import skillbill.application.featuretask.FeatureTaskRuntimeCheckpointMetadata
 import skillbill.application.featuretask.FeatureTaskRuntimeSubtaskFinalisation
@@ -13,8 +14,6 @@ import skillbill.application.featuretask.model.FeatureTaskRuntimeSubtaskFinalise
 import skillbill.application.featuretask.model.FeatureTaskRuntimeSubtaskFinalised
 import skillbill.infrastructure.fs.GitWorkflowGitOperations
 import skillbill.ports.workflow.gitops.WorkflowGitOperations
-import skillbill.workflow.decomposition.model.IssueKey
-import skillbill.workflow.decomposition.model.SubtaskId
 import java.nio.file.Files
 import java.nio.file.Path
 import java.util.concurrent.TimeUnit
@@ -33,8 +32,8 @@ import kotlin.test.assertTrue
 private const val GIT_TIMEOUT_SECONDS = 60L
 
 class FeatureTaskRuntimeSubtaskFinalisationTest {
-  private val issueKey = IssueKey("SKILL-190")
-  private val subtaskId = SubtaskId("5".toInt())
+  private val issueKey = "SKILL-190"
+  private val subtaskId = "5"
   private val branch = "feat/skill-190-finalisation"
   private val identity = FeatureTaskRuntimeSubtaskCommitIdentity(issueKey, subtaskId)
   private val agentSubject = "SKILL-190: runtime-owned subtask finalisation"

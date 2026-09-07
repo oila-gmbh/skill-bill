@@ -1,7 +1,5 @@
 package skillbill.application.featuretask
 
-import skillbill.agent.model.AgentId
-
 import skillbill.application.featuretask.model.FeatureTaskRuntimePhaseStateRequest
 import skillbill.application.featuretask.model.GoalSubtaskReviewInputBlocked
 import skillbill.application.featuretask.model.GoalSubtaskReviewInputPreparation
@@ -236,7 +234,7 @@ object FeatureTaskRuntimeRunLoopPhaseRunner {
     run: PhaseRun,
     observability: FeatureTaskRuntimeRunObservability,
   ): GoalReviewRunPreparation {
-    val resolved = runLoop.recorder.loadResolvedBranch(run.request.workflowId)
+    val resolved = runLoop.recorder.loadResolvedBranch(run.request.workflowId, run.request.dbPathOverride)
       ?: return FeatureTaskRuntimeRunLoopPhaseRunner.blockedGoalReviewRun(
         runLoop,
         run,
@@ -284,7 +282,7 @@ object FeatureTaskRuntimeRunLoopPhaseRunner {
     run: PhaseRun,
     observability: FeatureTaskRuntimeRunObservability,
   ): GoalReviewRunPreparation = runCatching {
-    runLoop.goalContinuationRecorder.reserveGoalReviewPass(run.request.workflowId)
+    runLoop.goalContinuationRecorder.reserveGoalReviewPass(run.request.workflowId, run.request.dbPathOverride)
   }.fold(
     onSuccess = { reservation ->
       when (reservation) {
@@ -317,12 +315,13 @@ object FeatureTaskRuntimeRunLoopPhaseRunner {
     run: PhaseRun,
     observability: FeatureTaskRuntimeRunObservability,
   ): GoalReviewRunPreparation = runCatching {
-    val resolved = runLoop.recorder.loadResolvedBranch(run.request.workflowId)
+    val resolved = runLoop.recorder.loadResolvedBranch(run.request.workflowId, run.request.dbPathOverride)
     runLoop.goalContinuationRecorder.buildGoalReviewInput(
       workflowId = run.request.workflowId,
       gitOperations = runLoop.phaseGates.gitOperations,
       repoRoot = run.request.repoRoot,
       scope = FeatureTaskRuntimeGoalContinuationRecorder.GoalReviewInputScope(
+        dbOverride = run.request.dbPathOverride,
         scopedUntrackedExclusions = resolved?.let {
           FeatureTaskRuntimeRunLoopPhaseRunner.scopedReviewUntrackedExclusions(runLoop, it)
         },
@@ -426,7 +425,7 @@ object FeatureTaskRuntimeRunLoopPhaseRunner {
       ),
     )
     state.reserveReviewPass(phaseState.reviewPassNumber)
-    carriedForwardReviewPersistenceFailure(runLoop, phaseState)?.let { failure ->
+    carriedForwardReviewPersistenceFailure(runLoop, phaseState, run)?.let { failure ->
       return FeatureTaskRuntimeRunLoopPhaseAttempts.blockAndPersist(
         runLoop,
         BlockAndPersistArgs(
@@ -460,10 +459,11 @@ object FeatureTaskRuntimeRunLoopPhaseRunner {
   internal fun carriedForwardReviewPersistenceFailure(
     runLoop: FeatureTaskRuntimeRunLoop,
     phaseState: FeatureTaskRuntimePhaseStateRequest,
+    run: PhaseRun,
   ): String? {
     val prefix = "Carried-forward goal review could not atomically persist its canonical result."
     return runCatching {
-      runLoop.recorder.recordCompletedPhase(phaseState)
+      runLoop.recorder.recordCompletedPhase(phaseState, run.request.dbPathOverride)
     }.fold(
       onSuccess = { persisted -> if (persisted) null else prefix },
       onFailure = { error -> "$prefix ${error.message.orEmpty()}" },
@@ -473,6 +473,7 @@ object FeatureTaskRuntimeRunLoopPhaseRunner {
   internal fun loadCarriedForwardGoalReviewOutput(runLoop: FeatureTaskRuntimeRunLoop, run: PhaseRun) = runCatching {
     val output = runLoop.goalContinuationRecorder.lastGoalReviewResult(
       run.request.workflowId,
+      run.request.dbPathOverride,
     )
       ?: throw MissingCarriedForwardGoalReviewResultException()
     runLoop.outputValidator.validatePhaseOutput(output, sourceLabel = run.phaseId).requireAcceptedOutput(run.phaseId)

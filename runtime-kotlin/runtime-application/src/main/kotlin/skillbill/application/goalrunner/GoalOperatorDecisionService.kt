@@ -1,8 +1,5 @@
 package skillbill.application.goalrunner
 
-import skillbill.workflow.engine.model.WorkflowId
-import skillbill.workflow.decomposition.model.IssueKey
-
 import me.tatarka.inject.annotations.Inject
 import skillbill.application.featuretask.FeatureTaskRuntimePhaseRecorder
 import skillbill.application.goalrunner.model.GoalRunnerOperatorDecisionRequest
@@ -22,7 +19,7 @@ class GoalOperatorDecisionService(
     when (val resolved = resolveChildWorkflow(request)) {
       is ResolvedChildWorkflow.Rejected -> return resolved.result
       is ResolvedChildWorkflow.Ok -> {
-        val auditGapPause = recorder.loadAuditGapPause(resolved.childWorkflowId)
+        val auditGapPause = recorder.loadAuditGapPause(resolved.childWorkflowId, request.dbPathOverride)
         return if (auditGapPause != null) {
           recordAuditGapPauseDecision(request, resolved.parentWorkflowId, resolved.childWorkflowId, auditGapPause)
         } else {
@@ -37,9 +34,9 @@ class GoalOperatorDecisionService(
   }
 
   private fun resolveChildWorkflow(request: GoalRunnerOperatorDecisionRequest): ResolvedChildWorkflow {
-    val loaded = manifestStore.loadByIssueKey(request.issueKey, request.repoRoot)
+    val loaded = manifestStore.loadByIssueKey(request.issueKey, request.dbPathOverride, request.repoRoot)
     val subtask = loaded?.manifest?.subtasks?.firstOrNull { it.id == request.subtaskId }
-    val workflowId = subtask?.workflowId?.takeIf { it.value.isNotBlank() }
+    val workflowId = subtask?.workflowId?.takeIf(String::isNotBlank)
     val rejectReason = when {
       loaded == null ->
         "No prepared goal exists for '${request.issueKey}'."
@@ -61,8 +58,8 @@ class GoalOperatorDecisionService(
 
   private fun recordAuditGapPauseDecision(
     request: GoalRunnerOperatorDecisionRequest,
-    parentWorkflowId: WorkflowId,
-    childWorkflowId: WorkflowId,
+    parentWorkflowId: String,
+    childWorkflowId: String,
     pause: FeatureTaskRuntimeAuditGapPause,
   ): GoalRunnerOperatorDecisionResult {
     if (pause.grantConsumed) {
@@ -76,6 +73,7 @@ class GoalOperatorDecisionService(
         recorder.persistAuditGapPause(
           childWorkflowId,
           pause.copy(operatorDecision = AUDIT_GAP_PAUSE_DECISION_RETRY_FIX),
+          request.dbPathOverride,
         )
         recordedResult(request, parentWorkflowId, childWorkflowId)
       }
@@ -83,6 +81,7 @@ class GoalOperatorDecisionService(
         recorder.persistAuditGapPause(
           childWorkflowId,
           pause.copy(operatorDecision = AUDIT_GAP_PAUSE_DECISION_ABANDON_SUBTASK),
+          request.dbPathOverride,
         )
         recordedResult(request, parentWorkflowId, childWorkflowId)
       }
@@ -96,8 +95,8 @@ class GoalOperatorDecisionService(
 
   private fun recordedResult(
     request: GoalRunnerOperatorDecisionRequest,
-    parentWorkflowId: WorkflowId,
-    childWorkflowId: WorkflowId,
+    parentWorkflowId: String,
+    childWorkflowId: String,
   ): GoalRunnerOperatorDecisionResult = GoalRunnerOperatorDecisionResult.Recorded(
     issueKey = request.issueKey,
     parentWorkflowId = parentWorkflowId,
@@ -110,8 +109,8 @@ class GoalOperatorDecisionService(
     data class Rejected(val result: GoalRunnerOperatorDecisionResult.Rejected) : ResolvedChildWorkflow()
 
     data class Ok(
-      val parentWorkflowId: WorkflowId,
-      val childWorkflowId: WorkflowId,
+      val parentWorkflowId: String,
+      val childWorkflowId: String,
     ) : ResolvedChildWorkflow()
   }
 }

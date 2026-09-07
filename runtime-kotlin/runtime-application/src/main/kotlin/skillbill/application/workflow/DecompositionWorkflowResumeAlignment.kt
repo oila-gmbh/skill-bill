@@ -1,4 +1,5 @@
 package skillbill.application.workflow
+
 import skillbill.application.decomposition.DECOMPOSITION_RUNTIME_ARTIFACT_KEY
 import skillbill.application.decomposition.decodeArtifacts
 import skillbill.application.decomposition.encodeDecompositionManifestMap
@@ -16,9 +17,7 @@ import skillbill.workflow.decomposition.DecompositionManifestValidator
 import skillbill.workflow.decomposition.model.CurrentSubtaskIntent
 import skillbill.workflow.decomposition.model.DecompositionExecutionModel
 import skillbill.workflow.decomposition.model.DecompositionManifest
-import skillbill.workflow.decomposition.model.SubtaskId
 import skillbill.workflow.engine.WorkflowEngine
-import skillbill.workflow.engine.model.WorkflowId
 import skillbill.workflow.engine.model.WorkflowStateSnapshot
 import skillbill.workflow.engine.model.WorkflowStepState
 import skillbill.workflow.engine.model.WorkflowUpdateInput
@@ -31,7 +30,7 @@ internal fun WorkflowEngine.continueExistingWorkflow(
 ): ContinuationStepResult {
   var record = initialRecord
   val workflowId = initialRecord.workflowId
-  val sessionSummary = family.sessionSummary(unitOfWork.workflowStates, record.sessionId)
+  val sessionSummary = family.sessionSummary(unitOfWork.workflowStates, record.sessionId.orEmpty())
   var decision = continueDecision(family.definition, record, sessionSummary)
   var projectionArtifactsJson: String? = null
   if (decision.shouldReopen) {
@@ -110,7 +109,7 @@ fun WorkflowEngine.alignSubtaskResumeStep(
         listOf(mapOf("step_id" to step.stepId, "status" to "completed", "attempt_count" to step.attemptCount))
       },
       artifactsPatch = null,
-      sessionId = record.sessionId,
+      sessionId = record.sessionId.orEmpty(),
     ),
   )
   WorkflowFamily.TASK_RUNTIME.save(unitOfWork.workflowStates, updated)
@@ -156,7 +155,7 @@ fun WorkflowEngine.persistParentDecompositionRuntime(
           encodeDecompositionManifestMap(manifest, validator, DECOMPOSITION_RUNTIME_ARTIFACT_KEY),
         )
       },
-      sessionId = parentRecord.sessionId,
+      sessionId = parentRecord.sessionId.orEmpty(),
       replaceArtifacts = true,
     ),
   )
@@ -167,8 +166,8 @@ fun WorkflowEngine.persistParentDecompositionRuntime(
 }
 
 fun DecompositionManifest.withStartedSubtask(
-  subtaskId: SubtaskId,
-  workflowId: WorkflowId,
+  subtaskId: Int,
+  workflowId: String,
   branch: String,
 ): DecompositionManifest = copy(
   status = "in_progress",
@@ -187,16 +186,16 @@ fun DecompositionManifest.withStartedSubtask(
   },
 )
 
-fun DecompositionManifest.withCommittedSubtask(subtaskId: SubtaskId, commitSha: String): DecompositionManifest =
+fun DecompositionManifest.withCommittedSubtask(subtaskId: Int, commitSha: String): DecompositionManifest =
   copy(subtasks = subtasks.map { if (it.id == subtaskId) it.copy(commitSha = commitSha) else it })
 
-fun DecompositionManifest.branchForSubtask(subtaskId: SubtaskId): String = when (executionModel) {
+fun DecompositionManifest.branchForSubtask(subtaskId: Int): String = when (executionModel) {
   DecompositionExecutionModel.SAME_BRANCH_COMMIT_PER_SUBTASK -> featureBranch.orEmpty()
   DecompositionExecutionModel.STACKED_BRANCHES ->
     stackBranches.firstOrNull { it.subtaskId == subtaskId }?.branch.orEmpty()
 }
 
-fun DecompositionManifest.baseForSubtask(subtaskId: SubtaskId): String? = when (executionModel) {
+fun DecompositionManifest.baseForSubtask(subtaskId: Int): String? = when (executionModel) {
   DecompositionExecutionModel.SAME_BRANCH_COMMIT_PER_SUBTASK -> baseBranch
   DecompositionExecutionModel.STACKED_BRANCHES ->
     stackBranches.firstOrNull { it.subtaskId == subtaskId }?.baseBranch ?: baseBranch

@@ -1,7 +1,5 @@
 package skillbill.application.featuretask
 
-import skillbill.review.model.ReviewRunId
-import skillbill.agent.model.AgentId
 import skillbill.application.diagnostics.RejectedOutputDiagnosticService
 import skillbill.application.diagnostics.model.FeatureTaskRuntimeRejectedOutputWrite
 import skillbill.application.featuretask.model.FeatureTaskRuntimePhaseLaunchBriefing
@@ -67,7 +65,7 @@ internal data class RuntimeOwnedReviewLaunch(
   val iteration: Int,
   val passNumber: Int,
   val resolvedTier: CodeReviewExecutionMode,
-  val reviewRunId: ReviewRunId,
+  val reviewRunId: String,
   val checkpoint: String,
 )
 
@@ -152,7 +150,7 @@ internal data class FixLoopBranchContext(
   val attempt: AttemptResult,
   val loop: PhaseAttemptLoopState,
   val observability: FeatureTaskRuntimeRunObservability,
-  val agentId: AgentId,
+  val agentId: String,
 )
 
 class ValidatedOutputCapture internal constructor(
@@ -171,7 +169,7 @@ class ValidatedOutputCapture internal constructor(
 
 internal data class RejectedOutputTargeting(
   val phaseId: String,
-  val agentId: AgentId,
+  val agentId: String,
   val model: String,
   val path: String,
   val repairTurn: Int,
@@ -238,7 +236,7 @@ internal data class PhaseStateRequestAttachments(
   val repairEvidence: FeatureTaskRuntimePhaseOutputRepairEvidence? = null,
   val repositoryFingerprint: String? = null,
   val launched: LaunchedModelDirective? = null,
-  val reviewRunId: ReviewRunId? = null,
+  val reviewRunId: String? = null,
 )
 
 internal data class PhaseStateRequestArgs(
@@ -250,7 +248,7 @@ internal data class PersistPhaseArgs(
   val write: PhaseStateWriteArgs,
   val fileManifest: FeatureTaskRuntimePhaseFileManifest? = null,
   val launched: LaunchedModelDirective? = null,
-  val reviewRunId: ReviewRunId? = null,
+  val reviewRunId: String? = null,
 )
 
 internal data class PhaseReviewCompletionOutcomeArgs(

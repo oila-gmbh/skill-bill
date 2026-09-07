@@ -1,16 +1,14 @@
 package skillbill.application.workflow
 
-import skillbill.workflow.engine.model.WorkflowId
 import skillbill.application.continuation.model.GoalContinuationCandidate
 import skillbill.ports.workflow.WorkflowStateRepository
 import skillbill.ports.workflow.model.toSnapshot
 import skillbill.workflow.decomposition.DecompositionManifestValidator
-import skillbill.workflow.decomposition.model.IssueKey
 
 private val GOAL_TERMINAL_MANIFEST_STATUSES: Set<String> = setOf("complete", "skipped")
 
 fun WorkflowStateRepository.goalContinuationFor(
-  issueKey: IssueKey,
+  issueKey: String,
   repositoryIdentity: String,
   validator: DecompositionManifestValidator,
 ): GoalContinuationCandidate? {
@@ -20,16 +18,15 @@ fun WorkflowStateRepository.goalContinuationFor(
   val manifest = record.toSnapshot().decompositionRuntime(validator)
     ?.takeIf { it.status !in GOAL_TERMINAL_MANIFEST_STATUSES }
     ?: return null
-  val normalizedIssueKey = issueKey.value.trim().uppercase()
-  val boundToThisRepository = findGoalChildFeatureTaskCandidates(normalizedIssueKey, repositoryIdentity).isNotEmpty() ||
-    countGoalChildIdentities(normalizedIssueKey) == 0
+  val boundToThisRepository = findGoalChildFeatureTaskCandidates(issueKey, repositoryIdentity).isNotEmpty() ||
+    countGoalChildIdentities(issueKey) == 0
   if (!boundToThisRepository) return null
   val running = record.workflowStatus == "running"
   return GoalContinuationCandidate(
     parentWorkflowId = record.workflowId,
     issueKey = manifest.issueKey,
     status = record.workflowStatus,
-    currentSubtaskId = manifest.currentSubtaskIntent.subtaskId.value.takeIf { it > 0 },
+    currentSubtaskId = manifest.currentSubtaskIntent.subtaskId.takeIf { it > 0 },
     currentAction = manifest.currentSubtaskIntent.action,
     completeCount = manifest.subtasks.count { it.status == "complete" },
     pendingCount = manifest.subtasks.count { it.status !in GOAL_TERMINAL_MANIFEST_STATUSES },

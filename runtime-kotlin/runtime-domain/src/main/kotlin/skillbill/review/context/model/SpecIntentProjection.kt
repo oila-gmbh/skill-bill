@@ -1,5 +1,4 @@
 package skillbill.review.context.model
-
 import skillbill.model.FileLocation
 
 enum class SpecIntentAbsenceReason(val wireValue: String) {

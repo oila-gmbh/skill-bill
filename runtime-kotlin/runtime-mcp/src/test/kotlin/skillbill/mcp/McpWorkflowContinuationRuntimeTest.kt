@@ -1,4 +1,6 @@
 package skillbill.mcp
+
+import skillbill.ports.workflow.gitops.model.WorkflowGitOperationStatus
 import skillbill.application.workflow.model.WorkflowFamilyKind
 import skillbill.application.workflow.model.WorkflowUpdateRequest
 import skillbill.mcp.shared.McpRuntimeContext
@@ -12,8 +14,6 @@ import skillbill.ports.workflow.gitops.model.WorkflowSelectedDiffHunksRequest
 import skillbill.ports.workflow.gitops.model.WorkflowSelectedDiffHunksResult
 import skillbill.ports.workflow.gitops.model.WorkflowWorktreeActivityResult
 import skillbill.telemetry.CONFIG_ENVIRONMENT_KEY
-import skillbill.workflow.decomposition.model.SubtaskId
-import skillbill.workflow.engine.model.SessionId
 import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.test.Test
@@ -28,7 +28,7 @@ class McpWorkflowContinuationRuntimeTest {
     val opened = McpWorkflowRuntime.open(
       McpWorkflowOpenArgs(
         kind = WorkflowFamilyKind.TASK_RUNTIME,
-        sessionId = SessionId("ftr-mcp-decomp"),
+        sessionId = "ftr-mcp-decomp",
         context = fixture.context,
       ),
     )
@@ -39,7 +39,7 @@ class McpWorkflowContinuationRuntimeTest {
       WorkflowFamilyKind.TASK_RUNTIME,
       "SKILL-51",
       fixture.context,
-      subtaskId = SubtaskId(1),
+      subtaskId = 1,
     )
 
     assertEquals("ok", continued["status"])
@@ -62,7 +62,7 @@ class McpWorkflowContinuationRuntimeTest {
     val opened = McpWorkflowRuntime.open(
       McpWorkflowOpenArgs(
         kind = WorkflowFamilyKind.TASK_RUNTIME,
-        sessionId = SessionId("ftr-mcp-decomp"),
+        sessionId = "ftr-mcp-decomp",
         context = fixture.context,
       ),
     )
@@ -150,40 +150,40 @@ private fun mcpDecompositionFixture(): McpDecompositionFixture {
 
 private object TestWorkflowGitOperations : WorkflowGitOperationsTestBase() {
   override fun checkoutBranch(repoRoot: Path, branch: String, baseBranch: String?): WorkflowGitOperationResult =
-    WorkflowGitOperationResult(status = "ok", value = branch)
+    WorkflowGitOperationResult.Ok(value = branch)
 
   override fun branchExists(repoRoot: Path, branch: String): WorkflowGitOperationResult =
-    WorkflowGitOperationResult(status = "ok", value = "true")
+    WorkflowGitOperationResult.Ok(value = "true")
 
   override fun currentBranch(repoRoot: Path): WorkflowGitOperationResult =
-    WorkflowGitOperationResult(status = "ok", value = "")
+    WorkflowGitOperationResult.Ok(value = "")
 
   override fun createCommit(repoRoot: Path, message: String): WorkflowGitOperationResult =
-    WorkflowGitOperationResult(status = "ok", value = "test-commit")
+    WorkflowGitOperationResult.Ok(value = "test-commit")
 
   override fun headCommitSha(repoRoot: Path): WorkflowGitOperationResult =
-    WorkflowGitOperationResult(status = "ok", value = "test-commit")
+    WorkflowGitOperationResult.Ok(value = "test-commit")
 
   override fun validateBranchBase(
     repoRoot: Path,
     branch: String,
     expectedBaseBranch: String,
-  ): WorkflowGitOperationResult = WorkflowGitOperationResult(status = "ok", value = expectedBaseBranch)
+  ): WorkflowGitOperationResult = WorkflowGitOperationResult.Ok(value = expectedBaseBranch)
 
   override fun worktreeStatus(repoRoot: Path): WorkflowGitOperationResult =
-    WorkflowGitOperationResult(status = "ok", value = "")
+    WorkflowGitOperationResult.Ok(value = "")
 
   override fun worktreeActivity(repoRoot: Path): WorkflowWorktreeActivityResult =
-    WorkflowWorktreeActivityResult(status = "ok")
+    WorkflowWorktreeActivityResult(status = WorkflowGitOperationStatus.OK)
 
   override fun selectedDiffHunks(
     repoRoot: Path,
     request: WorkflowSelectedDiffHunksRequest,
-  ): WorkflowSelectedDiffHunksResult = WorkflowSelectedDiffHunksResult(status = "ok")
+  ): WorkflowSelectedDiffHunksResult = WorkflowSelectedDiffHunksResult(status = WorkflowGitOperationStatus.OK)
 
   override val repositoryFingerprintOperations: RepositoryFingerprintGitOperations =
     object : RepositoryFingerprintGitOperations {
       override fun repositoryFingerprint(repoRoot: Path): WorkflowGitOperationResult =
-        WorkflowGitOperationResult(status = "ok", value = "test-repository-fingerprint")
+        WorkflowGitOperationResult.Ok(value = "test-repository-fingerprint")
     }
 }

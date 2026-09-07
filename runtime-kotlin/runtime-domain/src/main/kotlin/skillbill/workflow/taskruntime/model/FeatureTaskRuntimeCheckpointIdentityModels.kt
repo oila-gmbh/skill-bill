@@ -1,11 +1,10 @@
 package skillbill.workflow.taskruntime.model
+
 import skillbill.boundary.OpenBoundaryMap
 import skillbill.contracts.JsonCodec
 import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_CHECKPOINT_IDENTITY_CONTRACT_VERSION
 import skillbill.error.InvalidFeatureTaskRuntimeCheckpointIdentityVersionError
 import skillbill.error.InvalidWorkflowStateSchemaError
-import skillbill.workflow.decomposition.model.IssueKey
-import skillbill.workflow.decomposition.model.SubtaskId
 import skillbill.workflow.goal.model.appendBoundedHistoryBySequence
 import java.security.MessageDigest
 
@@ -46,7 +45,7 @@ private const val CHECKPOINT_REF_PREFIX: String = FEATURE_TASK_RUNTIME_CHECKPOIN
  * re-reaches the checkpoint seam names the same ref and converges on the existing record instead of
  * appending a second one.
  */
-fun featureTaskRuntimeCheckpointRefName(issueKey: IssueKey, subtaskId: SubtaskId, sequenceNumber: Int): String =
+fun featureTaskRuntimeCheckpointRefName(issueKey: String, subtaskId: String, sequenceNumber: Int): String =
   "$CHECKPOINT_REF_PREFIX/$issueKey/$subtaskId/$sequenceNumber"
 
 /**
@@ -59,8 +58,8 @@ fun featureTaskRuntimeCheckpointRefName(issueKey: IssueKey, subtaskId: SubtaskId
  */
 data class FeatureTaskRuntimeCheckpointIdentity(
   val sequenceNumber: Int,
-  val issueKey: IssueKey,
-  val subtaskId: SubtaskId,
+  val issueKey: String,
+  val subtaskId: String,
   val checkpointRef: String,
   val branch: String,
   val phaseId: String,
@@ -76,8 +75,8 @@ data class FeatureTaskRuntimeCheckpointIdentity(
     require(sequenceNumber >= 0) {
       "FeatureTaskRuntimeCheckpointIdentity.sequenceNumber must be non-negative, was $sequenceNumber."
     }
-    require(issueKey.value.isNotBlank()) { "FeatureTaskRuntimeCheckpointIdentity.issueKey must be non-blank." }
-    require(subtaskId.value.toString().matches(SUBTASK_ID_PATTERN)) {
+    require(issueKey.isNotBlank()) { "FeatureTaskRuntimeCheckpointIdentity.issueKey must be non-blank." }
+    require(subtaskId.matches(SUBTASK_ID_PATTERN)) {
       "FeatureTaskRuntimeCheckpointIdentity.subtaskId must be a positive integer or " +
         "'$FEATURE_TASK_RUNTIME_STANDALONE_SUBTASK_ID', was '$subtaskId'."
     }
@@ -115,8 +114,8 @@ data class FeatureTaskRuntimeCheckpointIdentity(
   @OpenBoundaryMap("Feature-task-runtime checkpoint-identity entry at the durable workflow-artifact seam")
   fun toArtifactMap(): Map<String, Any?> = linkedMapOf<String, Any?>(
     "sequence_number" to sequenceNumber,
-    "issue_key" to issueKey.value,
-    "subtask_id" to subtaskId.value,
+    "issue_key" to issueKey,
+    "subtask_id" to subtaskId,
     "checkpoint_ref" to checkpointRef,
     "branch" to branch,
     "phase_id" to phaseId,
@@ -167,8 +166,8 @@ data class FeatureTaskRuntimeCheckpointIdentity(
       return try {
         FeatureTaskRuntimeCheckpointIdentity(
           sequenceNumber = raw.requireIntField("sequence_number"),
-          issueKey = IssueKey(raw.requireStringField("issue_key")),
-          subtaskId = SubtaskId(raw.requireStringField("subtask_id").toInt()),
+          issueKey = raw.requireStringField("issue_key"),
+          subtaskId = raw.requireStringField("subtask_id"),
           checkpointRef = raw.requireStringField("checkpoint_ref"),
           branch = raw.requireStringField("branch"),
           phaseId = raw.requireStringField("phase_id"),

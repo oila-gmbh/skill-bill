@@ -9,17 +9,16 @@ import skillbill.goalrunner.model.GoalRunnerControlState
 import skillbill.ports.workflow.WorkflowStateRepository
 import skillbill.ports.workflow.model.FeatureTaskWorkflowMode
 import skillbill.ports.workflow.model.WorkflowFamily
-import skillbill.workflow.engine.model.WorkflowId
 
 fun workflowFamilyFor(workflowStates: WorkflowStateRepository, workflowId: String): WorkflowFamily? {
-  val featureTaskRow = workflowStates.getFeatureTaskWorkflow(WorkflowId(workflowId))
+  val featureTaskRow = workflowStates.getFeatureTaskWorkflow(workflowId)
   if (featureTaskRow != null) {
     return when (featureTaskRow.mode) {
       FeatureTaskWorkflowMode.RUNTIME -> WorkflowFamily.TASK_RUNTIME
-      FeatureTaskWorkflowMode.PROSE, null -> throw LegacyProseWorkflowError(workflowId, featureTaskRow.issueKey?.value)
+      FeatureTaskWorkflowMode.PROSE, null -> throw LegacyProseWorkflowError(workflowId, featureTaskRow.issueKey)
     }
   }
-  return if (workflowStates.getFeatureVerifyWorkflow(WorkflowId(workflowId)) != null) {
+  return if (workflowStates.getFeatureVerifyWorkflow(workflowId) != null) {
     WorkflowFamily.VERIFY
   } else {
     null

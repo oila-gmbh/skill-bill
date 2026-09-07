@@ -1,7 +1,5 @@
 package skillbill.application.goalrunner.planning
 
-import skillbill.workflow.engine.model.WorkflowId
-
 import me.tatarka.inject.annotations.Inject
 import skillbill.application.goalrunner.planning.model.GoalPlanningAttemptRecord
 import skillbill.application.runtime.RuntimeSingleton
@@ -37,7 +35,7 @@ class DurableGoalPlanningAttemptRecorder(
           workflowPhase = "goal_planning",
           processAlive = true,
           sequenceNumber = nextSequenceByWorkflow.getOrPut(attempt.parentWorkflowId) {
-            outcomeStore.ledgerSequenceWatermarks(attempt.issueKey)
+            outcomeStore.ledgerSequenceWatermarks(attempt.issueKey, attempt.dbPathOverride)
               .maxProgressSequence
               ?.plus(1)
               ?: 0
@@ -50,6 +48,7 @@ class DurableGoalPlanningAttemptRecorder(
           outcome = attempt.outcome,
         ),
       ),
+      attempt.dbPathOverride,
     )
     nextSequenceByWorkflow[attempt.parentWorkflowId] = nextSequenceByWorkflow.getValue(attempt.parentWorkflowId) + 1
   }

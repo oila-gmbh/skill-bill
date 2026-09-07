@@ -1,9 +1,9 @@
 package skillbill.application.featuretask
+
 import skillbill.application.decomposition.decodeArtifacts
 import skillbill.application.workflow.model.WorkflowFamily
 import skillbill.ports.db.DatabaseSessionFactory
 import skillbill.ports.workflow.get
-import skillbill.workflow.engine.model.WorkflowId
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_FINDING_VERIFICATION_BOUNDARY_SELECTION_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_FINDING_VERIFICATION_CHECKPOINT_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_FINDING_VERIFICATION_DISPOSITIONS_ARTIFACT_KEY
@@ -15,29 +15,33 @@ class FeatureTaskRuntimeFindingVerificationRecorder(
   private val workflowPersistence: FeatureTaskRuntimeWorkflowPersistence,
 ) : FeatureTaskRuntimePhaseFindingVerificationApi {
   override fun loadFindingVerificationCheckpoint(
-    workflowId: WorkflowId,
-  ): List<FeatureTaskRuntimeFindingVerificationDisposition>? = database.transaction { unitOfWork ->
+    workflowId: String,
+    dbOverride: String?,
+  ): List<FeatureTaskRuntimeFindingVerificationDisposition>? = database.transaction(dbOverride) { unitOfWork ->
     val record = WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, workflowId) ?: return@transaction null
     val artifacts = decodeArtifacts(record.artifactsJson)
     findingVerificationCheckpointFrom(artifacts[FEATURE_TASK_RUNTIME_FINDING_VERIFICATION_CHECKPOINT_ARTIFACT_KEY])
   }
 
   override fun loadFindingVerificationBoundarySelection(
-    workflowId: WorkflowId,
-  ): Map<String, List<FeatureTaskRuntimeVerificationBoundaryHeadingProvenance>>? = database.transaction { unitOfWork ->
-    val record = WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, workflowId) ?: return@transaction null
-    val artifacts = decodeArtifacts(record.artifactsJson)
-    findingVerificationBoundarySelectionFrom(
-      artifacts[FEATURE_TASK_RUNTIME_FINDING_VERIFICATION_BOUNDARY_SELECTION_ARTIFACT_KEY],
-    )
-  }
+    workflowId: String,
+    dbOverride: String?,
+  ): Map<String, List<FeatureTaskRuntimeVerificationBoundaryHeadingProvenance>>? =
+    database.transaction(dbOverride) { unitOfWork ->
+      val record = WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, workflowId) ?: return@transaction null
+      val artifacts = decodeArtifacts(record.artifactsJson)
+      findingVerificationBoundarySelectionFrom(
+        artifacts[FEATURE_TASK_RUNTIME_FINDING_VERIFICATION_BOUNDARY_SELECTION_ARTIFACT_KEY],
+      )
+    }
 
   override fun persistFindingVerificationBoundarySelection(
-    workflowId: WorkflowId,
+    workflowId: String,
     selections: Map<String, List<FeatureTaskRuntimeVerificationBoundaryHeadingProvenance>>,
+    dbOverride: String?,
   ): Boolean {
     if (selections.isEmpty()) return false
-    return database.transaction { unitOfWork ->
+    return database.transaction(dbOverride) { unitOfWork ->
       val record = WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, workflowId) ?: return@transaction false
       val artifacts = decodeArtifacts(record.artifactsJson)
       workflowPersistence.persistPatch(
@@ -54,19 +58,21 @@ class FeatureTaskRuntimeFindingVerificationRecorder(
   }
 
   override fun loadFindingVerificationDispositions(
-    workflowId: WorkflowId,
-  ): List<FeatureTaskRuntimeFindingVerificationDisposition>? = database.transaction { unitOfWork ->
+    workflowId: String,
+    dbOverride: String?,
+  ): List<FeatureTaskRuntimeFindingVerificationDisposition>? = database.transaction(dbOverride) { unitOfWork ->
     val record = WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, workflowId) ?: return@transaction null
     val artifacts = decodeArtifacts(record.artifactsJson)
     findingVerificationCheckpointFrom(artifacts[FEATURE_TASK_RUNTIME_FINDING_VERIFICATION_DISPOSITIONS_ARTIFACT_KEY])
   }
 
   override fun persistFindingVerificationCheckpoint(
-    workflowId: WorkflowId,
+    workflowId: String,
     dispositions: List<FeatureTaskRuntimeFindingVerificationDisposition>,
+    dbOverride: String?,
   ): Boolean {
     if (dispositions.isEmpty()) return false
-    return database.transaction { unitOfWork ->
+    return database.transaction(dbOverride) { unitOfWork ->
       val record = WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, workflowId) ?: return@transaction false
       val serialized = dispositions.map { it.toArtifactMap() }
       workflowPersistence.persistPatch(
@@ -82,8 +88,8 @@ class FeatureTaskRuntimeFindingVerificationRecorder(
     }
   }
 
-  override fun clearFindingVerificationCheckpoint(workflowId: WorkflowId): Boolean =
-    database.transaction { unitOfWork ->
+  override fun clearFindingVerificationCheckpoint(workflowId: String, dbOverride: String?): Boolean =
+    database.transaction(dbOverride) { unitOfWork ->
       val record = WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, workflowId) ?: return@transaction false
       val artifacts = decodeArtifacts(record.artifactsJson)
       if (artifacts[FEATURE_TASK_RUNTIME_FINDING_VERIFICATION_CHECKPOINT_ARTIFACT_KEY] == null) return@transaction true

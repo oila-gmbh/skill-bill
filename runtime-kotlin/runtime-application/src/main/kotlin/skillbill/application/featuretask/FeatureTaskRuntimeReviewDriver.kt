@@ -1,7 +1,5 @@
 package skillbill.application.featuretask
 
-import skillbill.review.model.ReviewRunId
-
 import skillbill.agentaddon.model.AgentAddonPromptFormatter
 import skillbill.agentaddon.model.HydratedAgentAddonSelection
 import skillbill.application.review.RuntimeOwnedReviewMode
@@ -39,7 +37,7 @@ internal data class FeatureTaskRuntimeReviewDriverAgents(
 internal data class FeatureTaskRuntimeReviewDriverPass(
   val passNumber: Int,
   val pinnedMode: CodeReviewExecutionMode,
-  val reviewRunId: ReviewRunId,
+  val reviewRunId: String,
 )
 
 internal data class FeatureTaskRuntimeReviewDriverWorkspace(
@@ -98,14 +96,14 @@ object FeatureTaskRuntimeReviewEnvelope {
 
   internal fun assemble(
     result: ParallelCodeReviewResult,
-    reviewRunId: ReviewRunId,
+    reviewRunId: String,
     cycle: FeatureTaskRuntimeReviewCycleContext,
   ): String {
     val prose = result.output.trim().ifBlank { "Review completed." }
     val findings = result.mergeResult.findings.map(::findingPayload)
     val produced = linkedMapOf<String, Any?>(
       FeatureTaskRuntimeVerificationSignalKeys.REVIEW_FINDINGS to emptyList<Any?>(),
-      FeatureTaskRuntimeVerificationSignalKeys.REVIEW_RUN_ID to reviewRunId.value,
+      FeatureTaskRuntimeVerificationSignalKeys.REVIEW_RUN_ID to reviewRunId,
       "repository_checkpoint" to mapOf("fingerprint" to cycle.repositoryFingerprint),
     )
     commitFocusedAccounting(result, cycle.resolvedTier)?.let { accounting ->
@@ -152,12 +150,12 @@ object FeatureTaskRuntimeReviewEnvelope {
     ?.let(JsonCodec::anyToStringAnyMap)
     .orEmpty()
 
-  fun mintReviewRunId(clock: Clock): ReviewRunId {
+  fun mintReviewRunId(clock: Clock): String {
     val stamp = LocalDateTime.ofInstant(clock.instant(), ZoneOffset.UTC)
       .format(DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss"))
     val alphabet = "abcdefghijklmnopqrstuvwxyz0123456789"
     val suffix = CharArray(REVIEW_RUN_ID_SUFFIX_LENGTH) { alphabet.random() }.concatToString()
-    return ReviewRunId("rvw-$stamp-$suffix")
+    return "rvw-$stamp-$suffix"
   }
 
   private fun findingPayload(finding: ParallelReviewMergedFinding): Map<String, Any?> = buildMap {

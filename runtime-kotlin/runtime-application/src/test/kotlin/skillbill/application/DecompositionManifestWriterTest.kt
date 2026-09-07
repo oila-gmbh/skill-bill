@@ -1,4 +1,5 @@
 package skillbill.application
+
 import skillbill.application.decomposition.DECOMPOSITION_RUNTIME_ARTIFACT_KEY
 import skillbill.application.decomposition.executionModel
 import skillbill.application.decomposition.loadDecompositionManifest
@@ -13,8 +14,6 @@ import skillbill.workflow.decomposition.model.DecompositionExecutionModel
 import skillbill.workflow.decomposition.model.DecompositionManifest
 import skillbill.workflow.decomposition.toWireMap
 import skillbill.workflow.engine.WorkflowEngine
-import skillbill.workflow.engine.model.SessionId
-import skillbill.workflow.engine.model.WorkflowId
 import skillbill.workflow.engine.model.WorkflowUpdateInput
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import java.nio.file.Files
@@ -114,7 +113,7 @@ class DecompositionManifestWriterTest {
       existingArtifactsJson = runtimeArtifactsJson(secondSubtaskSpec),
       artifactsPatch = mapOf("review_result" to mapOf("finding_count" to 0)),
       runtimeUpdate = DecompositionManifestRuntimeUpdate(
-        workflowId = WorkflowId("wfl-subtask-2"),
+        workflowId = "wfl-subtask-2",
         workflowStatus = "running",
         currentStepId = "audit",
         stepUpdates = listOf(mapOf("step_id" to "review", "status" to "completed", "attempt_count" to 1)),
@@ -160,7 +159,7 @@ class DecompositionManifestWriterTest {
     val completed = initial.manifest.copy(
       subtasks = initial.manifest.subtasks.map { subtask ->
         if (subtask.id == 1) {
-          subtask.copy(status = "complete", commitSha = "commit-subtask-1", workflowId = WorkflowId("wfl-subtask-1"))
+          subtask.copy(status = "complete", commitSha = "commit-subtask-1", workflowId = "wfl-subtask-1")
         } else {
           subtask
         }
@@ -172,7 +171,7 @@ class DecompositionManifestWriterTest {
       existingArtifactsJson = durableRuntimeArtifactsJson(completed, subtaskSpec),
       artifactsPatch = null,
       runtimeUpdate = DecompositionManifestRuntimeUpdate(
-        workflowId = WorkflowId("wfl-subtask-1"),
+        workflowId = "wfl-subtask-1",
         workflowStatus = "completed",
         currentStepId = "complete",
         stepUpdates = listOf(mapOf("step_id" to "complete", "status" to "completed", "attempt_count" to 1)),
@@ -240,7 +239,7 @@ class DecompositionManifestWriterTest {
       existingArtifactsJson = runtimeArtifactsJson(parentSpecPath.parent.resolve("missing-subtask.md")),
       artifactsPatch = mapOf("review_result" to mapOf("finding_count" to 0)),
       runtimeUpdate = DecompositionManifestRuntimeUpdate(
-        workflowId = WorkflowId("wfl-wrong-subtask"),
+        workflowId = "wfl-wrong-subtask",
         workflowStatus = "running",
         currentStepId = "audit",
         stepUpdates = listOf(mapOf("step_id" to "review", "status" to "completed", "attempt_count" to 1)),
@@ -274,7 +273,7 @@ class DecompositionManifestWriterTest {
       existingArtifactsJson = runtimeArtifactsJson(subtaskSpec),
       artifactsPatch = null,
       runtimeUpdate = DecompositionManifestRuntimeUpdate(
-        workflowId = WorkflowId("wfl-subtask-1"),
+        workflowId = "wfl-subtask-1",
         workflowStatus = "running",
         currentStepId = "audit",
         stepUpdates = listOf(mapOf("step_id" to "review", "status" to "skipped", "attempt_count" to 1)),
@@ -310,7 +309,7 @@ class DecompositionManifestWriterTest {
       existingArtifactsJson = durableRuntimeArtifactsJson(initial.manifest, subtaskSpec),
       artifactsPatch = mapOf("validation_result" to mapOf("passed" to true)),
       runtimeUpdate = DecompositionManifestRuntimeUpdate(
-        workflowId = WorkflowId("wfl-subtask-1"),
+        workflowId = "wfl-subtask-1",
         workflowStatus = "running",
         currentStepId = "validate",
         stepUpdates = listOf(mapOf("step_id" to "validate", "status" to "completed", "attempt_count" to 1)),
@@ -343,7 +342,7 @@ class DecompositionManifestWriterTest {
     val durable = initial.manifest.copy(
       subtasks = initial.manifest.subtasks.map { subtask ->
         if (subtask.id == 1) {
-          subtask.copy(status = "in_progress", commitSha = "abc123", workflowId = WorkflowId("wfl-subtask-1"))
+          subtask.copy(status = "in_progress", commitSha = "abc123", workflowId = "wfl-subtask-1")
         } else {
           subtask
         }
@@ -355,7 +354,7 @@ class DecompositionManifestWriterTest {
       existingArtifactsJson = durableRuntimeArtifactsJson(durable, subtaskSpec),
       artifactsPatch = mapOf("review_result" to mapOf("finding_count" to 0)),
       runtimeUpdate = DecompositionManifestRuntimeUpdate(
-        workflowId = WorkflowId("wfl-subtask-1"),
+        workflowId = "wfl-subtask-1",
         workflowStatus = "running",
         currentStepId = "audit",
         stepUpdates = listOf(mapOf("step_id" to "review", "status" to "completed", "attempt_count" to 1)),
@@ -427,7 +426,7 @@ class DecompositionManifestWriterTest {
       existingArtifactsJson = runtimeArtifactsJson(parentSpecPath.parent.resolve("spec_subtask_1_foundation.md")),
       artifactsPatch = null,
       runtimeUpdate = DecompositionManifestRuntimeUpdate(
-        workflowId = WorkflowId("wfl-subtask-1"),
+        workflowId = "wfl-subtask-1",
         workflowStatus = "running",
         currentStepId = "implement",
         stepUpdates = listOf(mapOf("step_id" to "implement", "status" to "running", "attempt_count" to 1)),
@@ -486,7 +485,7 @@ class DecompositionManifestWriterTest {
           mapOf("step_id" to "implement", "status" to "running", "attempt_count" to 1),
         ),
         artifactsPatch = mapOf("plan" to mapOf("mode" to "implement", "task_count" to 1)),
-        sessionId = SessionId("session-compat"),
+        sessionId = "session-compat",
       ),
     )
 

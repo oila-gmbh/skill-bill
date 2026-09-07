@@ -1,17 +1,16 @@
 package skillbill.workflow.taskruntime
 
 import skillbill.boundary.OpenBoundaryMap
-import skillbill.contracts.SharedPayloadKeys
 import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_CONTRACT_VERSION
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PLAN
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PREPLAN
-import skillbill.workflow.taskruntime.model.PhaseOutputStatus
 import skillbill.workflow.taskruntime.model.SettlementEnvelopeRequest
 
 object ProsePhaseOutputSynthesizer {
   private val PROSE_PHASE_IDS: Set<String> = setOf(PHASE_PREPLAN, PHASE_PLAN, PHASE_IMPLEMENT, PHASE_AUDIT)
+  private val STATUS_TOKENS: Set<String> = setOf("completed", "blocked", "failed")
   private val AUDIT_VERDICTS: Set<String> = setOf("satisfied", "gaps_found")
 
   fun isProsePhase(phaseId: String): Boolean = phaseId in PROSE_PHASE_IDS
@@ -28,6 +27,7 @@ object ProsePhaseOutputSynthesizer {
     require(isProsePhase(request.phaseId)) { "phaseId must be a prose phase, was '${request.phaseId}'." }
     require(request.value.any { !it.isWhitespace() }) { "value must be non-blank." }
     require(request.summary.any { !it.isWhitespace() }) { "summary must be non-blank." }
+    require(request.status in STATUS_TOKENS) { "status must be one of $STATUS_TOKENS." }
     return stampEnvelope(request)
   }
 
@@ -38,14 +38,12 @@ object ProsePhaseOutputSynthesizer {
     val valueAndVerdict = recoverableValueAndVerdict(parsed, phaseOutputText, phaseId) ?: return null
     return SettlementEnvelopeRequest(
       phaseId = phaseId,
-      status = PhaseOutputStatus.fromWire(status),
+      status = status,
       value = valueAndVerdict.first,
       summary = ProsePhaseOutputRecover.recoverSummary(parsed, valueAndVerdict.first),
       prompt = ProsePhaseOutputRecover.recoverPrompt(parsed),
       verdict = valueAndVerdict.second,
-      failureDisposition = if (
-        status == PhaseOutputStatus.BLOCKED.wireValue || status == PhaseOutputStatus.FAILED.wireValue
-      ) {
+      failureDisposition = if (status == "blocked" || status == "failed") {
         ProsePhaseOutputRecover.recoverFailureDisposition(parsed)
       } else {
         null
@@ -75,11 +73,11 @@ object ProsePhaseOutputSynthesizer {
       produced["prompt"] = request.prompt
     }
     val envelope = linkedMapOf<String, Any?>(
-      SharedPayloadKeys.CONTRACT_VERSION to FEATURE_TASK_RUNTIME_CONTRACT_VERSION,
-      SharedPayloadKeys.PHASE_ID to request.phaseId,
-      SharedPayloadKeys.STATUS to request.status.wireValue,
+      "contract_version" to FEATURE_TASK_RUNTIME_CONTRACT_VERSION,
+      "phase_id" to request.phaseId,
+      "status" to request.status,
       "summary" to request.summary,
-      SharedPayloadKeys.PRODUCED_OUTPUTS to produced,
+      "produced_outputs" to produced,
     )
     if (request.phaseId == PHASE_AUDIT) {
       val resolved = requireNotNull(request.verdict?.takeIf { it in AUDIT_VERDICTS }) {
@@ -87,9 +85,7 @@ object ProsePhaseOutputSynthesizer {
       }
       envelope["verdict"] = resolved
     }
-    if ((request.status == PhaseOutputStatus.BLOCKED || request.status == PhaseOutputStatus.FAILED) &&
-      !request.failureDisposition.isNullOrBlank()
-    ) {
+    if ((request.status == "blocked" || request.status == "failed") && !request.failureDisposition.isNullOrBlank()) {
       envelope["failure_disposition"] = request.failureDisposition
     }
     return envelope

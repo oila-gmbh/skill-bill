@@ -1,6 +1,6 @@
 package skillbill.application.goalrunner
 
-import skillbill.workflow.engine.model.WorkflowId
+import skillbill.ports.workflow.gitops.model.WorkflowGitOperationResult
 import me.tatarka.inject.annotations.Inject
 import skillbill.application.decomposition.resolvedParentSpecPath
 import skillbill.application.featuretask.model.FeatureTaskRuntimeCheckpointRefPruneRequest
@@ -17,12 +17,11 @@ import skillbill.goalrunner.model.UnaddressedFindingsLedger
 import skillbill.ports.goalrunner.runner.model.GoalPullRequestResult
 import skillbill.ports.goalrunner.runner.model.GoalRunnerManifestState
 import skillbill.ports.goalrunner.runner.model.GoalRunnerReconcileGate
+import skillbill.ports.workflow.gitops.model.recordsNothingToCommit
 import skillbill.ports.workflow.gitops.stagePaths
 import skillbill.workflow.decomposition.model.DecompositionExecutionModel
 import skillbill.workflow.decomposition.model.DecompositionManifest
-import skillbill.workflow.decomposition.model.IssueKey
 import skillbill.workflow.decomposition.model.SpecSource
-import skillbill.workflow.decomposition.model.SubtaskId
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import java.nio.file.Path
 
@@ -46,13 +45,13 @@ public class GoalRunnerFinalization(
     ledger: GoalRunnerLedgerRecorder,
   ): GoalRunnerRunReport {
     reconcileBeforeFinalization(state, request, ledger)
-    val finalState = manifestStore.save(state)
+    val finalState = manifestStore.save(state, request.dbPathOverride)
     commitAllRemainingWorktree(finalState.manifest, request)?.let { reason ->
       return stopped(
         StoppedReportArgs(
           issueKey = finalState.manifest.issueKey,
           attempted = attempted,
-          subtaskId = finalState.manifest.subtasks.lastOrNull()?.id ?: SubtaskId(0),
+          subtaskId = finalState.manifest.subtasks.lastOrNull()?.id ?: 0,
           reason = GoalRunnerStopReason.PULL_REQUEST_FAILED,
           blockedReason = reason,
           workflowId = null,
@@ -60,7 +59,7 @@ public class GoalRunnerFinalization(
         ),
       )
     }
-    val findingsLedger = resolveFindingsLedger(finalState.manifest.issueKey)
+    val findingsLedger = resolveFindingsLedger(finalState.manifest.issueKey, request.dbPathOverride)
     val result = pullRequestPort.open(finalState.manifest.toPullRequestRequest(request.repoRoot))
     return when (result) {
       is GoalPullRequestResult.Opened -> {
@@ -87,8 +86,7 @@ public class GoalRunnerFinalization(
         StoppedReportArgs(
           issueKey = finalState.manifest.issueKey,
           attempted = attempted,
-          subtaskId = finalState.manifest.currentSubtaskIntent.subtaskId
-            .takeIf { it != SubtaskId(0) }
+          subtaskId = finalState.manifest.currentSubtaskIntent.subtaskId.takeIf { it > 0 }
             ?: finalState.manifest.subtasks.last().id,
           reason = GoalRunnerStopReason.PULL_REQUEST_FAILED,
           blockedReason = result.reason,
@@ -101,7 +99,7 @@ public class GoalRunnerFinalization(
 
   fun deleteCompletedSubtaskSpecScratch(
     manifest: DecompositionManifest,
-    subtaskId: SubtaskId,
+    subtaskId: Int,
     request: GoalRunnerRunRequest,
   ) {
     if (manifest.specSource != SpecSource.LINEAR) return
@@ -120,7 +118,7 @@ public class GoalRunnerFinalization(
 
   fun pruneCompletedCheckpointRefs(
     completed: GoalRunnerManifestState,
-    subtaskId: SubtaskId,
+    subtaskId: Int,
     reconciled: GoalRunnerReconciledOutcome.Complete,
     request: GoalRunnerRunRequest,
     observability: GoalRunnerObservabilityEmitter,
@@ -130,7 +128,7 @@ public class GoalRunnerFinalization(
       repoRoot = request.repoRoot,
       request = FeatureTaskRuntimeCheckpointRefPruneRequest(
         issueKey = completed.manifest.issueKey,
-        subtaskId = subtaskId.value.toString(),
+        subtaskId = subtaskId.toString(),
         manifestCommitSha = reconciled.commitSha,
         featureBranch = completed.manifest.featureBranch,
       ),
@@ -158,17 +156,18 @@ fun GoalRunnerFinalization.reconcileBeforeFinalization(
     activeWorkflowIds = emptySet(),
     gate = GoalRunnerReconcileGate(requireStalenessEvidence = true),
     repoRoot = request.repoRoot,
+    dbPathOverride = request.dbPathOverride,
   )
   state.manifest.subtasks
-    .lastOrNull { subtask -> !subtask.workflowId?.value.isNullOrBlank() }
+    .lastOrNull { subtask -> !subtask.workflowId.isNullOrBlank() }
     ?.let { subtask ->
       ledger.recordLedgerEntry(
         GoalRunnerLedgerContext(
-          workflowId = requireNotNull(subtask.workflowId),
+          workflowId = subtask.workflowId,
           action = GoalAttemptLedgerAction.FINAL_RECONCILED_OUTCOME,
           issueKey = state.manifest.issueKey,
           subtaskId = subtask.id,
-          progress = subtask.workflowId?.let { progressReader.safeProgress(it) },
+          progress = subtask.workflowId?.let { progressReader.safeProgress(it, request) },
           finalReconciledResult = "goal_finalize status=${state.manifest.status}",
         ),
       )
@@ -183,7 +182,7 @@ fun GoalRunnerFinalization.commitAllRemainingWorktree(
     deleteGoalSpecScratchOnSuccess(manifest, request)
   }
   val before = gitOperations.worktreeStatus(request.repoRoot)
-  if (!before.ok) {
+  if (before !is WorkflowGitOperationResult.Ok) {
     return "Goal finalization could not verify worktree cleanliness: ${before.error}"
   }
   val dirtyPaths = parseGitPorcelainPaths(before.value.orEmpty())
@@ -226,20 +225,20 @@ fun GoalRunnerFinalization.stageCommitAndPushAll(
   implementationPaths: List<String>,
 ): String? {
   val staged = gitOperations.stagePaths(request.repoRoot, implementationPaths)
-  if (!staged.ok) {
+  if (staged !is WorkflowGitOperationResult.Ok) {
     return "Goal finalization commit-all could not stage remaining worktree changes: ${staged.error}"
   }
   val message = "chore(${manifest.issueKey}): goal finalization commit-all on '$featureBranch'"
   val commit = gitOperations.createCommit(request.repoRoot, message)
-  val createdCommit = commit.ok && commit.value.isNotBlank()
+  val createdCommit = commit is WorkflowGitOperationResult.Ok && commit.value.isNotBlank()
   if (!createdCommit) {
-    if (!commit.ok && !commit.recordsNothingToCommit()) {
+    if (commit !is WorkflowGitOperationResult.Ok && !commit.recordsNothingToCommit()) {
       return "Goal finalization commit-all could not commit remaining worktree changes: ${commit.error}"
     }
     return pushUnpushedFeatureBranchIfNeeded(featureBranch, request.repoRoot)
   }
   val pushed = gitOperations.pushBranch(request.repoRoot, featureBranch)
-  return if (pushed.ok) {
+  return if (pushed is WorkflowGitOperationResult.Ok) {
     null
   } else {
     "Goal finalization commit-all committed remaining changes but could not push " +
@@ -249,7 +248,7 @@ fun GoalRunnerFinalization.stageCommitAndPushAll(
 
 fun GoalRunnerFinalization.verifyWorktreeCleanAfterCommitAll(request: GoalRunnerRunRequest): String? {
   val after = gitOperations.worktreeStatus(request.repoRoot)
-  if (!after.ok) {
+  if (after !is WorkflowGitOperationResult.Ok) {
     return "Goal finalization could not re-verify worktree cleanliness after commit-all: ${after.error}"
   }
   val remaining = parseGitPorcelainPaths(after.value.orEmpty()).filterNot(::isFeatureSpecPath)
@@ -269,14 +268,14 @@ fun GoalRunnerFinalization.verifyWorktreeCleanAfterCommitAll(request: GoalRunner
 fun GoalRunnerFinalization.pushUnpushedFeatureBranchIfNeeded(featureBranch: String, repoRoot: Path): String? {
   if (featureBranch.isBlank()) return null
   val unpushed = gitOperations.localBranchHasUnpushedCommits(repoRoot, featureBranch)
-  if (!unpushed.ok) {
+  if (unpushed !is WorkflowGitOperationResult.Ok) {
     return "Goal finalization could not determine whether '$featureBranch' has unpushed commits: " +
       unpushed.error
   }
   if (unpushed.value.trim() != "true") return null
   return requireFeatureBranchForFinalize(featureBranch, repoRoot)
     ?: gitOperations.pushBranch(repoRoot, featureBranch)
-      .takeIf { !it.ok }
+      .takeIf { it !is WorkflowGitOperationResult.Ok }
       ?.let { "Goal finalization found unpushed commits on '$featureBranch' but could not push: ${it.error}" }
 }
 
@@ -285,7 +284,7 @@ fun GoalRunnerFinalization.requireFeatureBranchForFinalize(featureBranch: String
     return "Goal finalization commit-all refuses protected branch '$protected'."
   }
   val current = gitOperations.currentBranch(repoRoot)
-  if (!current.ok) {
+  if (current !is WorkflowGitOperationResult.Ok) {
     return "Goal finalization could not read the current branch: ${current.error}"
   }
   val currentBranch = current.value.trim()
@@ -313,10 +312,13 @@ fun GoalRunnerFinalization.deleteGoalSpecScratchOnSuccess(
     }
 }
 
-fun GoalRunnerFinalization.resolveFindingsLedger(issueKey: IssueKey): UnaddressedFindingsLedger? {
+fun GoalRunnerFinalization.resolveFindingsLedger(
+  issueKey: String,
+  dbPathOverride: String?,
+): UnaddressedFindingsLedger? {
   val service = unaddressedFindingsLedgerService ?: return null
   return try {
-    service.ledger(issueKey)
+    service.ledger(issueKey, dbPathOverride)
   } catch (_: UnaddressedFindingsLedgerAbsentError) {
     UnaddressedFindingsLedger(issueKey, emptyList())
   } catch (_: InvalidUnaddressedFindingsLedgerSchemaError) {

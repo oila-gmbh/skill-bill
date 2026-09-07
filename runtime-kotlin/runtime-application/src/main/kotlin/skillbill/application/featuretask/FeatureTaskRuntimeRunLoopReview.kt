@@ -1,11 +1,6 @@
 package skillbill.application.featuretask
 
-import skillbill.workflow.engine.model.WorkflowId
-import skillbill.workflow.decomposition.model.IssueKey
-import skillbill.agent.model.AgentId
-
-import skillbill.review.model.ReviewRunId
-
+import skillbill.ports.workflow.gitops.model.WorkflowGitOperationResult
 import skillbill.application.diagnostics.RejectedOutputDiagnosticService
 import skillbill.application.review.RuntimeOwnedReviewMode
 import skillbill.application.review.model.ParallelCodeReviewRequest
@@ -20,7 +15,6 @@ import skillbill.goalrunner.subtaskreview.model.UnaddressedFindingLedgerScope
 import skillbill.ports.diagnostics.model.ProducerOutputEvidence
 import skillbill.ports.workflow.gitops.repositoryFingerprint
 import skillbill.review.context.model.ReviewContextBudgetExceededException
-import skillbill.workflow.decomposition.model.SubtaskId
 import skillbill.workflow.goal.model.GoalSubtaskBlockerDisposition
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFailureDisposition
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutput
@@ -129,7 +123,7 @@ object FeatureTaskRuntimeRunLoopReview {
       FeatureTaskRuntimePhaseStartReentry.FIRST_VISIT,
     )
     val before = runLoop.gitOperations.worktreeStatus(run.request.repoRoot)
-    if (!before.ok) {
+    if (before !is WorkflowGitOperationResult.Ok) {
       return FeatureTaskRuntimeRunLoopPhaseAttempts.blockInPhase(
         runLoop,
         PhaseBlockRequest(
@@ -153,7 +147,7 @@ object FeatureTaskRuntimeRunLoopReview {
       )
       is ReviewDriverReady -> {
         val after = runLoop.gitOperations.worktreeStatus(run.request.repoRoot)
-        if (!after.ok) {
+        if (after !is WorkflowGitOperationResult.Ok) {
           return FeatureTaskRuntimeRunLoopPhaseAttempts.blockInPhase(
             runLoop,
             PhaseBlockRequest(
@@ -269,16 +263,16 @@ object FeatureTaskRuntimeRunLoopReview {
   }
 
   internal fun reviewBaselineUntrackedPaths(runLoop: FeatureTaskRuntimeRunLoop, run: PhaseRun): List<String> =
-    runLoop.recorder.loadResolvedBranch(run.request.workflowId)
+    runLoop.recorder.loadResolvedBranch(run.request.workflowId, run.request.dbPathOverride)
       ?.baselineUntrackedPaths
       ?.takeIf { it.isNotEmpty() }
-      ?: runLoop.goalContinuationRecorder.reviewState(run.request.workflowId)
+      ?: runLoop.goalContinuationRecorder.reviewState(run.request.workflowId, run.request.dbPathOverride)
         ?.baselineUntrackedPaths
         .orEmpty()
 
   fun failedReviewLaneReason(result: ParallelCodeReviewResult): String? {
     val parent = result.lane1
-    if (parent.agentId.value.isBlank() || parent.success) return null
+    if (parent.agentId.isBlank() || parent.success) return null
     val detail = parent.failureReason?.takeIf(String::isNotBlank) ?: "lane failed"
     return "Feature-task-runtime phase 'review' $detail"
   }
@@ -293,7 +287,7 @@ object FeatureTaskRuntimeRunLoopReview {
     val reviewRunId = args.reviewRunId
     val resolvedTier = args.resolvedTier
     if (passNumber < 2) return emptyList()
-    val prior = runLoop.recorder.fetchUnaddressedLedger(run.request.workflowId)
+    val prior = runLoop.recorder.fetchUnaddressedLedger(run.request.workflowId, run.request.dbPathOverride)
     if (prior.isEmpty()) return emptyList()
     val continuation = run.request.goalContinuation
     val envelope = FeatureTaskRuntimeReviewEnvelope.envelopeMap(
@@ -307,12 +301,12 @@ object FeatureTaskRuntimeRunLoopReview {
         ),
       ),
     )
-    val verdicts = runLoop.recorder.recordedFindingVerdicts(envelope)
+    val verdicts = runLoop.recorder.recordedFindingVerdicts(envelope, run.request.dbPathOverride)
     val current = GoalSubtaskReviewSummaryReducer.unaddressedFindings(
       output = envelope,
       scope = UnaddressedFindingLedgerScope(
         issueKey = continuation?.parentIssueKey ?: run.request.issueKey,
-        subtaskId = continuation?.subtaskId ?: SubtaskId(0),
+        subtaskId = continuation?.subtaskId ?: 0,
         workflowId = run.request.workflowId,
         reviewPassNumber = passNumber,
       ),
@@ -393,6 +387,7 @@ object FeatureTaskRuntimeRunLoopReviewDriverSettlement {
         payload = outputBytes,
         generation = runLoop.state.evidenceGeneration(run.phaseId),
       ),
+      run.request.dbPathOverride,
     )
   }
 

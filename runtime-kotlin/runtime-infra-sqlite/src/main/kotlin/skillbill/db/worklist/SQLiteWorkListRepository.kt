@@ -1,11 +1,10 @@
 package skillbill.db.worklist
+
 import skillbill.error.InvalidWorkListRowError
 import skillbill.ports.work.WorkListRepository
 import skillbill.ports.work.model.LEGACY_FEATURE_TASK_PROSE_WORKFLOW_STATUSES
 import skillbill.ports.work.model.WorkItem
 import skillbill.ports.work.model.WorkItemKind
-import skillbill.workflow.decomposition.model.IssueKey
-import skillbill.workflow.engine.model.WorkflowId
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import skillbill.workflow.verify.FeatureVerifyWorkflowDefinition
 import java.sql.Connection
@@ -106,9 +105,9 @@ private fun ResultSet.toWorkItem(): WorkItem {
     else -> invalid(workflowId, "invalid state_entered_at_estimated '$estimatedValue'")
   }
   return WorkItem(
-    issueKey = getString("issue_key")?.trim()?.takeIf(String::isNotEmpty)?.let(::IssueKey),
+    issueKey = getString("issue_key")?.trim()?.takeIf(String::isNotEmpty),
     workflowKind = kind,
-    workflowId = WorkflowId(workflowId),
+    workflowId = workflowId,
     startedAt = parseInstant(required("started_at"), workflowId, "started_at"),
     currentState = required("current_state").also { state ->
       if (state !in validWorkStates) invalid(workflowId, "unknown current state '$state'")

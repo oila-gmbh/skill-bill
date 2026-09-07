@@ -1,4 +1,5 @@
 package skillbill.application.goalrunner
+
 import skillbill.application.goalrunner.model.GoalRunnerRunRequest
 import skillbill.application.goalrunner.planning.GoalPlanningSharedContext
 import skillbill.application.goalrunner.planning.model.GoalPlanningSweepOutcome
@@ -16,9 +17,6 @@ import skillbill.ports.goalrunner.planning.model.GoalPlanningResolvedBoundaryBod
 import skillbill.ports.goalrunner.runner.model.GoalRunnerManifestState
 import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewBaseline
 import skillbill.workflow.decomposition.model.DecompositionSubtask
-import skillbill.workflow.decomposition.model.IssueKey
-import skillbill.workflow.decomposition.model.SubtaskId
-import skillbill.workflow.engine.model.WorkflowId
 import skillbill.workflow.goal.model.GoalProgressEventKind
 import skillbill.workflow.goal.model.GoalProgressOutcome
 
@@ -42,10 +40,10 @@ internal data class BlockedSelectionIterationArgs(
 )
 
 internal data class SubtaskLaunchRequestArgs(
-  val issueKey: IssueKey,
-  val subtaskId: SubtaskId,
+  val issueKey: String,
+  val subtaskId: Int,
   val request: GoalRunnerRunRequest,
-  val assignedWorkflowId: WorkflowId?,
+  val assignedWorkflowId: String?,
   val reviewBaseline: GoalSubtaskReviewBaseline?,
   val spawnAuthorization: AgentRunSpawnAuthorization?,
 )
@@ -63,7 +61,7 @@ internal data class RunSelectedSubtaskArgs(
 
 internal data class DispatchWorkerResultArgs(
   val state: GoalRunnerManifestState,
-  val subtaskId: SubtaskId,
+  val subtaskId: Int,
   val reconciled: GoalRunnerReconciledOutcome,
   val workerRequestResult: GoalRunnerWorkerRequestHandlingResult,
   val launchReconciliation: GoalRunnerLaunchReconciliation,
@@ -76,7 +74,7 @@ internal data class DispatchWorkerResultArgs(
 
 internal data class RecordPostLaunchStateArgs(
   val refreshed: GoalRunnerManifestState,
-  val subtaskId: SubtaskId,
+  val subtaskId: Int,
   val selection: GoalRunnerSelection.Run,
   val reconciliation: GoalRunnerLaunchReconciliation,
   val request: GoalRunnerRunRequest,
@@ -88,26 +86,26 @@ internal data class RecordPostLaunchStateArgs(
 
 internal data class LaunchSubtaskWithWorkerResultArgs(
   val state: GoalRunnerManifestState,
-  val subtaskId: SubtaskId,
+  val subtaskId: Int,
   val request: GoalRunnerRunRequest,
-  val assignedWorkflowId: WorkflowId?,
+  val assignedWorkflowId: String?,
   val reviewBaseline: GoalSubtaskReviewBaseline,
   val spawnAuthorization: AgentRunSpawnAuthorization?,
 )
 
 internal data class LaunchAndReconcileSubtaskArgs(
   val state: GoalRunnerManifestState,
-  val subtaskId: SubtaskId,
+  val subtaskId: Int,
   val request: GoalRunnerRunRequest,
-  val assignedWorkflowId: WorkflowId?,
+  val assignedWorkflowId: String?,
   val reviewBaseline: GoalSubtaskReviewBaseline,
   val spawnAuthorization: AgentRunSpawnAuthorization?,
 )
 
 internal data class RecordStoppedLedgerEntriesArgs(
-  val workflowId: WorkflowId,
+  val workflowId: String,
   val state: GoalRunnerManifestState,
-  val subtaskId: SubtaskId,
+  val subtaskId: Int,
   val stoppedOutcome: GoalRunnerReconciledOutcome.Stop,
   val reconciled: GoalRunnerReconciledOutcome.Stop,
   val launchDiagnostics: GoalRunnerLaunchDiagnostics?,
@@ -118,7 +116,7 @@ internal data class RecordStoppedLedgerEntriesArgs(
 
 internal data class RecordCompletedSubtaskArgs(
   val completed: GoalRunnerManifestState,
-  val subtaskId: SubtaskId,
+  val subtaskId: Int,
   val reconciled: GoalRunnerReconciledOutcome.Complete,
   val request: GoalRunnerRunRequest,
   val observability: GoalRunnerObservabilityEmitter,
@@ -127,12 +125,12 @@ internal data class RecordCompletedSubtaskArgs(
 )
 
 internal data class StoppedReportArgs(
-  val issueKey: IssueKey,
+  val issueKey: String,
   val attempted: List<Int>,
-  val subtaskId: SubtaskId,
+  val subtaskId: Int,
   val reason: GoalRunnerStopReason,
   val blockedReason: String,
-  val workflowId: WorkflowId?,
+  val workflowId: String?,
   val lastResumableStep: String,
 )
 
@@ -168,7 +166,7 @@ internal data class EmptyOrStoppedArgs(
 internal data class BuildDeclaredGoalProgressEventArgs(
   val sourceLabel: String,
   val eventKind: GoalProgressEventKind,
-  val workflowId: WorkflowId,
+  val workflowId: String,
   val workflowPhase: String,
   val sequenceNumber: Int,
   val timestamp: String,

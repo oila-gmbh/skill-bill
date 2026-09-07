@@ -9,17 +9,17 @@ import skillbill.application.workflow.model.WorkflowServiceOpenFeatureTaskArgs
 import skillbill.application.workflow.model.WorkflowUpdateRequest
 import skillbill.application.workflow.model.WorkflowUpdateResult
 import skillbill.contracts.JsonCodec
+import skillbill.contracts.issuekey.normalizeIssueKey
 import skillbill.goalrunner.GoalObservabilityArtifacts
 import skillbill.ports.workflow.get
 import skillbill.ports.workflow.gitops.WorkflowGitOperations
+import skillbill.ports.workflow.gitops.model.WorkflowGitOperationStatus
 import skillbill.ports.workflow.saveRecord
 import skillbill.ports.workflow.toRecord
 import skillbill.workflow.engine.RUNTIME_REPOSITORY_EVIDENCE_ARTIFACT_KEY
 import skillbill.workflow.engine.WorkflowEngine
-import skillbill.workflow.engine.model.SessionId
 import skillbill.workflow.engine.model.WorkflowContinueDecision
 import skillbill.workflow.engine.model.WorkflowDefinition
-import skillbill.workflow.engine.model.WorkflowId
 import skillbill.workflow.engine.model.WorkflowSnapshotView
 import skillbill.workflow.engine.model.WorkflowStateSnapshot
 import skillbill.workflow.engine.model.WorkflowUpdateInput
@@ -40,7 +40,7 @@ fun incompleteFeatureTaskIdentityError(args: WorkflowServiceOpenArgs): WorkflowO
   )
   return if (hasIncompleteIdentity) {
     WorkflowOpenResult.Error(
-      workflowId = WorkflowId("unassigned"),
+      workflowId = "unassigned",
       error = INCOMPLETE_FEATURE_TASK_IDENTITY_ERROR,
     )
   } else {
@@ -49,7 +49,7 @@ fun incompleteFeatureTaskIdentityError(args: WorkflowServiceOpenArgs): WorkflowO
 }
 
 fun persistOpenedWorkflow(args: PersistOpenedWorkflowArgs): WorkflowOpenResult =
-  args.database.transaction { unitOfWork ->
+  args.database.transaction(args.dbOverride) { unitOfWork ->
     val engine = args.engine
     val family = args.family
     val workflowId = args.workflowId
@@ -64,7 +64,7 @@ fun persistOpenedWorkflow(args: PersistOpenedWorkflowArgs): WorkflowOpenResult =
       unitOfWork.workflowStates,
       record.toRecord().copy(
         startedAt = null,
-        issueKey = args.issueKey,
+        issueKey = normalizeIssueKey(args.issueKey),
       ),
     )
     args.executionIdentity?.let(unitOfWork.workflowStates::saveFeatureTaskExecutionIdentity)
@@ -87,12 +87,10 @@ fun persistOpenedWorkflow(args: PersistOpenedWorkflowArgs): WorkflowOpenResult =
   }
 
 val resolveEffectiveSessionId =
-  { kind: WorkflowFamilyKind, sessionId: SessionId, definition: WorkflowDefinition, workflowId: WorkflowId ->
-    SessionId(
-      sessionId.value.ifBlank {
-        if (kind == WorkflowFamilyKind.TASK_RUNTIME) "${definition.defaultSessionPrefix}-$workflowId" else ""
-      },
-    )
+  { kind: WorkflowFamilyKind, sessionId: String, definition: WorkflowDefinition, workflowId: String ->
+    sessionId.ifBlank {
+      if (kind == WorkflowFamilyKind.TASK_RUNTIME) "${definition.defaultSessionPrefix}-$workflowId" else ""
+    }
   }
 
 fun WorkflowUpdateRequest.toWorkflowUpdateInput(): WorkflowUpdateInput = WorkflowUpdateInput(
@@ -103,7 +101,7 @@ fun WorkflowUpdateRequest.toWorkflowUpdateInput(): WorkflowUpdateInput = Workflo
   sessionId = sessionId,
 )
 
-fun WorkflowContinueDecision.toReopenInput(sessionId: SessionId): WorkflowUpdateInput = WorkflowUpdateInput(
+fun WorkflowContinueDecision.toReopenInput(sessionId: String): WorkflowUpdateInput = WorkflowUpdateInput(
   workflowStatus = "running",
   currentStepId = resumeStepId,
   stepUpdates =
@@ -120,7 +118,7 @@ fun WorkflowContinueDecision.toReopenInput(sessionId: SessionId): WorkflowUpdate
 
 fun WorkflowUpdateInput.withGoalObservabilityArtifacts(
   existing: WorkflowStateSnapshot,
-  workflowId: WorkflowId,
+  workflowId: String,
   validator: GoalObservabilityEventValidator,
   gitOperations: WorkflowGitOperations,
   repoRoot: Path,
@@ -141,7 +139,7 @@ fun WorkflowUpdateInput.withGoalObservabilityArtifacts(
         workflowStatus = workflowStatus,
         currentStepId = currentStepId,
         worktreeActivity = gitOperations.worktreeActivity(repoRoot.normalize())
-          .takeIf { activity -> activity.ok }
+          .takeIf { activity -> activity.status == WorkflowGitOperationStatus.OK }
           ?.let { activity ->
             GoalObservabilityWorktreeActivity(
               changedFileSummary = activity.changedFileSummary,
@@ -204,6 +202,7 @@ fun WorkflowService.openFeatureTask(args: WorkflowServiceOpenFeatureTaskArgs): W
       kind = args.kind,
       sessionId = args.sessionId,
       currentStepId = args.currentStepId,
+      dbOverride = args.dbOverride,
       issueKey = args.issueKey,
       repositoryIdentity = args.repositoryIdentity,
       governedSpecPath = args.governedSpecPath,
@@ -212,14 +211,12 @@ fun WorkflowService.openFeatureTask(args: WorkflowServiceOpenFeatureTaskArgs): W
   )
 }
 
-fun generateWorkflowId(prefix: String): WorkflowId {
+fun generateWorkflowId(prefix: String): String {
   val now = OffsetDateTime.now(ZoneOffset.UTC)
   val suffix = (1..WORKFLOW_ID_SUFFIX_LENGTH).map { SUFFIX_CHARS[Random.nextInt(SUFFIX_CHARS.length)] }
     .joinToString("")
-  return WorkflowId(
-    "$prefix-${now.year}${now.monthValue.twoDigits()}${now.dayOfMonth.twoDigits()}-" +
-      "${now.hour.twoDigits()}${now.minute.twoDigits()}${now.second.twoDigits()}-$suffix",
-  )
+  return "$prefix-${now.year}${now.monthValue.twoDigits()}${now.dayOfMonth.twoDigits()}-" +
+    "${now.hour.twoDigits()}${now.minute.twoDigits()}${now.second.twoDigits()}-$suffix"
 }
 
 private fun Int.twoDigits(): String = toString().padStart(2, '0')

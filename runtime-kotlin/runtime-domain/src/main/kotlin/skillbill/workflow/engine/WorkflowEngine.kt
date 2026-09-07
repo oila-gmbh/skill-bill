@@ -1,9 +1,7 @@
 package skillbill.workflow.engine
 
-import skillbill.workflow.engine.model.SessionId
 import skillbill.workflow.engine.model.WorkflowContinueDecision
 import skillbill.workflow.engine.model.WorkflowDefinition
-import skillbill.workflow.engine.model.WorkflowId
 import skillbill.workflow.engine.model.WorkflowInputProjection
 import skillbill.workflow.engine.model.WorkflowResumeView
 import skillbill.workflow.engine.model.WorkflowSnapshotView
@@ -22,13 +20,13 @@ class WorkflowEngine(
 ) {
   fun openRecord(
     definition: WorkflowDefinition,
-    workflowId: WorkflowId,
-    sessionId: SessionId,
+    workflowId: String,
+    sessionId: String,
     currentStepId: String,
   ): WorkflowStateSnapshot {
     val snapshot = WorkflowStateSnapshot(
       workflowId = workflowId,
-      sessionId = sessionId,
+      sessionId = sessionId.trim(),
       workflowName = definition.workflowName,
       contractVersion = definition.contractVersion,
       workflowStatus = "running",
@@ -58,8 +56,7 @@ class WorkflowEngine(
     input.artifactsPatch?.let { patch -> mergedArtifacts.putAll(patch) }
     val terminal = input.workflowStatus in definition.terminalStatuses
     val updated = existing.copy(
-      sessionId = input.sessionId.value.ifBlank { existing.sessionId.value }
-        .let(::SessionId),
+      sessionId = input.sessionId.trim().ifBlank { existing.sessionId.orEmpty() },
       workflowStatus = input.workflowStatus,
       currentStepId = input.currentStepId.trim().ifBlank { existing.currentStepId.orEmpty() },
       stepsJson = jsonString(mergeStepUpdates(definition, decodeSteps(existing.stepsJson), input.stepUpdates)),
@@ -79,7 +76,7 @@ class WorkflowEngine(
     schemaValidator.validate(record, definition.workflowName)
     return WorkflowSummaryView(
       workflowId = record.workflowId,
-      sessionId = record.sessionId,
+      sessionId = record.sessionId.orEmpty(),
       workflowName = record.workflowName,
       mode = record.mode,
       contractVersion = record.contractVersion,

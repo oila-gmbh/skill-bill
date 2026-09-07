@@ -1,6 +1,6 @@
 package skillbill.review
+
 import skillbill.review.model.ReviewEvidenceBoundaryAccounting
-import skillbill.review.model.ReviewRunId
 import skillbill.review.model.ReviewStageDegradationMeasurement
 import skillbill.review.model.ReviewStageDegradationReason
 import skillbill.review.model.ReviewStageDegradationSelectionRequest
@@ -133,7 +133,7 @@ class ReviewStageDegradationSelectionTest {
     vararg accounting: ReviewEvidenceBoundaryAccounting,
   ): List<ReviewStageDegradationMeasurement> = ReviewStageDegradationSelection.select(
     ReviewStageDegradationSelectionRequest(
-      reviewRunId = ReviewRunId("rvw-195"),
+      reviewRunId = "rvw-195",
       spec = null,
       boundaries = emptyList(),
       verdicts = emptyList(),

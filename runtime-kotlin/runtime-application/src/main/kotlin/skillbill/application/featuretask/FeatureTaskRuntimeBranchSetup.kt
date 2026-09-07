@@ -1,7 +1,7 @@
 package skillbill.application.featuretask
+
 import skillbill.application.decomposition.defaultFeatureBranch
 import skillbill.contracts.issuekey.issueAndFeature
-import skillbill.workflow.decomposition.model.IssueKey
 import skillbill.workflow.gitops.ProtectedBranches
 import java.nio.file.Path
 
@@ -28,7 +28,7 @@ object FeatureTaskRuntimeBranchSetup {
    * [issueKey] is validated against the parsed issue key rather than mixed into the branch name, so a
    * caller-supplied key can never produce a branch that diverges from `defaultFeatureBranch`.
    */
-  internal fun targetBranch(issueKey: IssueKey, specReference: String): FeatureTaskRuntimeTargetBranch {
+  internal fun targetBranch(issueKey: String, specReference: String): FeatureTaskRuntimeTargetBranch {
     val parentName = Path.of(specReference).parent?.fileName?.toString().orEmpty()
     if (parentName.isBlank()) {
       return FeatureTaskRuntimeTargetBranch.invalid(
@@ -58,7 +58,7 @@ object FeatureTaskRuntimeBranchSetup {
    *   returns an invalid decision so the runner can block loudly.
    */
   internal fun decide(
-    issueKey: IssueKey,
+    issueKey: String,
     specReference: String,
     currentBranch: String,
   ): FeatureTaskRuntimeBranchDecision {

@@ -2,7 +2,6 @@
 package skillbill.infrastructure.fs
 
 import me.tatarka.inject.annotations.Inject
-import skillbill.agent.model.AgentId
 import skillbill.error.MissingInstalledNativeAgentError
 import skillbill.install.nativeagent.NativeAgentLinkInventory
 import skillbill.install.nativeagent.NativeAgentLinkInventoryEntry
@@ -32,7 +31,7 @@ class FileSystemReviewNativeAgentPreflight(
       val logicalName = assignment.logicalName
       val provider = provider(agentId) ?: throw MissingInstalledNativeAgentError(
         logicalName,
-        agentId.value,
+        agentId,
         environment.userHome.toString(),
         "provider does not support native-agent selection",
         REPAIR_COMMAND,
@@ -101,7 +100,7 @@ class FileSystemReviewNativeAgentPreflight(
     }
   }
 
-  private fun provider(agentId: AgentId): NativeAgentProvider? = when (agentId.value) {
+  private fun provider(agentId: String): NativeAgentProvider? = when (agentId) {
     "claude" -> NativeAgentProvider.Claude
     "codex" -> NativeAgentProvider.Codex
     "junie" -> NativeAgentProvider.Junie

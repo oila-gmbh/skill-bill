@@ -1,4 +1,5 @@
 package skillbill.db.workflow
+
 import kotlinx.serialization.SerializationException
 import kotlinx.serialization.json.JsonElement
 import skillbill.agentaddon.model.AgentAddonSelection
@@ -8,7 +9,6 @@ import skillbill.error.InvalidWorkflowStateSchemaError
 import skillbill.ports.goalrunner.runner.model.GoalRunnerOutOfBandAcceptance
 import skillbill.ports.goalrunner.runner.model.GoalRunnerReviewPolicy
 import skillbill.review.context.model.CodeReviewExecutionMode
-import skillbill.workflow.decomposition.model.SubtaskId
 import kotlin.coroutines.cancellation.CancellationException
 
 internal fun decodeReviewPolicy(raw: String): GoalRunnerReviewPolicy {
@@ -66,12 +66,12 @@ private fun decodeAcceptanceEntry(value: Any?): Pair<Int, GoalRunnerOutOfBandAcc
   val entry = JsonCodec.anyToStringAnyMap(value)
     ?: goalRunnerControlSchemaError("acceptance durable record entries must be maps.")
   val acceptance = GoalRunnerOutOfBandAcceptance(
-    subtaskId = SubtaskId(requireAcceptanceInt(entry, "subtask_id")),
+    subtaskId = requireAcceptanceInt(entry, "subtask_id"),
     commitSha = requireAcceptanceString(entry, "commit_sha"),
     reason = requireAcceptanceString(entry, "reason"),
     acceptedAt = requireAcceptanceString(entry, "accepted_at"),
   )
-  return acceptance.subtaskId.value to acceptance
+  return acceptance.subtaskId to acceptance
 }
 
 private fun requireAcceptanceInt(entry: Map<String, Any?>, key: String): Int = (entry[key] as? Number)?.toInt()

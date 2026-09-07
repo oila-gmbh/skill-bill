@@ -1,5 +1,4 @@
 package skillbill.launcher.process
-
 import skillbill.goalrunner.model.GoalRunnerLivenessClassifier
 import skillbill.goalrunner.model.GoalRunnerLivenessDecision
 import skillbill.goalrunner.model.GoalRunnerLivenessInputs
@@ -7,7 +6,6 @@ import skillbill.goalrunner.model.GoalRunnerLivenessState
 import skillbill.ports.agentrun.model.AgentRunDeclaredProgressSnapshot
 import skillbill.ports.agentrun.model.AgentRunLivenessSnapshot
 import skillbill.ports.agentrun.model.AgentRunProgressEmission
-import skillbill.workflow.engine.model.WorkflowId
 import skillbill.workflow.goal.model.GoalProgressEvent
 import skillbill.workflow.goal.model.GoalProgressEventKind
 import skillbill.workflow.goal.model.GoalProgressOutcome
@@ -16,7 +14,6 @@ import java.time.Clock
 import java.time.Instant
 import java.util.concurrent.TimeUnit
 import kotlin.time.DurationUnit
-
 internal fun writeAndCloseStdin(process: Process, stdinText: String?) {
   runCatching {
     process.outputStream.use { output ->
@@ -130,7 +127,7 @@ internal class ProcessWaitLoop(
       phase = phase,
       reason = reason,
       processState = processState,
-      workflowId = declared?.workflowId ?: parsedWorkflowId?.let(::WorkflowId),
+      workflowId = declared?.workflowId ?: parsedWorkflowId,
       workflowStep = declared?.let { it.stepId ?: it.workflowPhase } ?: parsedWorkflowStep,
       lastDurableProgressAt = declared?.timestamp ?: lastProgressInstant?.toIsoUtc(),
       lastDurableProgressLabel = lastProgressLabel?.takeIf(String::isNotBlank),

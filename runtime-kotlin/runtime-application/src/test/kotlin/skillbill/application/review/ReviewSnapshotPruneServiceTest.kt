@@ -57,14 +57,17 @@ class ReviewSnapshotPruneServiceTest {
   }
 
   private object StubSessionFactory : DatabaseSessionFactory {
-    override fun resolveDbPath(): Path = Path.of("/home/u/.skill-bill/review-metrics.db")
+    override fun resolveDbPath(dbOverride: String?): Path = Path.of("/home/u/.skill-bill/review-metrics.db")
 
-    override fun databaseExists(): Boolean = true
+    override fun databaseExists(dbOverride: String?): Boolean = true
 
-    override fun <T> read(block: (UnitOfWork) -> T): T = error("Pruning must not open the database.")
+    override fun <T> read(dbOverride: String?, block: (UnitOfWork) -> T): T =
+      error("Pruning must not open the database.")
 
-    override fun <T> transaction(block: (UnitOfWork) -> T): T = error("Pruning must not open the database.")
+    override fun <T> transaction(dbOverride: String?, block: (UnitOfWork) -> T): T =
+      error("Pruning must not open the database.")
 
-    override fun <T> selfManagedWrite(block: (UnitOfWork) -> T): T = error("Pruning must not open the database.")
+    override fun <T> selfManagedWrite(dbOverride: String?, block: (UnitOfWork) -> T): T =
+      error("Pruning must not open the database.")
   }
 }

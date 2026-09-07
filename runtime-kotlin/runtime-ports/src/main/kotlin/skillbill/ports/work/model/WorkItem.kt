@@ -1,7 +1,5 @@
 package skillbill.ports.work.model
 
-import skillbill.workflow.decomposition.model.IssueKey
-import skillbill.workflow.engine.model.WorkflowId
 import java.time.Instant
 
 enum class WorkItemKind(val wireValue: String) {
@@ -23,9 +21,9 @@ val LEGACY_FEATURE_TASK_PROSE_WORKFLOW_STATUSES: Set<String> =
   setOf("pending", "running", "completed", "failed", "abandoned", "blocked", "paused")
 
 data class WorkItem(
-  val issueKey: IssueKey?,
+  val issueKey: String?,
   val workflowKind: WorkItemKind,
-  val workflowId: WorkflowId,
+  val workflowId: String,
   val startedAt: Instant,
   val currentState: String,
   val stateEnteredAt: Instant,

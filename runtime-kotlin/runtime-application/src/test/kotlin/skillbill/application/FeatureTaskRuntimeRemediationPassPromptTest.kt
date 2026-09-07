@@ -1,9 +1,9 @@
 
 package skillbill.application
+
 import skillbill.application.featuretask.FeatureTaskRuntimePhaseBriefingAssembler
 import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewInput
 import skillbill.review.context.model.CodeReviewExecutionMode
-import skillbill.workflow.decomposition.model.IssueKey
 import skillbill.workflow.taskruntime.FeatureTaskRuntimeHandoffContract
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowQueries
@@ -163,7 +163,7 @@ class FeatureTaskRuntimeRemediationPassPromptTest {
       planningProjectionValidator = realPlanningProjectionValidator,
     )
     val prompt = composePhasePrompt(
-      issueKey = IssueKey("SKILL-142"),
+      issueKey = "SKILL-142",
       briefing = briefing,
     )
 
@@ -216,7 +216,7 @@ class FeatureTaskRuntimeRemediationPassPromptTest {
       planningProjectionValidator = realPlanningProjectionValidator,
     )
     val prompt = composePhasePrompt(
-      issueKey = IssueKey("SKILL-178"),
+      issueKey = "SKILL-178",
       briefing = briefing,
     )
 
@@ -271,7 +271,7 @@ class FeatureTaskRuntimeRemediationPassPromptTest {
       planningProjectionValidator = realPlanningProjectionValidator,
     )
     return composePhasePrompt(
-      issueKey = IssueKey("SKILL-142"),
+      issueKey = "SKILL-142",
       briefing = briefing,
     )
   }
@@ -282,7 +282,7 @@ class FeatureTaskRuntimeRemediationPassPromptTest {
     reviewInput: GoalSubtaskReviewInput? = null,
     baselineUntrackedPaths: List<String> = emptyList(),
   ): String = composePhasePrompt(
-    issueKey = IssueKey("SKILL-142"),
+    issueKey = "SKILL-142",
     briefing = reviewBriefing(),
   ) {
     copy(

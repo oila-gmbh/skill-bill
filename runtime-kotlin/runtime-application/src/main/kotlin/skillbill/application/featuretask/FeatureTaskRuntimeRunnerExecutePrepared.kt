@@ -1,7 +1,5 @@
 package skillbill.application.featuretask
 
-import skillbill.agent.model.AgentId
-
 import skillbill.application.featuretask.model.FeatureTaskRuntimeCrashReconciliationResult
 import skillbill.application.featuretask.model.FeatureTaskRuntimeFinishedTelemetryContext
 import skillbill.application.featuretask.model.FeatureTaskRuntimeRunReport
@@ -20,7 +18,7 @@ fun FeatureTaskRuntimeRunner.buildExecutePreparedRunTelemetryContext(
 ) = FeatureTaskRuntimeFinishedTelemetryContext(
   telemetrySessionId = telemetrySessionId,
   phaseOutcomes = {
-    recorder.loadPhaseRecords(runRequest.workflowId)
+    recorder.loadPhaseRecords(runRequest.workflowId, runRequest.dbPathOverride)
       .orEmpty()
       .mapValues { (_, record) -> record.status }
   },
@@ -29,6 +27,7 @@ fun FeatureTaskRuntimeRunner.buildExecutePreparedRunTelemetryContext(
   auditRepairProgress = { loadAuditRepairProgress(runRequest) },
   regenerationTelemetry = { loadRegenerationTelemetry(runRequest) },
   findingVerificationTelemetry = { loadFindingVerificationTelemetry(runRequest) },
+  dbOverride = runRequest.dbPathOverride,
   phaseTokenData = { serializeTokenData(phaseTokenAccumulator) },
   crashReconciliation = { reconciliation },
 )
@@ -47,6 +46,7 @@ fun FeatureTaskRuntimeRunner.driveExecutePreparedRunLoop(
         workflowId = runRequest.workflowId,
         gitOperations = phaseGates.gitOperations,
         repoRoot = runRequest.repoRoot,
+        dbOverride = runRequest.dbPathOverride,
       )
     ) {
       is RemediationBaseBlocked ->
@@ -55,11 +55,11 @@ fun FeatureTaskRuntimeRunner.driveExecutePreparedRunLoop(
     }
   }
   val state = FeatureTaskRuntimeRunState(
-    recorder.loadPhaseRecords(runRequest.workflowId).orEmpty(),
+    recorder.loadPhaseRecords(runRequest.workflowId, runRequest.dbPathOverride).orEmpty(),
     transitions,
-    recorder.loadPhaseLedger(runRequest.workflowId).orEmpty(),
+    recorder.loadPhaseLedger(runRequest.workflowId, runRequest.dbPathOverride).orEmpty(),
     outputValidator,
-    recorder.reconcileReviewGeneration(runRequest.workflowId),
+    recorder.reconcileReviewGeneration(runRequest.workflowId, runRequest.dbPathOverride),
   )
   val loop = FeatureTaskRuntimeRunLoop(
     recorder = recorder,

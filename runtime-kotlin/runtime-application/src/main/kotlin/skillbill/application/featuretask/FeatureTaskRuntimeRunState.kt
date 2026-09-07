@@ -1,7 +1,5 @@
 package skillbill.application.featuretask
 
-import skillbill.agent.model.AgentId
-
 import skillbill.error.InvalidFeatureTaskRuntimePhaseOutputSchemaError
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseOutputValidator
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
@@ -373,7 +371,7 @@ val NON_OUTPUT_LEDGER_ACTIONS = setOf(
   FeatureTaskRuntimePhaseLedgerAction.PAUSED,
 )
 
-val REVIEW_INVALIDATION_AGENT_ID = AgentId("audit-gate-migration")
+const val REVIEW_INVALIDATION_AGENT_ID: String = "audit-gate-migration"
 
 internal data class InFlightReentry(
   val destinationPhaseId: String,

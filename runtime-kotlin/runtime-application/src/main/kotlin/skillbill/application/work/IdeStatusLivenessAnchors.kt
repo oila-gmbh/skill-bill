@@ -33,7 +33,7 @@ class IdeStatusLivenessAnchors(
 
   private fun latestGoalChildUpdatedAt(item: WorkItem, family: IdeStatusWorkflowFamily): Instant? {
     if (family != IdeStatusWorkflowFamily.FEATURE_GOAL) return null
-    val issueKey = item.issueKey?.toString()?.trim()?.uppercase()?.takeIf { it.isNotEmpty() } ?: return null
+    val issueKey = item.issueKey?.trim()?.uppercase()?.takeIf { it.isNotEmpty() } ?: return null
     return unitOfWork.workflowStates
       .findGoalChildFeatureTaskCandidates(issueKey, repositoryIdentity)
       .mapNotNull { parseInstantOrNull(it.workflow.updatedAt) }

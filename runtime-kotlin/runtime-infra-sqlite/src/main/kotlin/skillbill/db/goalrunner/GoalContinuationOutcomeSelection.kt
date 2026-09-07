@@ -1,5 +1,4 @@
 package skillbill.db.goalrunner
-
 import skillbill.boundary.OpenBoundaryMap
 import skillbill.contracts.JsonCodec
 import skillbill.goalrunner.asGoalRunnerIntOrNull
@@ -39,7 +38,7 @@ fun staleRunningReason(
       "subtask $subtaskId because a terminal outcome was already durable."
   } else {
     "Goal status reconciliation closed stale running child '$staleWorkflowId' for issue '$issueKey' " +
-      "subtask $subtaskId in favor of authoritative ${outcome.status.name.lowercase()} workflow " +
+      "subtask $subtaskId in favor of authoritative ${outcome.status.wireValue} workflow " +
       "'${outcome.workflowId}'."
   }
 } ?: (
@@ -87,15 +86,7 @@ fun Map<String, Any?>.toMissingResultPrefixOutcomeArtifact(
     ?.let { put("blocked_reason", it) }
 }
 
-fun GoalRunnerTerminalStatus.toGoalContinuationWireStatus(): String = when (this) {
-  GoalRunnerTerminalStatus.COMPLETE -> "complete"
-  GoalRunnerTerminalStatus.FAILED -> "failed"
-  GoalRunnerTerminalStatus.BLOCKED -> "blocked"
-  GoalRunnerTerminalStatus.TIMEOUT -> "timeout"
-  GoalRunnerTerminalStatus.NO_TERMINAL_STORE_OUTCOME -> "no_terminal_store_outcome"
-  GoalRunnerTerminalStatus.RECONCILABLE -> "reconcilable"
-  GoalRunnerTerminalStatus.PAUSED -> "paused"
-}
+fun GoalRunnerTerminalStatus.toGoalContinuationWireStatus(): String = wireValue
 
 @OpenBoundaryMap("Bounded history sequence scan over durable workflow artifacts")
 fun maxHistorySequence(artifacts: Map<String, Any?>, historyKey: String, current: Int?): Int? {

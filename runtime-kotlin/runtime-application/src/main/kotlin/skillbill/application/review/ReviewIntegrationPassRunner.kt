@@ -1,7 +1,5 @@
 package skillbill.application.review
 
-import skillbill.agent.model.AgentId
-
 import skillbill.application.review.model.ReviewIntegrationPassRunRequest
 import skillbill.application.review.model.ReviewLaneIntegrationInput
 import skillbill.ports.agentrun.model.AgentRunLaunchFacts

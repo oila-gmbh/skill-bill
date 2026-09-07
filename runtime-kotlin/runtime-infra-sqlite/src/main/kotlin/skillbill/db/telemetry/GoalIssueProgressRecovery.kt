@@ -30,7 +30,7 @@ private fun loadRecoveredGoalSegments(
   ORDER BY datetime(started_at), workflow_id
   """.trimIndent(),
 ).use { statement ->
-  statement.bind(record.issueKey.value, record.parentWorkflowId.value, record.parentWorkflowId.value)
+  statement.bind(record.issueKey, record.parentWorkflowId, record.parentWorkflowId)
   statement.executeQuery().use { resultSet ->
     buildList {
       while (resultSet.next()) {
@@ -67,7 +67,7 @@ private fun persistRecoveredGoalProgress(
     val latestBlocked = history.filter { it.status == "blocked" }
       .maxWithOrNull(compareBy<RecoveredGoalSegment> { it.startedAt }.thenBy { it.workflowId })
     statement.bind(
-      record.parentWorkflowId.value,
+      record.parentWorkflowId,
       record.issueKey,
       history.size,
       history.count { it.status == "blocked" },

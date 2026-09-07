@@ -1,6 +1,6 @@
 package skillbill.application.workflow
 
-import skillbill.workflow.decomposition.model.IssueKey
+import skillbill.ports.workflow.gitops.model.WorkflowGitOperationResult
 import me.tatarka.inject.annotations.Inject
 import skillbill.application.decomposition.DecompositionManifestWriteGuard
 import skillbill.application.decomposition.DecompositionManifestWriter
@@ -33,10 +33,8 @@ import skillbill.ports.workflow.model.FeatureTaskWorkflowMode
 import skillbill.ports.workflow.model.toSnapshot
 import skillbill.ports.workflow.save
 import skillbill.workflow.decomposition.DecompositionManifestValidator
-import skillbill.workflow.decomposition.model.SubtaskId
 import skillbill.workflow.engine.WorkflowEngine
 import skillbill.workflow.engine.WorkflowSnapshotValidator
-import skillbill.workflow.engine.model.WorkflowId
 import skillbill.workflow.goal.GoalObservabilityEventValidator
 
 @Inject
@@ -53,7 +51,7 @@ class WorkflowService(
 
   private val engine: WorkflowEngine = WorkflowEngine(workflowSnapshotValidator) {
     val resolved = gitOperations.repositoryFingerprint(repositoryRoot.path)
-    check(resolved.ok) { resolved.error }
+    check(resolved is WorkflowGitOperationResult.Ok) { resolved.error }
     resolved.value.orEmpty()
   }
   private val featureTaskAbandon = WorkflowServiceFeatureTaskAbandon(engine)
@@ -98,6 +96,7 @@ class WorkflowService(
         workflowId = workflowId,
         effectiveSessionId = effectiveSessionId,
         stepId = stepId,
+        dbOverride = args.dbOverride,
         issueKey = args.issueKey,
         executionIdentity = executionIdentity,
         engine = engine,
@@ -106,14 +105,18 @@ class WorkflowService(
     )
   }
 
-  fun update(kind: WorkflowFamilyKind, request: WorkflowUpdateRequest): WorkflowUpdateResult {
+  fun update(
+    kind: WorkflowFamilyKind,
+    request: WorkflowUpdateRequest,
+    dbOverride: String? = null,
+  ): WorkflowUpdateResult {
     val family = kind.workflowFamily()
     val input = request.toWorkflowUpdateInput()
     WorkflowEngine.validateUpdate(family.definition, input)?.let { error ->
       return WorkflowUpdateResult.Error(request.workflowId, error)
     }
     var projectionArtifactsJson: String? = null
-    val result = database.transaction { unitOfWork ->
+    val result = database.transaction(dbOverride) { unitOfWork ->
       val existing = family.get(unitOfWork.workflowStates, request.workflowId)
         ?: return@transaction WorkflowUpdateResult.Error(
           request.workflowId,
@@ -166,7 +169,7 @@ class WorkflowService(
     return result
   }
 
-  fun abandonFeatureTaskRuntime(workflowId: WorkflowId, reason: String): WorkflowUpdateResult {
+  fun abandonFeatureTaskRuntime(workflowId: String, reason: String, dbOverride: String? = null): WorkflowUpdateResult {
     val normalizedReason = reason.trim()
     if (normalizedReason.isEmpty() || normalizedReason.length > MAX_ABANDONMENT_REASON_LENGTH) {
       return WorkflowUpdateResult.Error(
@@ -174,7 +177,7 @@ class WorkflowService(
         "Abandonment reason must contain 1..$MAX_ABANDONMENT_REASON_LENGTH characters.",
       )
     }
-    return database.transaction { unitOfWork ->
+    return database.transaction(dbOverride) { unitOfWork ->
       val existingRecord = unitOfWork.workflowStates.getFeatureTaskWorkflow(workflowId)
         ?: return@transaction WorkflowUpdateResult.Error(
           workflowId,
@@ -197,10 +200,11 @@ class WorkflowService(
   }
 
   fun retryBlockedFeatureTaskRuntimePhase(
-    workflowId: WorkflowId,
+    workflowId: String,
     phaseId: String,
     reason: String,
-  ): WorkflowUpdateResult = blockedPhaseRetry.retry(database, workflowId, phaseId, reason)
+    dbOverride: String? = null,
+  ): WorkflowUpdateResult = blockedPhaseRetry.retry(database, workflowId, phaseId, reason, dbOverride)
 
   fun repairFeatureTaskRuntimeIdentity(args: RepairFeatureTaskRuntimeIdentityArgs): WorkflowUpdateResult {
     val workflowId = args.workflowId
@@ -212,7 +216,7 @@ class WorkflowService(
       )
     }
     val normalizedIssueKey = requireNotNull(normalizeIssueKey(args.issueKey)).uppercase()
-    return database.transaction { unitOfWork ->
+    return database.transaction(args.dbOverride) { unitOfWork ->
       featureTaskIdentityRepair.repair(
         FeatureTaskIdentityRepairArgs(
           unitOfWork = unitOfWork,
@@ -226,23 +230,24 @@ class WorkflowService(
     }
   }
 
-  fun get(kind: WorkflowFamilyKind, workflowId: WorkflowId): WorkflowGetResult = database.read { unitOfWork ->
-    val family = kind.workflowFamily()
-    val record = family.get(unitOfWork.workflowStates, workflowId)
-      ?: return@read WorkflowGetResult.Error(
-        workflowId,
-        "Unknown workflow_id '$workflowId'.",
-        unitOfWork.dbPath.toString(),
+  fun get(kind: WorkflowFamilyKind, workflowId: String, dbOverride: String? = null): WorkflowGetResult =
+    database.read(dbOverride) { unitOfWork ->
+      val family = kind.workflowFamily()
+      val record = family.get(unitOfWork.workflowStates, workflowId)
+        ?: return@read WorkflowGetResult.Error(
+          workflowId,
+          "Unknown workflow_id '$workflowId'.",
+          unitOfWork.dbPath.toString(),
+        )
+      WorkflowGetResult.Ok(
+        workflowId = record.workflowId,
+        dbPath = unitOfWork.dbPath.toString(),
+        snapshot = engine.snapshotView(family.definition, record),
       )
-    WorkflowGetResult.Ok(
-      workflowId = record.workflowId,
-      dbPath = unitOfWork.dbPath.toString(),
-      snapshot = engine.snapshotView(family.definition, record),
-    )
-  }
+    }
 
-  fun list(kind: WorkflowFamilyKind, limit: Int = DEFAULT_LIST_LIMIT): WorkflowListResult =
-    database.read { unitOfWork ->
+  fun list(kind: WorkflowFamilyKind, limit: Int = DEFAULT_LIST_LIMIT, dbOverride: String? = null): WorkflowListResult =
+    database.read(dbOverride) { unitOfWork ->
       val family = kind.workflowFamily()
       val rows = family.list(unitOfWork.workflowStates, limit)
       WorkflowListResult(
@@ -252,41 +257,44 @@ class WorkflowService(
       )
     }
 
-  fun latest(kind: WorkflowFamilyKind): WorkflowLatestResult = database.read { unitOfWork ->
-    val family = kind.workflowFamily()
-    val record = family.latest(unitOfWork.workflowStates)
-      ?: return@read WorkflowLatestResult.Error(
+  fun latest(kind: WorkflowFamilyKind, dbOverride: String? = null): WorkflowLatestResult =
+    database.read(dbOverride) { unitOfWork ->
+      val family = kind.workflowFamily()
+      val record = family.latest(unitOfWork.workflowStates)
+        ?: return@read WorkflowLatestResult.Error(
+          dbPath = unitOfWork.dbPath.toString(),
+          error = "No ${family.humanName} workflows found.",
+        )
+      WorkflowLatestResult.Ok(
         dbPath = unitOfWork.dbPath.toString(),
-        error = "No ${family.humanName} workflows found.",
+        summary = engine.summaryView(family.definition, record),
       )
-    WorkflowLatestResult.Ok(
-      dbPath = unitOfWork.dbPath.toString(),
-      summary = engine.summaryView(family.definition, record),
-    )
-  }
+    }
 
-  fun resume(kind: WorkflowFamilyKind, workflowId: WorkflowId): WorkflowResumeResult = database.read { unitOfWork ->
-    val family = kind.workflowFamily()
-    val record = family.get(unitOfWork.workflowStates, workflowId)
-      ?: return@read WorkflowResumeResult.Error(
-        workflowId,
-        "Unknown workflow_id '$workflowId'.",
-        unitOfWork.dbPath.toString(),
+  fun resume(kind: WorkflowFamilyKind, workflowId: String, dbOverride: String? = null): WorkflowResumeResult =
+    database.read(dbOverride) { unitOfWork ->
+      val family = kind.workflowFamily()
+      val record = family.get(unitOfWork.workflowStates, workflowId)
+        ?: return@read WorkflowResumeResult.Error(
+          workflowId,
+          "Unknown workflow_id '$workflowId'.",
+          unitOfWork.dbPath.toString(),
+        )
+      WorkflowResumeResult.Ok(
+        workflowId = record.workflowId,
+        dbPath = unitOfWork.dbPath.toString(),
+        resume = engine.resumeView(family.definition, record),
       )
-    WorkflowResumeResult.Ok(
-      workflowId = record.workflowId,
-      dbPath = unitOfWork.dbPath.toString(),
-      resume = engine.resumeView(family.definition, record),
-    )
-  }
+    }
 
   fun continueWorkflow(
     kind: WorkflowFamilyKind,
-    workflowId: WorkflowId,
-    subtaskId: SubtaskId? = null,
+    workflowId: String,
+    subtaskId: Int? = null,
+    dbOverride: String? = null,
   ): WorkflowContinueResult {
     var projectionArtifactsJson: String? = null
-    val result = database.transaction { unitOfWork ->
+    val result = database.transaction(dbOverride) { unitOfWork ->
       val family = kind.workflowFamily()
       var record = family.get(unitOfWork.workflowStates, workflowId)
       if (record == null && family == WorkflowFamily.TASK_RUNTIME) {

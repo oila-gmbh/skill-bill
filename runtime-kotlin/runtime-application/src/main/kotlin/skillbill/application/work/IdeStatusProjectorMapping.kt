@@ -1,6 +1,5 @@
 package skillbill.application.work
 
-import skillbill.workflow.engine.model.WorkflowId
 import skillbill.application.featuretask.model.FeatureTaskRuntimeOperatorDecisionPause
 import skillbill.application.featuretask.model.FeatureTaskRuntimePhaseStatus
 import skillbill.application.idestatus.model.IdeStatusCurrentModel
@@ -12,7 +11,6 @@ import skillbill.application.idestatus.model.IdeStatusWorkflowFamily
 import skillbill.goalrunner.model.GoalPlanningStatusSnapshot
 import skillbill.goalrunner.model.GoalRunnerStatusProjection
 import skillbill.ports.work.model.WorkItemKind
-import skillbill.workflow.decomposition.model.IssueKey
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_STATUS_COMPLETED
 import java.time.Instant
 import java.time.LocalDateTime
@@ -26,7 +24,7 @@ internal fun goalCurrentSubtask(
   context: IdeStatusProjectionContext,
 ): IdeStatusCurrentSubtask? = projection?.currentSubtaskId?.takeIf { it > 0 }?.let { subtaskId ->
   IdeStatusCurrentSubtask(
-    id = subtaskId.value.toString(),
+    id = subtaskId.toString(),
     startedAt = projection.currentChildWorkflowId?.takeIf(String::isNotBlank)?.let { workflowId ->
       context.unitOfWork.workList.list(limit = null)
         .firstOrNull { it.workflowId == workflowId }
@@ -80,7 +78,7 @@ internal fun IdeStatusLifecycleState.isSettled(): Boolean = this == IdeStatusLif
   this == IdeStatusLifecycleState.FAILED ||
   this == IdeStatusLifecycleState.TERMINAL
 
-internal fun goalPlanningSummary(issueKey: IssueKey, planning: IdeStatusPlanning): String {
+internal fun goalPlanningSummary(issueKey: String, planning: IdeStatusPlanning): String {
   val concurrent = planning.planningWaveSubtaskIds.size
   val wave = when (concurrent) {
     0 -> ""
@@ -92,7 +90,7 @@ internal fun goalPlanningSummary(issueKey: IssueKey, planning: IdeStatusPlanning
 }
 
 internal fun goalSummary(
-  issueKey: IssueKey,
+  issueKey: String,
   lifecycle: IdeStatusLifecycleState,
   stepLabel: String,
   blockedCount: Int,
@@ -115,7 +113,7 @@ internal fun goalSummary(
 
 internal fun familySummary(
   family: IdeStatusWorkflowFamily,
-  issueKey: IssueKey?,
+  issueKey: String?,
   lifecycle: IdeStatusLifecycleState,
   stepLabel: String,
 ): String {

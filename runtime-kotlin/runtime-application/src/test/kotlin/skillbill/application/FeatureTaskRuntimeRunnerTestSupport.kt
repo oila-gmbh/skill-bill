@@ -1,4 +1,6 @@
 package skillbill.application
+
+import skillbill.ports.workflow.gitops.model.WorkflowGitOperationStatus
 import skillbill.application.featurespec.FeatureSpecPreparationRuntime
 import skillbill.application.featurespec.FeatureSpecPreparationWriter
 import skillbill.application.featuretask.AcceptingFeatureTaskRuntimeHandoffEnvelopeValidator
@@ -155,11 +157,7 @@ import skillbill.scaffold.model.ValidationGateExecutedWorkSignal
 import skillbill.scaffold.model.ValidationGateFindingsFormat.JUNIT_XML
 import skillbill.scaffold.model.ValidationGateFindingsLocator
 import skillbill.telemetry.model.TelemetrySettings
-import skillbill.workflow.decomposition.model.IssueKey
-import skillbill.workflow.decomposition.model.SubtaskId
 import skillbill.workflow.engine.WorkflowSnapshotValidator
-import skillbill.workflow.engine.model.SessionId
-import skillbill.workflow.engine.model.WorkflowId
 import skillbill.workflow.engine.model.WorkflowStateSnapshot
 import skillbill.workflow.goal.model.GOAL_SUBTASK_REVIEW_RESULTS_ARTIFACT_KEY
 import skillbill.workflow.goal.model.GOAL_SUBTASK_REVIEW_STATE_ARTIFACT_KEY
@@ -261,7 +259,7 @@ internal val ALL_PHASES =
 internal val COMPLETED_PHASES_CLEAN_RUN = ALL_PHASES.filterNot { it == "implement_fix" || it == "build" }
 internal val AGENT_LAUNCHED_PHASES = ALL_PHASES.filterNot { it == "review" || it == "implement_fix" || it == "build" }
 internal fun expiredCrashedOwnership(): FeatureTaskRuntimeWorkerOwnership = FeatureTaskRuntimeWorkerOwnership(
-  workflowId = WorkflowId(WORKFLOW_ID),
+  workflowId = WORKFLOW_ID,
   generation = 1,
   ownerToken = "crashed-child-token",
   hostIdentity = "harness-host",
@@ -375,7 +373,7 @@ internal class RunnerHarness(
     recorder.ensureWorkflowOpen(WORKFLOW_ID, SESSION_ID)
     recorder.recordPhaseState(
       FeatureTaskRuntimePhaseStateRequest(
-        workflowId = WorkflowId(WORKFLOW_ID),
+        workflowId = WORKFLOW_ID,
         phaseId = "review",
         status = status,
         attemptCount = attemptCount,
@@ -428,8 +426,8 @@ internal class RunnerHarness(
   fun seedProseModeWorkflow() {
     repository.saveFeatureTaskWorkflow(
       WorkflowStateRecord(
-        workflowId = WorkflowId(WORKFLOW_ID),
-        sessionId = SessionId(SESSION_ID),
+        workflowId = WORKFLOW_ID,
+        sessionId = SESSION_ID,
         workflowName = "bill-feature-task",
         contractVersion = "0.1",
         workflowStatus = "running",
@@ -466,7 +464,7 @@ internal class RunnerHarness(
     recorder.ensureWorkflowOpen(WORKFLOW_ID, SESSION_ID)
     recorder.recordPhaseState(
       FeatureTaskRuntimePhaseStateRequest(
-        workflowId = WorkflowId(WORKFLOW_ID),
+        workflowId = WORKFLOW_ID,
         phaseId = phaseId,
         status = "blocked",
         attemptCount = attemptCount,
@@ -483,7 +481,7 @@ internal class RunnerHarness(
     recorder.ensureWorkflowOpen(WORKFLOW_ID, SESSION_ID)
     recorder.recordPhaseState(
       FeatureTaskRuntimePhaseStateRequest(
-        workflowId = WorkflowId(WORKFLOW_ID),
+        workflowId = WORKFLOW_ID,
         phaseId = seed.phaseId,
         status = seed.status,
         attemptCount = seed.attemptCount,
@@ -500,7 +498,7 @@ internal class RunnerHarness(
     recorder.ensureWorkflowOpen(WORKFLOW_ID, SESSION_ID)
     recorder.appendLedgerEntry(
       FeatureTaskRuntimePhaseLedgerRequest(
-        workflowId = WorkflowId(WORKFLOW_ID),
+        workflowId = WORKFLOW_ID,
         action = FeatureTaskRuntimePhaseLedgerAction.LOOP_EDGE,
         phaseId = phaseId,
         attemptCount = edgeIteration,
@@ -514,7 +512,7 @@ internal class RunnerHarness(
     recorder.ensureWorkflowOpen(WORKFLOW_ID, SESSION_ID)
     recorder.recordPhaseState(
       FeatureTaskRuntimePhaseStateRequest(
-        workflowId = WorkflowId(WORKFLOW_ID),
+        workflowId = WORKFLOW_ID,
         phaseId = phaseId,
         status = "blocked",
         attemptCount = 1,
@@ -706,9 +704,9 @@ private fun runnerHarnessRequest(
   agentAssignment: FeatureTaskRuntimeAgentAssignment,
   sink: FeatureTaskRuntimeRunEventSink,
 ): FeatureTaskRuntimeRunRequest = FeatureTaskRuntimeRunRequest(
-  issueKey = IssueKey(ISSUE_KEY),
-  workflowId = WorkflowId(WORKFLOW_ID),
-  sessionId = SessionId(SESSION_ID),
+  issueKey = ISSUE_KEY,
+  workflowId = WORKFLOW_ID,
+  sessionId = SESSION_ID,
   runInvariants = FeatureTaskRuntimeRunInvariants(
     specReference = runtimeConfig.branchSetup.specReference,
     featureSize = runtimeConfig.branchSetup.featureSize,
@@ -913,9 +911,9 @@ internal class TelemetryRunnerHarness(
 
 private fun telemetryHarnessRequest(runtimeConfig: RuntimeHarnessConfig): FeatureTaskRuntimeRunRequest =
   FeatureTaskRuntimeRunRequest(
-    issueKey = IssueKey(ISSUE_KEY),
-    workflowId = WorkflowId(WORKFLOW_ID),
-    sessionId = SessionId(SESSION_ID),
+    issueKey = ISSUE_KEY,
+    workflowId = WORKFLOW_ID,
+    sessionId = SESSION_ID,
     runInvariants = FeatureTaskRuntimeRunInvariants(
       specReference = runtimeConfig.branchSetup.specReference,
       featureSize = runtimeConfig.branchSetup.featureSize,
@@ -1457,7 +1455,7 @@ internal fun goalContinuationHarness(
     repoRoot = repoRoot,
     goalContinuation = FeatureTaskRuntimeGoalContinuationContext(
       parentIssueKey = ISSUE_KEY,
-      subtaskId = SubtaskId(5),
+      subtaskId = 5,
       goalBranch = "feat/existing-runtime-branch",
       suppressPr = true,
       parentWorkflowId = "wfl-parent",
@@ -1736,8 +1734,8 @@ internal class RecordingWorkflowGitOperations(
 
   override fun checkoutBranch(repoRoot: Path, branch: String, baseBranch: String?): WorkflowGitOperationResult {
     checkoutCalls += CheckoutCall(branch, baseBranch)
-    val result = checkoutResult ?: WorkflowGitOperationResult(status = "ok", value = branch)
-    if (result.ok) {
+    val result = checkoutResult ?: WorkflowGitOperationResult.Ok(value = branch)
+    if (result is WorkflowGitOperationResult.Ok) {
       currentBranchValue = landedBranchAfterCheckout ?: branch
     }
     return result
@@ -1747,23 +1745,23 @@ internal class RecordingWorkflowGitOperations(
     branchExistsCalls += branch
     branchExistsResult?.let { return it }
     val exists = existingBranches?.contains(branch.trim()) ?: true
-    return WorkflowGitOperationResult(status = "ok", value = exists.toString())
+    return WorkflowGitOperationResult.Ok(value = exists.toString())
   }
 
   override fun currentBranch(repoRoot: Path): WorkflowGitOperationResult {
     currentBranchCalls++
-    return currentBranchResult ?: WorkflowGitOperationResult(status = "ok", value = currentBranchValue)
+    return currentBranchResult ?: WorkflowGitOperationResult.Ok(value = currentBranchValue)
   }
   override fun createCommit(repoRoot: Path, message: String): WorkflowGitOperationResult {
     createCommitMessages += message
     if (invalidShaOnRemediationCommit && message.contains("remediation checkpoint")) {
       val bogus = "not-a-valid-commit-sha"
       headCommitShaValue = bogus
-      return WorkflowGitOperationResult(status = "ok", value = bogus)
+      return WorkflowGitOperationResult.Ok(value = bogus)
     }
     val result = createCommitResult
-      ?: WorkflowGitOperationResult(status = "ok", value = createCommitMessages.size.toString(16).padStart(40, '0'))
-    if (result.ok && result.value.isNotBlank()) {
+      ?: WorkflowGitOperationResult.Ok(value = createCommitMessages.size.toString(16).padStart(40, '0'))
+    if (result is WorkflowGitOperationResult.Ok && result.value.isNotBlank()) {
       headCommitShaValue = result.value.trim()
       headCommitMessageValue = message
     }
@@ -1771,7 +1769,7 @@ internal class RecordingWorkflowGitOperations(
   }
 
   override fun localBranchHasUnpushedCommits(repoRoot: Path, branch: String): WorkflowGitOperationResult =
-    WorkflowGitOperationResult(status = "ok", value = localBranchHasUnpushedCommitsValue.toString())
+    WorkflowGitOperationResult.Ok(value = localBranchHasUnpushedCommitsValue.toString())
 
   override val checkpointHistoryOperations: CheckpointHistoryGitOperations =
     object : CheckpointHistoryGitOperations {
@@ -1783,8 +1781,7 @@ internal class RecordingWorkflowGitOperations(
       ): WorkflowGitOperationResult {
         amendHeadCommitResult?.let { return it }
         if (expectedOwnedHeadSha.trim() != headCommitShaValue.trim()) {
-          return WorkflowGitOperationResult(
-            status = "error",
+          return WorkflowGitOperationResult.Failed(
             error = "HEAD is '$headCommitShaValue' but the caller owns '$expectedOwnedHeadSha'.",
           )
         }
@@ -1794,16 +1791,16 @@ internal class RecordingWorkflowGitOperations(
             createCommitMessages += message
             val bogus = "not-a-valid-commit-sha"
             headCommitShaValue = bogus
-            return WorkflowGitOperationResult(status = "ok", value = bogus)
+            return WorkflowGitOperationResult.Ok(value = bogus)
           }
         }
         headCommitShaValue = "a${amendCommitMessages.size.toString(16)}".padStart(40, '0')
         headCommitMessageValue = replacementMessage ?: headCommitMessageValue
-        return WorkflowGitOperationResult(status = "ok", value = headCommitShaValue)
+        return WorkflowGitOperationResult.Ok(value = headCommitShaValue)
       }
 
       override fun headCommitMessage(repoRoot: Path): WorkflowGitOperationResult =
-        WorkflowGitOperationResult(status = "ok", value = headCommitMessageValue)
+        WorkflowGitOperationResult.Ok(value = headCommitMessageValue)
 
       override fun updateRef(
         repoRoot: Path,
@@ -1814,30 +1811,29 @@ internal class RecordingWorkflowGitOperations(
         updateCheckpointRefCalls += refName to targetSha
         updateCheckpointRefResult?.let { return it }
         checkpointRefs[refName] = targetSha
-        return WorkflowGitOperationResult(status = "ok", value = refName)
+        return WorkflowGitOperationResult.Ok(value = refName)
       }
 
       override fun resolveRef(repoRoot: Path, namespacePrefix: String, refName: String): WorkflowGitOperationResult =
         onResolveCheckpointRef?.invoke(refName)
           ?: resolveCheckpointRefResult
-          ?: WorkflowGitOperationResult(status = "ok", value = checkpointRefs[refName].orEmpty())
+          ?: WorkflowGitOperationResult.Ok(value = checkpointRefs[refName].orEmpty())
 
       override fun listRefs(repoRoot: Path, namespacePrefix: String): WorkflowGitOperationResult =
-        WorkflowGitOperationResult(
-          status = "ok",
+        WorkflowGitOperationResult.Ok(
           value = checkpointRefs.entries.joinToString("") { (ref, sha) -> "$sha\u0000$ref\u0000" },
         )
 
       override fun deleteRef(repoRoot: Path, namespacePrefix: String, refName: String): WorkflowGitOperationResult {
         checkpointRefs.remove(refName)
-        return WorkflowGitOperationResult(status = "ok", value = refName)
+        return WorkflowGitOperationResult.Ok(value = refName)
       }
     }
 
   override fun resetSoftToCommit(repoRoot: Path, commitSha: String): WorkflowGitOperationResult {
     resetSoftToCommitCalls += commitSha.trim()
-    val result = resetSoftToCommitResult ?: WorkflowGitOperationResult(status = "ok", value = commitSha.trim())
-    if (result.ok) {
+    val result = resetSoftToCommitResult ?: WorkflowGitOperationResult.Ok(value = commitSha.trim())
+    if (result is WorkflowGitOperationResult.Ok) {
       headCommitShaValue = commitSha.trim()
     }
     return result
@@ -1851,17 +1847,17 @@ internal class RecordingWorkflowGitOperations(
     val ancestor = ancestorSha.trim()
     val descendant = descendantSha.trim()
     if (ancestor.isBlank() || descendant.isBlank()) {
-      return WorkflowGitOperationResult(status = "error", error = "Ancestor and descendant required.")
+      return WorkflowGitOperationResult.Failed(error = "Ancestor and descendant required.")
     }
     val reachable = ancestor == descendant || (ancestor to descendant) !in nonAncestorPairs
-    return WorkflowGitOperationResult(status = "ok", value = if (reachable) "true" else "false")
+    return WorkflowGitOperationResult.Ok(value = if (reachable) "true" else "false")
   }
 
   var headCommitShaCalls: Int = 0
 
   override fun headCommitSha(repoRoot: Path): WorkflowGitOperationResult {
     headCommitShaCalls++
-    return headCommitShaResult ?: WorkflowGitOperationResult(status = "ok", value = headCommitShaValue)
+    return headCommitShaResult ?: WorkflowGitOperationResult.Ok(value = headCommitShaValue)
   }
 
   val pushedBranches: MutableList<String> = mutableListOf()
@@ -1870,32 +1866,29 @@ internal class RecordingWorkflowGitOperations(
 
   override fun pushBranch(repoRoot: Path, branch: String): WorkflowGitOperationResult {
     pushedBranches += branch
-    return pushBranchResult ?: WorkflowGitOperationResult(status = "ok", value = branch)
+    return pushBranchResult ?: WorkflowGitOperationResult.Ok(value = branch)
   }
 
   override fun pushBranchWithLease(repoRoot: Path, branch: String): WorkflowGitOperationResult {
     leasePushedBranches += branch
-    return pushBranchResult ?: WorkflowGitOperationResult(status = "ok", value = branch)
+    return pushBranchResult ?: WorkflowGitOperationResult.Ok(value = branch)
   }
 
   override fun resolveCommit(repoRoot: Path, revision: String): WorkflowGitOperationResult =
     onResolveCommit?.invoke(revision)
       ?: if (revision.startsWith("origin/")) {
-        WorkflowGitOperationResult(
-          status = "error",
+        WorkflowGitOperationResult.Failed(
           error = "Revision '$revision' does not name a commit in this repository.",
         )
       } else {
-        WorkflowGitOperationResult(
-          status = "ok",
+        WorkflowGitOperationResult.Ok(
           value = revision.takeIf { it.matches(Regex("^[0-9a-fA-F]{40,64}$")) } ?: COMMITTED_HEAD_SHA,
         )
       }
 
   override val runtimePhaseFileManifestOperations: RuntimePhaseFileManifestGitOperations =
     object : RuntimePhaseFileManifestGitOperations {
-      override fun headCommit(repoRoot: Path): WorkflowGitOperationResult = WorkflowGitOperationResult(
-        status = "ok",
+      override fun headCommit(repoRoot: Path): WorkflowGitOperationResult = WorkflowGitOperationResult.Ok(
         value = runtimePhaseHeadCommitSequence.removeFirstOrNull().orEmpty(),
       )
 
@@ -1903,8 +1896,7 @@ internal class RecordingWorkflowGitOperations(
         repoRoot: Path,
         beforeCommit: String,
         afterCommit: String,
-      ): WorkflowGitOperationResult = WorkflowGitOperationResult(
-        status = "ok",
+      ): WorkflowGitOperationResult = WorkflowGitOperationResult.Ok(
         value = if (beforeCommit == afterCommit) "" else changedPathsBetweenCommitsValue,
       )
     }
@@ -1913,11 +1905,10 @@ internal class RecordingWorkflowGitOperations(
     repoRoot: Path,
     branch: String,
     expectedBaseBranch: String,
-  ): WorkflowGitOperationResult = WorkflowGitOperationResult(status = "ok", value = expectedBaseBranch)
+  ): WorkflowGitOperationResult = WorkflowGitOperationResult.Ok(value = expectedBaseBranch)
 
   override fun worktreeStatus(repoRoot: Path): WorkflowGitOperationResult =
-    worktreeStatusResult ?: WorkflowGitOperationResult(
-      status = "ok",
+    worktreeStatusResult ?: WorkflowGitOperationResult.Ok(
       value = worktreeStatusSequence.removeFirstOrNull() ?: worktreeStatusValue,
     )
 
@@ -1925,11 +1916,11 @@ internal class RecordingWorkflowGitOperations(
     object : ScopedStagingGitOperations {
       override fun stagePaths(repoRoot: Path, paths: List<String>): WorkflowGitOperationResult {
         stagePathsCalls += paths
-        return stagePathsResult ?: WorkflowGitOperationResult(status = "ok", value = "")
+        return stagePathsResult ?: WorkflowGitOperationResult.Ok(value = "")
       }
 
       override fun captureIndexState(repoRoot: Path, paths: List<String>): WorkflowGitOperationResult =
-        captureIndexStateResult ?: WorkflowGitOperationResult(status = "ok", value = indexSnapshotValue)
+        captureIndexStateResult ?: WorkflowGitOperationResult.Ok(value = indexSnapshotValue)
 
       override fun restoreIndexState(
         repoRoot: Path,
@@ -1937,20 +1928,18 @@ internal class RecordingWorkflowGitOperations(
         snapshot: String,
       ): WorkflowGitOperationResult {
         restoreIndexStateCalls += snapshot
-        return restoreIndexStateResult ?: WorkflowGitOperationResult(status = "ok", value = "")
+        return restoreIndexStateResult ?: WorkflowGitOperationResult.Ok(value = "")
       }
 
       override fun stagedPaths(repoRoot: Path): WorkflowGitOperationResult {
         onStagedPathsRead?.invoke()
-        return stagedPathsResult ?: WorkflowGitOperationResult(
-          status = "ok",
+        return stagedPathsResult ?: WorkflowGitOperationResult.Ok(
           value = stagedPathsValue.joinToString(separator = "") { "$it\u0000" },
         )
       }
 
       override fun pathContentIdentities(repoRoot: Path, paths: List<String>): WorkflowGitOperationResult =
-        WorkflowGitOperationResult(
-          status = "ok",
+        WorkflowGitOperationResult.Ok(
           value = paths.joinToString(separator = "\u0000") { path ->
             "${contentIdentities[path] ?: "identity"}\t$path"
           },
@@ -1960,8 +1949,7 @@ internal class RecordingWorkflowGitOperations(
   override val repositoryOwnedPathsOperations: RepositoryOwnedPathsGitOperations =
     object : RepositoryOwnedPathsGitOperations {
       override fun ownedPaths(repoRoot: Path): WorkflowGitOperationResult = ownedPathsResult
-        ?: WorkflowGitOperationResult(
-          status = "ok",
+        ?: WorkflowGitOperationResult.Ok(
           value = ownedPathsValue.joinToString(separator = "") { "$it\u0000" },
         )
     }
@@ -1970,8 +1958,7 @@ internal class RecordingWorkflowGitOperations(
     object : RepositoryFingerprintGitOperations {
       override fun repositoryFingerprint(repoRoot: Path): WorkflowGitOperationResult {
         repositoryFingerprintCalls += 1
-        return WorkflowGitOperationResult(
-          status = "ok",
+        return WorkflowGitOperationResult.Ok(
           value = repositoryFingerprintSequence.removeFirstOrNull()
             ?: repositoryFingerprintValue
             ?: "repository-fingerprint-$repositoryFingerprintCalls",
@@ -1990,8 +1977,7 @@ internal class RecordingWorkflowGitOperations(
           headCommit,
           ownedPaths.distinct().sorted().joinToString("\u0000"),
         ).joinToString("\u0000").hashCode().toUInt().toString(16)
-        return WorkflowGitOperationResult(
-          status = "ok",
+        return WorkflowGitOperationResult.Ok(
           value = repositoryFingerprintSequence.removeFirstOrNull()
             ?: repositoryFingerprintValue
             ?: "repository-checkpoint-$scopeHash",
@@ -2000,7 +1986,7 @@ internal class RecordingWorkflowGitOperations(
     }
 
   override fun worktreeActivity(repoRoot: Path): WorkflowWorktreeActivityResult = WorkflowWorktreeActivityResult(
-    status = "ok",
+    status = WorkflowGitOperationStatus.OK,
     changedFileSummary = GoalObservabilityChangedFileSummary(
       total = 0,
       added = 0,
@@ -2016,14 +2002,14 @@ internal class RecordingWorkflowGitOperations(
     repoRoot: Path,
     request: WorkflowSelectedDiffHunksRequest,
   ): WorkflowSelectedDiffHunksResult = WorkflowSelectedDiffHunksResult(
-    status = "ok",
+    status = WorkflowGitOperationStatus.OK,
     selectedDiffHunks = GoalObservabilitySelectedDiffHunks(),
   )
 
   override val goalSubtaskReviewOperations: GoalSubtaskReviewGitOperations =
     object : GoalSubtaskReviewGitOperations {
       override fun captureBaseline(repoRoot: Path, expectedBranch: String) = GoalSubtaskReviewBaselineResult(
-        status = "ok",
+        status = WorkflowGitOperationStatus.OK,
         baseline = GoalSubtaskReviewBaseline("0".repeat(40), emptyList()),
       )
 
@@ -2034,7 +2020,7 @@ internal class RecordingWorkflowGitOperations(
       ): GoalSubtaskReviewInputResult {
         goalReviewBuildInputs += baseline
         return goalReviewBuildResults.removeFirstOrNull() ?: GoalSubtaskReviewInputResult(
-          status = "ok",
+          status = WorkflowGitOperationStatus.OK,
           input = GoalSubtaskReviewInput(
             reviewBaseSha = baseline.reviewBaseSha,
             currentHeadSha = baseline.reviewBaseSha,
@@ -2051,8 +2037,12 @@ internal class RecordingWorkflowGitOperations(
       ): GoalSubtaskReviewBaselineResult {
         goalReviewRecoverCalls++
         goalReviewRecoverRequests += request
-        return goalReviewRecoveredBaseline?.let { GoalSubtaskReviewBaselineResult(status = "ok", baseline = it) }
-          ?: GoalSubtaskReviewBaselineResult(status = "error", error = "no recovered baseline configured")
+        return goalReviewRecoveredBaseline?.let {
+          GoalSubtaskReviewBaselineResult(status = WorkflowGitOperationStatus.OK, baseline = it)
+        } ?: GoalSubtaskReviewBaselineResult(
+          status = WorkflowGitOperationStatus.ERROR,
+          error = "no recovered baseline configured",
+        )
       }
     }
 }
@@ -2068,7 +2058,7 @@ private fun FeatureTaskRuntimePhaseRecorder.recordPhaseStateForTest(
   outputArtifact: String?,
 ): Boolean = recordPhaseState(
   FeatureTaskRuntimePhaseStateRequest(
-    workflowId = WorkflowId(WORKFLOW_ID),
+    workflowId = WORKFLOW_ID,
     phaseId = phaseId,
     status = status,
     attemptCount = attemptCount,
@@ -2164,16 +2154,16 @@ internal class RuntimeFakeDatabaseSessionFactory(
   }
   fun producerEvidenceAt(key: ProducerEvidenceKey): ProducerOutputEvidence? = producerEvidence[key]
 
-  override fun resolveDbPath(): Path = dbPath
+  override fun resolveDbPath(dbOverride: String?): Path = dbPath
 
-  override fun databaseExists(): Boolean = true
+  override fun databaseExists(dbOverride: String?): Boolean = true
 
-  override fun <T> read(block: (UnitOfWork) -> T): T = block(unitOfWork())
+  override fun <T> read(dbOverride: String?, block: (UnitOfWork) -> T): T = block(unitOfWork())
 
-  override fun <T> selfManagedWrite(block: (UnitOfWork) -> T): T = block(unitOfWork())
+  override fun <T> selfManagedWrite(dbOverride: String?, block: (UnitOfWork) -> T): T = block(unitOfWork())
 
-  override fun <T> transaction(block: (UnitOfWork) -> T): T {
-    transactionDbOverrides += null
+  override fun <T> transaction(dbOverride: String?, block: (UnitOfWork) -> T): T {
+    transactionDbOverrides += dbOverride
     return block(unitOfWork())
   }
 

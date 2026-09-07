@@ -1,5 +1,6 @@
 package skillbill.application.featuretask
 
+import skillbill.ports.workflow.gitops.model.WorkflowGitOperationResult
 import skillbill.ports.workflow.gitops.WorkflowGitOperations
 import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewBaseline
 import skillbill.ports.workflow.gitops.repositoryOwnedPaths
@@ -25,7 +26,7 @@ object FeatureTaskRuntimeScopedReviewBaseline {
     val current = gitOperations.repositoryOwnedPaths(repoRoot)
     // An unreadable listing cannot widen the exclusion set, so fall back to the durable baseline
     // rather than inventing a scope: the pre-existing behavior, never something looser.
-    if (!current.ok) return resolved.baselineUntrackedPaths
+    if (current !is WorkflowGitOperationResult.Ok) return resolved.baselineUntrackedPaths
     return reviewUntrackedExclusions(
       baselineUntrackedPaths = resolved.baselineUntrackedPaths,
       currentUntrackedPaths = current.value.orEmpty()

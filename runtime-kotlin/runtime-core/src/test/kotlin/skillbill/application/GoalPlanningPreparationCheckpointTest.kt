@@ -1,4 +1,5 @@
 package skillbill.application
+
 import skillbill.application.goalplanning.GoalPlanningPreparationCheckpoint
 import skillbill.application.goalplanning.sha256HexUtf8
 import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_CONTRACT_VERSION
@@ -16,7 +17,6 @@ import skillbill.ports.goalrunner.model.GoalPlanningPreparationState
 import skillbill.ports.goalrunner.model.GoalSubtaskPlanCheckpoint
 import skillbill.ports.goalrunner.model.GovernedGoalSubtaskDescriptor
 import skillbill.ports.goalrunner.model.SharedGoalPreplanCheckpoint
-import skillbill.workflow.decomposition.model.SubtaskId
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutputRepairOperation
 import java.nio.file.Files
 import kotlin.test.Test
@@ -132,12 +132,12 @@ class GoalPlanningPreparationCheckpointTest {
   @Test
   fun `non-positive normalized subtask id is rejected and nothing is stored`() {
     val harness = checkpointHarness().withShared()
-    val plan = validPlan(subtaskId = SubtaskId(0))
+    val plan = validPlan(subtaskId = 0)
 
     assertFailsWith<InvalidGoalPlanningPreparationSchemaError> {
       harness.checkpoint.checkpointSubtaskPlan(plan, harness.dbOverride)
     }
-    assertNull(harness.readPlan(subtaskId = SubtaskId(0)))
+    assertNull(harness.readPlan(subtaskId = 0))
   }
 
   @Test
@@ -171,7 +171,7 @@ class GoalPlanningPreparationCheckpointTest {
 
     val recovered = harness.checkpoint.findSubtaskPlan(
       identity(),
-      subtaskId = SubtaskId(1),
+      subtaskId = 1,
       governedSubSpecPath = descriptor().governedSubSpecPath,
       dbOverride = harness.dbOverride,
     )
@@ -230,7 +230,7 @@ class GoalPlanningPreparationCheckpointTest {
 
     val stored = harness.checkpoint.findStoredSubtaskPlan(
       identity(),
-      subtaskId = SubtaskId(1),
+      subtaskId = 1,
       governedSubSpecPath = descriptor().governedSubSpecPath,
       dbOverride = harness.dbOverride,
     )
@@ -309,18 +309,19 @@ class GoalPlanningPreparationCheckpointTest {
       checkpoint.checkpointSharedPreplan(validShared(), dbOverride)
     }
 
+    // Bypasses the write gate to reproduce a record persisted before the gate existed.
     fun storeRawShared(checkpoint: SharedGoalPreplanCheckpoint) {
-      database.selfManagedWrite { it.goalPlanningPreparations.checkpointSharedPreplan(checkpoint) }
+      database.selfManagedWrite(dbOverride) { it.goalPlanningPreparations.checkpointSharedPreplan(checkpoint) }
     }
 
     fun storeRawPlan(plan: GoalSubtaskPlanCheckpoint) {
-      database.selfManagedWrite { it.goalPlanningPreparations.checkpointSubtaskPlan(plan) }
+      database.selfManagedWrite(dbOverride) { it.goalPlanningPreparations.checkpointSubtaskPlan(plan) }
     }
 
     fun readShared(): SharedGoalPreplanCheckpoint? =
-      database.read { it.goalPlanningPreparations.findSharedPreplan(identity()) }
+      database.read(dbOverride) { it.goalPlanningPreparations.findSharedPreplan(identity()) }
 
-    fun readPlan(subtaskId: Int = 1): GoalSubtaskPlanCheckpoint? = database.read {
+    fun readPlan(subtaskId: Int = 1): GoalSubtaskPlanCheckpoint? = database.read(dbOverride) {
       it.goalPlanningPreparations.findSubtaskPlan(identity(), subtaskId, descriptor(subtaskId).governedSubSpecPath)
     }
   }

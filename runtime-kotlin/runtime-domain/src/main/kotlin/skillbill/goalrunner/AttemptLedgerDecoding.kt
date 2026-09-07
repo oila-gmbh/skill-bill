@@ -3,7 +3,6 @@ import skillbill.boundary.OpenBoundaryMap
 import skillbill.error.InvalidGoalProgressEventSchemaError
 import skillbill.goalrunner.model.BuildDeclaredGoalProgressEventArgs
 import skillbill.goalrunner.model.GoalRunnerProgressEvent
-import skillbill.workflow.engine.model.WorkflowId
 import skillbill.workflow.goal.model.GOAL_PROGRESS_LATEST_EVENT_ARTIFACT_KEY
 import skillbill.workflow.goal.model.GoalProgressEvent
 import skillbill.workflow.goal.model.GoalProgressEventKind
@@ -37,7 +36,7 @@ fun Map<*, *>.decodeDeclaredGoalProgressEvent(sourceLabel: String): GoalProgress
     BuildDeclaredGoalProgressEventArgs(
       sourceLabel = sourceLabel,
       eventKind = eventKind,
-      workflowId = WorkflowId(workflowId),
+      workflowId = workflowId,
       workflowPhase = workflowPhase,
       sequenceNumber = sequenceNumber,
       timestamp = timestamp,

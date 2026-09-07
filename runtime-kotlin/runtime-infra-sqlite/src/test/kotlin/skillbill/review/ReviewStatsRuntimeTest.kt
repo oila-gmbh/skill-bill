@@ -1,4 +1,5 @@
 package skillbill.review
+
 import skillbill.SAMPLE_REVIEW
 import skillbill.contracts.JsonCodec
 import skillbill.db.telemetry.LifecycleTelemetryStore
@@ -23,8 +24,6 @@ import skillbill.review.model.ImportedReview
 import skillbill.telemetry.model.FeatureTaskRuntimeFinishedRecord
 import skillbill.telemetry.model.FeatureTaskRuntimeStartedRecord
 import skillbill.tempDbConnection
-import skillbill.workflow.decomposition.model.IssueKey
-import skillbill.workflow.engine.model.SessionId
 import java.sql.Connection
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -340,9 +339,9 @@ class ReviewStatsRuntimeTest {
   private fun persistFeatureTaskRuntimeTelemetryPair(store: LifecycleTelemetryStore, includeAuditCounters: Boolean) {
     store.featureTaskRuntimeStarted(
       FeatureTaskRuntimeStartedRecord(
-        sessionId = SessionId("ftr-1"),
+        sessionId = "ftr-1",
         featureSize = "MEDIUM",
-        issueKey = IssueKey("SKILL-65.1"),
+        issueKey = "SKILL-65.1",
         featureName = "lifecycle-telemetry",
       ),
       level = "anonymous",
@@ -356,7 +355,7 @@ class ReviewStatsRuntimeTest {
   private fun featureTaskRuntimeFinishedRecord(includeAuditCounters: Boolean): FeatureTaskRuntimeFinishedRecord =
     if (includeAuditCounters) {
       FeatureTaskRuntimeFinishedRecord(
-        sessionId = SessionId("ftr-1"),
+        sessionId = "ftr-1",
         completionStatus = "completed",
         completedPhaseIds = listOf("preplan", "plan", "implement"),
         phaseOutcomes = mapOf("preplan" to "completed", "plan" to "completed", "implement" to "completed"),
@@ -372,7 +371,7 @@ class ReviewStatsRuntimeTest {
       )
     } else {
       FeatureTaskRuntimeFinishedRecord(
-        sessionId = SessionId("ftr-1"),
+        sessionId = "ftr-1",
         completionStatus = "completed",
         completedPhaseIds = listOf("preplan", "plan", "implement"),
         phaseOutcomes = mapOf("preplan" to "completed", "plan" to "completed", "implement" to "completed"),
@@ -434,7 +433,7 @@ class ReviewStatsRuntimeTest {
       )
       store.featureTaskRuntimeFinished(
         FeatureTaskRuntimeFinishedRecord(
-          sessionId = SessionId("ftr-blocked"),
+          sessionId = "ftr-blocked",
           completionStatus = "blocked",
           completedPhaseIds = listOf("preplan"),
           phaseOutcomes = mapOf("preplan" to "completed", "plan" to "blocked"),
@@ -450,7 +449,7 @@ class ReviewStatsRuntimeTest {
       )
       store.featureTaskRuntimeFinished(
         FeatureTaskRuntimeFinishedRecord(
-          sessionId = SessionId("ftr-decomposed"),
+          sessionId = "ftr-decomposed",
           completionStatus = "decomposed_at_planning",
           completedPhaseIds = listOf("preplan", "plan"),
           phaseOutcomes = mapOf("preplan" to "completed", "plan" to "completed"),
@@ -598,7 +597,7 @@ private fun seedMixedReviewHealth(connection: Connection, reviewRunId: String) {
   insertFeatureImplementSessionWithChildSteps(
     connection,
     FeatureImplementSessionFixture(
-      sessionId = SessionId("fis-review-child"),
+      sessionId = "fis-review-child",
       featureSize = "LARGE",
       completionStatus = "completed",
       childSteps = listOf(embeddedReviewChildStep()),

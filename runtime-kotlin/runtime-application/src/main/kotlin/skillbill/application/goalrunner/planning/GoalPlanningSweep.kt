@@ -1,7 +1,5 @@
 package skillbill.application.goalrunner.planning
 
-import skillbill.workflow.engine.model.WorkflowId
-import skillbill.agent.model.AgentId
 import me.tatarka.inject.annotations.Inject
 import skillbill.application.goalrunner.ProduceMissingPlansArgs
 import skillbill.application.goalrunner.model.GoalRunnerRunRequest
@@ -14,7 +12,6 @@ import skillbill.ports.goalrunner.model.SharedGoalPreplanCheckpoint
 import skillbill.ports.goalrunner.runner.model.GoalRunnerManifestState
 import skillbill.ports.repository.RepositoryEnclosingRootPort
 import skillbill.workflow.decomposition.model.DecompositionManifest
-import skillbill.workflow.decomposition.model.IssueKey
 import skillbill.workflow.decomposition.model.SpecSource
 import java.nio.file.Path
 
@@ -27,17 +24,18 @@ fun interface GoalPlanningSweep {
 }
 
 internal data class GoalPlanningSharedContext(
-  val issueKey: IssueKey,
-  val normalizedIssueKey: IssueKey,
-  val parentWorkflowId: WorkflowId,
+  val issueKey: String,
+  val normalizedIssueKey: String,
+  val parentWorkflowId: String,
   val manifest: DecompositionManifest,
   val controlState: GoalRunnerControlState,
   val repositoryIdentity: String,
   val parentSpec: String,
   val parentSpecHash: String,
   val decompositionManifestHash: String,
+  val dbPathOverride: String?,
   val repoRoot: Path,
-  val invokedAgentId: AgentId,
+  val invokedAgentId: String,
   val configuredAgentOverrideId: String?,
   val specSource: SpecSource,
   val parentSpecPath: Path,
@@ -68,10 +66,10 @@ class DefaultGoalPlanningSweep(
   override fun prepare(state: GoalRunnerManifestState, request: GoalRunnerRunRequest): GoalPlanningSweepOutcome {
     val identity = GoalPlanningIdentity(
       state.parentWorkflowId,
-      state.manifest.issueKey.value.trim().uppercase(),
+      state.manifest.issueKey.trim().uppercase(),
       "repo-root-realpath-v1:${canonicalRepository(request.repoRoot, repositoryEnclosingRootPort)}",
     )
-    val existingShared = runCatching { checkpoint.findSharedPreplan(identity) }
+    val existingShared = runCatching { checkpoint.findSharedPreplan(identity, request.dbPathOverride) }
       .getOrElse { error ->
         return preSweepStopped(request, preparationStateReadReason(error, request.issueKey, 0))
       }

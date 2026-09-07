@@ -1,4 +1,5 @@
 package skillbill.infrastructure.sqlite.goalrunner
+
 import skillbill.db.decomposition.decodeArtifacts
 import skillbill.db.goalrunner.workflowFamilyFor
 import skillbill.goalrunner.model.GoalRunnerSupervisionEvent
@@ -12,7 +13,6 @@ import skillbill.ports.workflow.save
 import skillbill.workflow.engine.WorkflowEngine
 import skillbill.workflow.engine.blockedStepId
 import skillbill.workflow.engine.decodeWorkflowSteps
-import skillbill.workflow.engine.model.WorkflowId
 import skillbill.workflow.engine.model.WorkflowUpdateInput
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_OPERATOR_BLOCK_RETRY_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_LEDGER_ARTIFACT_KEY
@@ -38,7 +38,7 @@ internal class WorkflowGoalRunnerBlockWrites(
     workflowStates: WorkflowStateRepository,
   ): String? {
     val family = workflowFamilyFor(workflowStates, workflowId) ?: return null
-    val record = family.get(workflowStates, WorkflowId(workflowId)) ?: return null
+    val record = family.get(workflowStates, workflowId) ?: return null
     return markBlocked(
       GoalRunnerBlockWrite(
         family = family,
@@ -74,7 +74,7 @@ internal class WorkflowGoalRunnerBlockWrites(
           put("blocked_reason", write.blockedReason)
           write.supervisionEvent?.let { event -> put("supervision_event", event.toArtifactsMap()) }
         },
-        sessionId = write.record.sessionId,
+        sessionId = write.record.sessionId.orEmpty(),
       ),
     )
     write.family.save(write.workflowStates, updated)
@@ -88,7 +88,7 @@ internal class WorkflowGoalRunnerBlockWrites(
     reason: String,
   ): Boolean {
     val family = WorkflowFamily.TASK_RUNTIME
-    val existing = family.get(unitOfWork.workflowStates, WorkflowId(workflowId)) ?: return false
+    val existing = family.get(unitOfWork.workflowStates, workflowId) ?: return false
     if (existing.workflowStatus in family.definition.terminalStatuses) {
       return false
     }

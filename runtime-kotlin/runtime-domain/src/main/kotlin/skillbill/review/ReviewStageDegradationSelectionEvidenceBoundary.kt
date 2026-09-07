@@ -1,12 +1,11 @@
 package skillbill.review
 
 import skillbill.review.model.ReviewEvidenceBoundaryAccounting
-import skillbill.review.model.ReviewRunId
 import skillbill.review.model.ReviewStageDegradationMeasurement
 import skillbill.review.model.ReviewStageDegradationReason
 
 internal fun evidenceBoundaryUnboundRecord(
-  reviewRunId: ReviewRunId,
+  reviewRunId: String,
   accounting: ReviewEvidenceBoundaryAccounting,
 ): ReviewStageDegradationMeasurement? {
   val seam = accounting.unboundSeam ?: return null
@@ -20,7 +19,7 @@ internal fun evidenceBoundaryUnboundRecord(
 }
 
 internal fun evidenceBoundaryUnexercisedRecord(
-  reviewRunId: ReviewRunId,
+  reviewRunId: String,
   accounting: ReviewEvidenceBoundaryAccounting,
 ): ReviewStageDegradationMeasurement? {
   if (
@@ -40,7 +39,7 @@ internal fun evidenceBoundaryUnexercisedRecord(
 }
 
 internal fun evidenceBoundaryRefusedRecord(
-  reviewRunId: ReviewRunId,
+  reviewRunId: String,
   accounting: ReviewEvidenceBoundaryAccounting,
 ): ReviewStageDegradationMeasurement? {
   if (accounting.refusedOperationCount <= 0) {
@@ -64,7 +63,7 @@ internal fun evidenceBoundaryRefusedRecord(
 }
 
 internal fun evidenceBoundaryRejectedRecord(
-  reviewRunId: ReviewRunId,
+  reviewRunId: String,
   accounting: ReviewEvidenceBoundaryAccounting,
 ): ReviewStageDegradationMeasurement? {
   if (accounting.rejectedCandidateCount <= 0) {

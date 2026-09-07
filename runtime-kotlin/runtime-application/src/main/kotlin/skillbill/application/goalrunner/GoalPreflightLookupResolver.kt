@@ -1,6 +1,5 @@
 package skillbill.application.goalrunner
 
-import skillbill.workflow.engine.model.WorkflowId
 import skillbill.application.continuation.model.GoalContinuationCandidate
 import skillbill.application.featuretask.model.FeatureTaskContinuationLookupResult
 import skillbill.application.goalrunner.model.GoalPreflightLookupInput
@@ -10,7 +9,6 @@ import skillbill.error.InvalidDecompositionManifestSchemaError
 import skillbill.error.InvalidFeatureTaskExecutionIdentitySchemaError
 import skillbill.ports.goalrunner.runner.model.GoalRunnerManifestState
 import skillbill.workflow.decomposition.model.DecompositionManifest
-import skillbill.workflow.decomposition.model.IssueKey
 import java.nio.file.Path
 
 class GoalPreflightLookupResolver(
@@ -38,7 +36,7 @@ class GoalPreflightLookupResolver(
   }
 
   private fun noMatchResult(
-    issueKey: IssueKey,
+    issueKey: String,
     manifest: DecompositionManifest?,
     request: GoalPreflightRequest,
     root: Path,
@@ -58,7 +56,7 @@ class GoalPreflightLookupResolver(
 
   private fun resumableResult(
     lookup: FeatureTaskContinuationLookupResult.Resumable,
-    issueKey: IssueKey,
+    issueKey: String,
     manifestState: GoalRunnerManifestState?,
     request: GoalPreflightRequest,
     root: Path,
@@ -74,7 +72,7 @@ class GoalPreflightLookupResolver(
 
   private fun alreadyRunningResult(
     lookup: FeatureTaskContinuationLookupResult.AlreadyRunning,
-    issueKey: IssueKey,
+    issueKey: String,
   ): GoalPreflightResult = GoalPreflightResult(
     verdict = "already_running",
     issueKey = issueKey,
@@ -83,7 +81,7 @@ class GoalPreflightLookupResolver(
 
   private fun ambiguousResult(
     lookup: FeatureTaskContinuationLookupResult.Ambiguous,
-    issueKey: IssueKey,
+    issueKey: String,
   ): GoalPreflightResult = GoalPreflightResult(
     verdict = "ambiguous",
     issueKey = issueKey,
@@ -92,7 +90,7 @@ class GoalPreflightLookupResolver(
 
   private fun terminalOnlyResult(
     lookup: FeatureTaskContinuationLookupResult.TerminalOnly,
-    issueKey: IssueKey,
+    issueKey: String,
   ): GoalPreflightResult = GoalPreflightResult(
     verdict = "terminal_only",
     issueKey = issueKey,
@@ -100,7 +98,7 @@ class GoalPreflightLookupResolver(
   )
 
   private fun goalContinuationResult(
-    issueKey: IssueKey,
+    issueKey: String,
     candidate: GoalContinuationCandidate,
     manifestState: GoalRunnerManifestState?,
     request: GoalPreflightRequest,

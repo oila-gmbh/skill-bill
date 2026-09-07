@@ -5,15 +5,19 @@ import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewBaselineRecoveryRe
 import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewBaselineResult
 import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewInput
 import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewInputResult
+import skillbill.ports.workflow.gitops.model.WorkflowGitOperationStatus
 import java.nio.file.Path
 
 internal object NoopGoalSubtaskReviewGitOperations : GoalSubtaskReviewGitOperations {
   override fun captureBaseline(repoRoot: Path, expectedBranch: String): GoalSubtaskReviewBaselineResult {
     return if (expectedBranch.isBlank()) {
-      GoalSubtaskReviewBaselineResult(status = "error", error = "Goal-subtask durable child branch is required.")
+      GoalSubtaskReviewBaselineResult(
+        status = WorkflowGitOperationStatus.ERROR,
+        error = "Goal-subtask durable child branch is required.",
+      )
     } else {
       GoalSubtaskReviewBaselineResult(
-        status = "ok",
+        status = WorkflowGitOperationStatus.OK,
         baseline = GoalSubtaskReviewBaseline(
           reviewBaseSha = "0".repeat(NOOP_REVIEW_BASE_SHA_LENGTH),
           baselineUntrackedPaths = emptyList(),
@@ -28,7 +32,7 @@ internal object NoopGoalSubtaskReviewGitOperations : GoalSubtaskReviewGitOperati
     expectedBranch: String,
   ): GoalSubtaskReviewInputResult {
     return GoalSubtaskReviewInputResult(
-      status = "ok",
+      status = WorkflowGitOperationStatus.OK,
       input = GoalSubtaskReviewInput(
         reviewBaseSha = baseline.reviewBaseSha,
         currentHeadSha = baseline.reviewBaseSha,
@@ -44,10 +48,13 @@ internal object NoopGoalSubtaskReviewGitOperations : GoalSubtaskReviewGitOperati
     expectedBranch: String,
   ): GoalSubtaskReviewBaselineResult {
     return if (expectedBranch.isBlank()) {
-      GoalSubtaskReviewBaselineResult(status = "error", error = "Goal-subtask durable child branch is required.")
+      GoalSubtaskReviewBaselineResult(
+        status = WorkflowGitOperationStatus.ERROR,
+        error = "Goal-subtask durable child branch is required.",
+      )
     } else {
       GoalSubtaskReviewBaselineResult(
-        status = "ok",
+        status = WorkflowGitOperationStatus.OK,
         baseline = request.toRecoveredBaseline(request.unreachableSha),
       )
     }

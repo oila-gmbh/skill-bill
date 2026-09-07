@@ -1,6 +1,5 @@
 package skillbill.install.model
 
-import skillbill.agent.model.AgentId
 import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertEquals
@@ -19,7 +18,7 @@ class AgentLauncherCliTest {
 
   @Test
   fun `an agent whose CLI is absent yields an actionable reason`() {
-    val reason = assertNotNull(unavailableAgentLauncherReason(AgentId("cursor"), nothingInstalled))
+    val reason = assertNotNull(unavailableAgentLauncherReason("cursor", nothingInstalled))
 
     assertContains(reason, "'agent' is not on PATH")
     assertContains(reason, "curl https://cursor.com/install")
@@ -28,16 +27,16 @@ class AgentLauncherCliTest {
 
   @Test
   fun `any declared executable satisfies availability`() {
-    assertNull(unavailableAgentLauncherReason(AgentId("cursor"), { it == "cursor-agent" }))
-    assertNull(unavailableAgentLauncherReason(AgentId("cursor"), { it == "agent" }))
+    assertNull(unavailableAgentLauncherReason("cursor", { it == "cursor-agent" }))
+    assertNull(unavailableAgentLauncherReason("cursor", { it == "agent" }))
   }
 
   @Test
   fun `agent ids are normalized and unknown or launcherless ids are ignored`() {
-    assertNotNull(unavailableAgentLauncherReason(AgentId("  CURSOR "), nothingInstalled))
+    assertNotNull(unavailableAgentLauncherReason("  CURSOR ", nothingInstalled))
     assertNull(unavailableAgentLauncherReason(null, nothingInstalled))
-    assertNull(unavailableAgentLauncherReason(AgentId(""), nothingInstalled))
-    assertNull(unavailableAgentLauncherReason(AgentId("not-an-agent"), nothingInstalled))
+    assertNull(unavailableAgentLauncherReason("", nothingInstalled))
+    assertNull(unavailableAgentLauncherReason("not-an-agent", nothingInstalled))
   }
 
   @Test
@@ -51,7 +50,7 @@ class AgentLauncherCliTest {
   @Test
   fun `an installed CLI produces no reason`() {
     InstallAgent.entries.forEach { agent ->
-      assertNull(unavailableAgentLauncherReason(AgentId(agent.id), everythingInstalled))
+      assertNull(unavailableAgentLauncherReason(agent.id, everythingInstalled))
     }
   }
 }

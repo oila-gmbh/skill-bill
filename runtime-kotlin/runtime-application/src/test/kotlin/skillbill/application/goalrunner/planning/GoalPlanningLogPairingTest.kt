@@ -1,4 +1,5 @@
 package skillbill.application.goalrunner.planning
+
 import skillbill.application.RecordingOutcomeStore
 import skillbill.application.goalrunner.planning.model.GoalPlanningLogRequest
 import skillbill.application.manifest
@@ -10,7 +11,6 @@ import skillbill.ports.goalrunner.runner.GoalRunnerManifestStoreDefaults
 import skillbill.ports.goalrunner.runner.GoalRunnerWorkflowOutcomeStore
 import skillbill.ports.goalrunner.runner.model.GoalRunnerManifestState
 import skillbill.ports.persistence.UnitOfWork
-import skillbill.workflow.decomposition.model.IssueKey
 import java.nio.file.Path
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -81,7 +81,7 @@ class GoalPlanningLogPairingTest {
     database = UnreadableDatabase,
     diagnosticMetadataValidator = RejectedOutputDiagnosticMetadataValidator { },
     clock = testHarnessClock,
-  ).log(GoalPlanningLogRequest(issueKey = IssueKey(ISSUE_KEY)))
+  ).log(GoalPlanningLogRequest(issueKey = ISSUE_KEY))
 
   private fun started(timestamp: String): Map<String, Any?> = mapOf(
     "workflow_phase" to "goal_planning",
@@ -133,15 +133,15 @@ private class StubOutcomeStore(private val events: List<Map<String, Any?>>) :
 
 /** Rejection metadata is a separate read the log degrades past; refusing it keeps these on pairing. */
 private object UnreadableDatabase : DatabaseSessionFactory {
-  override fun resolveDbPath(): Path = Path.of("/fake/metrics.db")
+  override fun resolveDbPath(dbOverride: String?): Path = Path.of("/fake/metrics.db")
 
-  override fun databaseExists(): Boolean = false
+  override fun databaseExists(dbOverride: String?): Boolean = false
 
-  override fun <T> read(block: (UnitOfWork) -> T): T = unsupported()
+  override fun <T> read(dbOverride: String?, block: (UnitOfWork) -> T): T = unsupported()
 
-  override fun <T> transaction(block: (UnitOfWork) -> T): T = unsupported()
+  override fun <T> transaction(dbOverride: String?, block: (UnitOfWork) -> T): T = unsupported()
 
-  override fun <T> selfManagedWrite(block: (UnitOfWork) -> T): T = unsupported()
+  override fun <T> selfManagedWrite(dbOverride: String?, block: (UnitOfWork) -> T): T = unsupported()
 
   private fun unsupported(): Nothing = throw UnsupportedOperationException("no database in this test")
 }

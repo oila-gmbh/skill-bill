@@ -1,4 +1,5 @@
 package skillbill.db.workflow
+
 import skillbill.db.core.DatabaseRuntime
 import skillbill.db.core.inImmediateTransaction
 import skillbill.error.IncompatibleGoalPlanningPreparationRecoveryError
@@ -8,7 +9,6 @@ import skillbill.infrastructure.sqlite.SQLiteDatabaseSessionFactory
 import skillbill.model.EnvironmentContext
 import skillbill.ports.goalrunner.model.GoalPlanningPreparationProvenance
 import skillbill.ports.goalrunner.model.GoalPlanningPreparationState
-import skillbill.workflow.decomposition.model.SubtaskId
 import java.nio.file.Files
 import java.sql.DriverManager
 import kotlin.test.Test
@@ -98,12 +98,12 @@ class GoalPlanningPreparationStoreTest {
     val tempDir = Files.createTempDirectory("skillbill-planning-status-contention")
     val dbPath = tempDir.resolve("metrics.db")
     val database = SQLiteDatabaseSessionFactory(EnvironmentContext(userHome = tempDir))
-    database.read { Unit }
+    database.read(dbPath.toString()) { Unit }
 
     DriverManager.getConnection("jdbc:sqlite:$dbPath").use { writer ->
       writer.createStatement().use { it.execute("BEGIN IMMEDIATE") }
       try {
-        val status = database.read { unitOfWork ->
+        val status = database.read(dbPath.toString()) { unitOfWork ->
           unitOfWork.goalPlanningPreparations.boundedStatus("goal-contention", listOf(1, 2))
         }
         assertEquals(GoalPlanningStatusState.NOT_STARTED, status.state)
@@ -298,7 +298,7 @@ class GoalPlanningPreparationStoreTest {
   fun `mark prepared stores and recovers a single subtask pair`() {
     DatabaseRuntime.ensureDatabase(tempDb()).use { connection ->
       val store = GoalPlanningPreparationStore(connection)
-      val record = preparationRecord(parentGoalWorkflowId = "goal-1", subtaskId = SubtaskId(1))
+      val record = preparationRecord(parentGoalWorkflowId = "goal-1", subtaskId = 1)
 
       store.markPrepared(record)
 
@@ -317,7 +317,7 @@ class GoalPlanningPreparationStoreTest {
   fun `marking the same pair again is an idempotent no-op`() {
     DatabaseRuntime.ensureDatabase(tempDb()).use { connection ->
       val store = GoalPlanningPreparationStore(connection)
-      val record = preparationRecord(parentGoalWorkflowId = "goal-1", subtaskId = SubtaskId(1))
+      val record = preparationRecord(parentGoalWorkflowId = "goal-1", subtaskId = 1)
 
       store.markPrepared(record)
       store.markPrepared(record)
@@ -332,9 +332,9 @@ class GoalPlanningPreparationStoreTest {
   fun `delete by goal removes only the selected parent preparation`() {
     DatabaseRuntime.ensureDatabase(tempDb()).use { connection ->
       val store = GoalPlanningPreparationStore(connection)
-      store.markPrepared(preparationRecord(parentGoalWorkflowId = "goal-1", subtaskId = SubtaskId(1)))
-      store.markPrepared(preparationRecord(parentGoalWorkflowId = "goal-1", subtaskId = SubtaskId(2)))
-      store.markPrepared(preparationRecord(parentGoalWorkflowId = "goal-2", subtaskId = SubtaskId(1)))
+      store.markPrepared(preparationRecord(parentGoalWorkflowId = "goal-1", subtaskId = 1))
+      store.markPrepared(preparationRecord(parentGoalWorkflowId = "goal-1", subtaskId = 2))
+      store.markPrepared(preparationRecord(parentGoalWorkflowId = "goal-2", subtaskId = 1))
 
       assertEquals(2, store.deleteByGoal("goal-1"))
 
@@ -347,12 +347,7 @@ class GoalPlanningPreparationStoreTest {
   fun `marking a differing provenance pair fails loudly and leaves the stored pair unchanged`() {
     DatabaseRuntime.ensureDatabase(tempDb()).use { connection ->
       val store = GoalPlanningPreparationStore(connection)
-      val original = preparationRecord(
-        parentGoalWorkflowId = "goal-1",
-        subtaskId =
-        SubtaskId(1),
-        subSpecHash = "sub-spec-A",
-      )
+      val original = preparationRecord(parentGoalWorkflowId = "goal-1", subtaskId = 1, subSpecHash = "sub-spec-A")
       store.markPrepared(original)
 
       val conflicting = original.copy(
@@ -374,7 +369,7 @@ class GoalPlanningPreparationStoreTest {
       val store = GoalPlanningPreparationStore(connection)
       val original = preparationRecord(
         parentGoalWorkflowId = "goal-1",
-        subtaskId = SubtaskId(1),
+        subtaskId = 1,
         repositoryIdentity = "repo-root-realpath-v1:/repo-a",
       )
       store.markPrepared(original)
@@ -393,7 +388,7 @@ class GoalPlanningPreparationStoreTest {
   fun `marking a same-key pair with a diverging normalized issue key fails loudly`() {
     DatabaseRuntime.ensureDatabase(tempDb()).use { connection ->
       val store = GoalPlanningPreparationStore(connection)
-      val original = preparationRecord(parentGoalWorkflowId = "goal-1", subtaskId = SubtaskId(1))
+      val original = preparationRecord(parentGoalWorkflowId = "goal-1", subtaskId = 1)
       store.markPrepared(original)
 
       val conflicting = original.copy(normalizedIssueKey = "SKILL-999")
@@ -410,8 +405,8 @@ class GoalPlanningPreparationStoreTest {
   fun `prepared pairs are isolated across parent goals`() {
     DatabaseRuntime.ensureDatabase(tempDb()).use { connection ->
       val store = GoalPlanningPreparationStore(connection)
-      store.markPrepared(preparationRecord(parentGoalWorkflowId = "goal-1", subtaskId = SubtaskId(1)))
-      store.markPrepared(preparationRecord(parentGoalWorkflowId = "goal-2", subtaskId = SubtaskId(1)))
+      store.markPrepared(preparationRecord(parentGoalWorkflowId = "goal-1", subtaskId = 1))
+      store.markPrepared(preparationRecord(parentGoalWorkflowId = "goal-2", subtaskId = 1))
 
       assertEquals(1, store.preparedCount("goal-1"))
       assertEquals(1, store.preparedCount("goal-2"))
@@ -427,7 +422,7 @@ class GoalPlanningPreparationStoreTest {
       store.markPrepared(
         preparationRecord(
           parentGoalWorkflowId = "goal-1",
-          subtaskId = SubtaskId(1),
+          subtaskId = 1,
           repositoryIdentity = "repo-root-realpath-v1:/repo-a",
         ),
       )
@@ -441,8 +436,8 @@ class GoalPlanningPreparationStoreTest {
   fun `ordered listing orders by subtask id and first missing walks ordered ids`() {
     DatabaseRuntime.ensureDatabase(tempDb()).use { connection ->
       val store = GoalPlanningPreparationStore(connection)
-      store.markPrepared(preparationRecord(parentGoalWorkflowId = "goal-1", subtaskId = SubtaskId(3)))
-      store.markPrepared(preparationRecord(parentGoalWorkflowId = "goal-1", subtaskId = SubtaskId(1)))
+      store.markPrepared(preparationRecord(parentGoalWorkflowId = "goal-1", subtaskId = 3))
+      store.markPrepared(preparationRecord(parentGoalWorkflowId = "goal-1", subtaskId = 1))
 
       assertEquals(listOf(1, 3), store.listPreparedByGoalOrdered("goal-1").map { it.subtaskId })
       assertEquals(2, store.preparedCount("goal-1"))
@@ -468,7 +463,7 @@ class GoalPlanningPreparationStoreTest {
     val dbPath = tempDb()
     DatabaseRuntime.ensureDatabase(dbPath).use { connection ->
       GoalPlanningPreparationStore(connection).markPrepared(
-        preparationRecord(parentGoalWorkflowId = "goal-1", subtaskId = SubtaskId(1)),
+        preparationRecord(parentGoalWorkflowId = "goal-1", subtaskId = 1),
       )
     }
 
@@ -484,11 +479,7 @@ class GoalPlanningPreparationStoreTest {
   fun `malformed envelope with wrong contract version is rejected`() {
     DatabaseRuntime.ensureDatabase(tempDb()).use { connection ->
       val store = GoalPlanningPreparationStore(connection)
-      val record = preparationRecord(
-        parentGoalWorkflowId = "goal-1",
-        subtaskId =
-        SubtaskId(1),
-      ).copy(contractVersion = "0.2")
+      val record = preparationRecord(parentGoalWorkflowId = "goal-1", subtaskId = 1).copy(contractVersion = "0.2")
 
       assertFailsWith<InvalidGoalPlanningPreparationSchemaError> { store.markPrepared(record) }
       assertNull(store.findByGoalAndSubtask("goal-1", 1))
@@ -501,7 +492,7 @@ class GoalPlanningPreparationStoreMutationTest {
   fun `malformed envelope with non-positive subtask id is rejected`() {
     DatabaseRuntime.ensureDatabase(tempDb()).use { connection ->
       val store = GoalPlanningPreparationStore(connection)
-      val record = preparationRecord(parentGoalWorkflowId = "goal-1", subtaskId = SubtaskId(0))
+      val record = preparationRecord(parentGoalWorkflowId = "goal-1", subtaskId = 0)
 
       assertFailsWith<InvalidGoalPlanningPreparationSchemaError> { store.markPrepared(record) }
     }
@@ -511,7 +502,7 @@ class GoalPlanningPreparationStoreMutationTest {
   fun `malformed envelope with pending status is rejected at the checkpoint seam`() {
     DatabaseRuntime.ensureDatabase(tempDb()).use { connection ->
       val store = GoalPlanningPreparationStore(connection)
-      val pending = preparationRecord(parentGoalWorkflowId = "goal-1", subtaskId = SubtaskId(1))
+      val pending = preparationRecord(parentGoalWorkflowId = "goal-1", subtaskId = 1)
         .copy(preparationStatus = GoalPlanningPreparationState.PENDING)
 
       assertFailsWith<InvalidGoalPlanningPreparationSchemaError> { store.markPrepared(pending) }
@@ -522,7 +513,7 @@ class GoalPlanningPreparationStoreMutationTest {
   fun `malformed envelope missing provenance hashes is rejected`() {
     DatabaseRuntime.ensureDatabase(tempDb()).use { connection ->
       val store = GoalPlanningPreparationStore(connection)
-      val record = preparationRecord(parentGoalWorkflowId = "goal-1", subtaskId = SubtaskId(1)).copy(
+      val record = preparationRecord(parentGoalWorkflowId = "goal-1", subtaskId = 1).copy(
         provenance = GoalPlanningPreparationProvenance(
           parentSpecHash = "",
           subSpecHash = "sub",
@@ -538,7 +529,7 @@ class GoalPlanningPreparationStoreMutationTest {
   fun `malformed envelope with a divergent phase output contract version is rejected at the store seam`() {
     DatabaseRuntime.ensureDatabase(tempDb()).use { connection ->
       val store = GoalPlanningPreparationStore(connection)
-      val base = preparationRecord(parentGoalWorkflowId = "goal-1", subtaskId = SubtaskId(1))
+      val base = preparationRecord(parentGoalWorkflowId = "goal-1", subtaskId = 1)
       val record = base.copy(
         provenance = base.provenance.copy(phaseOutputContractVersion = "9.9"),
       )

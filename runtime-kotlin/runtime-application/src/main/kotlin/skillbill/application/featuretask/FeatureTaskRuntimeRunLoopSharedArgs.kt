@@ -1,7 +1,5 @@
 package skillbill.application.featuretask
 
-import skillbill.review.model.ReviewRunId
-import skillbill.agent.model.AgentId
 import skillbill.application.featuretask.model.FeatureTaskRuntimePhaseLaunchBriefing
 import skillbill.application.featuretask.model.FeatureTaskRuntimeRunRequest
 import skillbill.application.featuretask.model.FeatureTaskRuntimeSubtaskCommitIdentity
@@ -99,7 +97,7 @@ internal data class SettleValidationGateCycleArgs(
 internal data class FixLoopOutcomeArgs(
   val context: PhaseAttemptAccumulatorContext,
   val loop: PhaseAttemptLoopState,
-  val agentId: AgentId,
+  val agentId: String,
 )
 
 internal data class LaunchPreparationRejectedArgs(
@@ -263,7 +261,7 @@ internal data class ReconstructFixLoopBudgetBasesArgs(
 internal data class RejectedOutputTargetingArgs(
   val run: PhaseRun,
   val phaseId: String,
-  val agentId: AgentId,
+  val agentId: String,
   val model: String,
   val path: String,
   val repairTurn: Int,
@@ -281,7 +279,7 @@ internal data class SettleValidatedOutputAfterFingerprintArgs(
 
 internal data class RejectedOutputTargetingOverrides(
   val phaseId: String? = null,
-  val agentId: AgentId? = null,
+  val agentId: String? = null,
   val model: String? = null,
   val path: String? = null,
   val repairTurn: Int? = null,
@@ -389,14 +387,14 @@ internal data class RuntimeOwnedReviewDriverRequestArgs(
   val input: GoalSubtaskReviewInput,
   val passNumber: Int,
   val pinnedMode: CodeReviewExecutionMode,
-  val reviewRunId: ReviewRunId,
+  val reviewRunId: String,
 )
 
 internal data class ReviewBlockerDispositionsArgs(
   val run: PhaseRun,
   val passNumber: Int,
   val result: ParallelCodeReviewResult,
-  val reviewRunId: ReviewRunId,
+  val reviewRunId: String,
   val resolvedTier: CodeReviewExecutionMode,
 )
 

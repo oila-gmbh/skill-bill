@@ -1,9 +1,8 @@
 package skillbill.application.featuretask
+
 import skillbill.application.featuretask.model.FeatureTaskRuntimeCheckpointDecision
 import skillbill.application.featuretask.model.FeatureTaskRuntimeCheckpointScopeInput
 import skillbill.application.featuretask.model.FeatureTaskRuntimeSubtaskCommitIdentity
-import skillbill.workflow.decomposition.model.IssueKey
-import skillbill.workflow.decomposition.model.SubtaskId
 import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertEquals
@@ -351,12 +350,7 @@ class FeatureTaskRuntimeCheckpointScopeTest {
 
   @Test
   fun `subtask trailers round-trip and never match another subtask`() {
-    val identity = FeatureTaskRuntimeSubtaskCommitIdentity(
-      issueKey =
-      IssueKey(ISSUE),
-      subtaskId =
-      SubtaskId("7".toInt()),
-    )
+    val identity = FeatureTaskRuntimeSubtaskCommitIdentity(issueKey = ISSUE, subtaskId = "7")
     val rendered = message(phaseId = "audit", loopId = null, generation = 0, intent = INTENT_INITIAL)
 
     assertEquals(identity, FeatureTaskRuntimeSubtaskCommitIdentity.parse(rendered))
@@ -374,7 +368,7 @@ class FeatureTaskRuntimeCheckpointScopeTest {
     intent: String,
     subtaskName: String? = null,
   ): String = FeatureTaskRuntimeCheckpointMessage.build(
-    issueKey = IssueKey(ISSUE),
+    issueKey = ISSUE,
     subtaskName = subtaskName,
     metadata = FeatureTaskRuntimeCheckpointMetadata(
       phaseId = phaseId,
@@ -383,7 +377,7 @@ class FeatureTaskRuntimeCheckpointScopeTest {
       branch = BRANCH,
       intent = intent,
     ),
-    identity = FeatureTaskRuntimeSubtaskCommitIdentity(issueKey = IssueKey(ISSUE), subtaskId = SubtaskId("7".toInt())),
+    identity = FeatureTaskRuntimeSubtaskCommitIdentity(issueKey = ISSUE, subtaskId = "7"),
   )
 
   @Test
@@ -431,7 +425,7 @@ class FeatureTaskRuntimeCheckpointScopeTest {
   ) {
     fun decide(): FeatureTaskRuntimeCheckpointDecision = FeatureTaskRuntimeCheckpointScope.decide(
       FeatureTaskRuntimeCheckpointScopeInput(
-        issueKey = IssueKey(ISSUE),
+        issueKey = ISSUE,
         ownedPaths = ownedPaths,
         phaseIntroducedPaths = phaseIntroducedPaths,
         worktreeDeltaPaths = worktreeDeltaPaths,

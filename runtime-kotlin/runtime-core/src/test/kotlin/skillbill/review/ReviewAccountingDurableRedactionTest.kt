@@ -1,4 +1,5 @@
 package skillbill.review
+
 import skillbill.application.review.RecordedWorkerResponse
 import skillbill.application.review.ReviewHarnessConfig
 import skillbill.application.review.ReviewRecorder
@@ -18,7 +19,6 @@ import skillbill.infrastructure.sqlite.review.upsertReviewAccounting
 import skillbill.ports.review.model.ReviewAccountingRecord
 import skillbill.review.context.model.ReviewAccountingSummary
 import skillbill.review.model.REVIEW_STAGE_DEGRADATION_EVENT_NAME
-import skillbill.review.model.ReviewRunId
 import java.nio.file.Files
 import java.sql.Connection
 import kotlin.test.Test
@@ -207,7 +207,7 @@ class ReviewAccountingDurableRedactionTest {
 
     val result = runner.run(
       harnessRequest(
-        reviewRunId = ReviewRunId(REVIEW_RUN_ID),
+        reviewRunId = REVIEW_RUN_ID,
         prelaunchExpansions = listOf(
           ReviewPrelaunchExpansion(
             "parallel-code-review",

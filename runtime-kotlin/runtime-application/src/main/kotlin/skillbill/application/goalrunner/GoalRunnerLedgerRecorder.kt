@@ -1,4 +1,5 @@
 package skillbill.application.goalrunner
+
 import skillbill.application.goalrunner.model.GoalRunnerRunRequest
 import skillbill.goalrunner.model.GoalAttemptLedgerAction
 import skillbill.goalrunner.model.GoalAttemptLedgerEntry
@@ -8,9 +9,6 @@ import skillbill.ports.diagnostics.RuntimeDiagnostics
 import skillbill.ports.goalrunner.runner.GoalRunnerWorkflowOutcomeStore
 import skillbill.ports.goalrunner.runner.model.GoalRunnerAttemptLedgerRecordRequest
 import skillbill.ports.goalrunner.runner.model.GoalRunnerWorkflowProgress
-import skillbill.workflow.decomposition.model.IssueKey
-import skillbill.workflow.decomposition.model.SubtaskId
-import skillbill.workflow.engine.model.WorkflowId
 import java.time.Clock
 
 class GoalRunnerLedgerRecorder(
@@ -25,7 +23,7 @@ class GoalRunnerLedgerRecorder(
   // restarting at 0 and emitting duplicate, non-monotonic sequence numbers. A
   // fresh run (no durable entries) starts from the base.
   private val watermarks = runCatching {
-    outcomeStore.ledgerSequenceWatermarks(request.issueKey)
+    outcomeStore.ledgerSequenceWatermarks(request.issueKey, request.dbPathOverride)
   }.getOrNull()
   private var ledgerSequence: Int = watermarks?.maxLedgerSequence?.let { it + 1 } ?: 0
 
@@ -52,13 +50,13 @@ class GoalRunnerLedgerRecorder(
   }
 
   internal fun recordLedgerEntry(context: GoalRunnerLedgerContext) {
-    val targetWorkflowId = context.workflowId?.takeIf { it.value.isNotBlank() } ?: return
+    val targetWorkflowId = context.workflowId?.takeIf(String::isNotBlank) ?: return
     val facts = context.launchOutcome as? AgentRunLaunchFacts
     val entry = GoalAttemptLedgerEntry(
       action = context.action,
       sequenceNumber = ledgerSequence++,
       timestamp = clock.instant().toString(),
-      issueKey = context.issueKey.takeIf { it.value.isNotBlank() },
+      issueKey = context.issueKey.takeIf(String::isNotBlank),
       subtaskId = context.subtaskId.takeIf { it > 0 },
       previousWorkflowId = targetWorkflowId,
       previousStatus = context.progress?.workflowStatus,
@@ -89,6 +87,7 @@ class GoalRunnerLedgerRecorder(
     runCatching {
       outcomeStore.recordAttemptLedgerEntry(
         GoalRunnerAttemptLedgerRecordRequest(workflowId = targetWorkflowId, entry = entry),
+        request.dbPathOverride,
       )
     }
       .onFailure { error ->
@@ -109,7 +108,7 @@ class GoalRunnerLedgerRecorder(
   // run, but a silent gap must be detectable. Log WARNING on both a thrown
   // failure and a false return (workflow not found). The message carries only
   // workflowId/action/subtaskId — never secrets or prompt content.
-  private fun logBestEffortFailure(action: String, workflowId: WorkflowId, subtaskId: SubtaskId, error: Throwable) {
+  private fun logBestEffortFailure(action: String, workflowId: String, subtaskId: Int, error: Throwable) {
     diagnostics.warning(
       "Best-effort goal ledger write failed: action='$action' workflowId='$workflowId' subtaskId=$subtaskId " +
         "errorType='${error::class.qualifiedName}' message='${error.message.orEmpty()}'",
@@ -117,7 +116,7 @@ class GoalRunnerLedgerRecorder(
     )
   }
 
-  private fun logBestEffortMissingWorkflow(action: String, workflowId: WorkflowId, subtaskId: SubtaskId) {
+  private fun logBestEffortMissingWorkflow(action: String, workflowId: String, subtaskId: Int) {
     diagnostics.warning(
       "Best-effort goal ledger write skipped (workflow not found): action='$action' " +
         "workflowId='$workflowId' subtaskId=$subtaskId",
@@ -134,19 +133,19 @@ class GoalRunnerLedgerRecorder(
 }
 
 internal data class GoalRunnerBackwardEdge(
-  val workflowId: WorkflowId,
-  val issueKey: IssueKey,
-  val subtaskId: SubtaskId,
+  val workflowId: String,
+  val issueKey: String,
+  val subtaskId: Int,
   val loopId: String,
   val edgeIteration: Int,
   val progress: GoalRunnerWorkflowProgress?,
 )
 
 internal data class GoalRunnerLedgerContext(
-  val workflowId: WorkflowId?,
+  val workflowId: String?,
   val action: GoalAttemptLedgerAction,
-  val issueKey: IssueKey,
-  val subtaskId: SubtaskId,
+  val issueKey: String,
+  val subtaskId: Int,
   val progress: GoalRunnerWorkflowProgress? = null,
   val launchOutcome: AgentRunLaunchOutcome? = null,
   val blockedReason: String? = null,

@@ -1,7 +1,5 @@
 package skillbill.application.featuretask
 
-import skillbill.agent.model.AgentId
-
 import skillbill.application.featuretask.model.FeatureTaskRuntimeOperatorDecisionPause
 import skillbill.application.featuretask.model.FeatureTaskRuntimePhaseStatus
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
@@ -173,7 +171,7 @@ fun FeatureTaskRuntimePhaseRecord?.toPhaseStatus(
     phaseId = phaseId,
     status = if (blocked && status != PHASE_STATUS_COMPLETED) PHASE_STATUS_BLOCKED else status,
     attemptCount = attemptCount,
-    resolvedAgentId = resolvedAgentId.takeUnless { it.value == GOAL_PLANNING_IMPORT_AGENT_SENTINEL },
+    resolvedAgentId = resolvedAgentId.takeUnless { it == GOAL_PLANNING_IMPORT_AGENT_SENTINEL },
     finished = finishedAt != null,
     executionOrigin = executionOrigin.wireValue,
     continuationKind = continuationKind,

@@ -10,7 +10,7 @@ import skillbill.ports.workflow.model.toPayload
 fun ReviewStatsResult.toReviewStatsPayload(): JsonPayloadContract = MapPayloadContract(
   LinkedHashMap(stats.toPayload()).apply {
     put("health", health.toPayload())
-    put("review_run_id", reviewRunId?.value)
+    put("review_run_id", reviewRunId)
     put("db_path", dbPath)
     stageMetrics?.let { putAll(it.toStageMetricsPayload()) }
     if (stageMetricsByTier.isNotEmpty()) {

@@ -106,11 +106,11 @@ internal fun compactionEnvironment(request: SkillRunRequest): Map<String, String
 internal fun goalContinuationEnvironment(request: SkillRunRequest): Map<String, String> =
   request.goalContinuation?.let { context ->
     GoalContinuationEnvironment + buildMap {
-      put("SKILL_BILL_GOAL_PARENT_ISSUE_KEY", context.parentIssueKey.value)
-      put("SKILL_BILL_GOAL_SUBTASK_ID", context.subtaskId.value.toString())
+      put("SKILL_BILL_GOAL_PARENT_ISSUE_KEY", context.parentIssueKey)
+      put("SKILL_BILL_GOAL_SUBTASK_ID", context.subtaskId.toString())
       put("SKILL_BILL_GOAL_BRANCH", context.goalBranch)
       put("SKILL_BILL_SUPPRESS_PR", context.suppressPr.toString())
-      context.parentWorkflowId?.let { put("SKILL_BILL_GOAL_PARENT_WORKFLOW_ID", it.value) }
+      context.parentWorkflowId?.let { put("SKILL_BILL_GOAL_PARENT_WORKFLOW_ID", it) }
       context.lastResumableStep?.let { put("SKILL_BILL_GOAL_LAST_RESUMABLE_STEP", it) }
       put("SKILL_BILL_CODE_REVIEW_MODE", context.codeReviewMode.wireValue)
       put("SKILL_BILL_VALIDATION_DEPTH", context.validationDepth.wireValue)

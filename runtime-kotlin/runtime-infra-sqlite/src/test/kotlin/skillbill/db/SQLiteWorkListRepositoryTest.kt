@@ -1,8 +1,8 @@
 package skillbill.db
+
 import skillbill.db.core.DatabaseRuntime
 import skillbill.db.worklist.SQLiteWorkListRepository
 import skillbill.error.InvalidWorkListRowError
-import skillbill.workflow.engine.model.WorkflowId
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import skillbill.workflow.verify.FeatureVerifyWorkflowDefinition
 import java.nio.file.Files
@@ -52,7 +52,7 @@ class SQLiteWorkListRepositoryTest {
         connection.createStatement().use { statement ->
           statement.executeUpdate(
             featureTaskWorkflowRow(
-              FeatureTaskWorkflowRow(workflowId = WorkflowId("'wftr-$index'"), workflowStatus = status),
+              FeatureTaskWorkflowRow(workflowId = "'wftr-$index'", workflowStatus = status),
             ),
           )
         }
@@ -67,39 +67,27 @@ class SQLiteWorkListRepositoryTest {
   @Test
   fun `work list rejects malformed persisted rows at every read boundary`() {
     assertMalformedWorkListRow(
-      featureTaskWorkflowRow(FeatureTaskWorkflowRow(workflowId = WorkflowId("NULL"))),
+      featureTaskWorkflowRow(FeatureTaskWorkflowRow(workflowId = "NULL")),
       "missing workflow_id",
     )
     assertMalformedWorkListRow(
-      featureTaskWorkflowRow(FeatureTaskWorkflowRow(mode = "unknown", workflowId = WorkflowId("'wf-kind'"))),
+      featureTaskWorkflowRow(FeatureTaskWorkflowRow(mode = "unknown", workflowId = "'wf-kind'")),
       "unknown workflow kind",
     )
     assertMalformedWorkListRow(
-      featureTaskWorkflowRow(
-        FeatureTaskWorkflowRow(
-          workflowId =
-          WorkflowId("'wf-state'"),
-          workflowStatus = "unknown",
-        ),
-      ),
+      featureTaskWorkflowRow(FeatureTaskWorkflowRow(workflowId = "'wf-state'", workflowStatus = "unknown")),
       "unknown current state",
     )
     assertMalformedWorkListRow(
-      featureTaskWorkflowRow(FeatureTaskWorkflowRow(workflowId = WorkflowId("'wf-estimated'"), estimated = 2)),
+      featureTaskWorkflowRow(FeatureTaskWorkflowRow(workflowId = "'wf-estimated'", estimated = 2)),
       "invalid state_entered_at_estimated",
     )
     assertMalformedWorkListRow(
-      featureTaskWorkflowRow(FeatureTaskWorkflowRow(workflowId = WorkflowId("'wf-started'"), startedAt = "invalid")),
+      featureTaskWorkflowRow(FeatureTaskWorkflowRow(workflowId = "'wf-started'", startedAt = "invalid")),
       "invalid started_at",
     )
     assertMalformedWorkListRow(
-      featureTaskWorkflowRow(
-        FeatureTaskWorkflowRow(
-          workflowId =
-          WorkflowId("'wf-since'"),
-          stateEnteredAt = "invalid",
-        ),
-      ),
+      featureTaskWorkflowRow(FeatureTaskWorkflowRow(workflowId = "'wf-since'", stateEnteredAt = "invalid")),
       "invalid state_entered_at",
     )
     assertMalformedWorkListRow(

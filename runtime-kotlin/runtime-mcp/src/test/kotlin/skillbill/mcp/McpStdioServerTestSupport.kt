@@ -1,4 +1,5 @@
 package skillbill.mcp
+
 import skillbill.contracts.JsonCodec
 import skillbill.db.core.DatabaseRuntime
 import skillbill.db.telemetry.LifecycleTelemetryStore
@@ -8,8 +9,6 @@ import skillbill.telemetry.TELEMETRY_PROXY_URL_ENVIRONMENT_KEY
 import skillbill.telemetry.model.GoalFinishedRecord
 import skillbill.telemetry.model.GoalStartedRecord
 import skillbill.telemetry.model.GoalSubtaskFinishedRecord
-import skillbill.workflow.decomposition.model.IssueKey
-import skillbill.workflow.decomposition.model.SubtaskId
 import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.test.assertContains
@@ -317,7 +316,7 @@ internal fun seedGoalBlockedRun(dbPath: Path, workflowId: String) {
     val store = LifecycleTelemetryStore(connection)
     store.goalStarted(
       GoalStartedRecord(
-        issueKey = IssueKey("SKILL-66"),
+        issueKey = "SKILL-66",
         featureName = "goal telemetry",
         workflowId = workflowId,
         subtaskTotal = 1,
@@ -329,9 +328,9 @@ internal fun seedGoalBlockedRun(dbPath: Path, workflowId: String) {
     )
     store.goalSubtaskFinished(
       GoalSubtaskFinishedRecord(
-        issueKey = IssueKey("SKILL-66"),
+        issueKey = "SKILL-66",
         workflowId = workflowId,
-        subtaskId = SubtaskId(1),
+        subtaskId = 1,
         subtaskName = "implement",
         status = "blocked",
         startedAt = "2026-06-05T10:00:00Z",
@@ -344,7 +343,7 @@ internal fun seedGoalBlockedRun(dbPath: Path, workflowId: String) {
     )
     store.goalFinished(
       GoalFinishedRecord(
-        issueKey = IssueKey("SKILL-66"),
+        issueKey = "SKILL-66",
         workflowId = workflowId,
         status = "blocked",
         startedAt = "2026-06-05T10:00:00Z",
