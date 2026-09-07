@@ -1,5 +1,6 @@
 package skillbill.application.featuretask
 
+import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeReviewFinding
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeVerdict
 
@@ -16,6 +17,15 @@ fun FeatureTaskRuntimeRunState.spanBlockedByEntryGate(span: List<String>): Boole
 
 fun FeatureTaskRuntimeRunState.unresolvedReviewFindings(phaseId: String): List<FeatureTaskRuntimeReviewFinding> =
   FeatureTaskRuntimeOutputVerification.unresolvedReviewFindings(parsedOutput(outputFor(phaseId)))
+
+fun FeatureTaskRuntimeRunState.auditGapCriterionRefs(): List<String> =
+  if (verdictFor(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT) != FeatureTaskRuntimeVerdict.GAPS_FOUND) {
+    emptyList()
+  } else {
+    FeatureTaskRuntimeOutputVerification.auditGapCriterionRefs(
+      parsedOutput(outputFor(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT)),
+    ).sorted()
+  }
 
 fun FeatureTaskRuntimeRunState.durableVerdictFor(phaseId: String): FeatureTaskRuntimeVerdict {
   val record = initialRecords[phaseId] ?: return verdictFor(phaseId)

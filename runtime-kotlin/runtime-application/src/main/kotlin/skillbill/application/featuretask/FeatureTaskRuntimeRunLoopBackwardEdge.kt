@@ -60,7 +60,9 @@ class FeatureTaskRuntimeRunLoopBackwardEdge {
       loopId,
       edgeIteration,
       verdict,
-      emptyList(),
+      runLoop.state.auditGapCriterionRefs().takeIf {
+        loopId == FeatureTaskRuntimePhaseWorkflowDefinition.AUDIT_GAP_LOOP_ID
+      }.orEmpty(),
       if (loopId == FeatureTaskRuntimePhaseWorkflowDefinition.REVIEW_FIX_LOOP_ID) {
         runLoop.collaborators.drive.reviewedCheckpointFingerprint(runLoop)
       } else {

@@ -27,7 +27,7 @@ fun FeatureTaskRuntimeRunLoopBackwardEdge.runPhaseFor(runLoop: FeatureTaskRuntim
           edge.fromPhaseId,
         )
       } == true
-  }?.copy(phaseId = phaseId, reentryGapCriteria = emptyList())
+  }?.copy(phaseId = phaseId)
   val outcome = runLoop.collaborators.planningBranch.runPhase(
     runLoop,
     RunPhaseArgs(

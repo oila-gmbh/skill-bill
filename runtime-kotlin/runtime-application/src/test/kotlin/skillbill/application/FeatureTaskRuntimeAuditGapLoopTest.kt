@@ -75,11 +75,13 @@ class FeatureTaskRuntimeAuditGapLoopTest {
     // without restoring the discarded preplan narrative.
     val briefings = harness.recorder.loadPhaseBriefings(WORKFLOW_ID).orEmpty()
     val planBriefing = requireNotNull(briefings["plan"]).briefingText
-    val implementBriefing = requireNotNull(briefings["implement"]).briefingText
+    val implementLaunchBriefing = requireNotNull(briefings["implement"])
+    val implementBriefing = implementLaunchBriefing.briefingText
     assertTrue(!planBriefing.contains(AUDIT_GAP_MESSAGE))
     assertContains(implementBriefing, AUDIT_GAP_MESSAGE)
     assertTrue(!implementBriefing.contains("### from: preplan"))
     assertContains(implementBriefing, "### from: plan")
+    assertEquals(listOf("AC-002"), implementLaunchBriefing.unresolvedAuditGapIds)
     val planningRecords = harness.recorder.loadPhaseRecords(WORKFLOW_ID).orEmpty()
     assertEquals(1, requireNotNull(planningRecords["preplan"]).attemptCount)
     assertEquals(1, requireNotNull(planningRecords["plan"]).attemptCount)

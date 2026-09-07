@@ -59,7 +59,7 @@ private fun FeatureTaskRuntimeRunLoopOutputPersistence.assembleLaunchHandoff(
     runInvariants = args.run.request.runInvariants,
     recordedOutputs = args.state.outputs(),
     drivingVerdict = args.run.reentry?.drivingVerdict,
-    reentryGapCriteria = emptyList(),
+    reentryGapCriteria = args.run.reentry?.reentryGapCriteria.orEmpty(),
     priorGapMemory = runLoop.collaborators.launchContinued2.priorGapMemoryFor(runLoop, args.run, args.state),
     durablyClosedCriterionRefs = args.durablyClosedCriterionRefs,
     repairLedger = null,
