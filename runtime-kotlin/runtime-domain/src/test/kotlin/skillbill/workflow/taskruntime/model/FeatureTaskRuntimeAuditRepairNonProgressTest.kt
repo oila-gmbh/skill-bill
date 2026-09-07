@@ -65,4 +65,32 @@ class FeatureTaskRuntimeAuditRepairNonProgressTest {
     assertFalse(decision.blocked)
     assertEquals(null, decision.reason)
   }
+
+  @Test
+  fun `same unresolved criteria block even when repository fingerprint changes`() {
+    val decision = detectAuditRepairNonProgress(
+      previousCriterionRefs = setOf("AC-002", "AC-003"),
+      currentCriterionRefs = setOf("AC-002", "AC-003"),
+    )
+    assertTrue(decision.blocked)
+    assertTrue(requireNotNull(decision.reason).contains("criterion set did not shrink"))
+  }
+
+  @Test
+  fun `cleared criterion permits another remediation attempt`() {
+    val decision = detectAuditRepairNonProgress(
+      previousCriterionRefs = setOf("AC-002", "AC-003"),
+      currentCriterionRefs = setOf("AC-003"),
+    )
+    assertFalse(decision.blocked)
+  }
+
+  @Test
+  fun `legacy gaps marker fails closed`() {
+    val decision = detectAuditRepairNonProgress(
+      previousCriterionRefs = setOf(FeatureTaskRuntimeAuditGapProgress.HAD_GAPS_MARKER),
+      currentCriterionRefs = setOf("AC-002"),
+    )
+    assertTrue(decision.blocked)
+  }
 }

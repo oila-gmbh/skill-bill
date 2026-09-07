@@ -13,7 +13,6 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeHandoffSourceRef
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepositoryCheckpoint
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepositoryCheckpointPolicy
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeVerdict
-import skillbill.workflow.taskruntime.model.UNPROVEN_REPOSITORY_FINGERPRINT
 import skillbill.workflow.taskruntime.model.detectAuditRepairNonProgress
 
 @Inject
@@ -71,21 +70,20 @@ class FeatureTaskRuntimeRunLoopOutputVerificationSchemaGate {
     val verdict = FeatureTaskRuntimeOutputVerification.verdictFor(run.phaseId, outputMap)
     val currentHasGaps = verdict == FeatureTaskRuntimeVerdict.GAPS_FOUND
     val previous = runLoop.recorder.loadAuditGapProgress(runLoop.request.workflowId, runLoop.request.dbPathOverride)
+    val currentCriterionRefs = FeatureTaskRuntimeOutputVerification.auditGapCriterionRefs(outputMap)
     val decision = if (previous == null || !currentHasGaps) {
       FeatureTaskRuntimeAuditRepairProgressDecision(blocked = false, reason = null)
     } else {
       detectAuditRepairNonProgress(
-        previousHadGaps = previous.criterionRefs.isNotEmpty(),
-        currentHasGaps = true,
-        previousRepositoryFingerprint = previous.repositoryFingerprint ?: UNPROVEN_REPOSITORY_FINGERPRINT,
-        currentRepositoryFingerprint = repositoryFingerprint ?: UNPROVEN_REPOSITORY_FINGERPRINT,
+        previousCriterionRefs = previous.criterionRefs,
+        currentCriterionRefs = currentCriterionRefs,
       )
     }
     if (currentHasGaps) {
       runLoop.recorder.persistAuditGapProgress(
         runLoop.request.workflowId,
         FeatureTaskRuntimeAuditGapProgress(
-          criterionRefs = setOf(FeatureTaskRuntimeAuditGapProgress.HAD_GAPS_MARKER),
+          criterionRefs = currentCriterionRefs,
           repositoryFingerprint = repositoryFingerprint,
         ),
         runLoop.request.dbPathOverride,

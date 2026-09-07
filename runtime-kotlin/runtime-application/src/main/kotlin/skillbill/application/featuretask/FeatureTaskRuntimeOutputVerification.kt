@@ -5,6 +5,7 @@ import skillbill.review.ReviewFindingActionability
 import skillbill.review.model.ReviewClaimVerdict
 import skillbill.review.model.ReviewScopeDisposition
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditGapProgress
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFindingVerificationDisposition
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFindingVerificationVerdict
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeReviewFinding
@@ -47,6 +48,31 @@ object FeatureTaskRuntimeOutputVerification {
     ?.get("value")
     ?.toString()
     ?.takeIf(String::isNotBlank)
+
+  fun auditGapCriterionRefs(outputObject: Map<String, Any?>?): Set<String> {
+    val value = outputObject?.get("produced_outputs")
+      ?.let(JsonSupport::anyToStringAnyMap)
+      ?.get("value")
+    val valueMap = when (value) {
+      is String -> JsonSupport.parseObjectOrNull(value)
+        ?.let(JsonSupport::jsonElementToValue)
+        ?.let(JsonSupport::anyToStringAnyMap)
+      else -> JsonSupport.anyToStringAnyMap(value)
+    } ?: return setOf(FeatureTaskRuntimeAuditGapProgress.HAD_GAPS_MARKER)
+    val refs = sequenceOf("gaps", "unmet_criteria", "failing_criteria")
+      .flatMap { key ->
+        (valueMap[key] as? List<*>)?.asSequence().orEmpty().mapNotNull { entry ->
+          when (entry) {
+            is String -> entry.takeIf(String::isNotBlank)
+            else -> JsonSupport.anyToStringAnyMap(entry)?.get("criterion") as? String
+          }
+        }
+      }
+      .map(String::trim)
+      .filter(String::isNotEmpty)
+      .toSet()
+    return refs.ifEmpty { setOf(FeatureTaskRuntimeAuditGapProgress.HAD_GAPS_MARKER) }
+  }
 }
 
 private fun findingVerificationVerdict(wireVerdict: FeatureTaskRuntimeVerdict?): FeatureTaskRuntimeVerdict =

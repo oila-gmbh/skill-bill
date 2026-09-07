@@ -32,3 +32,31 @@ fun detectAuditRepairNonProgress(
     },
   )
 }
+
+fun detectAuditRepairNonProgress(
+  previousCriterionRefs: Set<String>,
+  currentCriterionRefs: Set<String>,
+): FeatureTaskRuntimeAuditRepairProgressDecision {
+  if (currentCriterionRefs.isEmpty()) {
+    return FeatureTaskRuntimeAuditRepairProgressDecision(
+      blocked = true,
+      reason = "Audit made no progress: the current unresolved criterion set is unavailable.",
+    )
+  }
+  val previousRefs = previousCriterionRefs - FeatureTaskRuntimeAuditGapProgress.HAD_GAPS_MARKER
+  if (previousRefs.isEmpty()) {
+    return FeatureTaskRuntimeAuditRepairProgressDecision(
+      blocked = true,
+      reason = "Audit made no progress: the previous unresolved criterion set is unavailable.",
+    )
+  }
+  val blocked = (previousRefs - currentCriterionRefs).isEmpty()
+  return FeatureTaskRuntimeAuditRepairProgressDecision(
+    blocked = blocked,
+    reason = if (blocked) {
+      "Audit made no progress: the unresolved criterion set did not shrink."
+    } else {
+      null
+    },
+  )
+}
