@@ -34,6 +34,24 @@ private class RecordingDiagnostics : RuntimeDiagnostics {
 
 class JdkFeatureTaskRuntimeWorkerSupervisorTest {
   @Test
+  fun `missing worker pid is not running even when its host identity drifted`() {
+    val supervisor = JdkFeatureTaskRuntimeWorkerSupervisor(RecordingDiagnostics())
+    val current = supervisor.currentProcess()
+    val missingPid = generateSequence(100_000L) { it + 1L }
+      .first { ProcessHandle.of(it).isEmpty }
+    val ownership = ownershipFor(
+      current,
+      bootIdentity = current.bootIdentity,
+      processBirthToken = current.processBirthToken,
+    ).copy(
+      hostIdentity = "previous-host.example",
+      pid = missingPid,
+    )
+
+    assertEquals(FeatureTaskRuntimeProcessInspection.NotRunning, supervisor.inspect(ownership))
+  }
+
+  @Test
   fun `worker from a previous boot on this host is not running`() {
     val supervisor = JdkFeatureTaskRuntimeWorkerSupervisor(RecordingDiagnostics())
     val current = supervisor.currentProcess()
