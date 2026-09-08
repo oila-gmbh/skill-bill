@@ -77,6 +77,8 @@ class FeatureTaskRuntimeRunLoopOutputVerificationSchemaGate {
       detectAuditRepairNonProgress(
         previousCriterionRefs = previous.criterionRefs,
         currentCriterionRefs = currentCriterionRefs,
+        previousRepositoryFingerprint = previous.repositoryFingerprint,
+        currentRepositoryFingerprint = repositoryFingerprint,
       )
     }
     if (currentHasGaps) {

@@ -67,13 +67,14 @@ class FeatureTaskRuntimeAuditRepairNonProgressTest {
   }
 
   @Test
-  fun `same unresolved criteria block even when repository fingerprint changes`() {
+  fun `same unresolved criteria continue when repository fingerprint changes`() {
     val decision = detectAuditRepairNonProgress(
       previousCriterionRefs = setOf("AC-002", "AC-003"),
       currentCriterionRefs = setOf("AC-002", "AC-003"),
+      previousRepositoryFingerprint = "before",
+      currentRepositoryFingerprint = "after",
     )
-    assertTrue(decision.blocked)
-    assertTrue(requireNotNull(decision.reason).contains("criterion set did not shrink"))
+    assertFalse(decision.blocked)
   }
 
   @Test
@@ -81,6 +82,8 @@ class FeatureTaskRuntimeAuditRepairNonProgressTest {
     val decision = detectAuditRepairNonProgress(
       previousCriterionRefs = setOf("AC-002", "AC-003"),
       currentCriterionRefs = setOf("AC-003"),
+      previousRepositoryFingerprint = "same",
+      currentRepositoryFingerprint = "same",
     )
     assertFalse(decision.blocked)
   }

@@ -36,6 +36,8 @@ fun detectAuditRepairNonProgress(
 fun detectAuditRepairNonProgress(
   previousCriterionRefs: Set<String>,
   currentCriterionRefs: Set<String>,
+  previousRepositoryFingerprint: String? = null,
+  currentRepositoryFingerprint: String? = null,
 ): FeatureTaskRuntimeAuditRepairProgressDecision {
   if (currentCriterionRefs.isEmpty()) {
     return FeatureTaskRuntimeAuditRepairProgressDecision(
@@ -50,11 +52,16 @@ fun detectAuditRepairNonProgress(
       reason = "Audit made no progress: the previous unresolved criterion set is unavailable.",
     )
   }
-  val blocked = (previousRefs - currentCriterionRefs).isEmpty()
+  val criteriaUnchanged = (previousRefs - currentCriterionRefs).isEmpty()
+  val repositoryChanged = previousRepositoryFingerprint != null &&
+    currentRepositoryFingerprint != null &&
+    previousRepositoryFingerprint != currentRepositoryFingerprint
+  val blocked = criteriaUnchanged && !repositoryChanged
   return FeatureTaskRuntimeAuditRepairProgressDecision(
     blocked = blocked,
     reason = if (blocked) {
-      "Audit made no progress: the unresolved criterion set did not shrink."
+      "Audit made no progress: the unresolved criterion set did not shrink and repository evidence " +
+        "did not change."
     } else {
       null
     },
