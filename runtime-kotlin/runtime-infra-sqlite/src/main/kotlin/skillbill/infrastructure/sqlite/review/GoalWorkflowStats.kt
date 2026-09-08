@@ -4,6 +4,10 @@ import skillbill.review.model.GoalBlockedSubtaskSummary
 import skillbill.review.model.GoalModeStats
 import skillbill.review.model.GoalRunSummary
 import skillbill.review.model.GoalWorkflowStats
+import skillbill.workflow.model.DecompositionStatus
+import skillbill.workflow.model.WorkflowStatus
+import skillbill.workflow.model.decompositionStatus
+import skillbill.workflow.model.workflowStatus
 import java.sql.Connection
 import java.util.Locale
 
@@ -31,20 +35,23 @@ fun buildGoalStats(runRows: List<Map<String, Any?>>, subtaskRows: List<Map<Strin
   val runs = runRows.map(::parseGoalRunRow)
   val subtasks = subtaskRows.map(::parseGoalSubtaskRow)
   val finished = runs.filter { it.finishedAt.isNotBlank() }
-  val completedRuns = finished.count { it.status == "completed" }
-  val blockedRuns = finished.count { it.status == "blocked" }
+  val completedRuns = finished.count { it.status.workflowStatus() == WorkflowStatus.COMPLETED }
+  val blockedRuns = finished.count { it.status.workflowStatus() == WorkflowStatus.BLOCKED }
   val mostRecent = runs.maxByOrNull { it.startedAt }
   return GoalWorkflowStats(
     totalRuns = runs.size,
     finishedRuns = finished.size,
     inProgressRuns = runs.size - finished.size,
-    completionStatusCounts = goalFinishedStatuses.associateWith { status -> finished.count { it.status == status } },
+    completionStatusCounts = goalFinishedStatuses.associateWith { status ->
+      finished.count { it.status.workflowStatus()?.wireValue == status }
+    },
     completedRuns = completedRuns,
     completedRate = rate(completedRuns, finished.size),
     blockedRuns = blockedRuns,
     blockedRate = rate(blockedRuns, finished.size),
-    subtaskOutcomeCounts =
-    goalSubtaskStatuses.associateWith { status -> subtasks.count { it.status == status } },
+    subtaskOutcomeCounts = goalSubtaskStatuses.associateWith { status ->
+      subtasks.count { it.status.decompositionStatus()?.wireValue == status }
+    },
     totalSubtaskEvents = subtasks.size,
     averageRunDurationMs = averageMillis(finished.map { it.durationMs }),
     averageSubtaskDurationMs = averageMillis(subtasks.map { it.durationMs }),
@@ -63,7 +70,7 @@ fun buildGoalStats(runRows: List<Map<String, Any?>>, subtaskRows: List<Map<Strin
       )
     },
     topBlockedSubtasks = subtasks
-      .filter { it.status == "blocked" }
+      .filter { it.status.decompositionStatus() == DecompositionStatus.BLOCKED }
       .map { s ->
         GoalBlockedSubtaskSummary(
           subtaskId = s.subtaskId,
@@ -84,8 +91,8 @@ private fun buildByModeStats(runs: List<GoalRunRow>): Map<String, GoalModeStats>
   .groupBy { it.mode }
   .mapValues { (_, modeRuns) ->
     val modeFinished = modeRuns.filter { it.finishedAt.isNotBlank() }
-    val modeCompleted = modeFinished.count { it.status == "completed" }
-    val modeBlocked = modeFinished.count { it.status == "blocked" }
+    val modeCompleted = modeFinished.count { it.status.workflowStatus() == WorkflowStatus.COMPLETED }
+    val modeBlocked = modeFinished.count { it.status.workflowStatus() == WorkflowStatus.BLOCKED }
     GoalModeStats(
       totalRuns = modeRuns.size,
       finishedRuns = modeFinished.size,

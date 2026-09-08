@@ -46,7 +46,9 @@ import skillbill.workflow.goal.model.appendBoundedHistoryBySequence
 import skillbill.workflow.goal.model.goalObservabilityLatestEventFromArtifacts
 import skillbill.workflow.taskruntime.phaseartifacts.phaseRecordsFrom
 import skillbill.workflow.model.WorkflowStatus
+import skillbill.workflow.model.WorkflowStepStatus
 import skillbill.workflow.model.workflowStatus
+import skillbill.workflow.model.workflowStepStatus
 
 private val PROGRESS_POLL_ARTIFACT_KEYS = setOf(
   "progress_event",
@@ -67,8 +69,14 @@ internal class WorkflowGoalRunnerProgressRecording(
       engine.snapshotView(family.definition, record)
       val steps = decodeWorkflowSteps(record.stepsJson)
       val artifacts = decodeArtifactKeys(record.artifactsJson, PROGRESS_POLL_ARTIFACT_KEYS)
-      val finishCompleted = steps.any { step -> step.stepId == "pr" && step.status == "completed" }
-      val currentStep = if (record.workflowStatus == "completed" || finishCompleted) "pr" else record.currentStepId
+      val finishCompleted = steps.any {
+        step -> step.stepId == "pr" && step.status.workflowStepStatus() == WorkflowStepStatus.COMPLETED
+      }
+      val currentStep = if (record.workflowStatus.workflowStatus() == WorkflowStatus.COMPLETED || finishCompleted) {
+        "pr"
+      } else {
+        record.currentStepId
+      }
       val progressEvent = progressEventFrom(artifacts)
       val declaredProgressEvent = declaredProgressEventFrom(artifacts)
       val observabilityEvent = runCatching {
