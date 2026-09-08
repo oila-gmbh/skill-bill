@@ -1,6 +1,7 @@
 package skillbill.workflow.engine.model
 
 import skillbill.boundary.OpenBoundaryMap
+import skillbill.workflow.model.WorkflowStatus
 
 data class WorkflowStepState(
   val stepId: String,

@@ -186,7 +186,7 @@ internal class ParallelCodeReviewRunnerLaneLaunch(
       success = false,
       rawOutput = "",
       failureReason = "governed evidence broker ${unbound.fault.wireValue} failed",
-      accounting = inlineParentAccounting(launch, "unbound_broker", null, null),
+      accounting = inlineParentAccounting(launch, ReviewAccountingTerminalOutcome.FAILED, null, null),
       reviewDisposition = bundleState.disposition,
       bundleCompositionDigest = bundleState.bundleCompositionDigest,
       segmentAccounting = bundleState.segments,
