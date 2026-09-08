@@ -29,6 +29,9 @@ enum class WorkflowStatus(val wireValue: String) {
 
   companion object {
     fun fromWire(value: String): WorkflowStatus? = entries.firstOrNull { it.wireValue == value }
+
+    val terminalStatuses: Set<WorkflowStatus>
+      get() = setOf(COMPLETED, FAILED, ABANDONED)
   }
 }
 
@@ -46,6 +49,32 @@ enum class WorkflowStepStatus(val wireValue: String) {
     fun fromWire(value: String): WorkflowStepStatus? = entries.firstOrNull { it.wireValue == value }
   }
 }
+
+enum class WorkflowResumeMode(val wireValue: String) {
+  DONE("done"),
+  RECOVER("recover"),
+  RESUME("resume"),
+  ;
+
+  companion object {
+    fun fromWire(value: String): WorkflowResumeMode? = entries.firstOrNull { it.wireValue == value }
+  }
+}
+
+enum class WorkflowContinueStatus(val wireValue: String) {
+  DONE("done"),
+  ALREADY_RUNNING("already_running"),
+  REOPENED("reopened"),
+  BLOCKED("blocked"),
+  ;
+
+  companion object {
+    fun fromWire(value: String): WorkflowContinueStatus? = entries.firstOrNull { it.wireValue == value }
+  }
+}
+
+val WorkflowStatus.isTerminal: Boolean
+  get() = this == WorkflowStatus.COMPLETED || this == WorkflowStatus.FAILED || this == WorkflowStatus.ABANDONED
 
 fun String?.decompositionStatus(): DecompositionStatus? = this?.let(DecompositionStatus::fromWire)
 

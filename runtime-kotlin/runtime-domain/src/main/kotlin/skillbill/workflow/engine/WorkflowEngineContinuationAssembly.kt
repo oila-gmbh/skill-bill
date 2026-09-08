@@ -12,6 +12,8 @@ import skillbill.workflow.engine.model.WorkflowStepState
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import skillbill.workflow.model.WorkflowStatus
 import skillbill.workflow.model.WorkflowStepStatus
+import skillbill.workflow.model.WorkflowResumeMode
+import skillbill.workflow.model.WorkflowContinueStatus
 import skillbill.workflow.model.workflowStatus
 import skillbill.workflow.model.workflowStepStatus
 
@@ -21,16 +23,16 @@ internal fun continueStatusFor(
   snapshot: WorkflowSnapshotView,
   resume: WorkflowResumeView,
   currentStep: WorkflowStepState?,
-): String {
+): WorkflowContinueStatus {
   val alreadyRunning =
     snapshot.workflowStatus.workflowStatus() == WorkflowStatus.RUNNING &&
       snapshot.currentStepId == resume.resumeStepId &&
       currentStep?.status?.workflowStepStatus() == WorkflowStepStatus.RUNNING
   return when {
-    resume.resumeMode == "done" -> "done"
-    resume.canResume && alreadyRunning -> "already_running"
-    resume.canResume -> "reopened"
-    else -> "blocked"
+    resume.resumeMode == WorkflowResumeMode.DONE -> WorkflowContinueStatus.DONE
+    resume.canResume && alreadyRunning -> WorkflowContinueStatus.ALREADY_RUNNING
+    resume.canResume -> WorkflowContinueStatus.REOPENED
+    else -> WorkflowContinueStatus.BLOCKED
   }
 }
 
@@ -81,16 +83,16 @@ internal data class ContinueAssemblyContext(
 
 internal data class AssembleContinueTextsRequest(
   val context: ContinueAssemblyContext,
-  val continueStatus: String,
+  val continueStatus: WorkflowContinueStatus,
   val sessionSummary: Map<String, Any?>,
   val nextAttemptCount: Int,
 )
 
 internal data class BuildContinueDecisionRequest(
   val context: ContinueAssemblyContext,
-  val continueStatus: String,
+  val continueStatus: WorkflowContinueStatus,
   val workflowStatusBeforeContinue: String,
-  val actualContinueStatus: String,
+  val actualContinueStatus: WorkflowContinueStatus,
   val nextAttemptCount: Int,
   val sessionSummary: Map<String, Any?>,
 )
@@ -198,7 +200,7 @@ internal fun buildContinueDecision(request: BuildContinueDecisionRequest): Workf
       continuationEntryPrompt = assembled.continuationEntryPrompt,
       compact = compact,
     ),
-    shouldReopen = request.actualContinueStatus == "reopened",
+    shouldReopen = request.actualContinueStatus == WorkflowContinueStatus.REOPENED,
     resumeStepId = resume.resumeStepId,
     nextAttemptCount = request.nextAttemptCount,
   )

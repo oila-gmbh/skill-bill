@@ -17,7 +17,7 @@ fun WorkflowStateRepository.goalContinuationFor(
   validator: DecompositionManifestValidator,
 ): GoalContinuationCandidate? {
   val record = findDecomposedParentWorkflow(issueKey, validator)
-    ?.takeIf { it.workflowStatus !in IMPLEMENT_TERMINAL_STATUSES }
+    ?.takeIf { it.workflowStatus.workflowStatus() !in IMPLEMENT_TERMINAL_STATUSES }
     ?: return null
   val manifest = record.toSnapshot().decompositionRuntime(validator)
     ?.takeIf { it.status.decompositionStatus() !in GOAL_TERMINAL_MANIFEST_STATUSES }

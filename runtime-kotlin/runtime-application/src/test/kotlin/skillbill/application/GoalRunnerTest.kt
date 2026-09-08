@@ -169,7 +169,7 @@ class GoalRunnerTest {
     assertEquals(2, completed.subtasksCompleted)
     assertEquals(0, completed.subtasksPending)
     assertEquals(0, completed.subtasksBlocked)
-    assertEquals("opened", completed.pullRequestStatus)
+    assertEquals("opened", completed.pullRequestStatus.wireValue)
     assertEquals("https://github.com/canonical/skill-bill/pull/56", completed.pullRequestUrl)
     assertEquals(listOf(1, 2), launcher.requests.map { it.skillRunRequest.subtaskId })
     assertEquals(1, pr.requests.size)
@@ -4829,7 +4829,7 @@ class GoalRunnerUnaddressedFindingsSummaryTest {
     )
     val completed = assertIs<GoalRunnerRunReport.Completed>(runner.run(request))
 
-    assertEquals("opened", completed.pullRequestStatus)
+    assertEquals("opened", completed.pullRequestStatus.wireValue)
     assertEquals(0, completed.unaddressedFindingCount)
     assertEquals(
       mapOf("blocker" to 0, "major" to 0, "minor" to 0, "nit" to 0),
@@ -4875,7 +4875,7 @@ class GoalRunnerUnaddressedFindingsSummaryTest {
     )
     val completed = assertIs<GoalRunnerRunReport.Completed>(runner.run(request))
 
-    assertEquals("opened", completed.pullRequestStatus)
+    assertEquals("opened", completed.pullRequestStatus.wireValue)
     assertEquals(
       null,
       completed.unaddressedFindingCount,

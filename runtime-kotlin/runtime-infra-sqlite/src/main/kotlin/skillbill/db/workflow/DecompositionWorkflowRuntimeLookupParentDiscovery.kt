@@ -31,12 +31,13 @@ fun WorkflowStateRepository.findDecomposedParentOrCorruptFallback(
     }
     .forEach { row ->
       val manifest = row.toSnapshot().decompositionRuntime(validator)
+      val workflowStatus = row.workflowStatus.workflowStatus()
       when {
         manifest != null &&
           manifest.issueKey == normalizedIssueKey &&
-          row.workflowStatus !in IMPLEMENT_TERMINAL_STATUSES ->
+          workflowStatus !in IMPLEMENT_TERMINAL_STATUSES ->
           validCandidates += DecomposedParentCandidate(row, manifest)
-        manifest == null && row.workflowStatus !in IMPLEMENT_TERMINAL_STATUSES ->
+        manifest == null && workflowStatus !in IMPLEMENT_TERMINAL_STATUSES ->
           corruptCandidates += row
       }
     }

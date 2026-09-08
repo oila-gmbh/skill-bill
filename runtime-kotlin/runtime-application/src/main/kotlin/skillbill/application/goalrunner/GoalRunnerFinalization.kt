@@ -10,6 +10,7 @@ import skillbill.application.goalrunner.model.GoalRunnerRunRequest
 import skillbill.error.InvalidUnaddressedFindingsLedgerSchemaError
 import skillbill.error.UnaddressedFindingsLedgerAbsentError
 import skillbill.goalrunner.model.GoalAttemptLedgerAction
+import skillbill.goalrunner.model.GoalPullRequestStatus
 import skillbill.goalrunner.model.GoalRunnerReconciledOutcome
 import skillbill.goalrunner.model.GoalRunnerRunReport
 import skillbill.goalrunner.model.GoalRunnerStopReason
@@ -68,7 +69,7 @@ public class GoalRunnerFinalization(
           finalState.manifest,
           attempted,
           pullRequestUrl = result.url,
-          pullRequestStatus = "opened",
+          pullRequestStatus = GoalPullRequestStatus.OPENED,
           findingsLedger,
         )
       }
@@ -78,7 +79,7 @@ public class GoalRunnerFinalization(
           finalState.manifest,
           attempted,
           pullRequestUrl = result.url,
-          pullRequestStatus = "existing",
+          pullRequestStatus = GoalPullRequestStatus.EXISTING,
           findingsLedger,
         )
       }

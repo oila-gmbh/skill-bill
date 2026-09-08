@@ -550,7 +550,7 @@ class WorkflowServiceTest {
     val standard = assertIs<WorkflowContinueResult.Standard>(
       service.continueWorkflow(WorkflowFamilyKind.TASK_RUNTIME, opened.workflowId),
     )
-    assertEquals("blocked", standard.view.continueStatus)
+    assertEquals("blocked", standard.view.continueStatus.wireValue)
     assertEquals(listOf("plan"), standard.view.resume.missingArtifacts)
     assertFalse(standard.view.resume.canResume)
   }

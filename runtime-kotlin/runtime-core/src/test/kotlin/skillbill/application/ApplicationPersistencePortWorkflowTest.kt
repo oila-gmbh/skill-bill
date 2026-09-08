@@ -69,7 +69,7 @@ class ApplicationPersistencePortWorkflowTest {
     assertEquals(1, listed.workflowCount)
     assertEquals(workflowId, latest.summary.workflowId)
     assertEquals(emptyList(), resumed.resume.missingArtifacts)
-    assertEquals("reopened", continued.view.continueStatus)
+    assertEquals("reopened", continued.view.continueStatus.wireValue)
   }
 
   @Test

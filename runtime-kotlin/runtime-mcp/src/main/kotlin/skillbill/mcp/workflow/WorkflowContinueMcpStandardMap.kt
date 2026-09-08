@@ -2,6 +2,7 @@ package skillbill.mcp.workflow
 
 import skillbill.application.workflow.WorkflowWireProjections
 import skillbill.workflow.engine.model.WorkflowContinueView
+import skillbill.workflow.model.WorkflowContinueStatus
 
 internal fun standardMcpContinueMap(
   view: WorkflowContinueView,
@@ -16,7 +17,7 @@ internal fun standardMcpContinueMap(
     "skill-bill --db $quotedDbPath $workflowCommand show $quotedWorkflowId --format json"
   decompositionExtras.forEach { (key, value) -> map[key] = value }
   map["db_path"] = dbPath
-  if (view.continueStatus == "blocked") {
+  if (view.continueStatus == WorkflowContinueStatus.BLOCKED) {
     val missingArtifacts = view.resume.missingArtifacts
     map["status"] = "error"
     map["error"] =

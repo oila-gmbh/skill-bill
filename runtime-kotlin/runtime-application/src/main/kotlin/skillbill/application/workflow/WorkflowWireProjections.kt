@@ -51,7 +51,7 @@ object WorkflowWireProjections {
   fun resumeMap(view: WorkflowResumeView): Map<String, Any?> = WorkflowContracts.resumePayload(
     snapshotMap(view.snapshot),
     linkedMapOf(
-      "resume_mode" to view.resumeMode,
+      "resume_mode" to view.resumeMode.wireValue,
       "resume_step_id" to view.resumeStepId,
       "last_completed_step_id" to view.lastCompletedStepId,
       "available_artifacts" to view.availableArtifacts,
@@ -68,7 +68,7 @@ object WorkflowWireProjections {
     linkedMapOf(
       "skill_name" to view.skillName,
       "workflow_status_before_continue" to view.workflowStatusBeforeContinue,
-      "continue_status" to view.continueStatus,
+      "continue_status" to view.continueStatus.wireValue,
       "continue_step_id" to view.continueStepId,
       "continue_step_label" to view.continueStepLabel,
       "continue_step_directive" to view.continueStepDirective,
@@ -89,7 +89,7 @@ object WorkflowWireProjections {
     "workflow_status_before_continue" to view.workflowStatusBeforeContinue,
     "started_at" to view.startedAt,
     "updated_at" to view.updatedAt,
-    "continue_status" to view.continueStatus,
+    "continue_status" to view.continueStatus.wireValue,
     "resume_step_id" to view.resumeStepId,
     "resume_step_label" to view.resumeStepLabel,
     "continue_step_id" to view.resumeStepId,

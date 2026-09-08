@@ -41,8 +41,8 @@ class FeatureVerifyWorkflowRuntimeTest {
       )
     val failed = completed.copy(workflowStatus = "failed")
 
-    assertEquals("done", engine.resumeView(definition, completed).resumeMode)
-    assertEquals("recover", engine.resumeView(definition, failed).resumeMode)
+    assertEquals("done", engine.resumeView(definition, completed).resumeMode.wireValue)
+    assertEquals("recover", engine.resumeView(definition, failed).resumeMode.wireValue)
   }
 
   @Test
@@ -79,7 +79,7 @@ class FeatureVerifyWorkflowRuntimeTest {
 
     val decision = engine.continueDecision(definition, record)
 
-    assertEquals("reopened", decision.view.continueStatus)
+    assertEquals("reopened", decision.view.continueStatus.wireValue)
     assertEquals(
       listOf(
         "feature_flag_audit_receipt",
@@ -107,7 +107,7 @@ class FeatureVerifyWorkflowRuntimeTest {
 
     assertEquals(null, WorkflowEngine.validateUpdate(definition, pending))
     assertEquals(null, WorkflowEngine.validateUpdate(definition, abandoned))
-    assertEquals("recover", engine.resumeView(definition, completedAs("abandoned")).resumeMode)
+    assertEquals("recover", engine.resumeView(definition, completedAs("abandoned")).resumeMode.wireValue)
     assertEquals(
       "Invalid workflow_status 'blocked'. Allowed: pending, running, completed, failed, abandoned",
       WorkflowEngine.validateUpdate(definition, pending.copy(workflowStatus = "blocked")),

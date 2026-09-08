@@ -46,8 +46,8 @@ class WorkflowCompactContinuationTest {
     )
     val compact = standard.view.compact
 
-    assertEquals("reopened", compact.continueStatus)
-    assertEquals("reopened", standard.view.continueStatus)
+    assertEquals("reopened", compact.continueStatus.wireValue)
+    assertEquals("reopened", standard.view.continueStatus.wireValue)
     assertEquals("blocked", compact.workflowStatusBeforeContinue)
     assertEquals("blocked", standard.view.workflowStatusBeforeContinue)
     assertEquals(opened.workflowId, compact.workflowId)
@@ -106,7 +106,7 @@ class WorkflowCompactContinuationTest {
     )
     val planSummary = standard.view.compact.currentStepArtifacts.single { it.key == "plan" }
 
-    assertEquals("reopened", standard.view.continueStatus)
+    assertEquals("reopened", standard.view.continueStatus.wireValue)
     assertTrue(planSummary.present)
     assertFalse(planSummary.inline)
     assertTrue(requireNotNull(planSummary.sizeBytes) > 4096)

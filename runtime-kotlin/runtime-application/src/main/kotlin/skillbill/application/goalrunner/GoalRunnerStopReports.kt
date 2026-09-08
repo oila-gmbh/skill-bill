@@ -7,6 +7,7 @@ import skillbill.goalrunner.model.GoalRunnerRunReport
 import skillbill.goalrunner.model.GoalRunnerStopReason
 import skillbill.goalrunner.model.GoalRunnerStopReport
 import skillbill.goalrunner.model.GoalRunnerSupervisionEvent
+import skillbill.goalrunner.model.GoalPullRequestStatus
 import skillbill.goalrunner.model.UnaddressedFindingsLedger
 import skillbill.ports.goalrunner.runner.model.GoalRunnerWorkflowProgress
 import skillbill.workflow.decomposition.model.DecompositionManifest
@@ -32,7 +33,7 @@ fun completed(
   manifest: DecompositionManifest,
   attempted: List<Int>,
   pullRequestUrl: String?,
-  pullRequestStatus: String,
+  pullRequestStatus: GoalPullRequestStatus,
   ledger: UnaddressedFindingsLedger?,
 ): GoalRunnerRunReport.Completed {
   return GoalRunnerRunReport.Completed(

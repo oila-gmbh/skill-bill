@@ -114,6 +114,16 @@ data class GoalRunnerStopReport(
   val lastResumableStep: String,
 )
 
+enum class GoalPullRequestStatus(val wireValue: String) {
+  OPENED("opened"),
+  EXISTING("existing"),
+  ;
+
+  companion object {
+    fun fromWire(value: String): GoalPullRequestStatus? = entries.firstOrNull { it.wireValue == value }
+  }
+}
+
 sealed interface GoalRunnerRunReport {
   val issueKey: String
   val attemptedSubtasks: List<Int>
@@ -122,7 +132,7 @@ sealed interface GoalRunnerRunReport {
     override val issueKey: String,
     override val attemptedSubtasks: List<Int>,
     val pullRequestUrl: String?,
-    val pullRequestStatus: String,
+    val pullRequestStatus: GoalPullRequestStatus,
     val subtasksCompleted: Int,
     val subtasksPending: Int,
     val subtasksBlocked: Int,

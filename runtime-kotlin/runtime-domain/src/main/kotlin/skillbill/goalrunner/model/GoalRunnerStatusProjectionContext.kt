@@ -5,11 +5,10 @@ import skillbill.workflow.decomposition.model.DecompositionSubtask
 import skillbill.workflow.model.DecompositionStatus
 import skillbill.workflow.model.WorkflowStatus
 import skillbill.workflow.model.decompositionStatus
-import skillbill.workflow.model.workflowStatus
 
 internal data class GoalRunnerStatusProjectionContext(
   val currentSubtask: DecompositionSubtask?,
-  val statusOf: (DecompositionSubtask) -> String,
+  val statusOf: (DecompositionSubtask) -> DecompositionStatus?,
   val staleSignal: Boolean,
 )
 
@@ -18,14 +17,14 @@ internal fun buildGoalRunnerStatusProjectionContext(
   extras: GoalRunnerStatusProjectionRuntimeInputs,
 ): GoalRunnerStatusProjectionContext {
   val currentSubtask = manifest.subtasks.firstOrNull { it.id == manifest.currentSubtaskIntent.subtaskId }
-  val statusOf: (DecompositionSubtask) -> String = { subtask ->
-    if (subtask.id == currentSubtask?.id && extras.currentWorkflowStatus?.workflowStatus() in LIVE_WORKFLOW_STATUSES) {
-      "in_progress"
+  val statusOf: (DecompositionSubtask) -> DecompositionStatus? = { subtask ->
+    if (subtask.id == currentSubtask?.id && extras.currentWorkflowStatus in LIVE_WORKFLOW_STATUSES) {
+      DecompositionStatus.IN_PROGRESS
     } else {
-      subtask.status
+      subtask.status.decompositionStatus()
     }
   }
-  val liveChild = extras.currentWorkflowStatus?.workflowStatus() in LIVE_WORKFLOW_STATUSES
+  val liveChild = extras.currentWorkflowStatus in LIVE_WORKFLOW_STATUSES
   val liveStep = extras.currentStepOverride?.takeIf(String::isNotBlank)
   val eventPhase = extras.latestObservabilityEvent?.get("workflow_phase")?.toString()?.takeIf(String::isNotBlank)
   val blockEvent = extras.latestObservabilityEvent?.get("liveness_class") == "block"
@@ -45,15 +44,15 @@ internal fun assembleGoalRunnerStatusProjection(
   return GoalRunnerStatusProjection(
     issueKey = manifest.issueKey,
     completeCount = manifest.subtasks.count {
-      statusOf(it).decompositionStatus() in setOf(DecompositionStatus.COMPLETE, DecompositionStatus.SKIPPED)
+      statusOf(it) in setOf(DecompositionStatus.COMPLETE, DecompositionStatus.SKIPPED)
     },
     pendingCount = manifest.subtasks.count {
-      statusOf(it).decompositionStatus() !in setOf(DecompositionStatus.COMPLETE, DecompositionStatus.SKIPPED, DecompositionStatus.BLOCKED)
+      statusOf(it) !in setOf(DecompositionStatus.COMPLETE, DecompositionStatus.SKIPPED, DecompositionStatus.BLOCKED)
     },
-    blockedCount = manifest.subtasks.count { statusOf(it).decompositionStatus() == DecompositionStatus.BLOCKED },
+    blockedCount = manifest.subtasks.count { statusOf(it) == DecompositionStatus.BLOCKED },
     currentSubtaskId = currentSubtask?.id,
     currentChildWorkflowId = currentSubtask?.workflowId?.takeIf(String::isNotBlank),
-    currentSubtaskStatus = currentSubtask?.let(statusOf)?.takeIf(String::isNotBlank),
+    currentSubtaskStatus = currentSubtask?.let(statusOf),
     currentSubtaskBlockedReason = currentSubtask?.blockedReason?.takeIf(String::isNotBlank),
     currentStep = extras.currentStepOverride?.takeIf(String::isNotBlank)
       ?: currentSubtask?.lastResumableStep

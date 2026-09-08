@@ -11,6 +11,8 @@ import skillbill.workflow.engine.model.WorkflowUpdateAcknowledgementView
 import skillbill.workflow.engine.model.WorkflowUpdateInput
 import skillbill.workflow.model.WorkflowStatus
 import skillbill.workflow.model.WorkflowStepStatus
+import skillbill.workflow.model.WorkflowContinueStatus
+import skillbill.workflow.model.WorkflowResumeMode
 import skillbill.workflow.model.workflowStatus
 import skillbill.workflow.model.workflowStepStatus
 
@@ -117,11 +119,11 @@ class WorkflowEngine(
     var resumeStepId = snapshot.currentStepId
     val resumeMode =
       when {
-        snapshot.workflowStatus.workflowStatus() == WorkflowStatus.COMPLETED -> "done"
-        snapshot.workflowStatus in definition.terminalStatuses -> "recover"
-        else -> "resume"
+        snapshot.workflowStatus.workflowStatus() == WorkflowStatus.COMPLETED -> WorkflowResumeMode.DONE
+        snapshot.workflowStatus in definition.terminalStatuses -> WorkflowResumeMode.RECOVER
+        else -> WorkflowResumeMode.RESUME
       }
-    if (resumeMode == "resume" && stepsById[snapshot.currentStepId]?.status?.workflowStepStatus() == WorkflowStepStatus.COMPLETED) {
+    if (resumeMode == WorkflowResumeMode.RESUME && stepsById[snapshot.currentStepId]?.status?.workflowStepStatus() == WorkflowStepStatus.COMPLETED) {
       resumeStepId =
         definition.stepIds.firstOrNull { stepId -> stepsById[stepId]?.status?.workflowStepStatus() in workflowResumableStepStatuses }
           ?: snapshot.currentStepId
@@ -131,9 +133,9 @@ class WorkflowEngine(
     val missingArtifacts =
       definition.requiredArtifactPresenceResolver.missingRequiredArtifacts(snapshot, resumeStepId, requiredArtifacts)
         .filterNot { it == RUNTIME_REPOSITORY_EVIDENCE_ARTIFACT_KEY }
-    val canResume = resumeMode != "done" && missingArtifacts.isEmpty()
+    val canResume = resumeMode != WorkflowResumeMode.DONE && missingArtifacts.isEmpty()
     val nextAction =
-      if (resumeMode == "done") {
+      if (resumeMode == WorkflowResumeMode.DONE) {
         "Workflow already completed. Inspect ${definition.completedTerminalSummaryArtifact} or telemetry for a summary."
       } else {
         definition.resumeActions[resumeStepId]
@@ -156,7 +158,7 @@ class WorkflowEngine(
     definition: WorkflowDefinition,
     record: WorkflowStateSnapshot,
     sessionSummary: Map<String, Any?> = emptyMap(),
-    continueStatusOverride: String? = null,
+    continueStatusOverride: WorkflowContinueStatus? = null,
     workflowStatusBeforeContinueOverride: String? = null,
   ): WorkflowContinueDecision {
     val resume = resumeView(definition, record)
