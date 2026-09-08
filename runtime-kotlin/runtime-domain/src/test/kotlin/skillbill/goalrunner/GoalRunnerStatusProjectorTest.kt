@@ -32,6 +32,17 @@ class GoalRunnerStatusProjectorTest {
     assertEquals(0, projection.pendingCount)
   }
 
+  @Test
+  fun `a blocked child workflow is reflected when the manifest still says in progress`() {
+    val projection = GoalRunnerStatusProjector.project(
+      manifest = manifest(currentSubtaskStatus = "in_progress"),
+      extras = GoalRunnerStatusProjectionExtras(currentWorkflowStatus = "blocked"),
+    )
+
+    assertEquals(1, projection.blockedCount)
+    assertEquals(0, projection.pendingCount)
+  }
+
   // Only supervisor events are persisted, so a block recorded when a prior run stopped is still the newest
   // stored event while a relaunched child runs. Rendering it would contradict the live workflow status.
   @Test

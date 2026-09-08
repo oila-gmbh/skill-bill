@@ -15,10 +15,14 @@ internal fun buildGoalRunnerStatusProjectionContext(
 ): GoalRunnerStatusProjectionContext {
   val currentSubtask = manifest.subtasks.firstOrNull { it.id == manifest.currentSubtaskIntent.subtaskId }
   val statusOf: (DecompositionSubtask) -> String = { subtask ->
-    if (subtask.id == currentSubtask?.id && extras.currentWorkflowStatus in LIVE_WORKFLOW_STATUSES) {
-      "in_progress"
-    } else {
+    if (subtask.id != currentSubtask?.id) {
       subtask.status
+    } else {
+      when {
+        extras.currentWorkflowStatus in LIVE_WORKFLOW_STATUSES -> "in_progress"
+        extras.currentWorkflowStatus == "blocked" -> "blocked"
+        else -> subtask.status
+      }
     }
   }
   val liveChild = extras.currentWorkflowStatus in LIVE_WORKFLOW_STATUSES
