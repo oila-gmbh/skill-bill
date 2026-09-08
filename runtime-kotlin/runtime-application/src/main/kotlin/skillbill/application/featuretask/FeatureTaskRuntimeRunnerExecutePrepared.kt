@@ -20,7 +20,7 @@ fun FeatureTaskRuntimeRunner.buildExecutePreparedRunTelemetryContext(
   phaseOutcomes = {
     recorder.loadPhaseRecords(runRequest.workflowId, runRequest.dbPathOverride)
       .orEmpty()
-      .mapValues { (_, record) -> record.status }
+      .mapValues { (_, record) -> record.status.wireValue }
   },
   reviewFixIterationCount = { loadReviewFixIterationCount(runRequest) },
   auditGapIterationCount = { loadAuditGapIterationCount(runRequest) },

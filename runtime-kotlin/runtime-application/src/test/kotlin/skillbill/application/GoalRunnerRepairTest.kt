@@ -521,8 +521,8 @@ internal class GoalRunnerRepairTest : GoalRunnerRepairFixtures() {
     assertEquals("running", updated.workflowStatus)
     assertEquals("build", updated.currentStepId)
     val records = phaseRecordsFrom(decodeArtifacts(updated.artifactsJson))
-    assertEquals("pending", records.getValue("build").status)
-    assertEquals("pending", records.getValue("write_history").status)
+    assertEquals("pending", records.getValue("build").status.wireValue)
+    assertEquals("pending", records.getValue("write_history").status.wireValue)
   }
 
   @Test
@@ -577,8 +577,8 @@ internal class GoalRunnerRepairTest : GoalRunnerRepairFixtures() {
     assertEquals("running", updated.workflowStatus)
     assertEquals("verify_findings", updated.currentStepId)
     val records = phaseRecordsFrom(decodeArtifacts(updated.artifactsJson))
-    assertEquals("pending", records.getValue("verify_findings").status)
-    assertEquals("pending", records.getValue("implement_fix").status)
+    assertEquals("pending", records.getValue("verify_findings").status.wireValue)
+    assertEquals("pending", records.getValue("implement_fix").status.wireValue)
     val evidence = (decodeArtifacts(updated.artifactsJson)[GOAL_CHILD_REPAIR_EVIDENCE_ARTIFACT_KEY] as List<*>)
       .single() as Map<*, *>
     assertEquals("completed_upstream_missing_output", evidence["wedge_class"])
@@ -617,8 +617,8 @@ internal class GoalRunnerRepairContinuationTest : GoalRunnerRepairFixtures() {
     val after = decodeArtifacts(updated.artifactsJson)
     assertEquals("full", (after["goal_continuation"] as Map<*, *>)["validation_depth"])
     val records = phaseRecordsFrom(after)
-    assertEquals("pending", records.getValue("verify_findings").status)
-    assertEquals("pending", records.getValue("implement_fix").status)
+    assertEquals("pending", records.getValue("verify_findings").status.wireValue)
+    assertEquals("pending", records.getValue("implement_fix").status.wireValue)
     assertEquals(2, (after[GOAL_CHILD_REPAIR_EVIDENCE_ARTIFACT_KEY] as List<*>).size)
   }
 

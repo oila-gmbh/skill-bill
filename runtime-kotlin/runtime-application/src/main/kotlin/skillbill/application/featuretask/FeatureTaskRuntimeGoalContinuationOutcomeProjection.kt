@@ -8,9 +8,10 @@ import skillbill.application.featuretask.model.FeatureTaskRuntimeSubtaskOutcome
 import skillbill.contracts.JsonCodec
 import skillbill.ports.workflow.gitops.WorkflowGitOperations
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
-import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_STATUS_BLOCKED
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerAction
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseRecord
+import skillbill.workflow.model.WorkflowStepStatus
+import skillbill.workflow.model.workflowStepStatus
 
 const val BRANCH_SETUP_AGENT_SENTINEL = "branch-setup"
 const val GOAL_PLANNING_IMPORT_AGENT_SENTINEL = "goal-planning-import"
@@ -128,7 +129,7 @@ internal fun agentAttributionFromPhaseState(
 // ordering. Branch-setup-sentinel records are excluded: they carry no real agent id.
 private fun terminalRecordAgentId(records: Map<String, FeatureTaskRuntimePhaseRecord>): String? {
   val realRecords = records.values.filter { it.resolvedAgentId.isRuntimeAgentId() }
-  realRecords.filter { it.status == FEATURE_TASK_RUNTIME_PHASE_STATUS_BLOCKED }
+  realRecords.filter { it.status.workflowStepStatus() == WorkflowStepStatus.BLOCKED }
     .maxByOrNull { it.finishedAt.orEmpty() }
     ?.let { return it.resolvedAgentId }
   return realRecords

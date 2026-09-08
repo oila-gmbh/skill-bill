@@ -13,6 +13,8 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeOperatorBlockRetry
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeProducerIteration
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeTransitionDeclaration
 import skillbill.workflow.taskruntime.model.PhaseHandoffProjectionDeclaration
+import skillbill.workflow.model.WorkflowStepStatus
+import skillbill.workflow.model.workflowStepStatus
 import java.nio.file.Path
 import java.time.Clock
 
@@ -117,7 +119,9 @@ class FeatureTaskRuntimeRunLoop internal constructor(
     operatorBlockRetry = recorder
       .loadOperatorBlockRetry(request.workflowId, request.dbPathOverride)
       ?.takeIf { retry ->
-        state.recordFor(retry.phaseId)?.status.let { status -> status == null || status == "pending" }
+        state.recordFor(retry.phaseId)?.status.let { status ->
+          status == null || status.workflowStepStatus() == WorkflowStepStatus.PENDING
+        }
       },
     initialPendingReentry = null,
   )

@@ -11,6 +11,8 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeReviewFinding
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeTransitionDeclaration
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeVerdict
 import skillbill.workflow.taskruntime.model.requireAcceptedOutput
+import skillbill.workflow.model.WorkflowStepStatus
+import skillbill.workflow.model.workflowStepStatus
 
 class FeatureTaskRuntimeRunState(
   val initialRecords: Map<String, FeatureTaskRuntimePhaseRecord>,
@@ -41,7 +43,7 @@ class FeatureTaskRuntimeRunState(
 
   val completed: MutableSet<String> =
     initialRecords.values
-      .filter { it.status == STATUS_COMPLETED }
+      .filter { it.status.workflowStepStatus() == WorkflowStepStatus.COMPLETED }
       .map { it.phaseId }
       .toMutableSet()
       .also(::invalidateLegacyPlanWithoutPreplan)
@@ -66,7 +68,7 @@ class FeatureTaskRuntimeRunState(
       val accepted = try {
         outputValidator.validatePhaseOutput(artifact, record.phaseId).requireAcceptedOutput(record.phaseId)
       } catch (error: InvalidFeatureTaskRuntimePhaseOutputSchemaError) {
-        if (record.status == STATUS_COMPLETED) throw error
+        if (record.status.workflowStepStatus() == WorkflowStepStatus.COMPLETED) throw error
         return@let null
       }
       FeatureTaskRuntimePhaseOutput(
@@ -85,19 +87,19 @@ class FeatureTaskRuntimeRunState(
     ?: initialReviewRecord?.let { 1 }
     private set
   internal var completedReviewPassNumber: Int? = currentReviewPassNumber
-    ?.takeIf { initialReviewRecord?.status == STATUS_COMPLETED }
+    ?.takeIf { initialReviewRecord?.status?.workflowStepStatus() == WorkflowStepStatus.COMPLETED }
     private set
 
   val persistedAttemptCounts: MutableMap<String, Int> =
     initialRecords.mapValues { (_, record) -> record.attemptCount }.toMutableMap()
 
   val blockedRecords: MutableMap<String, String> = initialRecords
-    .filterValues { it.status == STATUS_BLOCKED && it.resolvedAgentId != BRANCH_SETUP_AGENT_ID }
+    .filterValues { it.status.workflowStepStatus() == WorkflowStepStatus.BLOCKED && it.resolvedAgentId != BRANCH_SETUP_AGENT_ID }
     .mapValues { (_, record) -> record.blockedReason.orEmpty() }
     .toMutableMap()
 
   val branchSetupBlockedPhases: MutableSet<String> = initialRecords
-    .filterValues { it.status == STATUS_BLOCKED && it.resolvedAgentId == BRANCH_SETUP_AGENT_ID }
+    .filterValues { it.status.workflowStepStatus() == WorkflowStepStatus.BLOCKED && it.resolvedAgentId == BRANCH_SETUP_AGENT_ID }
     .keys
     .toMutableSet()
 
@@ -311,7 +313,7 @@ class FeatureTaskRuntimeRunState(
   fun planningContextError(phaseId: String): String? {
     val record = initialRecords[phaseId]
     val output = outputFor(phaseId)
-    if (output == null || record?.status?.let { it != STATUS_COMPLETED } == true) {
+    if (output == null || record?.status?.let { it != WorkflowStepStatus.COMPLETED } == true) {
       return "Audit-gap remediation requires a valid completed original '$phaseId' output."
     }
     val validatedOutput = output.normalizedOutput?.envelope

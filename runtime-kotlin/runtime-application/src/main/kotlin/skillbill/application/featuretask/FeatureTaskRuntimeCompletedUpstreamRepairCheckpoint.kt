@@ -11,6 +11,8 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerAction
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerEntry
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutput
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseRecord
+import skillbill.workflow.model.WorkflowStepStatus
+import skillbill.workflow.model.workflowStepStatus
 import java.time.OffsetDateTime
 import java.time.ZoneOffset
 
@@ -24,11 +26,11 @@ fun phasesToReopenForCompletedUpstreamRepair(
   val qualityGateSelection = request.qualityGateSelection
   val stepOrder = FeatureTaskRuntimePhaseWorkflowDefinition.definition.stepIds
   return when {
-    phaseRecords[resumePhaseId]?.status == "blocked" -> listOf(resumePhaseId)
+    phaseRecords[resumePhaseId]?.status?.workflowStepStatus() == WorkflowStepStatus.BLOCKED -> listOf(resumePhaseId)
     else -> buildList {
       add(resumePhaseId)
       phaseRecords.forEach { (phaseId, record) ->
-        if (record.status == "blocked") {
+        if (record.status.workflowStepStatus() == WorkflowStepStatus.BLOCKED) {
           val missing = missingUpstream(
             phaseDeclaration(phaseId, featureSize, qualityGateSelection),
             recordedOutputs,

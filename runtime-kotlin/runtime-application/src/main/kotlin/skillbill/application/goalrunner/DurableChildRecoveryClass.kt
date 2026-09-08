@@ -1,6 +1,7 @@
 package skillbill.application.goalrunner
 
 import skillbill.ports.goalrunner.runner.model.GoalRunnerWorkflowProgress
+import skillbill.workflow.model.WorkflowStatus
 
 internal enum class DurableChildRecoveryClass(val wireValue: String) {
   ABSENT("absent"),
@@ -12,11 +13,11 @@ internal enum class DurableChildRecoveryClass(val wireValue: String) {
 internal fun classifyDurableChild(progress: GoalRunnerWorkflowProgress?): DurableChildRecoveryClass =
   when (progress?.workflowStatus) {
     null -> DurableChildRecoveryClass.ABSENT
-    "running" -> DurableChildRecoveryClass.ACTIVE
-    "pending", "paused" -> DurableChildRecoveryClass.RESUMABLE
-    "blocked", "failed", "abandoned", "timed_out", "completed" ->
+    WorkflowStatus.RUNNING -> DurableChildRecoveryClass.ACTIVE
+    WorkflowStatus.PENDING, WorkflowStatus.PAUSED -> DurableChildRecoveryClass.RESUMABLE
+    WorkflowStatus.BLOCKED, WorkflowStatus.FAILED, WorkflowStatus.ABANDONED, WorkflowStatus.TIMED_OUT,
+    WorkflowStatus.COMPLETED ->
       DurableChildRecoveryClass.INCOMPATIBLE_TERMINAL
-    else -> DurableChildRecoveryClass.INCOMPATIBLE_TERMINAL // untrusted durable workflow status wire value
   }
 
 fun scopedChildRecoveryCommand(issueKey: String, subtaskId: Int): String =

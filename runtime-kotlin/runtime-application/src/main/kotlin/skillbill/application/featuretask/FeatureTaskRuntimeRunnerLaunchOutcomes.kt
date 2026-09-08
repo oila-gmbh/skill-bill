@@ -20,13 +20,12 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseDeclaration
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutput
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeProviderLimitSignal
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeQualityGateSelection
-
-private const val PHASE_OUTPUT_STATUS_BLOCKED = "blocked"
-private const val PHASE_OUTPUT_STATUS_FAILED = "failed"
+import skillbill.workflow.model.WorkflowStepStatus
+import skillbill.workflow.model.workflowStepStatus
 
 fun terminalBlockedReasonFrom(phaseId: String, outputMap: Map<String, Any?>): String? {
   val status = outputMap["status"] as? String
-  if (status != PHASE_OUTPUT_STATUS_BLOCKED && status != PHASE_OUTPUT_STATUS_FAILED) {
+  if (status.workflowStepStatus() != WorkflowStepStatus.BLOCKED && status.workflowStepStatus() != WorkflowStepStatus.FAILED) {
     return null
   }
   val summary = (outputMap["summary"] as? String).orEmpty().trim()

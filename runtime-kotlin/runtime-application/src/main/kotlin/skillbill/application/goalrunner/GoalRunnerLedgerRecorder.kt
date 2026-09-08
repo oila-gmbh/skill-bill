@@ -59,7 +59,7 @@ class GoalRunnerLedgerRecorder(
       issueKey = context.issueKey.takeIf(String::isNotBlank),
       subtaskId = context.subtaskId.takeIf { it > 0 },
       previousWorkflowId = targetWorkflowId,
-      previousStatus = context.progress?.workflowStatus,
+      previousStatus = context.progress?.workflowStatus?.wireValue,
       previousStep = context.progress?.currentStepId,
       blockedReason = context.blockedReason?.takeIf(String::isNotBlank),
       latestLiveness = context.progress?.latestLivenessSignal,

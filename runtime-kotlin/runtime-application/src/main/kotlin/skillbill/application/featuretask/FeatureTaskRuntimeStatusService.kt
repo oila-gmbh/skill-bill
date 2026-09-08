@@ -15,6 +15,8 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerAction
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerEntry
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseRecord
 import skillbill.workflow.taskruntime.model.orLegacyValidate
+import skillbill.workflow.model.WorkflowStepStatus
+import skillbill.workflow.model.workflowStepStatus
 
 /**
  * Read-only status service that projects durable per-phase records and the ledger into a typed
@@ -58,7 +60,7 @@ fun FeatureTaskRuntimeStatusService.buildStatusProjection(
   ledger: List<FeatureTaskRuntimePhaseLedgerEntry>,
 ): FeatureTaskRuntimeStatusProjection {
   val auditRepairProgress = auditProgressFrom(records, ledger)
-  val durableBlockedPhaseIds = records.filterValues { it.status == PHASE_STATUS_BLOCKED }.keys
+  val durableBlockedPhaseIds = records.filterValues { it.status.workflowStepStatus() == WorkflowStepStatus.BLOCKED }.keys
   val blockedPhaseIds = durableBlockedPhaseIds + ledgerBlockedPhaseIds(ledger, durableBlockedPhaseIds)
   val phases = phaseStatuses(records, blockedPhaseIds, ledger)
   val terminalDecomposeRecorded = decomposeTerminal != null
@@ -121,9 +123,9 @@ private fun FeatureTaskRuntimeStatusService.statusProjectionFrom(
     workflowId = request.workflowId,
     featureSize = runInvariantsStore.resolve(request.workflowId, request.dbPathOverride)?.featureSize?.name,
     phases = phases,
-    completeCount = phases.count { it.status == PHASE_STATUS_COMPLETED },
+    completeCount = phases.count { it.status.workflowStepStatus() == WorkflowStepStatus.COMPLETED },
     pendingCount = if (terminalDecomposeRecorded) 0 else phases.count { it.status !in PHASE_TERMINAL_STATUSES },
-    blockedCount = if (terminalDecomposeRecorded) 0 else phases.count { it.status == PHASE_STATUS_BLOCKED },
+    blockedCount = if (terminalDecomposeRecorded) 0 else phases.count { it.status.workflowStepStatus() == WorkflowStepStatus.BLOCKED },
     currentPhaseId = parts.currentPhaseId,
     resolvedBranch = recorder.loadResolvedBranch(request.workflowId, request.dbPathOverride)?.branch,
     finalizingAgentId = agentAttributionFromPhaseState(

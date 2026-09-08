@@ -37,7 +37,7 @@ import skillbill.ports.diagnostics.model.ProducerOutputEvidence
 import skillbill.ports.diagnostics.model.RejectedOutputDiagnosticError.Conflict
 import skillbill.ports.validation.ValidationGateRunner
 import skillbill.ports.validation.model.ValidationGateFinding
-import skillbill.ports.validation.model.ValidationGateRunOutcome
+import skillbill.workflow.taskruntime.model.ValidationGateRunOutcome
 import skillbill.ports.validation.model.ValidationGateRunRequest
 import skillbill.ports.validation.model.ValidationGateRunResult
 import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewBaseline
@@ -323,7 +323,7 @@ class FeatureTaskRuntimeRunnerTest {
       },
     )
     val validateRecord = requireNotNull(harness.recorder.loadPhaseRecords(WORKFLOW_ID).orEmpty()["validate"])
-    assertEquals("completed", validateRecord.status)
+    assertEquals("completed", validateRecord.status.wireValue)
     assertEquals(3, validateRecord.attemptCount)
   }
 
@@ -397,7 +397,7 @@ class FeatureTaskRuntimeRunnerTest {
     assertEquals(1, harness.launchOrder().count { it == "review" })
     assertEquals(1, harness.launchOrder().count { it == "implement_fix" })
     val reviewRecord = requireNotNull(harness.recorder.loadPhaseRecords(WORKFLOW_ID).orEmpty()["review"])
-    assertEquals("completed", reviewRecord.status)
+    assertEquals("completed", reviewRecord.status.wireValue)
     assertTrue(harness.launchedPromptPhaseOrder().none { it == "review" })
   }
 
@@ -630,7 +630,7 @@ class FeatureTaskRuntimeRunnerAgentResumeTest {
     assertIs<FeatureTaskRuntimeRunReport.Completed>(report)
     assertTrue(harness.launchedPhaseOrder().contains("implement"))
     val implementRecord = requireNotNull(harness.recorder.loadPhaseRecords(WORKFLOW_ID).orEmpty()["implement"])
-    assertEquals("completed", implementRecord.status)
+    assertEquals("completed", implementRecord.status.wireValue)
   }
 
   @Test
@@ -648,7 +648,7 @@ class FeatureTaskRuntimeRunnerAgentResumeTest {
     val reviewRecord = requireNotNull(harness.recorder.loadPhaseRecords(WORKFLOW_ID).orEmpty()["review"])
     // Completed on the resumed attempt; attempt count is 2 (resumed from durable attempt 1).
     assertEquals(2, reviewRecord.attemptCount)
-    assertEquals("completed", reviewRecord.status)
+    assertEquals("completed", reviewRecord.status.wireValue)
   }
 
   @Test
@@ -687,7 +687,7 @@ class FeatureTaskRuntimeRunnerAgentResumeTest {
     assertIs<FeatureTaskRuntimeRunReport.Completed>(report)
     assertTrue(harness.launchedPhaseOrder().contains("validate"))
     val validateRecord = requireNotNull(harness.recorder.loadPhaseRecords(WORKFLOW_ID).orEmpty()["validate"])
-    assertEquals("completed", validateRecord.status)
+    assertEquals("completed", validateRecord.status.wireValue)
     assertEquals(2, validateRecord.attemptCount)
   }
 
@@ -864,7 +864,7 @@ class FeatureTaskRuntimeRunnerAgentResumeTest {
     assertContains(blocked.blockedReason, PLAN_FIX_CAP.toString())
     // A durable terminal blocked record carries the loop context.
     val planRecord = requireNotNull(harness.recorder.loadPhaseRecords(WORKFLOW_ID).orEmpty()["plan"])
-    assertEquals("blocked", planRecord.status)
+    assertEquals("blocked", planRecord.status.wireValue)
     assertEquals("plan-fix", planRecord.loopId)
     assertEquals(PLAN_FIX_CAP, planRecord.edgeIteration)
     assertContains(requireNotNull(planRecord.outputArtifact), "\"verdict\":\"needs_fix\"")
@@ -936,7 +936,7 @@ class FeatureTaskRuntimeRunnerAgentResumeTest {
       .mapNotNull { it.edgeIteration }
     assertEquals(listOf(PLAN_FIX_CAP), resumeEdgeIterations)
     val planRecord = requireNotNull(harness.recorder.loadPhaseRecords(WORKFLOW_ID).orEmpty()["plan"])
-    assertEquals("blocked", planRecord.status)
+    assertEquals("blocked", planRecord.status.wireValue)
     assertEquals(PLAN_FIX_CAP, planRecord.edgeIteration)
   }
 
@@ -1012,7 +1012,7 @@ class FeatureTaskRuntimeRunnerBlockedAndLedgerTest {
     harness.runner.run(harness.request())
 
     val implementRecord = requireNotNull(harness.recorder.loadPhaseRecords(WORKFLOW_ID).orEmpty()["write_history"])
-    assertEquals("blocked", implementRecord.status)
+    assertEquals("blocked", implementRecord.status.wireValue)
     assertTrue(requireNotNull(implementRecord.blockedReason).isNotBlank())
     assertNull(implementRecord.finishedAt)
   }
@@ -1737,7 +1737,7 @@ class FeatureTaskRuntimeRunnerPersistenceTest {
     assertEquals(COMPLETED_PHASES_CLEAN_RUN.toSet(), records.keys)
     COMPLETED_PHASES_CLEAN_RUN.forEach { phaseId ->
       val record = records.getValue(phaseId)
-      assertEquals("completed", record.status, "status for $phaseId")
+      assertEquals("completed", record.status.wireValue, "status for $phaseId")
       assertTrue(record.attemptCount >= 1, "attempt count for $phaseId")
       assertTrue(record.startedAt.isNotBlank(), "startedAt for $phaseId")
       assertTrue(requireNotNull(record.finishedAt).isNotBlank(), "finishedAt for $phaseId")
@@ -2752,7 +2752,7 @@ class FeatureTaskRuntimeRunnerSpecLifecycleTest {
     assertTrue(harness.launchedPhaseOrder().none { it == "implement" })
     // The block is durable and visible to status: the plan phase carries a terminal blocked record.
     val planRecord = requireNotNull(harness.recorder.loadPhaseRecords(WORKFLOW_ID).orEmpty()["plan"])
-    assertEquals("blocked", planRecord.status)
+    assertEquals("blocked", planRecord.status.wireValue)
     assertTrue(requireNotNull(planRecord.blockedReason).isNotBlank())
     assertNull(harness.decomposeTerminalRecorder.loadDecomposeTerminal(WORKFLOW_ID))
   }
@@ -2783,7 +2783,7 @@ class FeatureTaskRuntimeRunnerSpecLifecycleTest {
     assertContains(blocked.blockedReason, "malformed decomposition package")
     assertTrue(harness.launchedPhaseOrder().none { it == "implement" })
     val planRecord = requireNotNull(harness.recorder.loadPhaseRecords(WORKFLOW_ID).orEmpty()["plan"])
-    assertEquals("blocked", planRecord.status)
+    assertEquals("blocked", planRecord.status.wireValue)
     assertTrue(requireNotNull(planRecord.blockedReason).isNotBlank())
     assertNull(harness.decomposeTerminalRecorder.loadDecomposeTerminal(WORKFLOW_ID))
   }
@@ -2810,7 +2810,7 @@ class FeatureTaskRuntimeRunnerSpecLifecycleTest {
     assertTrue(harness.launchedPhaseOrder().isEmpty(), "no phase agent relaunches on a complete-plan resume")
     assertTrue(harness.launchedPhaseOrder().none { it == "implement" })
     val planRecord = requireNotNull(harness.recorder.loadPhaseRecords(WORKFLOW_ID).orEmpty()["plan"])
-    assertEquals("blocked", planRecord.status)
+    assertEquals("blocked", planRecord.status.wireValue)
     assertTrue(requireNotNull(planRecord.blockedReason).isNotBlank())
     assertNull(harness.decomposeTerminalRecorder.loadDecomposeTerminal(WORKFLOW_ID))
   }
@@ -2845,7 +2845,7 @@ class FeatureTaskRuntimeRunnerSpecLifecycleTest {
     assertEquals("preplan", firstBlocked.lastIncompletePhase)
     // The terminal blocked record retained the loop context — the watermark the bug dropped.
     val blockedPreplan = requireNotNull(harness.recorder.loadPhaseRecords(WORKFLOW_ID).orEmpty()["preplan"])
-    assertEquals("blocked", blockedPreplan.status)
+    assertEquals("blocked", blockedPreplan.status.wireValue)
     assertEquals("plan-fix", blockedPreplan.loopId)
     assertEquals(1, blockedPreplan.edgeIteration)
 
@@ -2882,7 +2882,7 @@ class FeatureTaskRuntimeReviewFixLoopTest {
     assertIs<FeatureTaskRuntimeRunReport.Blocked>(harness.runner.run(harness.request()))
 
     val writeHistoryRecord = requireNotNull(harness.recorder.loadPhaseRecords(WORKFLOW_ID).orEmpty()["write_history"])
-    assertEquals("blocked", writeHistoryRecord.status)
+    assertEquals("blocked", writeHistoryRecord.status.wireValue)
     assertNull(writeHistoryRecord.rejectedOutput)
     assertNull(
       writeHistoryRecord.outputArtifact,
@@ -2921,7 +2921,7 @@ class FeatureTaskRuntimeReviewFixLoopTest {
 
     assertIs<FeatureTaskRuntimeRunReport.Completed>(report)
     val reviewRecord = requireNotNull(harness.recorder.loadPhaseRecords(WORKFLOW_ID).orEmpty()["review"])
-    assertEquals("completed", reviewRecord.status)
+    assertEquals("completed", reviewRecord.status.wireValue)
   }
 
   @Test
@@ -2945,7 +2945,7 @@ class FeatureTaskRuntimeReviewFixLoopTest {
     assertIs<FeatureTaskRuntimeRunReport.Completed>(report)
     assertTrue(harness.launchOrder().contains("review"))
     val reviewRecord = requireNotNull(harness.recorder.loadPhaseRecords(WORKFLOW_ID).orEmpty()["review"])
-    assertEquals("completed", reviewRecord.status)
+    assertEquals("completed", reviewRecord.status.wireValue)
     assertEquals(3, reviewRecord.attemptCount)
   }
 
@@ -3172,13 +3172,13 @@ class FeatureTaskRuntimeReviewFixLoopTest {
 
     assertIs<FeatureTaskRuntimeRunReport.Blocked>(first)
     val blockedReview = requireNotNull(harness.recorder.loadPhaseRecords(WORKFLOW_ID).orEmpty()["review"])
-    assertEquals("blocked", blockedReview.status)
+    assertEquals("blocked", blockedReview.status.wireValue)
     assertEquals(1, blockedReview.reviewPassNumber)
     assertIs<FeatureTaskRuntimeRunReport.Completed>(harness.runner.run(harness.request()))
     assertEquals(2, harness.launchOrder().count { it == "review" })
     assertTrue(harness.launchedPromptPhaseOrder().none { it == "review" })
     val completedReview = requireNotNull(harness.recorder.loadPhaseRecords(WORKFLOW_ID).orEmpty()["review"])
-    assertEquals("completed", completedReview.status)
+    assertEquals("completed", completedReview.status.wireValue)
     assertEquals(1, completedReview.reviewPassNumber)
   }
 
@@ -3449,7 +3449,7 @@ class FeatureTaskRuntimeReviewFixLoopTest {
     assertTrue(launched.contains("review"), "the resumed review relaunched rather than pre-blocking")
     assertTrue(launched.contains("validate"), "the run advances to validate after the single fix round")
     val reviewRecord = requireNotNull(harness.recorder.loadPhaseRecords(WORKFLOW_ID).orEmpty()["review"])
-    assertEquals("completed", reviewRecord.status)
+    assertEquals("completed", reviewRecord.status.wireValue)
   }
 
   // (j) AC1/SKILL-85-F-003: a review output carrying NEITHER a structured verdict NOR a findings array
@@ -3464,7 +3464,7 @@ class FeatureTaskRuntimeReviewFixLoopTest {
     assertIs<FeatureTaskRuntimeRunReport.Completed>(report)
     assertEquals(1, harness.launchOrder().count { it == "review" })
     val reviewRecord = requireNotNull(harness.recorder.loadPhaseRecords(WORKFLOW_ID).orEmpty()["review"])
-    assertEquals("completed", reviewRecord.status)
+    assertEquals("completed", reviewRecord.status.wireValue)
     val artifact = requireNotNull(reviewRecord.outputArtifact)
     assertTrue(artifact.contains("\"findings\""), artifact)
     assertTrue(artifact.contains("\"review_run_id\""), artifact)
@@ -3776,7 +3776,7 @@ class FeatureTaskRuntimeBranchSetupRunnerTest {
     assertEquals("blocked", implementStatus.status)
 
     val implementRecord = requireNotNull(harness.recorder.loadPhaseRecords(WORKFLOW_ID).orEmpty()["implement"])
-    assertEquals("blocked", implementRecord.status)
+    assertEquals("blocked", implementRecord.status.wireValue)
     assertContains(requireNotNull(implementRecord.blockedReason), "checkout exploded")
 
     // Typed observability event mirrors the per-phase block path.
@@ -3809,7 +3809,7 @@ class FeatureTaskRuntimeBranchSetupRunnerTest {
           if (event is FeatureTaskRuntimeRunEvent.PhaseStarted && event.phaseId == "implement") {
             val preLaunchRecord =
               requireNotNull(harness.recorder.loadPhaseRecords(WORKFLOW_ID).orEmpty()["implement"])
-            assertEquals("blocked", preLaunchRecord.status)
+            assertEquals("blocked", preLaunchRecord.status.wireValue)
             assertEquals(BRANCH_SETUP_AGENT_ID, preLaunchRecord.resolvedAgentId)
             observedPreLaunchRecord = true
           }
@@ -3828,7 +3828,7 @@ class FeatureTaskRuntimeBranchSetupRunnerTest {
     assertEquals(AGENT_LAUNCHED_PHASES.filterNot(NON_FILE_MUTATING_PHASES::contains), harness.launchedPhaseOrder())
     // The durable record is superseded back to a completed implement-agent record, not left blocked.
     val implementRecord = requireNotNull(harness.recorder.loadPhaseRecords(WORKFLOW_ID).orEmpty()["implement"])
-    assertEquals("completed", implementRecord.status)
+    assertEquals("completed", implementRecord.status.wireValue)
     assertEquals(phaseAgent("implement"), implementRecord.resolvedAgentId)
     assertEquals(1, implementRecord.attemptCount)
     assertTrue(observedPreLaunchRecord, "the stale branch-setup block must remain durable until real phase launch")
@@ -4769,7 +4769,7 @@ class FeatureTaskRuntimeCheckpointHistoryOnResumeTest {
     assertEquals("implement", firstBlocked.lastIncompletePhase)
     // The terminal blocked record retained the loop context — the watermark a reset would drop.
     val blockedImplement = requireNotNull(harness.recorder.loadPhaseRecords(WORKFLOW_ID).orEmpty()["implement"])
-    assertEquals("blocked", blockedImplement.status)
+    assertEquals("blocked", blockedImplement.status.wireValue)
     assertEquals("implement-fix", blockedImplement.loopId)
     assertEquals(1, blockedImplement.edgeIteration)
 
@@ -5111,7 +5111,7 @@ class ProviderLimitAndProcessFailureBudgetTest {
     repeat(4) { assertIs<FeatureTaskRuntimeRunReport.Paused>(harness.runner.run(harness.request())) }
 
     val record = requireNotNull(harness.recorder.loadPhaseRecords(WORKFLOW_ID).orEmpty()["preplan"])
-    assertEquals("paused", record.status)
+    assertEquals("paused", record.status.wireValue)
     assertEquals(FeatureTaskRuntimeFailureDisposition.RETRYABLE, record.failureDisposition)
     assertEquals(4, harness.launcher.requests.size, "every resume must relaunch, not re-surface a block")
   }
@@ -5193,7 +5193,7 @@ class ProviderLimitAndProcessFailureBudgetTest {
       "the reopened phase must actually relaunch instead of re-surfacing the block the operator acted on",
     )
     val record = requireNotNull(harness.recorder.loadPhaseRecords(WORKFLOW_ID).orEmpty()[stuckPhase])
-    assertEquals("completed", record.status)
+    assertEquals("completed", record.status.wireValue)
   }
 
   // Mirrors what `feature-task-runtime retry-blocked` persists: the phase record reopens to pending
@@ -5322,7 +5322,7 @@ class FeatureTaskRuntimeOperatorBlockSettlementTest {
     assertContains(blocked.blockedReason, "Cannot connect to docker.sock.")
     assertFalse(blocked.blockedReason.contains("retrying so the agent can fix failures"))
     val validateRecord = requireNotNull(harness.recorder.loadPhaseRecords(WORKFLOW_ID).orEmpty()["validate"])
-    assertEquals("blocked", validateRecord.status)
+    assertEquals("blocked", validateRecord.status.wireValue)
     assertEquals(FeatureTaskRuntimeFailureDisposition.NEEDS_USER_ACTION, validateRecord.failureDisposition)
     assertEquals(1, validateRecord.attemptCount)
     val ledger = requireNotNull(harness.recorder.loadPhaseLedger(WORKFLOW_ID).orEmpty())
@@ -5380,7 +5380,7 @@ class FeatureTaskRuntimeOperatorBlockSettlementTest {
     assertEquals(1, buildRepairLaunches)
     assertContains(blocked.blockedReason, "Cannot connect to Gradle daemon.")
     val buildRecord = requireNotNull(harness.recorder.loadPhaseRecords(WORKFLOW_ID).orEmpty()["build"])
-    assertEquals("blocked", buildRecord.status)
+    assertEquals("blocked", buildRecord.status.wireValue)
     assertEquals(FeatureTaskRuntimeFailureDisposition.NEEDS_USER_ACTION, buildRecord.failureDisposition)
     val ledger = requireNotNull(harness.recorder.loadPhaseLedger(WORKFLOW_ID).orEmpty())
     assertTrue(ledger.any { it.action == FeatureTaskRuntimePhaseLedgerAction.BLOCKED && it.phaseId == "build" })

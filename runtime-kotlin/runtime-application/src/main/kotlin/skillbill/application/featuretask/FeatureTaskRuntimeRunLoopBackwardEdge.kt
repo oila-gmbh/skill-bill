@@ -8,6 +8,8 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeCapExhaustionBehav
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFailureDisposition
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutput
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseRecord
+import skillbill.workflow.model.WorkflowStepStatus
+import skillbill.workflow.model.workflowStepStatus
 
 object FeatureTaskRuntimeRunLoopBackwardEdge {
   fun resumeInFlightReviewFix(runLoop: FeatureTaskRuntimeRunLoop, edge: FeatureTaskRuntimeBackwardEdge): String? {
@@ -123,7 +125,7 @@ object FeatureTaskRuntimeRunLoopBackwardEdge {
     if (edge?.destinationPhaseId == phaseId) {
       val sourceRecord = runLoop.state.recordFor(edge.fromPhaseId)
       if (
-        sourceRecord?.status == STATUS_BLOCKED && sourceRecord.loopId == loopId &&
+        sourceRecord?.status?.workflowStepStatus() == WorkflowStepStatus.BLOCKED && sourceRecord.loopId == loopId &&
         sourceRecord.edgeIteration == iteration
       ) {
         return null

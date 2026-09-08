@@ -45,6 +45,8 @@ import skillbill.workflow.goal.model.GOAL_PROGRESS_RUN_HISTORY_ARTIFACT_KEY
 import skillbill.workflow.goal.model.appendBoundedHistoryBySequence
 import skillbill.workflow.goal.model.goalObservabilityLatestEventFromArtifacts
 import skillbill.workflow.taskruntime.phaseartifacts.phaseRecordsFrom
+import skillbill.workflow.model.WorkflowStatus
+import skillbill.workflow.model.workflowStatus
 
 private val PROGRESS_POLL_ARTIFACT_KEYS = setOf(
   "progress_event",
@@ -74,7 +76,9 @@ internal class WorkflowGoalRunnerProgressRecording(
       }.getOrNull()
       GoalRunnerWorkflowProgress(
         workflowId = record.workflowId,
-        workflowStatus = record.workflowStatus,
+        workflowStatus = requireNotNull(record.workflowStatus.workflowStatus()) {
+          "Unknown workflow status '${record.workflowStatus}'."
+        },
         currentStepId = currentStep,
         progressToken = record.progressToken(),
         latestDurableProgressEvent = progressEvent,

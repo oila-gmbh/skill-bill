@@ -12,6 +12,8 @@ import skillbill.goalrunner.model.GoalPlanningStatusSnapshot
 import skillbill.goalrunner.model.GoalRunnerStatusProjection
 import skillbill.ports.work.model.WorkItemKind
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_STATUS_COMPLETED
+import skillbill.workflow.model.WorkflowStepStatus
+import skillbill.workflow.model.workflowStepStatus
 import java.time.Instant
 import java.time.LocalDateTime
 import java.time.OffsetDateTime
@@ -54,7 +56,7 @@ internal fun goalStep(
 }
 
 internal fun FeatureTaskRuntimePhaseStatus.toIdeStatusCurrentModel(): IdeStatusCurrentModel? {
-  if (status == FEATURE_TASK_RUNTIME_PHASE_STATUS_COMPLETED) return null
+  if (status.workflowStepStatus() == WorkflowStepStatus.COMPLETED) return null
   return launchedModel?.takeIf(String::isNotBlank)?.let { model ->
     IdeStatusCurrentModel(
       model = model,

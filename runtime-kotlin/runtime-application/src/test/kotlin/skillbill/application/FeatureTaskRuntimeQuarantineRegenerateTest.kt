@@ -30,7 +30,7 @@ class FeatureTaskRuntimeQuarantineRegenerateTest {
     )
 
     val implement = requireNotNull(harness.recorder.loadPhaseRecords(WORKFLOW_ID).orEmpty()["implement"])
-    assertEquals("running", implement.status, "the settled completion is cleared so the producer relaunches")
+    assertEquals("running", implement.status.wireValue, "the settled completion is cleared so the producer relaunches")
     assertEquals(
       "review_fix",
       implement.loopId,

@@ -6,6 +6,8 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerEntry
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseRecord
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeTransitionDeclaration
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeVerdict
+import skillbill.workflow.model.WorkflowStepStatus
+import skillbill.workflow.model.workflowStepStatus
 
 object FeatureTaskRuntimeRunStateReconstruction {
   internal fun reconstructInFlightReentries(
@@ -25,11 +27,11 @@ object FeatureTaskRuntimeRunStateReconstruction {
         .filter { it.sequenceNumber > latestEdge.sequenceNumber }
         .filter { it.action == FeatureTaskRuntimePhaseLedgerAction.COMPLETE }
         .map { it.phaseId }
-        .filter { phaseId -> initialRecords[phaseId]?.status == STATUS_COMPLETED }
+        .filter { phaseId -> initialRecords[phaseId]?.status?.workflowStepStatus() == WorkflowStepStatus.COMPLETED }
         .toMutableSet()
       initialRecords.values
         .filter { record ->
-          record.status == STATUS_COMPLETED &&
+          record.status.workflowStepStatus() == WorkflowStepStatus.COMPLETED &&
             record.loopId == edge.loopId &&
             record.edgeIteration == latestEdge.edgeIteration
         }
@@ -143,7 +145,7 @@ object FeatureTaskRuntimeRunStateReconstruction {
     nextIteration: (String) -> Int,
   ) {
     val staleLoopPhases = initialRecords.values
-      .filter { it.status != STATUS_COMPLETED && it.loopId != null }
+      .filter { it.status.workflowStepStatus() != WorkflowStepStatus.COMPLETED && it.loopId != null }
       .map { it.phaseId }
     (staleLoopPhases + gateInvalidatedPhases).forEach { phaseId ->
       if (phaseId !in completed && phaseId !in bases) {

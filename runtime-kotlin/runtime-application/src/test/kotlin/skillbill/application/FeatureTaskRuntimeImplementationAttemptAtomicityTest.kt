@@ -4,6 +4,7 @@ import skillbill.application.featuretask.model.FeatureTaskRuntimePhaseStateReque
 import skillbill.application.featuretask.model.FeatureTaskRuntimeRunReport
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_IMPLEMENTATION_ATTEMPTS_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeImplementationAttemptStatus
+import skillbill.workflow.model.WorkflowStepStatus
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -26,7 +27,7 @@ class FeatureTaskRuntimeImplementationAttemptAtomicityTest {
 
     val records = harness.recorder.loadPhaseRecords(WORKFLOW_ID).orEmpty()
     assertTrue(
-      records["implement"]?.status != "completed",
+      records["implement"]?.status != WorkflowStepStatus.COMPLETED,
       "the implement advance must not survive a write that never committed",
     )
     assertTrue(
@@ -72,7 +73,7 @@ class FeatureTaskRuntimeImplementationAttemptAtomicityTest {
     val attempts = harness.recorder.loadImplementationAttempts(WORKFLOW_ID).orEmpty()
       .filter { it.phaseId == "implement" }
 
-    assertEquals("completed", implementRecord.status)
+    assertEquals("completed", implementRecord.status.wireValue)
     assertEquals(1, attempts.size, "exactly one resumable attempt, never a duplicate")
     assertEquals(FeatureTaskRuntimeImplementationAttemptStatus.COMPLETED, attempts.single().status)
     assertTrue(

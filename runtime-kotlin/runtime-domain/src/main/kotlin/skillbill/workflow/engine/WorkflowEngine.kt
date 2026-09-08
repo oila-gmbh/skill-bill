@@ -9,6 +9,10 @@ import skillbill.workflow.engine.model.WorkflowStateSnapshot
 import skillbill.workflow.engine.model.WorkflowSummaryView
 import skillbill.workflow.engine.model.WorkflowUpdateAcknowledgementView
 import skillbill.workflow.engine.model.WorkflowUpdateInput
+import skillbill.workflow.model.WorkflowStatus
+import skillbill.workflow.model.WorkflowStepStatus
+import skillbill.workflow.model.workflowStatus
+import skillbill.workflow.model.workflowStepStatus
 
 private typealias CheckpointResolver = () -> String
 
@@ -108,18 +112,18 @@ class WorkflowEngine(
     val snapshot = snapshotView(definition, record)
     val stepsById = snapshot.steps.associateBy { it.stepId }
     val lastCompletedStepId =
-      definition.stepIds.lastOrNull { stepId -> stepsById[stepId]?.status == "completed" }.orEmpty()
+      definition.stepIds.lastOrNull { stepId -> stepsById[stepId]?.status?.workflowStepStatus() == WorkflowStepStatus.COMPLETED }.orEmpty()
 
     var resumeStepId = snapshot.currentStepId
     val resumeMode =
       when {
-        snapshot.workflowStatus == "completed" -> "done"
+        snapshot.workflowStatus.workflowStatus() == WorkflowStatus.COMPLETED -> "done"
         snapshot.workflowStatus in definition.terminalStatuses -> "recover"
         else -> "resume"
       }
-    if (resumeMode == "resume" && stepsById[snapshot.currentStepId]?.status == "completed") {
+    if (resumeMode == "resume" && stepsById[snapshot.currentStepId]?.status?.workflowStepStatus() == WorkflowStepStatus.COMPLETED) {
       resumeStepId =
-        definition.stepIds.firstOrNull { stepId -> stepsById[stepId]?.status in workflowResumableStepStatuses }
+        definition.stepIds.firstOrNull { stepId -> stepsById[stepId]?.status?.workflowStepStatus() in workflowResumableStepStatuses }
           ?: snapshot.currentStepId
     }
     val availableArtifacts = snapshot.artifacts.keys.sorted()

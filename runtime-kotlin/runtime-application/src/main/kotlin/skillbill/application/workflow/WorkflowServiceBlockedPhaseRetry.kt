@@ -20,7 +20,10 @@ import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_LEDGER_LI
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_RECORDS_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerAction
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerEntry
+import skillbill.workflow.model.workflowStatus
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseRecord
+import skillbill.workflow.model.WorkflowStepStatus
+import skillbill.workflow.model.workflowStepStatus
 import java.time.OffsetDateTime
 import java.time.ZoneOffset
 
@@ -89,7 +92,7 @@ class WorkflowServiceBlockedPhaseRetry(
           unitOfWork.dbPath.toString(),
         ),
       )
-    if (existing.workflowStatus in family.definition.terminalStatuses) {
+    if (existing.workflowStatus.workflowStatus()?.wireValue in family.definition.terminalStatuses) {
       return BlockedPhaseRetryPersistence.error(
         WorkflowUpdateResult.Error(
           request.workflowId,
@@ -109,7 +112,7 @@ class WorkflowServiceBlockedPhaseRetry(
           unitOfWork.dbPath.toString(),
         ),
       )
-    return if (blockedRecord.status != "blocked") {
+    return if (blockedRecord.status.workflowStepStatus() != WorkflowStepStatus.BLOCKED) {
       BlockedPhaseRetryPersistence.error(
         WorkflowUpdateResult.Error(
           request.workflowId,
@@ -200,7 +203,7 @@ private data class BlockedPhaseRetryState(
 ) {
   fun reopenedPhaseRecords(): Map<String, FeatureTaskRuntimePhaseRecord> = LinkedHashMap(phaseRecords).apply {
     this[blockedRecord.phaseId] = blockedRecord.copy(
-      status = "pending",
+      status = WorkflowStepStatus.PENDING,
       finishedAt = null,
       durationMillis = null,
       outputArtifact = null,

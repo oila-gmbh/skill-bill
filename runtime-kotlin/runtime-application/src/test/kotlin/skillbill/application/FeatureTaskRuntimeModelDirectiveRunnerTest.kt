@@ -258,7 +258,7 @@ class FeatureTaskRuntimeModelDirectiveRunnerTest {
     // write must leave the running write's stamp alone instead of settling it as never-launched.
     assertEquals("preplan", paused.pausedPhase)
     val record = requireNotNull(harness.recorder.loadPhaseRecords(WORKFLOW_ID)).getValue("preplan")
-    assertEquals("paused", record.status)
+    assertEquals("paused", record.status.wireValue)
     assertEquals("claude-sonnet", record.launchedModel)
     assertEquals("medium", record.launchedEffort)
   }

@@ -22,10 +22,10 @@ import skillbill.ports.config.RepoLocalConfigPort
 import skillbill.ports.config.model.ReadRepoLocalConfigRequest
 import skillbill.ports.diagnostics.RuntimeDiagnostics
 import skillbill.ports.validation.ValidationGateRunner
-import skillbill.ports.validation.model.ValidationGateCacheMode
+import skillbill.workflow.taskruntime.model.ValidationGateCacheMode
 import skillbill.ports.validation.model.ValidationGateFinding
 import skillbill.ports.validation.model.ValidationGateFindingParseMode
-import skillbill.ports.validation.model.ValidationGateRunOutcome
+import skillbill.workflow.taskruntime.model.ValidationGateRunOutcome
 import skillbill.ports.validation.model.ValidationGateRunRequest
 import skillbill.ports.validation.model.ValidationGateRunResult
 import skillbill.scaffold.model.ValidationGateDeclaration
@@ -279,8 +279,8 @@ class FeatureTaskRuntimeValidationGateCoordinator(
   ) {
     state.measurements += FeatureTaskRuntimeValidationGateRunRecord(
       durationMs = result.durationMs,
-      outcome = result.outcome.wireValue,
-      cacheMode = result.cacheMode.wireValue,
+      outcome = result.outcome,
+      cacheMode = result.cacheMode,
       executedWorkUnits = result.executedWorkUnits,
     )
     persistProgress(state = state, write = write)

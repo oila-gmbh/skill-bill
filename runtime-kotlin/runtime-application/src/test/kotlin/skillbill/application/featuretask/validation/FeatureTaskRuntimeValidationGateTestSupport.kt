@@ -16,9 +16,9 @@ import skillbill.ports.diagnostics.NoopRuntimeDiagnostics
 import skillbill.ports.diagnostics.RuntimeDiagnostics
 import skillbill.ports.repository.toFileLocation
 import skillbill.ports.validation.ValidationGateRunner
-import skillbill.ports.validation.model.ValidationGateCacheMode
+import skillbill.workflow.taskruntime.model.ValidationGateCacheMode
 import skillbill.ports.validation.model.ValidationGateFinding
-import skillbill.ports.validation.model.ValidationGateRunOutcome
+import skillbill.workflow.taskruntime.model.ValidationGateRunOutcome
 import skillbill.ports.validation.model.ValidationGateRunRequest
 import skillbill.ports.validation.model.ValidationGateRunResult
 import skillbill.scaffold.model.DeclaredFiles

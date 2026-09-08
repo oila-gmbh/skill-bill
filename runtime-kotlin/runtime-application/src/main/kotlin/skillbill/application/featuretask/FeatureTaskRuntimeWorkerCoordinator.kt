@@ -10,6 +10,8 @@ import skillbill.ports.taskruntime.FeatureTaskRuntimeWorkerSupervisor
 import skillbill.ports.taskruntime.model.FeatureTaskRuntimeHeartbeatPlan
 import skillbill.ports.taskruntime.model.FeatureTaskRuntimeHeartbeatTick
 import skillbill.ports.taskruntime.model.FeatureTaskRuntimeProcessInspection
+import skillbill.workflow.model.WorkflowStatus
+import skillbill.workflow.model.workflowStatus
 import java.time.Clock
 import java.time.Duration
 import java.time.Instant
@@ -75,7 +77,7 @@ class FeatureTaskRuntimeWorkerCoordinator(
       if (existing != null) return@selfManagedWrite UnownedClaim.Recover(existing)
       val row = unitOfWork.workflowStates.getFeatureTaskRuntimeWorkflow(workflowId)
         ?: throw InvalidWorkflowStateSchemaError("Feature-task runtime worker workflow '$workflowId' is missing.")
-      if (row.workflowStatus in TERMINAL_WORKFLOW_STATUSES) {
+      if (row.workflowStatus.workflowStatus() in TERMINAL_WORKFLOW_STATUSES) {
         error(
           "Cannot acquire worker ownership for terminal workflow '$workflowId' (${row.workflowStatus}).",
         )
@@ -191,7 +193,7 @@ class FeatureTaskRuntimeWorkerCoordinator(
     const val GRACE_POLLS: Int = 20
     const val GRACE_POLL_MILLIS: Long = 100
     const val UNOWNED_ACQUIRE_ATTEMPTS: Int = 3
-    val TERMINAL_WORKFLOW_STATUSES: Set<String> = setOf("completed", "failed", "abandoned")
+    val TERMINAL_WORKFLOW_STATUSES = setOf(WorkflowStatus.COMPLETED, WorkflowStatus.FAILED, WorkflowStatus.ABANDONED)
   }
 
   private sealed class UnownedClaim {

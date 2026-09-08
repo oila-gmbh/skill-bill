@@ -12,6 +12,10 @@ import skillbill.ports.telemetry.TelemetrySettingsProvider
 import skillbill.review.normalizeRoutedSkill
 import skillbill.review.normalizeStackLabel
 import skillbill.telemetry.model.TelemetrySettings
+import skillbill.workflow.model.WorkflowStatus
+import skillbill.workflow.model.WorkflowStepStatus
+import skillbill.workflow.model.workflowStatus
+import skillbill.workflow.model.workflowStepStatus
 
 class LifecycleTelemetryGoalEmission(
   private val database: DatabaseSessionFactory,
@@ -66,7 +70,7 @@ internal fun enabledStandaloneResult(
 }
 
 internal fun FeatureTaskRuntimeFinishedRequest.reconcileBlockedRuntimeFields(): FeatureTaskRuntimeFinishedRequest {
-  if (completionStatus != "blocked") {
+  if (completionStatus.workflowStatus() != WorkflowStatus.BLOCKED) {
     return this
   }
   return copy(
@@ -80,7 +84,8 @@ internal fun FeatureTaskRuntimeFinishedRequest.reconcileBlockedRuntimeFields(): 
 }
 
 internal fun Map<String, String>.firstIncompletePhase(): String =
-  entries.firstOrNull { it.value != "completed" }?.key?.takeIf(String::isNotBlank) ?: "unknown"
+  entries.firstOrNull { it.value.workflowStepStatus() != WorkflowStepStatus.COMPLETED }?.key?.takeIf(String::isNotBlank)
+    ?: "unknown"
 
 internal fun QualityCheckStartedRequest.normalizedLabels(): QualityCheckStartedRequest {
   val stack = normalizeStackLabel(detectedStack)
@@ -103,7 +108,7 @@ internal fun QualityCheckFinishedRequest.normalizedLabels(): QualityCheckFinishe
 }
 
 internal fun GoalSubtaskFinishedRequest.reconcileBlockedReason(): GoalSubtaskFinishedRequest {
-  if (status != "blocked") {
+  if (status.workflowStatus() != WorkflowStatus.BLOCKED) {
     return this
   }
   return copy(

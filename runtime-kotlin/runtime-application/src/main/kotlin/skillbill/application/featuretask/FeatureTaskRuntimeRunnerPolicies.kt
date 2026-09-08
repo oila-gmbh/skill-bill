@@ -4,6 +4,8 @@ import skillbill.application.featuretask.model.FeatureTaskRuntimeRunRequest
 import skillbill.contracts.JsonCodec
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeTransitionDeclaration
+import skillbill.workflow.model.WorkflowStepStatus
+import skillbill.workflow.model.workflowStepStatus
 
 const val STATUS_RUNNING = "running"
 const val STATUS_COMPLETED = "completed"
@@ -19,8 +21,6 @@ const val BRANCH_SETUP_AGENT_ID = "branch-setup"
 const val SCHEMA_GATE_DETAIL_MAX_CHARS = 500
 
 // The phase-output envelope's own status vocabulary, distinct from the durable phase-row status above.
-const val PHASE_OUTPUT_STATUS_COMPLETED = "completed"
-
 val NON_FILE_MUTATING_PHASES = setOf(
   FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PREPLAN,
   FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PLAN,
@@ -77,7 +77,7 @@ fun mutatingReconciliationGateReason(phaseId: String, outputMap: Map<String, Any
   // schema-valid terminal outcome that never claimed the tree reached target, so charging it with a
   // missing reconciliation report converted it into a schema-gate rejection and denied it the terminal
   // path it belongs on.
-  if (outputMap["status"] != PHASE_OUTPUT_STATUS_COMPLETED) return null
+  if ((outputMap["status"] as? String).workflowStepStatus() != WorkflowStepStatus.COMPLETED) return null
   val producedOutputs = outputMap["produced_outputs"] as? Map<*, *>
   val nestedReconciled = (producedOutputs?.get("reconciled_state") as? Map<*, *>)?.get("reconciled")
   val reconciled = nestedReconciled == true || producedOutputs?.get("reconciled") == true

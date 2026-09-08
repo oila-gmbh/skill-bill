@@ -24,6 +24,7 @@ enum class WorkflowStatus(val wireValue: String) {
   ABANDONED("abandoned"),
   BLOCKED("blocked"),
   PAUSED("paused"),
+  TIMED_OUT("timed_out"),
   ;
 
   companion object {
@@ -51,3 +52,5 @@ fun String?.decompositionStatus(): DecompositionStatus? = this?.let(Decompositio
 fun String?.workflowStatus(): WorkflowStatus? = this?.let(WorkflowStatus::fromWire)
 
 fun Any?.workflowStepStatus(): WorkflowStepStatus? = (this as? String)?.let(WorkflowStepStatus::fromWire)
+
+fun WorkflowStepStatus.workflowStepStatus(): WorkflowStepStatus = this

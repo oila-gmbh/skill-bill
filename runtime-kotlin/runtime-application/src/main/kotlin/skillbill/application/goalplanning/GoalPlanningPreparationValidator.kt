@@ -10,6 +10,8 @@ import skillbill.ports.goalrunner.model.GoalPlanningPreparationState
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseOutputValidator
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePlanningProjectionValidator
 import skillbill.workflow.taskruntime.model.requireAcceptedOutput
+import skillbill.workflow.model.WorkflowStepStatus
+import skillbill.workflow.model.workflowStepStatus
 import java.security.MessageDigest
 
 class GoalPlanningPreparationValidator(
@@ -47,7 +49,7 @@ class GoalPlanningPreparationValidator(
 
   private fun requireCompleted(payload: Map<String, Any?>, phaseId: String, label: String) {
     val status = payload["status"]?.toString()
-    if (status != "completed") {
+    if (status.workflowStepStatus() != WorkflowStepStatus.COMPLETED) {
       throw InvalidGoalPlanningPreparationSchemaError(
         sourceLabel = label,
         fieldPath = "${phaseId}_payload.status",

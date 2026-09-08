@@ -104,10 +104,10 @@ import skillbill.ports.telemetry.TelemetryOutboxRepository
 import skillbill.ports.telemetry.TelemetryReconciliationRepository
 import skillbill.ports.telemetry.TelemetrySettingsProvider
 import skillbill.ports.validation.ValidationGateRunner
-import skillbill.ports.validation.model.ValidationGateCacheMode.CACHE_ELIGIBLE
+import skillbill.workflow.taskruntime.model.ValidationGateCacheMode.CACHE_ELIGIBLE
 import skillbill.ports.validation.model.ValidationGateFinding
-import skillbill.ports.validation.model.ValidationGateRunOutcome.FAILED
-import skillbill.ports.validation.model.ValidationGateRunOutcome.PASSED
+import skillbill.workflow.taskruntime.model.ValidationGateRunOutcome.FAILED
+import skillbill.workflow.taskruntime.model.ValidationGateRunOutcome.PASSED
 import skillbill.ports.validation.model.ValidationGateRunRequest
 import skillbill.ports.validation.model.ValidationGateRunResult
 import skillbill.ports.work.EmptyWorkListRepository

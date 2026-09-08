@@ -21,6 +21,7 @@ import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_RECORDS_A
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerAction
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerEntry
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseRecord
+import skillbill.workflow.model.WorkflowStepStatus
 import skillbill.workflow.taskruntime.phaseartifacts.asPendingForOperatorResume
 import skillbill.workflow.taskruntime.phaseartifacts.phaseLedgerFrom
 import skillbill.workflow.taskruntime.phaseartifacts.phaseRecordsFrom
@@ -116,9 +117,9 @@ internal class WorkflowGoalRunnerBlockWrites(
     workflowStatus: String,
   ): FeatureTaskRuntimePhaseRecord? {
     val preferred = phaseRecords[preferredPhaseId]
-    return preferred?.takeIf { it.status == "blocked" }
-      ?: phaseRecords.values.firstOrNull { it.status == "blocked" }
-      ?: preferred?.takeIf { workflowStatus == "blocked" && it.status == "running" }
+    return preferred?.takeIf { it.status == WorkflowStepStatus.BLOCKED }
+      ?: phaseRecords.values.firstOrNull { it.status == WorkflowStepStatus.BLOCKED }
+      ?: preferred?.takeIf { workflowStatus == "blocked" && it.status == WorkflowStepStatus.RUNNING }
   }
 
   private fun operatorBlockedPhaseReopenUpdate(

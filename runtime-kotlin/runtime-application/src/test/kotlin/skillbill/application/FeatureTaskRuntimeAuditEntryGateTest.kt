@@ -136,7 +136,7 @@ class FeatureTaskRuntimeAuditEntryGateTest {
 
     assertIs<FeatureTaskRuntimeRunReport.Blocked>(harness.runner.run(harness.request()))
     val tombstone = requireNotNull(harness.recorder.loadPhaseRecords(WORKFLOW_ID).orEmpty()["review"])
-    assertEquals("running", tombstone.status)
+    assertEquals("running", tombstone.status.wireValue)
     assertEquals("audit-gate-migration", tombstone.resolvedAgentId)
     assertEquals(null, tombstone.outputArtifact)
     assertEquals(null, tombstone.reviewPassNumber)

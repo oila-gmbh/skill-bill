@@ -39,7 +39,7 @@ class WorkflowGoalRunnerOutcomeStoreTaskRuntimeTest {
     val progress = requireNotNull(store.progress("wftr-task-runtime"))
 
     assertEquals("wftr-task-runtime", progress.workflowId)
-    assertEquals("running", progress.workflowStatus)
+    assertEquals("running", progress.workflowStatus.wireValue)
     assertEquals("implement", progress.currentStepId)
   }
 
@@ -364,7 +364,7 @@ class WorkflowGoalRunnerOutcomeStoreTaskRuntimeTest {
     assertEquals("review", updated.currentStepId)
     val review = phaseRecordsFrom(decodeArtifacts(updated.artifactsJson))
       .getValue("review")
-    assertEquals("pending", review.status)
+    assertEquals("pending", review.status.wireValue)
   }
 
   @Test

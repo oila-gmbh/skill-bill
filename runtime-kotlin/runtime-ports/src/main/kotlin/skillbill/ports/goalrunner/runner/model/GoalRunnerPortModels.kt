@@ -8,6 +8,7 @@ import skillbill.ports.agentrun.model.SkillRunRequest
 import skillbill.ports.goalrunner.model.GoalPlanningIdentity
 import skillbill.workflow.decomposition.model.DecompositionManifest
 import skillbill.workflow.goal.model.GoalProgressEvent
+import skillbill.workflow.model.WorkflowStatus
 import java.nio.file.Path
 
 data class GoalRunnerManifestState(
@@ -81,7 +82,7 @@ data class GoalRunnerSubtaskLaunchRequest(
 
 data class GoalRunnerWorkflowProgress(
   val workflowId: String,
-  val workflowStatus: String,
+  val workflowStatus: WorkflowStatus,
   val currentStepId: String,
   val progressToken: String,
   val latestDurableProgressEvent: GoalRunnerProgressEvent? = null,
@@ -91,7 +92,31 @@ data class GoalRunnerWorkflowProgress(
   val latestDeclaredProgressEvent: GoalProgressEvent? = null,
   val latestLivenessSignal: String? = null,
   val lastSnapshotUpdatedAt: String? = null,
-)
+) {
+  constructor(
+    workflowId: String,
+    workflowStatus: String,
+    currentStepId: String,
+    progressToken: String,
+    latestDurableProgressEvent: GoalRunnerProgressEvent? = null,
+    latestGoalObservabilityEvent: GoalObservabilityProgressEvent? = null,
+    latestDeclaredProgressEvent: GoalProgressEvent? = null,
+    latestLivenessSignal: String? = null,
+    lastSnapshotUpdatedAt: String? = null,
+  ) : this(
+    workflowId = workflowId,
+    workflowStatus = requireNotNull(WorkflowStatus.fromWire(workflowStatus)) {
+      "Unknown workflow status '$workflowStatus'."
+    },
+    currentStepId = currentStepId,
+    progressToken = progressToken,
+    latestDurableProgressEvent = latestDurableProgressEvent,
+    latestGoalObservabilityEvent = latestGoalObservabilityEvent,
+    latestDeclaredProgressEvent = latestDeclaredProgressEvent,
+    latestLivenessSignal = latestLivenessSignal,
+    lastSnapshotUpdatedAt = lastSnapshotUpdatedAt,
+  )
+}
 
 /**
  * SKILL-64 Subtask 3 (AC21, AC25): durable declared-progress write request.

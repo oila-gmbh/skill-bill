@@ -11,7 +11,7 @@ import skillbill.application.featuretask.validation.model.ValidationGateCycleTer
 import skillbill.application.featuretask.validation.model.ValidationGateResolution
 import skillbill.ports.validation.ValidationGateRunner
 import skillbill.ports.validation.model.ValidationGateFinding
-import skillbill.ports.validation.model.ValidationGateRunOutcome
+import skillbill.workflow.taskruntime.model.ValidationGateRunOutcome
 import skillbill.ports.validation.model.ValidationGateRunRequest
 import skillbill.ports.validation.model.ValidationGateRunResult
 import skillbill.scaffold.model.RoutingSignals

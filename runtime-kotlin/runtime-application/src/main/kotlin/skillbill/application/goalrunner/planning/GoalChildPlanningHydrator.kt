@@ -14,6 +14,8 @@ import skillbill.ports.goalrunner.runner.model.GoalChildPlanningHydrationRequest
 import skillbill.ports.goalrunner.runner.model.GoalRunnerChildWorkflowSetup
 import skillbill.workflow.engine.decodeWorkflowSteps
 import skillbill.workflow.engine.model.WorkflowStateSnapshot
+import skillbill.workflow.model.WorkflowStepStatus
+import skillbill.workflow.model.workflowStepStatus
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseOutputValidator
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePlanningProjectionValidator
 import skillbill.workflow.taskruntime.model.AcceptedFeatureTaskRuntimePhaseOutput
@@ -240,7 +242,7 @@ private class PreparedPlanningPayloadValidator(
     val decoded = accepted.normalizedOutput.envelope
     // The projection gate is a no-op on a non-completed envelope, because a blocked or failed producer
     // makes no projection claim. An import, by contrast, only ever admits a settled completed payload.
-    if (decoded["phase_id"] != phaseId || decoded["status"] != "completed") {
+    if (decoded["phase_id"] != phaseId || decoded["status"].workflowStepStatus() != WorkflowStepStatus.COMPLETED) {
       invalidPlanningPreparation(
         workflowId,
         "$phaseId.payload",
@@ -394,10 +396,11 @@ private class GoalChildPlanningImportMatcher(
   // fix loop handles. Accepting a status the recorder cannot emit would admit forged state.
   private fun settledStepStatus(record: Map<*, *>?, phaseId: String): String? {
     if (record == null || record["phase_id"] != phaseId) return null
-    return when (record["status"]) {
-      "completed" -> "completed".takeIf { (record["output_artifact"] as? String)?.isNotBlank() == true }
-      "running" -> "running"
-      "blocked" -> "blocked"
+    return when (record["status"].workflowStepStatus()) {
+      WorkflowStepStatus.COMPLETED -> WorkflowStepStatus.COMPLETED.wireValue
+        .takeIf { (record["output_artifact"] as? String)?.isNotBlank() == true }
+      WorkflowStepStatus.RUNNING -> WorkflowStepStatus.RUNNING.wireValue
+      WorkflowStepStatus.BLOCKED -> WorkflowStepStatus.BLOCKED.wireValue
       else -> null
     }
   }
@@ -424,7 +427,7 @@ private class GoalChildPlanningImportMatcher(
   private fun stepsSettled(existing: WorkflowStateSnapshot, expected: Map<String, String>): Boolean {
     val planningSteps = decodeWorkflowSteps(existing.stepsJson).filter { it.stepId in PLANNING_PHASE_IDS }
     return planningSteps.size == PLANNING_PHASE_IDS.size &&
-      planningSteps.all { it.status == expected[it.stepId] }
+      planningSteps.all { it.status.workflowStepStatus()?.wireValue == expected[it.stepId] }
   }
 }
 

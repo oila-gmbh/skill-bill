@@ -5,6 +5,8 @@ import skillbill.error.InvalidWorkflowStateSchemaError
 import skillbill.error.MalformedJsonTextError
 import skillbill.workflow.engine.model.WorkflowStateSnapshot
 import skillbill.workflow.engine.model.WorkflowStepState
+import skillbill.workflow.model.WorkflowStepStatus
+import skillbill.workflow.model.workflowStepStatus
 
 fun WorkflowStateSnapshot.progressToken(): String = listOf(
   workflowId,
@@ -51,9 +53,9 @@ fun blockedStepId(
   requestedStepId: String,
   definitionStepIds: List<String>,
 ): String = requestedStepId.takeIf { stepId ->
-  stepId.isNotBlank() && steps.firstOrNull { step -> step.stepId == stepId }?.status == "running"
+  stepId.isNotBlank() && steps.firstOrNull { step -> step.stepId == stepId }?.status?.workflowStepStatus() == WorkflowStepStatus.RUNNING
 }
-  ?: steps.firstOrNull { step -> step.status == "running" }?.stepId
+  ?: steps.firstOrNull { step -> step.status.workflowStepStatus() == WorkflowStepStatus.RUNNING }?.stepId
   ?: firstUnfinishedStepId(steps, definitionStepIds)
   ?: record.currentStepId.takeIf(String::isNotBlank)
   ?: requestedStepId.takeIf(String::isNotBlank)
@@ -62,6 +64,6 @@ fun blockedStepId(
 fun firstUnfinishedStepId(steps: List<WorkflowStepState>, definitionStepIds: List<String>): String? {
   val statusByStepId = steps.associate { step -> step.stepId to step.status }
   return definitionStepIds.firstOrNull { stepId ->
-    statusByStepId[stepId]?.let { status -> status != "completed" && status != "skipped" } ?: true
+    statusByStepId[stepId]?.workflowStepStatus()?.let { status -> status != WorkflowStepStatus.COMPLETED && status != WorkflowStepStatus.SKIPPED } ?: true
   }
 }

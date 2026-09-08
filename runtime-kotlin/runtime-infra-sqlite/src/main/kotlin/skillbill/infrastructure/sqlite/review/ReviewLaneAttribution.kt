@@ -129,7 +129,7 @@ fun recordIntegrationPass(connection: Connection, reviewRunId: String, record: R
     WHERE review_run_id = ?
     """.trimIndent(),
   ).use { statement ->
-    statement.setString(PARAM_ONE, record.terminalOutcome)
+    statement.setString(PARAM_ONE, record.terminalOutcome.wireValue)
     statement.setString(PARAM_TWO, record.commitSequenceDigest)
     statement.setString(PARAM_THREE, reviewRunId)
     statement.executeUpdate()

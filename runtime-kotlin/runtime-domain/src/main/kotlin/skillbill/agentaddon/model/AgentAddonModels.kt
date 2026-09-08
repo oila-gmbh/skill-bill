@@ -14,6 +14,16 @@ enum class AgentAddonConsumer(val id: String) {
   }
 }
 
+enum class AgentAddonValidationStatus(val wireValue: String) {
+  VALID("valid"),
+  INVALID("invalid"),
+  ;
+
+  companion object {
+    fun fromWire(value: String): AgentAddonValidationStatus? = entries.firstOrNull { it.wireValue == value }
+  }
+}
+
 data class AgentAddonDeclaration(
   val contractVersion: String,
   val slug: String,
@@ -34,7 +44,7 @@ data class AgentAddonCatalogueEntry(
   val consumers: List<String>,
   val manifestPath: FileLocation,
   val contentPath: FileLocation,
-  val validationStatus: String = "valid",
+  val validationStatus: AgentAddonValidationStatus = AgentAddonValidationStatus.VALID,
   val diagnostics: List<String> = emptyList(),
 )
 
@@ -43,7 +53,7 @@ data class InvalidAgentAddonCatalogueEntry(
   val slug: String,
   val manifestPath: FileLocation,
   val contentPath: FileLocation,
-  val validationStatus: String = "invalid",
+  val validationStatus: AgentAddonValidationStatus = AgentAddonValidationStatus.INVALID,
   val diagnostics: List<String>,
 )
 

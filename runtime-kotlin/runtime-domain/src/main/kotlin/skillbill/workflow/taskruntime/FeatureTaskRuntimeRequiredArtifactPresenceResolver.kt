@@ -10,6 +10,8 @@ import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_RECORDS_A
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeGoalContinuationArtifact
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseRecord
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeQualityGateSelection
+import skillbill.workflow.model.WorkflowStepStatus
+import skillbill.workflow.model.workflowStepStatus
 
 /**
  * Family-aware presence resolver for the feature-task-runtime pipeline. The runtime never
@@ -41,7 +43,7 @@ object FeatureTaskRuntimeRequiredArtifactPresenceResolver : RequiredArtifactPres
   override fun resolveRequiredArtifact(snapshot: WorkflowSnapshotView, artifactKey: String): ResolvedRequiredArtifact {
     val record = decodePhaseRecords(snapshot)[artifactKey]
       ?: return ResolvedRequiredArtifact(present = false, value = null)
-    if (record.status != PHASE_STATUS_COMPLETED) {
+    if (record.status.workflowStepStatus() != WorkflowStepStatus.COMPLETED) {
       return ResolvedRequiredArtifact(present = false, value = null)
     }
     return ResolvedRequiredArtifact(
@@ -90,7 +92,7 @@ object FeatureTaskRuntimeRequiredArtifactPresenceResolver : RequiredArtifactPres
   }
 
   private fun completedPhaseIds(snapshot: WorkflowSnapshotView): Set<String> = decodePhaseRecords(snapshot)
-    .filterValues { record -> record.status == PHASE_STATUS_COMPLETED }
+    .filterValues { record -> record.status.workflowStepStatus() == WorkflowStepStatus.COMPLETED }
     .keys
 
   private fun decodePhaseRecords(snapshot: WorkflowSnapshotView): Map<String, FeatureTaskRuntimePhaseRecord> {

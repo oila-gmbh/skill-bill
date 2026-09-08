@@ -306,7 +306,7 @@ internal fun ParallelCodeReviewRunnerResultAssembly.durableIntegrationOutcome(
   ) { unitOfWork -> unitOfWork.reviews.fetchIntegrationPass(reviewRunId) }
   val terminal = record
     ?.takeIf { it.commitSequenceDigest == commitSequenceDigest }
-    ?.let { ReviewIntegrationTerminalOutcome.entries.firstOrNull { entry -> entry.wireValue == it.terminalOutcome } }
+    ?.let { it.terminalOutcome }
     ?.takeIf { it.isDurablyComplete }
   return terminal?.let {
     ReviewIntegrationPassOutcome(

@@ -41,6 +41,8 @@ import skillbill.workflow.taskruntime.model.UNPROVEN_REPOSITORY_FINGERPRINT
 import skillbill.workflow.taskruntime.model.detectAuditRepairNonProgress
 import skillbill.workflow.taskruntime.model.requireAcceptedOutput
 import skillbill.workflow.taskruntime.model.validateDispositionCoverage
+import skillbill.workflow.model.WorkflowStepStatus
+import skillbill.workflow.model.workflowStepStatus
 
 object FeatureTaskRuntimeRunLoopOutputVerification {
   internal fun attestAbsentGateValidationReceipt(
@@ -50,7 +52,7 @@ object FeatureTaskRuntimeRunLoopOutputVerification {
   ): NormalizedFeatureTaskRuntimePhaseOutput {
     val eligible = run.agentRunValidateFallback &&
       run.phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VALIDATE &&
-      normalizedOutput.envelope["status"] == STATUS_COMPLETED
+      (normalizedOutput.envelope["status"] as? String).workflowStepStatus() == WorkflowStepStatus.COMPLETED
     if (!eligible) return normalizedOutput
     val produced = JsonCodec.anyToStringAnyMap(normalizedOutput.envelope["produced_outputs"])
       ?.toMutableMap()

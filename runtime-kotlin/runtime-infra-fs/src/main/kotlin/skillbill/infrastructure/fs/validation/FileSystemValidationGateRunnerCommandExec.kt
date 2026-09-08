@@ -3,7 +3,7 @@ package skillbill.infrastructure.fs.validation
 import org.w3c.dom.Element
 import skillbill.ports.validation.model.ValidationGateFinding
 import skillbill.ports.validation.model.ValidationGateFindingParseMode
-import skillbill.ports.validation.model.ValidationGateRunOutcome
+import skillbill.workflow.taskruntime.model.ValidationGateRunOutcome
 import skillbill.ports.validation.model.ValidationGateRunRequest
 import skillbill.scaffold.model.ValidationGateCompilerDiagnosticsFormat
 import skillbill.scaffold.model.ValidationGateExecutedWorkFormat

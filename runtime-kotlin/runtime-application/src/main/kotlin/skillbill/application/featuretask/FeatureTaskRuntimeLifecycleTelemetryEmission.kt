@@ -8,6 +8,8 @@ import skillbill.application.telemetry.model.FeatureTaskRuntimeFindingVerificati
 import skillbill.application.telemetry.model.FeatureTaskRuntimeFinishedRequest
 import skillbill.application.telemetry.model.FeatureTaskRuntimeRegenerationTelemetry
 import skillbill.application.telemetry.normalizedBlockedReason
+import skillbill.workflow.model.WorkflowStepStatus
+import skillbill.workflow.model.workflowStepStatus
 
 fun emitFeatureTaskRuntimeFinished(
   lifecycleTelemetryService: LifecycleTelemetryService,
@@ -58,7 +60,7 @@ fun emitFeatureTaskRuntimeFinishedError(
     FeatureTaskRuntimeFinishedRequest(
       sessionId = context.telemetrySessionId,
       completionStatus = "error",
-      completedPhaseIds = outcomes.filterValues { it == "completed" }.keys.toList(),
+      completedPhaseIds = outcomes.filterValues { it.workflowStepStatus() == WorkflowStepStatus.COMPLETED }.keys.toList(),
       phaseOutcomes = outcomes,
       lastIncompletePhase = outcomes.firstIncompletePhase(),
       blockedReason = normalizedBlockedReason(
@@ -145,7 +147,8 @@ fun lastIncompletePhaseOf(report: FeatureTaskRuntimeRunReport, outcomes: Map<Str
 }
 
 fun Map<String, String>.firstIncompletePhase(): String =
-  entries.firstOrNull { it.value != "completed" }?.key?.takeIf(String::isNotBlank) ?: "unknown"
+  entries.firstOrNull { it.value.workflowStepStatus() != WorkflowStepStatus.COMPLETED }?.key?.takeIf(String::isNotBlank)
+    ?: "unknown"
 
 fun blockedReasonOf(report: FeatureTaskRuntimeRunReport): String = when (report) {
   is FeatureTaskRuntimeRunReport.Blocked -> normalizedBlockedReason(

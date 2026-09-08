@@ -1,11 +1,12 @@
 package skillbill.workflow.taskruntime.model
 
 import skillbill.boundary.OpenBoundaryMap
+import skillbill.goalrunner.model.GoalRunnerTerminalStatus
 
 data class FeatureTaskRuntimeGoalContinuationOutcome(
   val issueKey: String,
   val subtaskId: Int,
-  val status: String,
+  val status: GoalRunnerTerminalStatus,
   val workflowId: String,
   val commitSha: String? = null,
   val blockedReason: String? = null,
@@ -13,10 +14,33 @@ data class FeatureTaskRuntimeGoalContinuationOutcome(
   val finalizingAgentId: String? = null,
   val participatingAgentIds: List<String> = emptyList(),
 ) {
+  constructor(
+    issueKey: String,
+    subtaskId: Int,
+    status: String,
+    workflowId: String,
+    commitSha: String? = null,
+    blockedReason: String? = null,
+    lastResumableStep: String,
+    finalizingAgentId: String? = null,
+    participatingAgentIds: List<String> = emptyList(),
+  ) : this(
+    issueKey = issueKey,
+    subtaskId = subtaskId,
+    status = requireNotNull(GoalRunnerTerminalStatus.fromWire(status)) {
+      "Unknown goal-continuation outcome status '$status'."
+    },
+    workflowId = workflowId,
+    commitSha = commitSha,
+    blockedReason = blockedReason,
+    lastResumableStep = lastResumableStep,
+    finalizingAgentId = finalizingAgentId,
+    participatingAgentIds = participatingAgentIds,
+  )
+
   init {
     require(issueKey.isNotBlank()) { "FeatureTaskRuntimeGoalContinuationOutcome.issueKey must be non-blank." }
     require(subtaskId > 0) { "FeatureTaskRuntimeGoalContinuationOutcome.subtaskId must be positive." }
-    require(status.isNotBlank()) { "FeatureTaskRuntimeGoalContinuationOutcome.status must be non-blank." }
     require(workflowId.isNotBlank()) { "FeatureTaskRuntimeGoalContinuationOutcome.workflowId must be non-blank." }
     require(lastResumableStep.isNotBlank()) {
       "FeatureTaskRuntimeGoalContinuationOutcome.lastResumableStep must be non-blank."
@@ -27,7 +51,7 @@ data class FeatureTaskRuntimeGoalContinuationOutcome(
   fun toArtifactMap(): Map<String, Any?> = linkedMapOf<String, Any?>(
     "issue_key" to issueKey,
     "subtask_id" to subtaskId,
-    "status" to status,
+    "status" to status.wireValue,
     "workflow_id" to workflowId,
     "last_resumable_step" to lastResumableStep,
     "participating_agent_ids" to participatingAgentIds,
@@ -44,7 +68,9 @@ data class FeatureTaskRuntimeGoalContinuationOutcome(
       FeatureTaskRuntimeGoalContinuationOutcome(
         issueKey = raw.requireStringField("issue_key"),
         subtaskId = raw.requireIntField("subtask_id"),
-        status = raw.requireStringField("status"),
+        status = requireNotNull(GoalRunnerTerminalStatus.fromWire(raw.requireStringField("status"))) {
+          "Unknown goal-continuation outcome status '${raw["status"]}'."
+        },
         workflowId = raw.requireStringField("workflow_id"),
         commitSha = raw.optionalStringField("commit_sha"),
         blockedReason = raw.optionalStringField("blocked_reason"),

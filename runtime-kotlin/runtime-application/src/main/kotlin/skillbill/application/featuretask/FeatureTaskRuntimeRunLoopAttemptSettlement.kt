@@ -20,6 +20,8 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeCorrectiveRepairCo
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFailureDisposition
 import skillbill.workflow.taskruntime.model.NormalizedFeatureTaskRuntimePhaseOutput
 import skillbill.workflow.taskruntime.model.requireAcceptedOutput
+import skillbill.workflow.model.WorkflowStepStatus
+import skillbill.workflow.model.workflowStepStatus
 
 object FeatureTaskRuntimeRunLoopAttemptSettlement {
   internal fun rejectedOutputTargeting(args: RejectedOutputTargetingArgs): RejectedOutputTargeting =
@@ -662,7 +664,7 @@ object FeatureTaskRuntimeRunLoopAttemptSettlement {
   ): CommitPushFinalisation {
     if (
       run.phaseId != FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_COMMIT_PUSH ||
-      normalizedOutput.envelope["status"] != STATUS_COMPLETED
+      (normalizedOutput.envelope["status"] as? String).workflowStepStatus() != WorkflowStepStatus.COMPLETED
     ) {
       return CommitPushNotApplicable
     }

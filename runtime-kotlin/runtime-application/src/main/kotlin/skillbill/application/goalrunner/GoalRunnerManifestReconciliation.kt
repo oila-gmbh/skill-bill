@@ -85,7 +85,7 @@ private data class GoalManifestReconciliationContext(
     val staleRetryOutcome = workflowId != null &&
       outcome?.workflowId == workflowId &&
       outcome.status != GoalRunnerTerminalStatus.COMPLETE &&
-      outcomeStore.progress(workflowId, dbPathOverride)?.workflowStatus.workflowStatus() == WorkflowStatus.RUNNING
+      outcomeStore.progress(workflowId, dbPathOverride)?.workflowStatus == WorkflowStatus.RUNNING
     return if (staleRetryOutcome) {
       subtask.copy(status = DecompositionStatus.IN_PROGRESS.wireValue, blockedReason = null)
     } else if (outcome == null || shouldPreserveCompletedSubtask(subtask, outcome)) {

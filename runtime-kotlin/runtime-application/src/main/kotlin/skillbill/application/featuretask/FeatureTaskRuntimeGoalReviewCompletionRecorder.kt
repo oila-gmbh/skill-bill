@@ -28,6 +28,8 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeGoalContinuationAr
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerAction.COMPLETE
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerEntry
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseRecord
+import skillbill.workflow.model.WorkflowStepStatus
+import skillbill.workflow.model.workflowStepStatus
 import java.time.Clock
 
 class FeatureTaskRuntimeGoalReviewCompletionRecorder(
@@ -229,7 +231,7 @@ class FeatureTaskRuntimeGoalReviewCompletionRecorder(
     require(request.phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW) {
       "Goal review completion can only persist the review phase."
     }
-    require(request.status == "completed" && request.finished) {
+    require(request.status.workflowStepStatus() == WorkflowStepStatus.COMPLETED && request.finished) {
       "Goal review completion must persist a finished completed review phase."
     }
     require(completion.rawReviewResult.isNotBlank()) { "Goal-subtask review pass result must be non-blank." }

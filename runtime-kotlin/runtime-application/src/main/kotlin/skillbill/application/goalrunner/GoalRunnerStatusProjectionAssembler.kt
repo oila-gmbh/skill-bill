@@ -106,7 +106,7 @@ internal fun GoalRunnerStatusProjectionAssembler.statusProjectionRuntimeInputs(
     ),
     planning = alignedPlanningStatus(loadedState, request, manifest, currentSubtask),
     currentStepOverride = derivedCurrentStep ?: progress?.currentStepId,
-    currentWorkflowStatus = progress?.workflowStatus,
+    currentWorkflowStatus = progress?.workflowStatus?.wireValue,
     latestLivenessSignal = progress?.latestLivenessSignal,
     latestObservabilityEvent = progress?.latestGoalObservabilityEvent?.toStatusMap(),
     requestedDiffStat = requestedDiffStat(request),

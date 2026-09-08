@@ -2104,17 +2104,26 @@ durable payload whose vocabulary is intentionally owned by that boundary:
 - `skillbill.workflow.engine.model.WorkflowStepState.status`, `WorkflowStateSnapshot.workflowStatus`,
   and `Workflow*View.workflowStatus`: workflow definitions are pack-owned and may add statuses;
   typed branches use the shared vocabulary where the runtime makes a closed decision.
-- `skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseRecord.status` and
-  `FeatureTaskRuntimeGoalContinuationOutcome.status`: agent-produced durable phase and continuation
-  records retain unknown values for loud schema validation at the owning contract seam.
-- `skillbill.telemetry.model.*.status` and `.mode`, `skillbill.goalrunner.model.*.kind` and `.phase`,
-  and `skillbill.review.*.status`, `.kind`, and `.outcome`: these are provider or telemetry payload
-  labels whose vocabulary belongs to the emitting contract and is not shared with workflow state.
-- `skillbill.scaffold.model.*.mode` and `.kind`, `skillbill.ports.scaffold.*.status` and `.mode`,
+- `skillbill.ports.workflow.model.WorkflowStateRecord.workflowStatus`: this is the persisted port
+  record crossing the SQLite and workflow-engine compatibility seam, so it preserves unknown
+  definition values; consumers convert it with `workflowStatus()` before making closed decisions.
+- `skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseRecord.status` is owned by
+  `WorkflowStepStatus`, and `FeatureTaskRuntimeGoalContinuationOutcome.status` is owned by
+  `GoalRunnerTerminalStatus`; both durable decoders reject unknown values at their artifact seams.
+- `skillbill.telemetry.model.TelemetryModels.status`, `LifecycleTelemetryModels.status`, and
+  `LifecycleTelemetryModels.mode`: provider and telemetry payload labels belong to the emitting
+  contract and are not shared with workflow state.
+- `skillbill.goalrunner.model.GoalRunnerObservabilityModels.kind`, `GoalRunnerLivenessModels.phase`,
+  `skillbill.review.model.ReviewStatsModels.status`, `ReviewContextPacket.status`, and
+  `ReviewBuildTestFact.kind`/`outcome`: these labels are owned by their emitting contracts.
+- `skillbill.scaffold.model.ScaffoldModels.mode`/`kind`,
+  `skillbill.ports.scaffold.repo.model.ScaffoldValidateResult.mode`/`status`,
+  `skillbill.ports.scaffold.model.ScaffoldSkillStatus.status`/`mode`,
   `skillbill.ports.agentrun.model.AgentRunLauncherModels.phase`,
   `skillbill.ports.featuretask.model.FeatureTaskPhaseSettlement.kind`, and
   `skillbill.ports.goalrunner.planning.model.GoalPlanningContext.kind`: these are extension-owned
   labels and remain open so platform packs can add values without changing the core runtime.
-- `skillbill.learnings.model.*.status` and `skillbill.workflow.taskruntime.model.SettlementEnvelopeRequest.status`:
-  these are external learning and settlement envelopes; their contracts validate presence and shape,
-  while the producer owns the vocabulary.
+- `skillbill.learnings.model.LearningRecord.status`, `LearningEntry.status`, and
+  `skillbill.workflow.taskruntime.model.SettlementEnvelopeRequest.status`: these are external
+  learning or settlement envelopes; their contracts validate presence and shape while the producer
+  owns the vocabulary.
