@@ -21,6 +21,8 @@ import skillbill.workflow.engine.WorkflowEngine
 import skillbill.workflow.engine.model.WorkflowStateSnapshot
 import skillbill.workflow.engine.model.WorkflowStepState
 import skillbill.workflow.engine.model.WorkflowUpdateInput
+import skillbill.workflow.model.WorkflowStepStatus
+import skillbill.workflow.model.workflowStepStatus
 
 internal fun WorkflowEngine.continueExistingWorkflow(
   family: WorkflowFamily,
@@ -120,11 +122,15 @@ private fun WorkflowEngine.resumeAlignment(record: WorkflowStateSnapshot, reques
   val steps = snapshotView(WorkflowFamily.TASK_RUNTIME.definition, record).steps
   val requestedStep = steps.firstOrNull { step -> step.stepId == requestedStepId }
   val targetStepId = requestedStepId.takeIf { stepId ->
-    stepId.isNotBlank() && steps.firstOrNull { step -> step.stepId == stepId }?.status == "running"
+    stepId.isNotBlank() && steps.firstOrNull { step ->
+      step.stepId == stepId && step.status.workflowStepStatus() == WorkflowStepStatus.RUNNING
+    } != null
   }
-    ?: steps.firstOrNull { step -> step.status == "running" }?.stepId
+    ?: steps.firstOrNull { step -> step.status.workflowStepStatus() == WorkflowStepStatus.RUNNING }?.stepId
     ?: requestedStepId
-  val staleBlockedStep = requestedStep?.takeIf { step -> step.stepId != targetStepId && step.status == "blocked" }
+  val staleBlockedStep = requestedStep?.takeIf {
+    it.stepId != targetStepId && it.status.workflowStepStatus() == WorkflowStepStatus.BLOCKED
+  }
   return ResumeAlignment(targetStepId = targetStepId, staleBlockedStep = staleBlockedStep)
 }
 

@@ -24,6 +24,8 @@ import skillbill.ports.repository.RepositoryEnclosingRootPort
 import skillbill.ports.workflow.gitops.WorkflowGitOperations
 import skillbill.workflow.decomposition.model.DecompositionManifest
 import skillbill.workflow.decomposition.model.DecompositionSubtask
+import skillbill.workflow.model.DecompositionStatus
+import skillbill.workflow.model.decompositionStatus
 import java.nio.file.Path
 
 @Inject
@@ -152,7 +154,7 @@ class GoalRunnerResetReplanCoordinator(
     require(selected != null) {
       "Subtask '${request.subtaskId}' is not part of goal '${request.issueKey}'."
     }
-    require(selected.status != SUBTASK_STATUS_COMPLETE && selected.status != SUBTASK_STATUS_SKIPPED) {
+    require(selected.status.decompositionStatus() !in setOf(DecompositionStatus.COMPLETE, DecompositionStatus.SKIPPED)) {
       "Subtask '${request.subtaskId}' is terminal (${selected.status}); use reset to reopen it before replanning."
     }
     return selected
@@ -233,7 +235,7 @@ class GoalRunnerResetReplanCoordinator(
     val subtaskId = requireNotNull(request.subtaskId)
     val selected = authoritativeState.manifest.subtasks.singleOrNull { it.id == subtaskId }
       ?: error("Unknown or ambiguous goal subtask '$subtaskId'.")
-    require(selected.status == "blocked") {
+    require(selected.status.decompositionStatus() == DecompositionStatus.BLOCKED) {
       "Subtask '$subtaskId' is '${selected.status}'; scoped child deletion requires a blocked subtask."
     }
     val workflowId = selected.workflowId?.takeIf(String::isNotBlank)

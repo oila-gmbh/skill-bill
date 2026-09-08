@@ -10,6 +10,8 @@ import skillbill.ports.goalrunner.runner.model.GoalRunnerOutOfBandAcceptance
 import skillbill.ports.workflow.gitops.WorkflowGitOperations
 import skillbill.workflow.decomposition.model.DecompositionManifest
 import skillbill.workflow.decomposition.model.DecompositionSubtask
+import skillbill.workflow.model.DecompositionStatus
+import skillbill.workflow.model.decompositionStatus
 import java.nio.file.Path
 import java.time.OffsetDateTime
 import java.time.ZoneOffset
@@ -92,7 +94,7 @@ class GoalRunnerAcceptanceCoordinator(
   }
 
   private fun acceptanceStateRejection(request: GoalRunnerAcceptRequest, subtask: DecompositionSubtask): String? {
-    val clearedByHardReset = subtask.status == "pending" &&
+    val clearedByHardReset = subtask.status.decompositionStatus() == DecompositionStatus.PENDING &&
       subtask.branch == null &&
       subtask.commitSha == null &&
       subtask.workflowId == null &&
@@ -101,7 +103,8 @@ class GoalRunnerAcceptanceCoordinator(
     return when {
       request.restoreAfterHardReset && !clearedByHardReset ->
         "Subtask ${request.subtaskId} is not in the cleared reset state required for acceptance restoration."
-      subtask.status == "complete" -> "Subtask ${request.subtaskId} is already complete."
+      subtask.status.decompositionStatus() == DecompositionStatus.COMPLETE ->
+        "Subtask ${request.subtaskId} is already complete."
       else -> null
     }
   }
@@ -126,7 +129,10 @@ class GoalRunnerAcceptanceCoordinator(
     val subtasksById = manifest.subtasks.associateBy(DecompositionSubtask::id)
     return subtask.dependencies.firstOrNull { dependency ->
       val dependencySubtask = subtasksById[dependency.subtaskId]
-      val satisfied = dependencySubtask?.status in setOf("complete", "skipped") ||
+      val satisfied = dependencySubtask?.status.decompositionStatus() in setOf(
+        DecompositionStatus.COMPLETE,
+        DecompositionStatus.SKIPPED,
+      ) ||
         (dependency.optional && dependency.skipped)
       !satisfied
     }?.subtaskId

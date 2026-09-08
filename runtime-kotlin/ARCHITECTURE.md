@@ -2089,3 +2089,32 @@ Each holds its own assignments, evidence brokers, budgets, and accounting nodes,
 budget termination, timeout, or process failure never disturbs its sibling. Accounting folds each
 session exactly once: direct usage sums owned sessions, an inclusive provider report already
 containing its descendants is never added to them again, and counters aggregate the same way.
+
+# Closed status-family inventory
+
+Closed workflow and decomposition decisions use the domain-owned `DecompositionStatus`,
+`WorkflowStatus`, and `WorkflowStepStatus` vocabularies. Their `wireValue` members are the only
+declarations of the supported tokens, and `fromWire` is used at durable-map seams. The following
+string fields remain open because their values are supplied by a provider, a pack, or a versioned
+durable payload whose vocabulary is intentionally owned by that boundary:
+
+- `skillbill.workflow.decomposition.model.DecompositionManifest.status` and
+  `DecompositionSubtask.status`: legacy manifest state accepts unknown future values and keeps the
+  raw wire value for forward-compatible read and rewrite.
+- `skillbill.workflow.engine.model.WorkflowStepState.status`, `WorkflowStateSnapshot.workflowStatus`,
+  and `Workflow*View.workflowStatus`: workflow definitions are pack-owned and may add statuses;
+  typed branches use the shared vocabulary where the runtime makes a closed decision.
+- `skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseRecord.status` and
+  `FeatureTaskRuntimeGoalContinuationOutcome.status`: agent-produced durable phase and continuation
+  records retain unknown values for loud schema validation at the owning contract seam.
+- `skillbill.telemetry.model.*.status` and `.mode`, `skillbill.goalrunner.model.*.kind` and `.phase`,
+  and `skillbill.review.*.status`, `.kind`, and `.outcome`: these are provider or telemetry payload
+  labels whose vocabulary belongs to the emitting contract and is not shared with workflow state.
+- `skillbill.scaffold.model.*.mode` and `.kind`, `skillbill.ports.scaffold.*.status` and `.mode`,
+  `skillbill.ports.agentrun.model.AgentRunLauncherModels.phase`,
+  `skillbill.ports.featuretask.model.FeatureTaskPhaseSettlement.kind`, and
+  `skillbill.ports.goalrunner.planning.model.GoalPlanningContext.kind`: these are extension-owned
+  labels and remain open so platform packs can add values without changing the core runtime.
+- `skillbill.learnings.model.*.status` and `skillbill.workflow.taskruntime.model.SettlementEnvelopeRequest.status`:
+  these are external learning and settlement envelopes; their contracts validate presence and shape,
+  while the producer owns the vocabulary.

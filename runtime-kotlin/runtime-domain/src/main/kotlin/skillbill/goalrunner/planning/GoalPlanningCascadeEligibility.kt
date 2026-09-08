@@ -1,5 +1,7 @@
 package skillbill.goalrunner.planning
 import skillbill.workflow.decomposition.model.DecompositionSubtask
+import skillbill.workflow.model.DecompositionStatus
+import skillbill.workflow.model.decompositionStatus
 
 /**
  * Shared cascade eligibility for every path that discards sibling plans because the shared preplan
@@ -7,10 +9,10 @@ import skillbill.workflow.decomposition.model.DecompositionSubtask
  * not complete with a non-blank commit_sha (SKILL-181 / WE-4719).
  */
 fun isTerminalWithCommitPlan(subtask: DecompositionSubtask): Boolean =
-  subtask.status == "complete" && !subtask.commitSha.isNullOrBlank()
+    subtask.status.decompositionStatus() == DecompositionStatus.COMPLETE && !subtask.commitSha.isNullOrBlank()
 
 fun isTerminalWithCommitPlan(status: String, commitSha: String?): Boolean =
-  status == "complete" && !commitSha.isNullOrBlank()
+  status.decompositionStatus() == DecompositionStatus.COMPLETE && !commitSha.isNullOrBlank()
 
 /**
  * Returns [plannedIds] that may be discarded, in ascending id order. Ids with no matching manifest

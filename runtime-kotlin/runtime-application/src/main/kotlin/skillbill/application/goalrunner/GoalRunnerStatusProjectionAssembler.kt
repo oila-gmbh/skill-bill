@@ -29,6 +29,8 @@ import skillbill.ports.workflow.gitops.model.WorkflowSelectedDiffHunksRequest
 import skillbill.ports.workflow.model.FeatureTaskWorkflowMode
 import skillbill.workflow.decomposition.model.DecompositionManifest
 import skillbill.workflow.decomposition.model.DecompositionSubtask
+import skillbill.workflow.model.DecompositionStatus
+import skillbill.workflow.model.decompositionStatus
 import java.io.IOException
 import java.time.Clock
 import java.time.Instant
@@ -134,11 +136,12 @@ internal fun GoalRunnerStatusProjectionAssembler.alignedPlanningStatus(
   manifest: DecompositionManifest,
   currentSubtask: DecompositionSubtask?,
 ) = currentSubtask?.takeIf { subtask ->
-  subtask.status == "blocked" && subtask.lastResumableStep in setOf("preplan", "plan")
+  subtask.status.decompositionStatus() == DecompositionStatus.BLOCKED &&
+    subtask.lastResumableStep in setOf("preplan", "plan")
 }.let { planningBlock ->
   manifestStore.planningStatus(
     loadedState.parentWorkflowId,
-    manifest.subtasks.filter { it.status != "skipped" }.map { it.id },
+    manifest.subtasks.filter { it.status.decompositionStatus() != DecompositionStatus.SKIPPED }.map { it.id },
     planningBlock?.id,
     planningBlock?.blockedReason,
     request.dbPathOverride,

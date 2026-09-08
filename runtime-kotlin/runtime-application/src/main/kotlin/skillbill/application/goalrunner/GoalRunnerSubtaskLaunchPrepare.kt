@@ -21,6 +21,8 @@ import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewBaselineResult
 import skillbill.ports.workflow.gitops.model.WorkflowGitOperationStatus
 import skillbill.review.context.model.CodeReviewExecutionMode
 import skillbill.workflow.decomposition.model.DecompositionSubtask
+import skillbill.workflow.model.DecompositionStatus
+import skillbill.workflow.model.decompositionStatus
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import java.nio.file.Path
 
@@ -164,7 +166,7 @@ public class GoalRunnerSubtaskLaunchPrepare(
     val subtask = requireNotNull(state.manifest.subtasks.firstOrNull { it.id == subtaskId }) {
       "Goal subtask '$subtaskId' is missing from the decomposition manifest."
     }
-    if (subtask.status == "blocked" && priorWorkflowId != null) {
+    if (subtask.status.decompositionStatus() == DecompositionStatus.BLOCKED && priorWorkflowId != null) {
       reopenBlockedChildForOperatorResume(subtaskId, priorWorkflowId, subtask, request)
     }
     val firstRun = priorWorkflowId == null

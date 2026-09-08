@@ -16,6 +16,8 @@ import skillbill.workflow.decomposition.model.DecompositionManifest
 import skillbill.workflow.decomposition.model.DecompositionSubtask
 import skillbill.workflow.engine.WorkflowEngine
 import skillbill.workflow.engine.model.WorkflowStateSnapshot
+import skillbill.workflow.model.DecompositionStatus
+import skillbill.workflow.model.decompositionStatus
 import java.nio.file.Path
 
 internal data class AdvancementResult(
@@ -32,7 +34,7 @@ internal data class CommitAdvanceResult(
 internal fun WorkflowEngine.advanceCompletedSubtasks(request: AdvanceCompletedSubtasksRequest): AdvancementResult {
   var updated = request.manifest
   request.manifest.subtasks
-    .filter { it.status == "complete" && it.commitSha.isNullOrBlank() }
+    .filter { it.status.decompositionStatus() == DecompositionStatus.COMPLETE && it.commitSha.isNullOrBlank() }
     .forEach { subtask ->
       val advanced = commitCompletedSubtask(
         updated,

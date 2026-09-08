@@ -4,6 +4,8 @@ import skillbill.contracts.JsonCodec
 import skillbill.contracts.goalplanning.GoalPlanningDiscoveryExclusions
 import skillbill.ports.goalrunner.planning.model.GoalPlanningContext
 import skillbill.workflow.decomposition.model.DecompositionSubtask
+import skillbill.workflow.model.DecompositionStatus
+import skillbill.workflow.model.decompositionStatus
 
 object GoalPlanningSharedContextPacket {
   const val VERSION = "0.4"
@@ -119,7 +121,11 @@ object GoalPlanningSharedContextPacket {
       "id" to subtask.id,
       "name" to subtask.name,
       "spec_path" to subtask.specPath,
-      "planning_disposition" to if (subtask.status == "skipped") "skipped" else "included",
+      "planning_disposition" to if (subtask.status.decompositionStatus() == DecompositionStatus.SKIPPED) {
+        DecompositionStatus.SKIPPED.wireValue
+      } else {
+        "included"
+      },
       "dependencies" to subtask.dependencies.map { dependency ->
         linkedMapOf(
           "subtask_id" to dependency.subtaskId,

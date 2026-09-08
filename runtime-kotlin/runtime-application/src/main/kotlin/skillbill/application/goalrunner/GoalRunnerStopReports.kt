@@ -10,6 +10,8 @@ import skillbill.goalrunner.model.GoalRunnerSupervisionEvent
 import skillbill.goalrunner.model.UnaddressedFindingsLedger
 import skillbill.ports.goalrunner.runner.model.GoalRunnerWorkflowProgress
 import skillbill.workflow.decomposition.model.DecompositionManifest
+import skillbill.workflow.model.DecompositionStatus
+import skillbill.workflow.model.decompositionStatus
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFailureDisposition
 
@@ -39,9 +41,15 @@ fun completed(
     featureName = manifest.featureName,
     pullRequestUrl = pullRequestUrl,
     pullRequestStatus = pullRequestStatus,
-    subtasksCompleted = manifest.subtasks.count { it.status == "complete" },
-    subtasksPending = manifest.subtasks.count { it.status !in setOf("complete", "skipped", "blocked") },
-    subtasksBlocked = manifest.subtasks.count { it.status == "blocked" },
+    subtasksCompleted = manifest.subtasks.count { it.status.decompositionStatus() == DecompositionStatus.COMPLETE },
+    subtasksPending = manifest.subtasks.count {
+      it.status.decompositionStatus() !in setOf(
+        DecompositionStatus.COMPLETE,
+        DecompositionStatus.SKIPPED,
+        DecompositionStatus.BLOCKED,
+      )
+    },
+    subtasksBlocked = manifest.subtasks.count { it.status.decompositionStatus() == DecompositionStatus.BLOCKED },
     unaddressedFindingCount = ledger?.findings?.size,
     unaddressedSeverityBreakdown = ledger?.severityBreakdown.orEmpty(),
   )

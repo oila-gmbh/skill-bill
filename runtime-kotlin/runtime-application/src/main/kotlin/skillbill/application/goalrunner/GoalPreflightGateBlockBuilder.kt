@@ -20,6 +20,8 @@ import skillbill.ports.goalrunner.runner.GoalRunnerManifestStore
 import skillbill.ports.workflow.decomposition.DecompositionManifestStore
 import skillbill.review.context.model.CodeReviewExecutionMode
 import skillbill.workflow.decomposition.model.DecompositionManifest
+import skillbill.workflow.model.DecompositionStatus
+import skillbill.workflow.model.decompositionStatus
 import skillbill.workflow.decomposition.model.DecompositionSubtask
 import skillbill.workflow.decomposition.model.SpecSource.LINEAR
 import java.nio.file.Path
@@ -133,7 +135,9 @@ class GoalPreflightGateBlockBuilder(
         ).takeUnless { manifestFileStore.isRegularFileWithoutRecovery(root.resolve(it.targetPath)) },
       )
       manifest.subtasks
-        .filterNot { it.status == "complete" || it.status == "skipped" }
+        .filterNot {
+          it.status.decompositionStatus() in setOf(DecompositionStatus.COMPLETE, DecompositionStatus.SKIPPED)
+        }
         .forEach { subtask ->
           add(
             GoalPreflightRehydrateTarget(
