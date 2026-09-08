@@ -43,7 +43,7 @@ public class GoalRunnerSubtaskLaunchPrepare(
           ?.let { reviewState ->
             GoalSubtaskReviewBaselineResult(
               status = "ok",
-              baseline = GoalSubtaskReviewBaseline(reviewState.reviewBaseSha, reviewState.baselineUntrackedPaths),
+              baseline = GoalSubtaskReviewBaseline(reviewState.reviewBaseSha),
             )
           }
           ?: GoalSubtaskReviewBaselineResult(

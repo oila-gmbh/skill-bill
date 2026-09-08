@@ -27,10 +27,14 @@ internal fun remediationBaseHealReason(
 internal fun FeatureTaskRuntimeRemediationBaseReconciler.persistHealedRemediationBaseState(
   request: PersistHealedRemediationBaseRequest,
 ): GoalSubtaskReviewState? {
-  val headSha = request.gitOperations.headCommitSha(request.repoRoot).value.orEmpty().trim()
+  val head = request.gitOperations.headCommitSha(request.repoRoot)
+  if (!head.ok || head.value.isBlank()) throw remediationGitFailure("HEAD could not be read (${head.error})")
+  val headSha = head.value.trim()
   return database.transaction(request.dbOverride) { unitOfWork ->
     val record = WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, request.workflowId)
-      ?: return@transaction null
+      ?: throw remediationGitFailure(
+        "workflow row '${request.workflowId}' could not be read while persisting remediation state",
+      )
     val artifacts = decodeArtifacts(record.artifactsJson)
     val latest = reviewStateFromArtifacts(artifacts) ?: return@transaction null
     if (latest.remediationBaseSha == request.target) return@transaction latest
@@ -59,20 +63,17 @@ internal fun FeatureTaskRuntimeRemediationBaseReconciler.persistHealedRemediatio
 
 internal fun recoveredRemediationBaseSha(
   stored: String?,
-  state: GoalSubtaskReviewState,
   continuation: FeatureTaskRuntimeGoalContinuationArtifact,
   gitOperations: WorkflowGitOperations,
   repoRoot: Path,
 ): String? {
   if (stored == null) return null
-  val request = runCatching {
-    GoalSubtaskReviewBaselineRecoveryRequest(
-      unreachableSha = stored,
-      failureReason = GoalSubtaskReviewInputFailureReason.BASE_NOT_ANCESTOR,
-      baselineUntrackedPaths = state.baselineUntrackedPaths,
-    )
-  }.getOrNull() ?: return null
+  val request = GoalSubtaskReviewBaselineRecoveryRequest(
+    unreachableSha = stored,
+    failureReason = GoalSubtaskReviewInputFailureReason.BASE_NOT_ANCESTOR,
+  )
   val recovered = gitOperations.recoverGoalSubtaskReviewBaseline(repoRoot, request, continuation.goalBranch)
-  if (!recovered.ok) return null
+  if (!recovered.ok) throw remediationGitFailure("baseline recovery failed (${recovered.error})")
   return recovered.baseline?.reviewBaseSha
+    ?: throw remediationGitFailure("baseline recovery returned no reachable review base")
 }

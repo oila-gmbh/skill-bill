@@ -71,7 +71,9 @@ class FeatureTaskRuntimeSharedReviewEvidenceProjectionTest {
     checkpointFingerprint = "fp",
     baseRef = "base-sha",
     headRef = "head-sha",
-    fileHunkIndex = (1..fileCount).map { "modified f$it.kt hunks=$hunksPerFile" },
+    changedFileCount = fileCount,
+    changedHunkCount = fileCount * hunksPerFile,
+    fileHunkIndexDigest = "0".repeat(64),
   )
 
   private fun inputs(evidence: FeatureTaskRuntimeSharedReviewEvidenceReference?) =

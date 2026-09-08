@@ -487,6 +487,9 @@ internal class FakeRuntimeGitOperations(
     override fun stagePaths(repoRoot: Path, paths: List<String>): WorkflowGitOperationResult =
       WorkflowGitOperationResult(status = "ok", value = "")
 
+    override fun unstagePaths(repoRoot: Path, paths: List<String>): WorkflowGitOperationResult =
+      WorkflowGitOperationResult(status = "ok", value = "")
+
     override fun captureIndexState(repoRoot: Path, paths: List<String>): WorkflowGitOperationResult =
       WorkflowGitOperationResult(status = "ok", value = "")
 
@@ -571,7 +574,7 @@ internal class FakeRuntimeGitOperations(
     object : GoalSubtaskReviewGitOperations {
       override fun captureBaseline(repoRoot: Path, expectedBranch: String) = GoalSubtaskReviewBaselineResult(
         status = "ok",
-        baseline = GoalSubtaskReviewBaseline("0".repeat(40), emptyList()),
+        baseline = GoalSubtaskReviewBaseline("0".repeat(40)),
       )
 
       override fun buildInput(
@@ -583,8 +586,6 @@ internal class FakeRuntimeGitOperations(
         input = GoalSubtaskReviewInput(
           reviewBaseSha = baseline.reviewBaseSha,
           currentHeadSha = baseline.reviewBaseSha,
-          trackedDelta = trackedDelta,
-          ownedUntrackedPatches = "",
         ),
       )
 

@@ -2,27 +2,18 @@ package skillbill.application.featuretask
 
 import me.tatarka.inject.annotations.Inject
 import skillbill.ports.workflow.gitops.buildGoalSubtaskReviewInput
+import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewBaseline
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseRecord
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeResolvedBranch
 
 @Inject
 class FeatureTaskRuntimeRunLoopPhaseRunnerPhaseDispatch {
   fun isReenterableLaunchSeamRecordRejection(phaseId: String, reason: String): Boolean =
     reason.contains(LEGACY_PLANNING_PROJECTION_LAUNCH_SEAM_REJECTION) &&
       FeatureTaskRuntimePhaseWorkflowDefinition.REGENERATION_PRODUCER_BY_CONSUMER.containsKey(phaseId)
-
-  // A launch-seam record rejection never ran the consumer, so its attempts are not real fix-loop output
-  // attempts. Re-enterable whether the block still carries the launch-seam reason or was already
-  // overwritten with the generic fix-loop-exhaustion text on a prior re-entry (recognized from the ledger).
   fun isReenterableRecordRejection(state: FeatureTaskRuntimeRunState, phaseId: String, reason: String): Boolean =
     isReenterableLaunchSeamRecordRejection(phaseId, reason) ||
       state.legacyLaunchSeamRejectionConsumedBudget(phaseId, reason)
-
-  // Decides whether a phase with a persisted block relaunches instead of re-surfacing it, restarting the
-  // fix-loop budget for the re-enterable stale-block classes whose prior attempts were not real semantic
-  // output failures (goal-review preparation retries, launch-seam record rejections, and the removed
-  // implementation-continuation segment cap).
   fun shouldRelaunchPersistedBlock(
     runLoop: FeatureTaskRuntimeRunLoop,
     state: FeatureTaskRuntimeRunState,
@@ -70,8 +61,6 @@ class FeatureTaskRuntimeRunLoopPhaseRunnerPhaseDispatch {
     val persistedReason = args.persistedReason
     val disposition = durable?.failureDisposition
     return when {
-      // Ahead of every disposition check: an operator reopen is a decision about this exact block,
-      // whatever its class or disposition, so no persisted reason may veto it.
       runLoop.collaborators.phaseAttemptsContinued1.operatorReopenedPhase(runLoop, phaseId) -> true
       retryReviewPreparation -> true
       reenterableRecordRejection -> true
@@ -119,12 +108,7 @@ class FeatureTaskRuntimeRunLoopPhaseRunnerPhaseDispatch {
       )
     val result = runLoop.phaseGates.gitOperations.buildGoalSubtaskReviewInput(
       run.request.repoRoot,
-      FeatureTaskRuntimeScopedReviewBaseline.of(
-        runLoop.phaseGates.gitOperations,
-        run.request.repoRoot,
-        resolved,
-        reviewBaseSha,
-      ),
+      GoalSubtaskReviewBaseline(reviewBaseSha),
       resolved.branch,
     )
     val input = result.input
@@ -136,18 +120,4 @@ class FeatureTaskRuntimeRunLoopPhaseRunnerPhaseDispatch {
       )
     return GoalReviewRunReady(run.copy(goalReviewInput = input))
   }
-
-  /**
-   * Review scope is the checkpoint's owned inventory, not whatever the worktree happens to hold. The
-   * persisted inventory is the same one the checkpoint identity digested, so the input a review sees
-   * is reproducible from the immutable commit rather than from the tree's current dirt.
-   */
-  fun scopedReviewUntrackedExclusions(
-    runLoop: FeatureTaskRuntimeRunLoop,
-    resolved: FeatureTaskRuntimeResolvedBranch,
-  ): List<String> = FeatureTaskRuntimeScopedReviewBaseline.untrackedExclusions(
-    runLoop.phaseGates.gitOperations,
-    runLoop.request.repoRoot,
-    resolved,
-  )
 }

@@ -123,7 +123,7 @@ private fun inlineGoalContinuationHarness(
           parentWorkflowId = "wfl-parent",
           codeReviewMode = CodeReviewExecutionMode.INLINE,
         ),
-        reviewBaseline = GoalSubtaskReviewBaseline("0".repeat(40), emptyList()),
+        reviewBaseline = GoalSubtaskReviewBaseline("0".repeat(40)),
       ),
     ),
   )
@@ -158,10 +158,7 @@ private fun pausedReviewState(reviewedDeltaDigest: String) = GoalSubtaskReviewSt
   remediationBaseSha = "9".repeat(40),
 )
 
-private fun seedStaleReviewHarness(
-  tempPrefix: String,
-  trackedDelta: String,
-): Pair<RunnerHarness, RecordingWorkflowGitOperations> {
+private fun seedStaleReviewHarness(tempPrefix: String): Pair<RunnerHarness, RecordingWorkflowGitOperations> {
   val repoRoot = Files.createTempDirectory(tempPrefix)
   val git = RecordingWorkflowGitOperations(currentBranchValue = "feat/existing-runtime-branch")
     .also { it.headCommitShaValue = COMMITTED_HEAD_SHA }
@@ -175,8 +172,6 @@ private fun seedStaleReviewHarness(
     input = GoalSubtaskReviewInput(
       reviewBaseSha = "0".repeat(40),
       currentHeadSha = COMMITTED_HEAD_SHA,
-      trackedDelta = trackedDelta,
-      ownedUntrackedPatches = "",
     ),
   )
   val harness = inlineGoalContinuationHarness(repoRoot, git, validJsonOutput("commit_push"))
@@ -232,14 +227,11 @@ internal fun assertNonScopeReviewPrepFailureSurfacesEvidenceStoreCause() {
 internal fun assertCappedReviewStaleIgnoresUnreachableRemediationBase() {
   val (harness, git) = seedStaleReviewHarness(
     "skillbill-runtime-stale-unreachable-remediation",
-    "immutable-delta\n",
   )
   val paused = pausedReviewState(
     GoalSubtaskReviewInput(
       reviewBaseSha = "0".repeat(40),
       currentHeadSha = COMMITTED_HEAD_SHA,
-      trackedDelta = "immutable-delta\n",
-      ownedUntrackedPatches = "",
     ).deltaDigest,
   )
   checkNotNull(harness.goalContinuationRecorder.updateReviewState(WORKFLOW_ID) { paused })
@@ -268,14 +260,11 @@ internal fun assertCappedReviewStaleIgnoresUnreachableRemediationBase() {
 internal fun assertCappedReviewStaleReopensWhenImmutableDigestChanged() {
   val (harness, git) = seedStaleReviewHarness(
     "skillbill-runtime-stale-changed-immutable",
-    "new-delta\n",
   )
   val paused = pausedReviewState(
     GoalSubtaskReviewInput(
       reviewBaseSha = "0".repeat(40),
       currentHeadSha = COMMITTED_HEAD_SHA,
-      trackedDelta = "old-delta\n",
-      ownedUntrackedPatches = "",
     ).deltaDigest,
   )
   checkNotNull(harness.goalContinuationRecorder.updateReviewState(WORKFLOW_ID) { paused })

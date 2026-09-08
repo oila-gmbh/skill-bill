@@ -114,7 +114,8 @@ class FeatureTaskRuntimeSharedReviewEvidenceResolverTest {
     assertEquals(1, store.derivations)
     assertEquals(".skill-bill/run-evidence/wf-1/fp-absent", reference.storePath)
     assertEquals("fp-absent", reference.checkpointFingerprint)
-    assertTrue(reference.fileHunkIndex.any { "a.kt" in it })
+    assertEquals(1, reference.changedFileCount)
+    assertEquals(1, reference.changedHunkCount)
   }
 
   @Test
@@ -245,9 +246,10 @@ class FeatureTaskRuntimeSharedReviewEvidenceResolverTest {
 
     val small = resolve(1)
     val large = resolve(200)
-    assertEquals(small.reference.fileHunkIndex.size, large.reference.fileHunkIndex.size)
-    assertTrue(small.reference.fileHunkIndex.single().startsWith("modified a.kt hunks="))
-    assertTrue(large.reference.fileHunkIndex.single().startsWith("modified a.kt hunks="))
+    assertEquals(small.reference.changedFileCount, large.reference.changedFileCount)
+    assertTrue(small.reference.changedHunkCount < large.reference.changedHunkCount)
+    assertEquals(64, small.reference.fileHunkIndexDigest.length)
+    assertEquals(64, large.reference.fileHunkIndexDigest.length)
   }
 
   @Test
@@ -266,6 +268,6 @@ class FeatureTaskRuntimeSharedReviewEvidenceResolverTest {
 
     assertNotNull(reference)
     assertEquals(listOf("git diff base -- src/A.kt"), git.invoked)
-    assertTrue(reference.reference.fileHunkIndex.any { "src/A.kt" in it })
+    assertEquals(1, reference.reference.changedFileCount)
   }
 }

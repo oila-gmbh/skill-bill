@@ -30,7 +30,6 @@ data class ParallelCodeReviewRequest(
   val headRevision: String? = null,
   val prelaunchExpansions: List<ReviewPrelaunchExpansion> = emptyList(),
   val baselineUntrackedPolicy: ReviewBaselineUntrackedPolicy = ReviewBaselineUntrackedPolicy.EMPTY,
-  val ownedPathspec: List<String> = emptyList(),
   val specPath: Path? = null,
   val selectedAgentAddonsSection: String = "",
 ) {
@@ -45,7 +44,6 @@ data class ParallelCodeReviewRequest(
     specPath?.let { require(it.toString().isNotBlank()) { "specPath must be non-blank when provided." } }
     baseRevision?.let { require(it.isNotBlank()) { "baseRevision must be non-blank when provided." } }
     headRevision?.let { require(it.isNotBlank()) { "headRevision must be non-blank when provided." } }
-    require(ownedPathspec.all(String::isNotBlank)) { "ownedPathspec must not contain blanks." }
     require(suppliedDiff == null || suppliedDiffPath == null) {
       "suppliedDiff and suppliedDiffPath cannot both be provided."
     }
@@ -54,9 +52,6 @@ data class ParallelCodeReviewRequest(
     }
     require((suppliedDiff == null && suppliedDiffPath == null) || baseRevision != null) {
       "A supplied diff requires paired baseRevision and headRevision immutable identities."
-    }
-    require(scope != ParallelReviewScope.WORKTREE_FROM_BASE || baseRevision != null) {
-      "WORKTREE_FROM_BASE requires paired baseRevision and headRevision."
     }
     resolvedTier?.let { tier ->
       require(tier != CodeReviewExecutionMode.AUTO) {

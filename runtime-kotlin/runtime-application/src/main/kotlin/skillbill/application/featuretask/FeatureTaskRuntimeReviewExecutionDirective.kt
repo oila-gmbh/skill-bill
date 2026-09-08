@@ -8,7 +8,7 @@ internal fun reviewExecutionDirective(phaseId: String, inputs: ReviewExecutionDi
   }
   return buildString {
     append(resolvedTierInfo(inputs))
-    append(baselineUntrackedPolicy(inputs))
+    if (inputs.goalSubtaskReviewInput == null) append(baselineUntrackedPolicy(inputs))
     append(materializedScope(inputs))
   }.trim()
 }
@@ -31,11 +31,10 @@ private fun materializedScope(inputs: ReviewExecutionDirectiveInputs): String =
   inputs.goalSubtaskReviewInput?.let { input ->
     """
     ## Immutable-base review scope
-    Review only this run-owned delta from durable base `${input.reviewBaseSha}` to the current worktree
-    (HEAD `${input.currentHeadSha}` plus staged, unstaged, and owned untracked changes).
+    Review only the immutable committed revision pair from base `${input.reviewBaseSha}` to target
+    `${input.currentHeadSha}` with target tree `${input.reviewedTreeSha}`.
     Do not use `origin/main...HEAD`, a merge base, the full feature branch, or a replacement baseline.
-    The shared review driver resolves that scope itself from the durable base; it does not receive a pre-baked
-    diff blob.
+    Read committed content on demand through the governed review evidence broker.
     """.trimIndent()
   }.orEmpty()
 

@@ -170,7 +170,9 @@ fun reviewHarness(config: ReviewHarnessConfig, recorder: ReviewRecorder): Parall
   val database = recordingDatabase(recorder)
   val launcher = GoalRunnerSubtaskLauncher { request ->
     recorder.parentLaunches += request
-    if (config.simulateEvidenceReads) simulateGovernedEvidenceReads(request.skillRunRequest)
+    if (config.simulateEvidenceReads) {
+      simulateGovernedEvidenceReads(request.skillRunRequest, diffPaths(config.diff))
+    }
     config.parentLaunch?.invoke(request)?.let { return@GoalRunnerSubtaskLauncher it }
     val response = config.response(request)
     AgentRunLaunchFacts(
@@ -505,21 +507,9 @@ fun diffForChanges(vararg changes: Pair<String, String>): String = changes.joinT
   """.trimIndent()
 }
 
-/** Replays the one thing the stub launcher cannot fake: the lane's own governed evidence reads. */
-/**
- * Replays the one thing a launcher stub cannot fake: the lane's own governed evidence reads. Paths
- * come from the launch prompt's own `Owned paths:` lines, so this stays correct for any fixture
- * without the test having to restate its assignment.
- */
-fun simulateGovernedEvidenceReads(request: SkillRunRequest) {
+fun simulateGovernedEvidenceReads(request: SkillRunRequest, paths: List<String> = emptyList()) {
   val protocol = request.nativeReviewOperations ?: return
   val lane = request.reviewEvidenceBroker?.accounting()?.lane ?: return
-  val prompt = request.promptOverride ?: return
-  val paths = prompt.lineSequence()
-    .filter { it.startsWith("Owned paths: ") }
-    .flatMap { line -> OWNED_PATH.findAll(line.removePrefix("Owned paths: ")).map { it.groupValues[1] } }
-    .distinct()
-    .toList()
   if (paths.isEmpty()) return
   runCatching {
     protocol.read(
@@ -531,7 +521,11 @@ fun simulateGovernedEvidenceReads(request: SkillRunRequest) {
   }
 }
 
-private val OWNED_PATH = Regex("\"([^\"]+)\"")
+private fun diffPaths(diff: String): List<String> = diff.lineSequence()
+  .mapNotNull { line -> line.removePrefix("diff --git a/").substringAfter(" b/", "") }
+  .filter(String::isNotBlank)
+  .distinct()
+  .toList()
 
 /**
  * The harness broker with one lane-evidence denial injected where the runner reads it. A fixture

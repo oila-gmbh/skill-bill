@@ -1,14 +1,7 @@
 package skillbill.application.featuretask
 
 import me.tatarka.inject.annotations.Inject
-import skillbill.application.featuretask.model.FeatureTaskRuntimeCommitPushHandoffInvalid
-import skillbill.application.featuretask.model.FeatureTaskRuntimeCommitPushHandoffValid
-import skillbill.application.featuretask.model.FeatureTaskRuntimeSubtaskFinalisationBlocked
-import skillbill.application.featuretask.model.FeatureTaskRuntimeSubtaskFinaliseRequest
-import skillbill.application.featuretask.model.FeatureTaskRuntimeSubtaskFinalised
 import skillbill.ports.diagnostics.model.ProducerOutputEvidence
-import skillbill.ports.workflow.gitops.stagedPaths
-import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import skillbill.workflow.taskruntime.model.NormalizedFeatureTaskRuntimePhaseOutput
 
 val FeatureTaskRuntimeRunLoop.goalContinuationManifestCommitSha: String?
@@ -97,59 +90,7 @@ class FeatureTaskRuntimeRunLoopAttemptSettlementReceiptFinalize {
     runLoop: FeatureTaskRuntimeRunLoop,
     run: PhaseRun,
     normalizedOutput: NormalizedFeatureTaskRuntimePhaseOutput,
-  ): CommitPushFinalisation {
-    if (
-      run.phaseId != FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_COMMIT_PUSH ||
-      normalizedOutput.envelope["status"] != STATUS_COMPLETED
-    ) {
-      return CommitPushNotApplicable
-    }
-    val subtaskCommit = runLoop.collaborators.subtaskCommit
-    val branch = subtaskCommit.finalisationBranch(runLoop)
-      ?: return subtaskCommit.unownedWorktreeCommitSha(runLoop, run, normalizedOutput)
-    val handoff = when (val read = FeatureTaskRuntimeSubtaskFinalisation.readHandoff(normalizedOutput.envelope)) {
-      is FeatureTaskRuntimeCommitPushHandoffInvalid -> return CommitPushBlocked(read.reason)
-      is FeatureTaskRuntimeCommitPushHandoffValid -> read.handoff
-    }
-    val identity = runLoop.collaborators.checkpointContinued4.subtaskCommitIdentity(runLoop)
-    val ledger = runLoop.collaborators.checkpointContinued4.subtaskCommitLedgerState(runLoop, identity)
-    val outcome = FeatureTaskRuntimeSubtaskFinalisation(
-      gitOperations = runLoop.phaseGates.gitOperations,
-      repoRoot = runLoop.request.repoRoot,
-      record = { record -> runCatching { runLoop.diagnostics.warning(record) } },
-      recordCommit = { commitSha, stagedPaths ->
-        runLoop.collaborators.subtaskCommit.recordFinalisedCheckpointIdentity(
-          runLoop,
-          RecordFinalisedCheckpointIdentityArgs(run.phaseId, branch, ledger, commitSha, stagedPaths),
-        )
-      },
-    ).finalise(
-      FeatureTaskRuntimeSubtaskFinaliseRequest(
-        identity = identity,
-        durableCommitSha = ledger.commitSha,
-        sequenceNumber = ledger.nextSequenceNumber,
-        handoff = handoff,
-        metadata = FeatureTaskRuntimeCheckpointMetadata(
-          phaseId = run.phaseId,
-          loopId = null,
-          generation = runLoop.collaborators.checkpointContinued5.checkpointGeneration(runLoop, null),
-          branch = branch,
-          intent = FeatureTaskRuntimeCheckpointMessage.INTENT_FINALISED_SUBTASK,
-        ),
-        manifestCommitSha = runLoop.goalContinuationManifestCommitSha,
-      ),
-    )
-    return when (outcome) {
-      is FeatureTaskRuntimeSubtaskFinalisationBlocked -> CommitPushBlocked(outcome.reason)
-      is FeatureTaskRuntimeSubtaskFinalised -> CommitPushSettled(
-        runLoop.collaborators.subtaskCommit.revalidated(
-          runLoop,
-          run.phaseId,
-          FeatureTaskRuntimeSubtaskFinalisation.withCommitSha(normalizedOutput.envelope, outcome.commitSha),
-        ),
-      )
-    }
-  }
+  ): CommitPushFinalisation = finaliseSubtaskCommitForRuntime(runLoop, run, normalizedOutput)
 
   /**
    * The runtime owns no branch here, so it committed nothing and has nothing to amend. Downstream

@@ -12,6 +12,18 @@ const val GOAL_PROGRESS_LATEST_EVENT_ARTIFACT_KEY: String = "goal_progress_lates
 const val GOAL_PROGRESS_RUN_HISTORY_ARTIFACT_KEY: String = "goal_progress_run_history"
 const val GOAL_PROGRESS_HISTORY_LIMIT: Int = 50
 
+enum class GoalObservabilityRecordKind(val wireValue: String) {
+  PROGRESS("progress"),
+  REFUSAL("refusal"),
+  MIGRATION("migration"),
+  ;
+
+  companion object {
+    fun fromWire(value: String): GoalObservabilityRecordKind = entries.firstOrNull { it.wireValue == value }
+      ?: throw IllegalArgumentException("Unknown goal observability record kind '$value'.")
+  }
+}
+
 /**
  * SKILL-64 Subtask 3 (AC21): declared lifecycle event kinds. phase_* mark
  * workflow phase/step boundaries; operation_* bracket long operations such as
@@ -155,6 +167,7 @@ data class GoalObservabilitySelectedDiffHunks(
 )
 
 data class GoalObservabilityEvent(
+  val recordKind: GoalObservabilityRecordKind = GoalObservabilityRecordKind.PROGRESS,
   val issueKey: String,
   val subtaskId: Int,
   val workflowPhase: String,
@@ -173,6 +186,7 @@ data class GoalObservabilityEvent(
   @OpenBoundaryMap("Goal observability event artifact map at durable workflow-artifact/schema seams")
   fun toArtifactMap(includeHeavyFields: Boolean = false): Map<String, Any?> = linkedMapOf<String, Any?>(
     "contract_version" to contractVersion,
+    "record_kind" to recordKind.wireValue,
     "issue_key" to issueKey,
     "subtask_id" to subtaskId,
     "workflow_id" to workflowId,

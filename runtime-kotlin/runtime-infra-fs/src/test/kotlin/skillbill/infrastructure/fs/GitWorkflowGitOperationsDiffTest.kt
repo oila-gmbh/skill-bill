@@ -206,18 +206,15 @@ class GitWorkflowGitOperationsDiffTest {
     )
 
     assertTrue(input.ok, input.error)
-    val reviewText = requireNotNull(input.input).reviewText
-    assertTrue(reviewText.startsWith("scope-fingerprint:"), reviewText)
-    assertFalse("committed" in reviewText)
+    val coordinates = requireNotNull(input.input)
+    val reviewText = git(repoRoot, "diff", coordinates.reviewBaseSha, coordinates.currentHeadSha)
+    assertTrue("committed" in reviewText)
+    assertFalse("unstaged" in reviewText)
+    assertFalse("+base\n+committed\n+staged" in reviewText)
     assertFalse("owned content" in reviewText)
     assertFalse("preexisting.tmp" in reviewText)
   }
 
-  /**
-   * WE-4860 subtask 3 retired a module: 1.1MB of its 1.7MB delta was the bodies of 170 deleted
-   * files. Blocking there refuses to review the additions and modifications too, so an over-bound
-   * delta keeps every surviving patch in full and reduces the deletions to a named manifest.
-   */
   @Test
   fun `an oversized worktree still resolves as a scope fingerprint without inlining bodies`() {
     val repoRoot = Files.createTempDirectory("skillbill-goal-review-elided-deletions")
@@ -239,8 +236,8 @@ class GitWorkflowGitOperationsDiffTest {
     val input = ops.buildGoalSubtaskReviewInput(repoRoot, requireNotNull(baseline.baseline), branch)
 
     assertTrue(input.ok, input.error)
-    val reviewText = requireNotNull(input.input).reviewText
-    assertTrue(reviewText.startsWith("scope-fingerprint:"), reviewText)
+    val coordinates = requireNotNull(input.input)
+    val reviewText = git(repoRoot, "diff", coordinates.reviewBaseSha, coordinates.currentHeadSha)
     assertFalse("retired body line" in reviewText)
     assertFalse("surviving edit" in reviewText)
   }
@@ -264,8 +261,8 @@ class GitWorkflowGitOperationsDiffTest {
     val input = ops.buildGoalSubtaskReviewInput(repoRoot, requireNotNull(baseline.baseline), branch)
 
     assertTrue(input.ok, input.error)
-    val reviewText = requireNotNull(input.input).reviewText
-    assertTrue(reviewText.startsWith("scope-fingerprint:"), reviewText)
+    val coordinates = requireNotNull(input.input)
+    val reviewText = git(repoRoot, "diff", coordinates.reviewBaseSha, coordinates.currentHeadSha)
     assertFalse("retired body line" in reviewText)
   }
 

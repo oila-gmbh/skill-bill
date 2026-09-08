@@ -5,7 +5,7 @@ import skillbill.application.featuretask.model.RemediationBaseBlocked
 import skillbill.application.featuretask.model.RemediationBaseCoherent
 import skillbill.application.workflow.model.WorkflowFamily
 import skillbill.application.workflow.toRecord
-import skillbill.contracts.JsonSupport
+import skillbill.error.FeatureTaskRuntimeSubtaskCommitReconciliationError
 import skillbill.infrastructure.fs.GitWorkflowGitOperations
 import skillbill.ports.diagnostics.NoopRuntimeDiagnostics
 import skillbill.ports.workflow.gitops.WorkflowGitOperations
@@ -13,7 +13,6 @@ import skillbill.ports.workflow.gitops.model.WorkflowGitOperationResult
 import skillbill.review.context.model.CodeReviewExecutionMode
 import skillbill.workflow.engine.WorkflowEngine
 import skillbill.workflow.engine.model.WorkflowUpdateInput
-import skillbill.workflow.goal.model.GOAL_REVIEW_BASE_RECOVERIES_ARTIFACT_KEY
 import skillbill.workflow.goal.model.GOAL_SUBTASK_REVIEW_RESULTS_ARTIFACT_KEY
 import skillbill.workflow.goal.model.GOAL_SUBTASK_REVIEW_STATE_ARTIFACT_KEY
 import skillbill.workflow.goal.model.GoalSubtaskReviewState
@@ -31,6 +30,7 @@ import java.time.Clock
 import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertNotEquals
@@ -65,7 +65,7 @@ class RemediationBaseReconciliationUnderAmendTest {
   }
 
   @Test
-  fun `unresolvable checkpoint ref recovers the nearest reachable base instead of blocking`() {
+  fun `unresolvable checkpoint ref refuses instead of guessing a reachable base`() {
     val fixture = amendRemediationFixture()
     val head = git(fixture.repoRoot, "rev-parse", "HEAD")
     val ref = featureTaskRuntimeCheckpointRefName(issueKey, subtaskId, 1)
@@ -79,25 +79,12 @@ class RemediationBaseReconciliationUnderAmendTest {
     val repository = FeatureTaskGitIntegrationWorkflowRepository()
     val recorder = recorderWith(state, listOf(identity), repository)
 
-    val coherent = assertIs<RemediationBaseCoherent>(
-      recorder.remediationReconciler.reconcileRemediationBaseCoherence(workflowId, realGitOps(), fixture.repoRoot),
-    )
-    val mergeBase = git(fixture.repoRoot, "merge-base", fixture.preRemediationSha, head)
-    assertEquals(mergeBase, coherent.state?.remediationBaseSha)
-    val persisted = recorder.reviewStateRecorder.reviewState(workflowId)?.remediationBaseSha
-    assertEquals(mergeBase, persisted)
-    assertNotEquals(head, persisted)
-    assertNotEquals(fixture.preRemediationSha, persisted)
-    val evidence = requireNotNull(
-      JsonSupport.anyToStringAnyMapList(
-        repository.taskRuntimeArtifacts(workflowId)[GOAL_REVIEW_BASE_RECOVERIES_ARTIFACT_KEY],
-      ),
-    )
-    val entry = evidence.first()
-    assertEquals("FeatureTaskRuntimeGoalContinuationRecorder.reconcileRemediationBaseCoherence", entry["seam"])
-    assertEquals(fixture.preRemediationSha, entry["original_sha"])
-    assertEquals(mergeBase, entry["replacement_sha"])
-    assertEquals("base_not_ancestor", entry["failure_reason"])
+    val refusal = assertFailsWith<FeatureTaskRuntimeSubtaskCommitReconciliationError> {
+      recorder.remediationReconciler.reconcileRemediationBaseCoherence(workflowId, realGitOps(), fixture.repoRoot)
+    }
+    assertContains(refusal.message.orEmpty(), "checkpoint ref could not be read")
+    assertEquals(fixture.preRemediationSha, recorder.reviewStateRecorder.reviewState(workflowId)?.remediationBaseSha)
+    assertEquals(head, git(fixture.repoRoot, "rev-parse", "HEAD"))
   }
 
   @Test
@@ -115,30 +102,16 @@ class RemediationBaseReconciliationUnderAmendTest {
     val repository = FeatureTaskGitIntegrationWorkflowRepository()
     val recorder = recorderWith(state, listOf(identity), repository)
 
-    val blocked = assertIs<RemediationBaseBlocked>(
+    val refusal = assertFailsWith<FeatureTaskRuntimeSubtaskCommitReconciliationError> {
       recorder.remediationReconciler.reconcileRemediationBaseCoherence(
         workflowId,
         gitOpsWithoutBaselineRecovery(),
         fixture.repoRoot,
-      ),
-    )
-    assertContains(blocked.operatorGuidance, workflowId)
-    assertContains(blocked.operatorGuidance, goalBranch)
-    assertContains(blocked.operatorGuidance, ref)
-    assertContains(blocked.operatorGuidance, "skill-bill goal repair $issueKey --subtask")
-    assertFalse(blocked.operatorGuidance.contains("--issue-key"))
+      )
+    }
+    assertContains(refusal.message.orEmpty(), "checkpoint ref could not be read")
     assertEquals(fixture.preRemediationSha, recorder.reviewStateRecorder.reviewState(workflowId)?.remediationBaseSha)
     assertNotEquals(head, recorder.reviewStateRecorder.reviewState(workflowId)?.remediationBaseSha)
-    val evidence = requireNotNull(
-      JsonSupport.anyToStringAnyMapList(
-        repository.taskRuntimeArtifacts(workflowId)[GOAL_REVIEW_BASE_RECOVERIES_ARTIFACT_KEY],
-      ),
-    )
-    val entry = evidence.single()
-    assertEquals("FeatureTaskRuntimeGoalContinuationRecorder.reconcileRemediationBaseCoherence", entry["seam"])
-    assertEquals(ref, entry["value_used"])
-    assertEquals("resolvable review_fix checkpoint ref commit", entry["value_expected"])
-    assertNotNull(entry["cause"])
   }
 
   @Test

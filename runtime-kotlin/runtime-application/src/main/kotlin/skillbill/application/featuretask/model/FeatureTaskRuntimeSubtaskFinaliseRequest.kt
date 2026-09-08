@@ -9,4 +9,8 @@ data class FeatureTaskRuntimeSubtaskFinaliseRequest(
   val handoff: FeatureTaskRuntimeCommitPushHandoff,
   val metadata: FeatureTaskRuntimeCheckpointMetadata,
   val manifestCommitSha: String? = null,
+  val enforceReviewBoundary: Boolean = false,
+  val ownedPaths: List<String> = emptyList(),
+  val boundaryHistoryPaths: List<String> = emptyList(),
+  val boundaryHistoryRoots: List<String> = emptyList(),
 )

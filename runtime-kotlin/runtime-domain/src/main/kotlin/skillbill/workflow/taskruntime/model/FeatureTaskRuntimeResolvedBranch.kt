@@ -15,6 +15,8 @@ data class FeatureTaskRuntimeResolvedBranch(
   val baselineUntrackedPaths: List<String> = emptyList(),
   val baselineOwnedPaths: List<String> = emptyList(),
   val workflowOwnedPaths: List<String> = emptyList(),
+  val boundaryHistoryPaths: List<String> = emptyList(),
+  val boundaryHistoryRoots: List<String> = emptyList(),
 ) {
   init {
     require(branch.isNotBlank()) { "FeatureTaskRuntimeResolvedBranch.branch must be non-blank." }
@@ -30,6 +32,12 @@ data class FeatureTaskRuntimeResolvedBranch(
     require(workflowOwnedPaths.all(String::isNotBlank)) {
       "FeatureTaskRuntimeResolvedBranch.workflowOwnedPaths must not contain blanks."
     }
+    require(boundaryHistoryPaths.all(String::isNotBlank)) {
+      "FeatureTaskRuntimeResolvedBranch.boundaryHistoryPaths must not contain blanks."
+    }
+    require(boundaryHistoryRoots.all(String::isNotBlank)) {
+      "FeatureTaskRuntimeResolvedBranch.boundaryHistoryRoots must not contain blanks."
+    }
   }
 
   @OpenBoundaryMap("Feature-task-runtime resolved-branch artifact map at the durable workflow-artifact seam")
@@ -42,6 +50,8 @@ data class FeatureTaskRuntimeResolvedBranch(
     if (baselineUntrackedPaths.isNotEmpty()) put("baseline_untracked_paths", baselineUntrackedPaths)
     put("baseline_owned_paths", baselineOwnedPaths)
     put("workflow_owned_paths", workflowOwnedPaths)
+    put("boundary_history_paths", boundaryHistoryPaths)
+    put("boundary_history_roots", boundaryHistoryRoots)
   }
 
   companion object {
@@ -60,6 +70,12 @@ data class FeatureTaskRuntimeResolvedBranch(
         .orEmpty(),
       workflowOwnedPaths = (raw["workflow_owned_paths"] as? List<*>)
         ?.map { it as? String ?: error("workflow_owned_paths must contain only strings.") }
+        .orEmpty(),
+      boundaryHistoryPaths = (raw["boundary_history_paths"] as? List<*>)
+        ?.map { it as? String ?: error("boundary_history_paths must contain only strings.") }
+        .orEmpty(),
+      boundaryHistoryRoots = (raw["boundary_history_roots"] as? List<*>)
+        ?.map { it as? String ?: error("boundary_history_roots must contain only strings.") }
         .orEmpty(),
     )
   }

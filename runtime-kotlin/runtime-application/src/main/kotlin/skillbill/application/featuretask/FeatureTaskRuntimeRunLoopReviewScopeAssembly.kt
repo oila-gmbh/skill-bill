@@ -10,16 +10,6 @@ import skillbill.workflow.goal.model.GoalSubtaskBlockerDisposition
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutput
 import skillbill.workflow.taskruntime.model.requireAcceptedOutput
 
-internal fun FeatureTaskRuntimeRunLoopReview.reviewBaselineUntrackedPaths(
-  runLoop: FeatureTaskRuntimeRunLoop,
-  run: PhaseRun,
-): List<String> = runLoop.recorder.loadResolvedBranch(run.request.workflowId, run.request.dbPathOverride)
-  ?.baselineUntrackedPaths
-  ?.takeIf { it.isNotEmpty() }
-  ?: runLoop.goalContinuationRecorder.reviewState(run.request.workflowId, run.request.dbPathOverride)
-    ?.baselineUntrackedPaths
-    .orEmpty()
-
 fun FeatureTaskRuntimeRunLoopReview.failedReviewLaneReason(result: ParallelCodeReviewResult): String? {
   val parent = result.lane1
   if (parent.agentId.isBlank() || parent.success) return null

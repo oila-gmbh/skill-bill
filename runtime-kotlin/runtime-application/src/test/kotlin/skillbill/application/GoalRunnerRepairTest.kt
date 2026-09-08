@@ -1380,7 +1380,7 @@ internal abstract class GoalRunnerRepairFixtures {
         override fun captureBaseline(repoRoot: Path, expectedBranch: String): GoalSubtaskReviewBaselineResult =
           GoalSubtaskReviewBaselineResult(
             status = "ok",
-            baseline = GoalSubtaskReviewBaseline(REACHABLE_SHA, emptyList()),
+            baseline = GoalSubtaskReviewBaseline(REACHABLE_SHA),
           )
 
         override fun buildInput(
@@ -1392,8 +1392,6 @@ internal abstract class GoalRunnerRepairFixtures {
           input = GoalSubtaskReviewInput(
             reviewBaseSha = baseline.reviewBaseSha,
             currentHeadSha = HEAD_SHA,
-            trackedDelta = "",
-            ownedUntrackedPatches = "",
           ),
         )
 

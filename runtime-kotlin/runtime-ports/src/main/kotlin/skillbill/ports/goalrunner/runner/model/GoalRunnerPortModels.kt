@@ -102,6 +102,7 @@ data class GoalRunnerObservabilityRecordRequest(
   val activitySummary: String,
   val sequenceNumber: Int,
   val timestamp: String,
+  val recordKind: String = "progress",
 ) {
   init {
     require(workflowId.isNotBlank()) { "workflowId is required." }
@@ -113,6 +114,7 @@ data class GoalRunnerObservabilityRecordRequest(
     require(activitySummary.isNotBlank()) { "activitySummary is required." }
     require(sequenceNumber >= 0) { "sequenceNumber must be non-negative." }
     require(timestamp.isNotBlank()) { "timestamp is required." }
+    require(recordKind in setOf("progress", "refusal", "migration")) { "recordKind is not recognized." }
   }
 }
 

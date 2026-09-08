@@ -602,8 +602,6 @@ class FeatureTaskRuntimePhasePromptComposerTest {
     val input = GoalSubtaskReviewInput(
       reviewBaseSha = "a".repeat(40),
       currentHeadSha = "b".repeat(40),
-      trackedDelta = "scope-fingerprint:abc\n",
-      ownedUntrackedPatches = "",
     )
 
     val prompt = composePhasePrompt(

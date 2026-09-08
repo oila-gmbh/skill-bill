@@ -12,6 +12,7 @@ import skillbill.ports.db.DatabaseSessionFactory
 import skillbill.ports.persistence.UnitOfWork
 import skillbill.review.model.ReviewFindingVerdict
 import skillbill.workflow.engine.model.WorkflowStateSnapshot
+import skillbill.workflow.goal.model.GOAL_SUBTASK_REVIEW_INPUT_ARTIFACT_KEY
 import skillbill.workflow.goal.model.GOAL_SUBTASK_REVIEW_RESULTS_ARTIFACT_KEY
 import skillbill.workflow.goal.model.GOAL_SUBTASK_REVIEW_STATE_ARTIFACT_KEY
 import skillbill.workflow.goal.model.GoalSubtaskBlockerDisposition
@@ -101,9 +102,7 @@ class FeatureTaskRuntimeGoalReviewCompletionRecorder(
     val artifacts = decodeArtifacts(record.artifactsJson)
     val reviewArtifacts = GoalSubtaskReviewArtifactDecoder.decode(artifacts) ?: return null
     val reservedPass = reviewArtifacts.state.reservedPassNumber ?: 1
-    val envelope = requireNotNull(request.normalizedOutput) {
-      "Goal review completion requires normalized output to persist the unaddressed-findings ledger."
-    }.envelope
+    val envelope = goalReviewCompletionEnvelope(request)
     val recordedVerdicts = GoalSubtaskReviewSummaryReducer.recordedVerdicts(unitOfWork, envelope)
     val currentFindings = GoalSubtaskReviewSummaryReducer.unaddressedFindings(
       output = envelope,
@@ -123,15 +122,24 @@ class FeatureTaskRuntimeGoalReviewCompletionRecorder(
       recordedVerdicts,
     )
     val existingRecords = phaseRecordsFrom(artifacts)
+    val completed = reviewArtifacts.state.completeReservedPass(
+      verdict = completion.verdict,
+      unresolvedFindingCount = completion.unresolvedFindingCount,
+      findings = completion.findings,
+      blockerDispositions = dispositions,
+      revision = GoalSubtaskReviewRevision(
+        commitFocusedAccounting = completion.commitFocusedAccounting,
+      ),
+    )
+    val reviewedInput = artifacts[GOAL_SUBTASK_REVIEW_INPUT_ARTIFACT_KEY] as? Map<*, *>
+    val reviewedTarget = reviewedInput?.get("current_head_sha") as? String
+    val reviewedTree = reviewedInput?.get("reviewed_tree_sha") as? String
     return GoalReviewCompletionWrite(
       record = record,
       continuation = reviewArtifacts.continuation,
-      completedState = reviewArtifacts.state.completeReservedPass(
-        verdict = completion.verdict,
-        unresolvedFindingCount = completion.unresolvedFindingCount,
-        findings = completion.findings,
-        blockerDispositions = dispositions,
-        commitFocusedAccounting = completion.commitFocusedAccounting,
+      completedState = completed.copy(
+        reviewedTargetSha = reviewedTarget?.takeIf(String::isNotBlank) ?: completed.reviewedTargetSha,
+        reviewedTreeSha = reviewedTree?.takeIf(String::isNotBlank) ?: completed.reviewedTreeSha,
       ),
       dispositions = dispositions,
       persisted = GoalReviewCompletionArtifacts(
@@ -146,6 +154,11 @@ class FeatureTaskRuntimeGoalReviewCompletionRecorder(
       ),
     )
   }
+
+  private fun goalReviewCompletionEnvelope(request: FeatureTaskRuntimePhaseStateRequest) =
+    requireNotNull(request.normalizedOutput) {
+      "Goal review completion requires normalized output to persist the unaddressed-findings ledger."
+    }.envelope
 
   private fun goalReviewCompletionDispositions(
     reservedPass: Int,

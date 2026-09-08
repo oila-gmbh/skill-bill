@@ -49,7 +49,7 @@ object FeatureTaskRuntimeOutputVerification {
     ?.toString()
     ?.takeIf(String::isNotBlank)
 
-  fun auditGapCriterionRefs(outputObject: Map<String, Any?>?): Set<String> {
+  internal fun auditGapCriterionRefs(outputObject: Map<String, Any?>?): Set<String> {
     val value = outputObject?.get("produced_outputs")
       ?.let(JsonSupport::anyToStringAnyMap)
       ?.get("value")

@@ -13,6 +13,11 @@ interface CheckpointHistoryGitOperations {
 
   fun headCommitMessage(repoRoot: Path): WorkflowGitOperationResult
 
+  fun commitMessage(repoRoot: Path, revision: String): WorkflowGitOperationResult = WorkflowGitOperationResult(
+    status = "error",
+    error = "This git operations implementation cannot read the message for commit '$revision'.",
+  )
+
   fun updateRef(
     repoRoot: Path,
     namespacePrefix: String,

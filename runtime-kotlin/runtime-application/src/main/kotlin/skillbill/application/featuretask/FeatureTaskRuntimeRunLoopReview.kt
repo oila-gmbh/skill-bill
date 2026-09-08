@@ -62,7 +62,6 @@ class FeatureTaskRuntimeRunLoopReview {
         checkpoint = checkpoint,
       ),
       driverRequest = runtimeOwnedReviewDriverRequest(
-        runLoop,
         RuntimeOwnedReviewDriverRequestArgs(run, input, passNumber, pinnedMode, reviewRunId),
       ),
     )
@@ -79,7 +78,6 @@ class FeatureTaskRuntimeRunLoopReview {
     ?: FeatureTaskRuntimeReviewEnvelope.mintReviewRunId(runLoop.clock)
 
   private fun FeatureTaskRuntimeRunLoopReview.runtimeOwnedReviewDriverRequest(
-    runLoop: FeatureTaskRuntimeRunLoop,
     args: RuntimeOwnedReviewDriverRequestArgs,
   ) = FeatureTaskRuntimeReviewDriverMapper.request(
     input = args.input,
@@ -96,7 +94,6 @@ class FeatureTaskRuntimeRunLoopReview {
       repoRoot = args.run.request.repoRoot,
       timeout = args.run.request.timeout,
       agentAddonSelection = args.run.request.agentAddonSelection,
-      baselineUntrackedPaths = reviewBaselineUntrackedPaths(runLoop, args.run),
     ),
   ).copy(
     activityWorkflowId = args.run.request.workflowId,

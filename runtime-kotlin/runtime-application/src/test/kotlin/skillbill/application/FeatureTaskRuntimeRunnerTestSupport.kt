@@ -487,7 +487,7 @@ internal class RunnerHarness(
     return requireNotNull(
       git.buildGoalSubtaskReviewInput(
         repoRoot,
-        GoalSubtaskReviewBaseline(state.reviewBaseSha, state.baselineUntrackedPaths),
+        GoalSubtaskReviewBaseline(state.reviewBaseSha),
         "feat/existing-runtime-branch",
       ).input,
     ).deltaDigest
@@ -1617,7 +1617,7 @@ internal fun goalContinuationHarness(
       goalBranch = "feat/existing-runtime-branch",
       suppressPr = true,
       parentWorkflowId = "wfl-parent",
-      reviewBaseline = GoalSubtaskReviewBaseline("0".repeat(40), emptyList()),
+      reviewBaseline = GoalSubtaskReviewBaseline("0".repeat(40)),
     ),
     useRealDecompositionPlanner = true,
     reviewDriver = reviewDriver,
@@ -2090,6 +2090,9 @@ internal class RecordingWorkflowGitOperations(
         return stagePathsResult ?: WorkflowGitOperationResult(status = "ok", value = "")
       }
 
+      override fun unstagePaths(repoRoot: Path, paths: List<String>): WorkflowGitOperationResult =
+        WorkflowGitOperationResult(status = "ok", value = "")
+
       override fun captureIndexState(repoRoot: Path, paths: List<String>): WorkflowGitOperationResult =
         captureIndexStateResult ?: WorkflowGitOperationResult(status = "ok", value = indexSnapshotValue)
 
@@ -2186,7 +2189,7 @@ internal class RecordingWorkflowGitOperations(
     object : GoalSubtaskReviewGitOperations {
       override fun captureBaseline(repoRoot: Path, expectedBranch: String) = GoalSubtaskReviewBaselineResult(
         status = "ok",
-        baseline = GoalSubtaskReviewBaseline("0".repeat(40), emptyList()),
+        baseline = GoalSubtaskReviewBaseline("0".repeat(40)),
       )
 
       override fun buildInput(
@@ -2200,8 +2203,6 @@ internal class RecordingWorkflowGitOperations(
           input = GoalSubtaskReviewInput(
             reviewBaseSha = baseline.reviewBaseSha,
             currentHeadSha = baseline.reviewBaseSha,
-            trackedDelta = goalReviewTrackedDelta,
-            ownedUntrackedPatches = "",
           ),
         )
       }

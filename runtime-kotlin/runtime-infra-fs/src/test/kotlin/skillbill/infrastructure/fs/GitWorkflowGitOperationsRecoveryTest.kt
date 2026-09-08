@@ -34,8 +34,6 @@ class GitWorkflowGitOperationsRecoveryTest {
     assertEquals(git(repoRoot, "rev-parse", "HEAD"), requireNotNull(result.baseline).reviewBaseSha)
   }
 
-  // Pre-existing tracked work is intentionally in scope: the review reads the whole worktree delta from
-  // the base commit, so a dirty tree starts a run and the reviewer sees everything in it.
   @Test
   fun `goal review input includes tracked changes that pre-date the baseline`() {
     val repoRoot = Files.createTempDirectory("skillbill-goal-review-preexisting-tracked")
@@ -54,7 +52,7 @@ class GitWorkflowGitOperationsRecoveryTest {
     val input = GitWorkflowGitOperations().buildGoalSubtaskReviewInput(repoRoot, baseline, branch)
 
     assertTrue(input.ok, input.error)
-    assertTrue(requireNotNull(input.input).trackedDelta.startsWith("scope-fingerprint:"))
+    assertEquals(baseline.reviewBaseSha, requireNotNull(input.input).reviewBaseSha)
   }
 
   @Test
@@ -84,9 +82,9 @@ class GitWorkflowGitOperationsRecoveryTest {
     )
 
     assertTrue(input.ok, input.error)
-    val reviewText = requireNotNull(input.input).reviewText
-    assertTrue(reviewText.startsWith("scope-fingerprint:"), reviewText)
-    assertFalse("current subtask marker" in reviewText)
+    val coordinates = requireNotNull(input.input)
+    val reviewText = git(repoRoot, "diff", coordinates.reviewBaseSha, coordinates.currentHeadSha)
+    assertTrue("current subtask marker" in reviewText)
     assertFalse("earlier subtask marker" in reviewText)
   }
 
@@ -102,7 +100,7 @@ class GitWorkflowGitOperationsRecoveryTest {
 
     val result = GitWorkflowGitOperations().buildGoalSubtaskReviewInput(
       repoRoot,
-      GoalSubtaskReviewBaseline("f".repeat(40), emptyList()),
+      GoalSubtaskReviewBaseline("f".repeat(40)),
       "main",
     )
 
@@ -136,7 +134,7 @@ class GitWorkflowGitOperationsRecoveryTest {
 
     val unsafe = GitWorkflowGitOperations().buildGoalSubtaskReviewInput(
       repoRoot,
-      GoalSubtaskReviewBaseline(oldBaseline, emptyList()),
+      GoalSubtaskReviewBaseline(oldBaseline),
       "feat/demo",
     )
     val recovered = GitWorkflowGitOperations().recoverGoalSubtaskReviewBaseline(
@@ -144,7 +142,6 @@ class GitWorkflowGitOperationsRecoveryTest {
       GoalSubtaskReviewBaselineRecoveryRequest(
         unreachableSha = oldBaseline,
         failureReason = GoalSubtaskReviewInputFailureReason.BASE_NOT_ANCESTOR,
-        baselineUntrackedPaths = emptyList(),
       ),
       "feat/demo",
     )
@@ -158,7 +155,7 @@ class GitWorkflowGitOperationsRecoveryTest {
     assertEquals(GoalSubtaskReviewInputFailureReason.BASE_NOT_ANCESTOR, unsafe.failureReason)
     assertTrue(recovered.ok, recovered.error)
     assertTrue(input.ok, input.error)
-    assertTrue(requireNotNull(input.input).reviewText.startsWith("scope-fingerprint:"))
+    assertEquals(git(repoRoot, "rev-parse", "HEAD"), requireNotNull(input.input).currentHeadSha)
   }
 
   @Test
@@ -200,11 +197,9 @@ class GitWorkflowGitOperationsRecoveryTest {
     Files.writeString(repoRoot.resolve("tracked.txt"), "parent\n")
     git(repoRoot, "commit", "-am", "parent")
     val parent = git(repoRoot, "rev-parse", "HEAD")
-    // First sibling remediation checkpoint — becomes the orphaned stored base.
     Files.writeString(repoRoot.resolve("tracked.txt"), "sibling-a\n")
     git(repoRoot, "commit", "-am", "sibling-a")
     val orphanedBase = git(repoRoot, "rev-parse", "HEAD")
-    // Reset to parent and create the second sibling; branch tip lands here.
     git(repoRoot, "reset", "--hard", parent)
     Files.writeString(repoRoot.resolve("tracked.txt"), "sibling-b\n")
     git(repoRoot, "commit", "-am", "sibling-b")
@@ -212,7 +207,7 @@ class GitWorkflowGitOperationsRecoveryTest {
 
     val unsafe = GitWorkflowGitOperations().buildGoalSubtaskReviewInput(
       repoRoot,
-      GoalSubtaskReviewBaseline(orphanedBase, emptyList()),
+      GoalSubtaskReviewBaseline(orphanedBase),
       "feat/skill-15",
     )
     val recovered = GitWorkflowGitOperations().recoverGoalSubtaskReviewBaseline(
@@ -220,7 +215,6 @@ class GitWorkflowGitOperationsRecoveryTest {
       GoalSubtaskReviewBaselineRecoveryRequest(
         unreachableSha = orphanedBase,
         failureReason = GoalSubtaskReviewInputFailureReason.BASE_NOT_ANCESTOR,
-        baselineUntrackedPaths = emptyList(),
       ),
       "feat/skill-15",
     )
@@ -245,7 +239,6 @@ class GitWorkflowGitOperationsRecoveryTest {
     Files.writeString(repoRoot.resolve("tracked.txt"), "goal\n")
     git(repoRoot, "add", ".")
     git(repoRoot, "commit", "-m", "goal tip")
-    // Unrelated root history: orphan branch with its own root, then abandon the ref.
     git(repoRoot, "checkout", "--orphan", "unrelated-root")
     val prior = git(repoRoot, "ls-files").lines().filter { it.isNotBlank() }
     if (prior.isNotEmpty()) {
@@ -263,7 +256,6 @@ class GitWorkflowGitOperationsRecoveryTest {
       GoalSubtaskReviewBaselineRecoveryRequest(
         unreachableSha = unreachable,
         failureReason = GoalSubtaskReviewInputFailureReason.BASE_NOT_ANCESTOR,
-        baselineUntrackedPaths = emptyList(),
       ),
       "feat/orphan-goal",
     )
@@ -297,7 +289,6 @@ class GitWorkflowGitOperationsRecoveryTest {
       GoalSubtaskReviewBaselineRecoveryRequest(
         unreachableSha = missingSha,
         failureReason = GoalSubtaskReviewInputFailureReason.BASE_MISSING,
-        baselineUntrackedPaths = emptyList(),
       ),
       "feat/missing-base",
     )

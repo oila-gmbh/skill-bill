@@ -25,7 +25,11 @@ import skillbill.workflow.taskruntime.model.NormalizedFeatureTaskRuntimePhaseOut
 
 internal data class RemediationCheckpointCommit(val commitSha: String, val parentSha: String?)
 
-internal data class SubtaskCommitLedgerState(val commitSha: String?, val nextSequenceNumber: Int)
+internal data class SubtaskCommitLedgerState(
+  val commitSha: String?,
+  val nextSequenceNumber: Int,
+  val branch: String? = null,
+)
 
 internal sealed interface PhaseSettlement {
   data object Stopped : PhaseSettlement

@@ -14,6 +14,9 @@ fun WorkflowGitOperations.amendHeadCommit(
 fun WorkflowGitOperations.headCommitMessage(repoRoot: Path): WorkflowGitOperationResult =
   checkpointHistoryOperations().headCommitMessage(repoRoot)
 
+fun WorkflowGitOperations.commitMessage(repoRoot: Path, revision: String): WorkflowGitOperationResult =
+  checkpointHistoryOperations().commitMessage(repoRoot, revision)
+
 fun WorkflowGitOperations.updateCheckpointRef(
   repoRoot: Path,
   namespacePrefix: String,

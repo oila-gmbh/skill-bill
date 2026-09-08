@@ -7,7 +7,6 @@ import skillbill.application.review.model.ParallelCodeReviewResult
 import skillbill.application.review.model.ParallelCodeReviewRunnerLaneLaunchPort
 import skillbill.application.review.model.ParallelCodeReviewRunnerPlanningPort
 import skillbill.application.review.model.ReviewWorkerKind
-import skillbill.application.reviewevidence.model.ParallelReviewScope
 import skillbill.application.runtimepersistence.RuntimeOwnedPersistenceBoundary
 import skillbill.ports.review.model.ReviewAccountingRecord
 import skillbill.ports.review.model.ReviewNativeAgentPreflightRequest
@@ -142,17 +141,6 @@ class ParallelCodeReviewRunner(
     if (originalRequest.suppliedDiff != null && originalRequest.suppliedDiff.isBlank()) {
       return planning.completeEmptySuppliedDelta(originalRequest) { reviewRunId ->
         verificationStages.recordAdjudicationBoundary(reviewRunId)
-      }
-    }
-    if (
-      originalRequest.scope == ParallelReviewScope.WORKTREE_FROM_BASE &&
-      !planning.hasSuppliedDiff(originalRequest)
-    ) {
-      val revisions = planning.resolveReviewRevisions(originalRequest)
-      if (planning.resolveDiff(originalRequest, revisions).isBlank()) {
-        return planning.completeEmptySuppliedDelta(originalRequest) { reviewRunId ->
-          verificationStages.recordAdjudicationBoundary(reviewRunId)
-        }
       }
     }
     return null

@@ -202,6 +202,11 @@ interface FeatureTaskRuntimePhaseEvidenceApi {
     workflowId: String,
     dbOverride: String? = null,
   ): List<FeatureTaskRuntimeCheckpointIdentity>?
+  fun replaceCheckpointIdentities(
+    workflowId: String,
+    identities: List<FeatureTaskRuntimeCheckpointIdentity>,
+    dbOverride: String? = null,
+  ): Boolean
   fun quarantineCheckpointIdentities(workflowId: String, dbOverride: String? = null): Boolean
   fun recordWorkflowOwnedPaths(workflowId: String, ownedPaths: List<String>, dbOverride: String? = null): Boolean
 }

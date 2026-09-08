@@ -3,41 +3,50 @@ package skillbill.application.review
 import skillbill.application.review.model.ReviewSpecialistLaunchRequest
 import skillbill.application.review.model.ReviewWorkerKind
 import skillbill.review.context.model.ResolvedReviewExecutionMode
-import skillbill.review.context.model.structuredString
 import skillbill.scaffold.model.PlatformManifest
+import java.nio.file.Path
+
+internal data class ParallelCodeReviewParentPromptRequest(
+  val selected: List<ReviewSpecialistLaunchRequest>,
+  val routedManifests: List<PlatformManifest>,
+  val resolvedMode: ResolvedReviewExecutionMode,
+  val agentId: String,
+  val baseRevision: String? = null,
+  val headRevision: String? = null,
+  val specPath: Path? = null,
+)
 
 object ParallelCodeReviewRunnerParentPrompt {
-  fun build(
-    selected: List<ReviewSpecialistLaunchRequest>,
-    routedManifests: List<PlatformManifest>,
-    resolvedMode: ResolvedReviewExecutionMode,
-    agentId: String,
-  ): String {
+  fun build(request: ParallelCodeReviewParentPromptRequest): String {
+    val selected = request.selected
+    val resolvedMode = request.resolvedMode
     val inline = resolvedMode == ResolvedReviewExecutionMode.INLINE
     return buildString {
       append(modeFraming(resolvedMode))
-      appendCursorDelegatedFanOut(selected, resolvedMode, agentId)
-      appendLine("Detected stack: ${routedManifests.joinToString("+") { it.slug }.ifBlank { "generic" }}")
+      appendCursorDelegatedFanOut(selected, resolvedMode, request.agentId)
+      appendLine("Detected stack: ${request.routedManifests.joinToString("+") { it.slug }.ifBlank { "generic" }}")
       val rubricLabel = selected.joinToString { launch ->
         val decision = launch.assignment.laneDecision
         "${decision.specialistSkillName}" +
-          "[paths=${launch.assignment.assignedPaths.joinToString(",") { structuredString(it) }};" +
-          "add-ons=${decision.addOns.joinToString("+").ifBlank { "none" }};" +
-          "origins=${decision.originLayerChains.joinToString("|") { it.joinToString("->") }}]"
+          "[lane=${decision.lane};add-ons=${decision.addOns.joinToString("+").ifBlank { "none" }}]"
       }.ifBlank { "code-review" }
       appendLine("Authoritative routed rubric identities: $rubricLabel")
       selected.forEach { launch ->
         val decision = launch.assignment.laneDecision
         appendLine()
         appendLine("## Resolved rubric: ${decision.specialistSkillName}")
-        appendLine("Owned paths: ${launch.assignment.assignedPaths.joinToString(",") { structuredString(it) }}")
+        appendLine("Review lane: ${decision.lane}")
         launch.rubrics.forEach { rubric -> appendLine(rubric.body) }
       }
+      val resolvedBase = request.baseRevision ?: selected.firstOrNull()?.packet?.baseRevision ?: "unspecified"
+      val resolvedHead = request.headRevision ?: selected.firstOrNull()?.packet?.headRevision ?: "unspecified"
       appendLine(
-        "Use the assigned bundle below as authoritative. Fetch every body through the bound broker " +
-          "by calling read_evidence with an owned repository-relative path exactly as spelled in " +
-          "'Owned paths'. The evidence_locator store_path and payload_file identify a hunk inside " +
-          "the broker's own store; they are not read_evidence arguments and passing one is refused.",
+        "The immutable review pair is base=$resolvedBase " +
+          "target=$resolvedHead. " +
+          "The governing spec is ${request.specPath ?: "the resolved spec projection"}. " +
+          "Read committed content on demand " +
+          "through the bound broker with read_evidence and request_expansion, or with bounded and paged Git reads. " +
+          "Do not expect paths, hunk spans, or hunk bodies in this launch prompt.",
       )
       appendLine(if (inline) PARALLEL_REVIEW_INLINE_DEPTH_DIRECTIVE else PARALLEL_REVIEW_DELEGATED_DEPTH_DIRECTIVE)
       appendLine(
@@ -59,8 +68,11 @@ object ParallelCodeReviewRunnerParentPrompt {
       selected.forEach { launch ->
         val decision = launch.assignment.laneDecision
         appendLine("## Assigned bundle: ${decision.specialistSkillName}")
-        appendLine("Owned paths: ${launch.assignment.assignedPaths.joinToString(",") { structuredString(it) }}")
-        appendAssignedBundleEvidence(launch)
+        appendLine("Lane: ${decision.lane}")
+        appendLine(
+          "Read the committed base-to-target revision pair on demand through read_evidence or bounded, " +
+            "paged Git reads. Keep routing and coverage metadata private to the runtime.",
+        )
       }
     }
   }
@@ -103,26 +115,6 @@ object ParallelCodeReviewRunnerParentPrompt {
         "Depth: full. Launch one specialist worker per resolved rubric below. Pass each specialist's " +
           "raw return through unchanged — do not require a register shape from them. You alone author " +
           "the final review prose and verdict from whatever they returned.",
-      )
-    }
-  }
-
-  private fun StringBuilder.appendAssignedBundleEvidence(launch: ReviewSpecialistLaunchRequest) {
-    parallelCodeReviewGovernedLaunchFor(launch).deliveredEntries.forEach { entry ->
-      val hunk = entry.hunk
-      val locator = hunk.evidenceLocator
-      appendLine(
-        "### Commit ${structuredString(entry.commitSha)} (order=${entry.orderIndex}, " +
-          "path=${structuredString(hunk.path)})",
-      )
-      appendLine("Subject: ${structuredString(entry.subject.replace("\r\n", "\n"))}")
-      appendLine("hunk_id: ${hunk.hunkId}")
-      appendLine("spans: -${hunk.oldStart},${hunk.oldCount} +${hunk.newStart},${hunk.newCount}")
-      appendLine("content_digest: ${hunk.contentDigest}")
-      appendLine(
-        "evidence_locator: store_path=${structuredString(locator.storePath)} " +
-          "payload_file=${structuredString(locator.payloadFile)} " +
-          "hunk_header=${structuredString(locator.hunkHeader)}",
       )
     }
   }

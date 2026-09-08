@@ -10,16 +10,3 @@ internal fun goalReviewGitValue(repoRoot: Path, vararg args: String): String? =
 
 internal fun goalReviewGitValue(repoRoot: Path, args: List<String>): String? =
   runGitCommand(repoRoot, args).takeIf { it.ok }?.value
-
-internal fun goalReviewUntrackedPaths(repoRoot: Path): List<String>? = runGitCommand(
-  repoRoot,
-  "ls-files",
-  "--others",
-  "--exclude-standard",
-  "-z",
-).takeIf { it.ok }
-  ?.value
-  ?.split('\u0000')
-  ?.filter(String::isNotBlank)
-  ?.distinct()
-  ?.sorted()

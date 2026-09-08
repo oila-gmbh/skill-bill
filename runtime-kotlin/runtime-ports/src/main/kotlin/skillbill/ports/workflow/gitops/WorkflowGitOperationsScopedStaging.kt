@@ -6,6 +6,8 @@ import java.nio.file.Path
 interface ScopedStagingGitOperations {
   fun stagePaths(repoRoot: Path, paths: List<String>): WorkflowGitOperationResult
 
+  fun unstagePaths(repoRoot: Path, paths: List<String>): WorkflowGitOperationResult
+
   fun captureIndexState(repoRoot: Path, paths: List<String>): WorkflowGitOperationResult
 
   fun restoreIndexState(repoRoot: Path, paths: List<String>, snapshot: String): WorkflowGitOperationResult
@@ -22,6 +24,9 @@ interface ScopedStagingGitOperationsProvider {
 private object UnavailableScopedStagingGitOperations : ScopedStagingGitOperations {
   override fun stagePaths(repoRoot: Path, paths: List<String>): WorkflowGitOperationResult =
     unavailable("stage an explicit owned-path inventory")
+
+  override fun unstagePaths(repoRoot: Path, paths: List<String>): WorkflowGitOperationResult =
+    unavailable("preserve foreign staged content")
 
   override fun captureIndexState(repoRoot: Path, paths: List<String>): WorkflowGitOperationResult =
     unavailable("capture the pre-checkpoint index state")
@@ -45,6 +50,9 @@ private fun WorkflowGitOperations.scopedStagingOperations(): ScopedStagingGitOpe
 
 fun WorkflowGitOperations.stagePaths(repoRoot: Path, paths: List<String>): WorkflowGitOperationResult =
   scopedStagingOperations().stagePaths(repoRoot, paths)
+
+fun WorkflowGitOperations.unstagePaths(repoRoot: Path, paths: List<String>): WorkflowGitOperationResult =
+  scopedStagingOperations().unstagePaths(repoRoot, paths)
 
 fun WorkflowGitOperations.captureIndexState(repoRoot: Path, paths: List<String>): WorkflowGitOperationResult =
   scopedStagingOperations().captureIndexState(repoRoot, paths)

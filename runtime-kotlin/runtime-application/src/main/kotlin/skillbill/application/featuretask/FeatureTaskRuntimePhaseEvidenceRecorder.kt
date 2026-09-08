@@ -140,6 +140,24 @@ class FeatureTaskRuntimePhaseEvidenceRecorder(
       ?: return@read null
     checkpointIdentitiesFrom(decodeArtifacts(record.artifactsJson))
   }
+  override fun replaceCheckpointIdentities(
+    workflowId: String,
+    identities: List<FeatureTaskRuntimeCheckpointIdentity>,
+    dbOverride: String?,
+  ): Boolean = database.transaction(dbOverride) { unitOfWork ->
+    val record = WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, workflowId)
+      ?: return@transaction false
+    val ordered = identities.sortedBy(FeatureTaskRuntimeCheckpointIdentity::sequenceNumber)
+    workflowPersistence.persistPatch(
+      unitOfWork.workflowStates,
+      record,
+      mapOf(
+        FEATURE_TASK_RUNTIME_CHECKPOINT_IDENTITIES_ARTIFACT_KEY to
+          featureTaskRuntimeCheckpointIdentitiesToArtifact(ordered),
+      ),
+    )
+    true
+  }
   override fun quarantineCheckpointIdentities(workflowId: String, dbOverride: String?): Boolean =
     database.transaction(dbOverride) { unitOfWork ->
       val record = WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, workflowId)

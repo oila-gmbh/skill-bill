@@ -43,8 +43,6 @@ internal data class FeatureTaskRuntimeReviewDriverWorkspace(
   val repoRoot: Path,
   val timeout: Duration?,
   val agentAddonSelection: HydratedAgentAddonSelection,
-  val baselineUntrackedPaths: List<String> = emptyList(),
-  val ownedPathspec: List<String> = emptyList(),
 )
 
 internal data class FeatureTaskRuntimeReviewCycleContext(
@@ -67,7 +65,7 @@ object FeatureTaskRuntimeReviewDriverMapper {
     )
     return ParallelCodeReviewRequest(
       agent1Id = agents.agent1Id,
-      scope = ParallelReviewScope.WORKTREE_FROM_BASE,
+      scope = ParallelReviewScope.BRANCH,
       repoRoot = workspace.repoRoot,
       timeout = workspace.timeout,
       codeReviewMode = executed,
@@ -77,11 +75,6 @@ object FeatureTaskRuntimeReviewDriverMapper {
       headRevision = input.currentHeadSha,
       specPath = specPath(runInvariants.specReference),
       selectedAgentAddonsSection = AgentAddonPromptFormatter.format(workspace.agentAddonSelection),
-      ownedPathspec = workspace.ownedPathspec.filter(String::isNotBlank).distinct(),
-      baselineUntrackedPolicy = ParallelCodeReviewRequest.baselineUntrackedPolicy(
-        includedPaths = emptyList(),
-        excludedPaths = workspace.baselineUntrackedPaths.filter(String::isNotBlank).distinct().sorted(),
-      ),
     )
   }
 

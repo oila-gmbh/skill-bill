@@ -152,7 +152,6 @@ class RecordingNullObjectDiagnosticsTest {
       GoalSubtaskReviewBaselineRecoveryRequest(
         unreachableSha = reviewBaseline.reviewBaseSha,
         failureReason = GoalSubtaskReviewInputFailureReason.BASE_NOT_ANCESTOR,
-        baselineUntrackedPaths = emptyList(),
       ),
       "feat/demo",
     )

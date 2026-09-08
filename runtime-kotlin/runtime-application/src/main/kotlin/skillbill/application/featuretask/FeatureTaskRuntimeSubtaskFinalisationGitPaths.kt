@@ -2,6 +2,9 @@ package skillbill.application.featuretask
 
 import skillbill.application.featuretask.model.FeatureTaskRuntimeSubtaskCommitIdentity
 import skillbill.ports.workflow.gitops.WorkflowGitOperations
+import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseRecord
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeResolvedBranch
 import java.nio.file.Path
 
 private const val GOVERNED_SPEC_ROOT = ".feature-specs/"
@@ -33,8 +36,8 @@ internal fun WorkflowGitOperations.dirtyImplementationPaths(repoRoot: Path): Dir
 }
 
 internal fun stageablePathsFrom(dirtyPaths: List<String>): StageablePathsOutcome {
-  val excluded = dirtyPaths.filter(::isGovernedSpecPath).distinct().sorted()
-  val stageable = dirtyPaths.filterNot(::isGovernedSpecPath).distinct().sorted()
+  val excluded = dirtyPaths.filter { isGovernedSpecPath(it) || isRuntimePrivatePath(it) }.distinct().sorted()
+  val stageable = dirtyPaths.filterNot { isGovernedSpecPath(it) || isRuntimePrivatePath(it) }.distinct().sorted()
   return StageablePathsOutcome(stageable = stageable, excluded = excluded)
 }
 
@@ -56,3 +59,57 @@ fun specExclusionRecord(identity: FeatureTaskRuntimeSubtaskCommitIdentity, paths
     "never subtask deliverable output, so they are dropped from the staged set and left dirty locally"
 
 internal fun isGovernedSpecPath(path: String): Boolean = normalizeRepoPath(path).startsWith(GOVERNED_SPEC_ROOT)
+
+internal fun isBoundaryHistoryPath(
+  path: String,
+  declaredPaths: Collection<String> = emptyList(),
+  declaredRoots: Collection<String> = emptyList(),
+): Boolean {
+  val normalized = normalizeRepoPath(path)
+  val declared = declaredPaths.map(::normalizeRepoPath).toSet()
+  if (normalized !in declared) return false
+  if (normalized == "agent/history.md" || normalized == "agent/decisions.md") return true
+  if (!normalized.endsWith("/agent/history.md") && !normalized.endsWith("/agent/decisions.md")) return false
+  val root = normalized.substringBeforeLast("/agent/", missingDelimiterValue = "")
+  return root.isNotBlank() && root in declaredRoots.map(::normalizeRepoPath)
+}
+
+internal fun configuredBoundaryHistoryRoots(paths: Collection<String>): List<String> = paths
+  .map(::normalizeRepoPath)
+  .filter { it.endsWith("/agent/history.md") || it.endsWith("/agent/decisions.md") }
+  .mapNotNull { it.substringBeforeLast("/agent/", missingDelimiterValue = "").takeIf(String::isNotBlank) }
+  .distinct()
+  .sorted()
+
+internal data class DeclaredBoundaryHistoryProjection(
+  val paths: List<String>,
+  val roots: List<String>,
+)
+
+internal fun FeatureTaskRuntimeResolvedBranch.boundaryHistoryProjection(): DeclaredBoundaryHistoryProjection =
+  DeclaredBoundaryHistoryProjection(boundaryHistoryPaths, boundaryHistoryRoots)
+
+internal fun declaredBoundaryHistoryProjection(
+  phaseRecord: FeatureTaskRuntimePhaseRecord?,
+  authoritativeRoots: Collection<String> = emptyList(),
+): DeclaredBoundaryHistoryProjection {
+  if (phaseRecord?.phaseId != FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_WRITE_HISTORY) {
+    return DeclaredBoundaryHistoryProjection(emptyList(), emptyList())
+  }
+  val outputs = (phaseRecord.fileManifestIntroduced + phaseRecord.fileManifestAfter)
+    .map(::normalizeRepoPath)
+    .filter { isBoundaryHistoryOutputPath(it, authoritativeRoots) }
+    .distinct()
+    .sorted()
+  return DeclaredBoundaryHistoryProjection(
+    paths = outputs,
+    roots = authoritativeRoots.map(::normalizeRepoPath).filter(String::isNotBlank).distinct().sorted(),
+  )
+}
+
+private fun isBoundaryHistoryOutputPath(path: String, authoritativeRoots: Collection<String>): Boolean =
+  isBoundaryHistoryPath(
+    path = path,
+    declaredPaths = listOf(path),
+    declaredRoots = authoritativeRoots,
+  )

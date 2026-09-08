@@ -217,13 +217,19 @@ class FeatureTaskRuntimeBranchSetupRunner(
         baseBranch = baseBranch,
         created = created,
         reviewBaseSha = immutableBase.reviewBaseSha,
-        baselineUntrackedPaths = immutableBase.baselineUntrackedPaths,
+        baselineUntrackedPaths = emptyList(),
         baselineOwnedPaths = baselineOwnedPaths.value.orEmpty()
           .split('\u0000')
           .map(String::trim)
           .filter(String::isNotBlank)
           .distinct()
           .sorted(),
+        boundaryHistoryRoots = configuredBoundaryHistoryRoots(
+          baselineOwnedPaths.value.orEmpty()
+            .split('\u0000')
+            .map(String::trim)
+            .filter(String::isNotBlank),
+        ),
       ),
       request.dbPathOverride,
     )

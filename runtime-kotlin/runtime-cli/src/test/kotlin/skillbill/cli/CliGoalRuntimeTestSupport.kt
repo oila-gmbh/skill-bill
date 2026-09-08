@@ -574,6 +574,9 @@ internal object GoalTestWorkflowGitOperations :
     override fun stagePaths(repoRoot: Path, paths: List<String>): WorkflowGitOperationResult =
       WorkflowGitOperationResult(status = "ok", value = "")
 
+    override fun unstagePaths(repoRoot: Path, paths: List<String>): WorkflowGitOperationResult =
+      WorkflowGitOperationResult(status = "ok", value = "")
+
     override fun captureIndexState(repoRoot: Path, paths: List<String>): WorkflowGitOperationResult =
       WorkflowGitOperationResult(status = "ok", value = "")
 
@@ -604,7 +607,7 @@ internal object GoalTestWorkflowGitOperations :
       override fun captureBaseline(repoRoot: Path, expectedBranch: String): GoalSubtaskReviewBaselineResult =
         GoalSubtaskReviewBaselineResult(
           status = "ok",
-          baseline = GoalSubtaskReviewBaseline("0".repeat(40), emptyList()),
+          baseline = GoalSubtaskReviewBaseline("0".repeat(40)),
         )
 
       override fun buildInput(repoRoot: Path, baseline: GoalSubtaskReviewBaseline, expectedBranch: String): Nothing =

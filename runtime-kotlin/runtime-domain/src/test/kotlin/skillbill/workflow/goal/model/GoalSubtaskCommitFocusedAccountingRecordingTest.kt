@@ -40,7 +40,7 @@ class GoalSubtaskCommitFocusedAccountingRecordingTest {
       verdict = FeatureTaskRuntimeVerdict.APPROVED,
       unresolvedFindingCount = 0,
       findings = emptyList(),
-      commitFocusedAccounting = accounting,
+      revision = GoalSubtaskReviewRevision(commitFocusedAccounting = accounting),
     )
 
     assertEquals(accounting, state.passResults.single().commitFocusedAccounting)
@@ -58,7 +58,7 @@ class GoalSubtaskCommitFocusedAccountingRecordingTest {
       verdict = FeatureTaskRuntimeVerdict.APPROVED,
       unresolvedFindingCount = 0,
       findings = emptyList(),
-      commitFocusedAccounting = accounting,
+      revision = GoalSubtaskReviewRevision(commitFocusedAccounting = accounting),
     ).passResults.single()
 
     assertEquals(CodeReviewExecutionMode.INLINE, inlinePass.executedMode)

@@ -16,7 +16,7 @@ class GoalSubtaskReviewStateLegacyContractTest {
 
   @Test
   fun `every legacy contract version loud-fails through the typed error with no silent migration`() {
-    listOf("0.1", "0.2", "0.3", "0.5").forEach { legacyVersion ->
+    listOf("0.1", "0.2", "0.3", "0.5", "0.6").forEach { legacyVersion ->
       val legacy = currentRecord().toMutableMap().apply { put("contract_version", legacyVersion) }
 
       val error = assertFailsWith<InvalidGoalSubtaskReviewStateSchemaError> {
@@ -42,7 +42,7 @@ class GoalSubtaskReviewStateLegacyContractTest {
   }
 
   @Test
-  fun `the durable contract version is 0_6`() {
-    assertEquals("0.6", GOAL_SUBTASK_REVIEW_STATE_CONTRACT_VERSION)
+  fun `the durable contract version is 0_7`() {
+    assertEquals("0.7", GOAL_SUBTASK_REVIEW_STATE_CONTRACT_VERSION)
   }
 }

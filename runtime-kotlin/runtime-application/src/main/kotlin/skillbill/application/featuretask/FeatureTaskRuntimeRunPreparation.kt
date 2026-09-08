@@ -275,7 +275,7 @@ private fun FeatureTaskRuntimeGoalContinuationRecorder.readReviewBaseline(
     state?.let {
       ContinuationRead.Available(
         continuation,
-        GoalSubtaskReviewBaseline(it.reviewBaseSha, it.baselineUntrackedPaths),
+        GoalSubtaskReviewBaseline(it.reviewBaseSha),
       )
     } ?: ContinuationRead.AvailableWithoutReviewState(continuation)
   },

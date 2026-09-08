@@ -1709,6 +1709,9 @@ private class CommitAllRecordingGitOperations(
       return WorkflowGitOperationResult(status = "ok", value = "")
     }
 
+    override fun unstagePaths(repoRoot: Path, paths: List<String>): WorkflowGitOperationResult =
+      WorkflowGitOperationResult(status = "ok", value = "")
+
     override fun captureIndexState(repoRoot: Path, paths: List<String>): WorkflowGitOperationResult =
       WorkflowGitOperationResult(status = "ok", value = "")
 
@@ -4292,7 +4295,7 @@ private fun readyGoalReviewOperations(baselineError: String? = null): GoalSubtas
       baselineError?.let { GoalSubtaskReviewBaselineResult(status = "error", error = it) }
         ?: GoalSubtaskReviewBaselineResult(
           status = "ok",
-          baseline = GoalSubtaskReviewBaseline("0".repeat(40), emptyList()),
+          baseline = GoalSubtaskReviewBaseline("0".repeat(40)),
         )
 
     override fun buildInput(
@@ -4304,8 +4307,6 @@ private fun readyGoalReviewOperations(baselineError: String? = null): GoalSubtas
       input = GoalSubtaskReviewInput(
         reviewBaseSha = baseline.reviewBaseSha,
         currentHeadSha = "0".repeat(40),
-        trackedDelta = "",
-        ownedUntrackedPatches = "",
       ),
     )
 
