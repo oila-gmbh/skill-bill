@@ -1,6 +1,7 @@
 package skillbill.application
 
 import skillbill.ports.workflow.gitops.model.WorkflowGitOperationStatus
+import skillbill.review.context.model.ReviewBudgetKind
 import skillbill.application.featurespec.FeatureSpecPreparationRuntime
 import skillbill.application.featurespec.FeatureSpecPreparationWriter
 import skillbill.application.featuretask.AcceptingFeatureTaskRuntimeHandoffEnvelopeValidator
@@ -1210,7 +1211,7 @@ internal fun throwingBudgetReviewDriver(): FeatureTaskRuntimeReviewDriver = Feat
   throw ReviewContextBudgetExceededException(
     ReviewContextBudgetExceeded(
       lane = "architecture",
-      budgetKind = "parent_packet_bytes",
+      budgetKind = ReviewBudgetKind.PARENT_PACKET_BYTES,
       configuredLimit = 524_288,
       observedValue = 584_846,
       packetDigest = "a".repeat(64),

@@ -23,6 +23,7 @@ import skillbill.review.context.model.ResolvedReviewExecutionMode
 import skillbill.review.context.model.ReviewAccountingCounters
 import skillbill.review.context.model.ReviewAccountingInput
 import skillbill.review.context.model.ReviewAccountingSummary
+import skillbill.review.context.model.ReviewAccountingTerminalOutcome
 import skillbill.review.context.model.ReviewCommitRoutingAccounting
 import skillbill.review.context.model.ReviewContextBudgetPolicy
 import skillbill.review.context.model.ReviewContextPacket
@@ -399,7 +400,9 @@ internal fun parallelAccountingSummary(outcomes: ParallelReviewLaneRunResult): R
       toolCalls,
       modelTurns,
     ),
-    terminalOutcome = terminalStatus,
+    terminalOutcome = requireNotNull(ReviewAccountingTerminalOutcome.fromWire(terminalStatus)) {
+      "Unknown review lane terminal outcome '$terminalStatus'."
+    },
     bundleCompositionDigest = bundleCompositionDigest,
     segmentAccounting = segmentAccounting,
     unreviewedSegmentIds = unreviewedSegmentIds,
@@ -409,7 +412,9 @@ internal fun parallelAccountingSummary(outcomes: ParallelReviewLaneRunResult): R
       lane = "parallel-agent-${index + 1}",
       assignmentDigest = sha256HexUtf8("parallel-agent-${index + 1}"),
       children = outcome.specialistAccounting.map { it.toInput() },
-      terminalOutcome = parallelReviewLaneTerminalOutcome(outcome),
+      terminalOutcome = requireNotNull(ReviewAccountingTerminalOutcome.fromWire(parallelReviewLaneTerminalOutcome(outcome))) {
+        "Unknown parallel review terminal outcome."
+      },
       bundleCompositionDigest = outcome.bundleCompositionDigest,
       segmentAccounting = outcome.segmentAccounting,
       unreviewedSegmentIds = outcome.unreviewedSegmentIds,

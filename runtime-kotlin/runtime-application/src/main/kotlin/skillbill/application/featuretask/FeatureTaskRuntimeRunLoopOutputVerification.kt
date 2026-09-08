@@ -20,7 +20,7 @@ import skillbill.ports.workflow.gitops.runtimePhaseChangedPathsBetweenCommits
 import skillbill.review.model.ReviewFindingVerdict
 import skillbill.workflow.taskruntime.FeatureTaskRuntimeHandoffContract
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
-import skillbill.workflow.taskruntime.model.AUDIT_GAP_PAUSE_KIND_NO_PROGRESS
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditGapPauseKind
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditGapPause
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditGapProgress
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditRepairProgressDecision
@@ -281,7 +281,7 @@ object FeatureTaskRuntimeRunLoopOutputVerification {
     }
     if (!decision.blocked) return null
     return FeatureTaskRuntimeAuditGapPause(
-      pauseKind = AUDIT_GAP_PAUSE_KIND_NO_PROGRESS,
+      pauseKind = FeatureTaskRuntimeAuditGapPauseKind.NO_PROGRESS,
       reason = noProgressPauseReason(requireNotNull(decision.reason)),
       edgeIteration = runLoop.state.edgeIterationCount(FeatureTaskRuntimePhaseWorkflowDefinition.AUDIT_GAP_LOOP_ID) + 1,
     )

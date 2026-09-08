@@ -2,6 +2,7 @@ package skillbill.application.goalrunner.planning
 
 import skillbill.application.RecordingOutcomeStore
 import skillbill.application.goalrunner.planning.model.GoalPlanningLogRequest
+import skillbill.application.goalrunner.planning.model.GoalPlanningAttemptOutcome
 import skillbill.application.manifest
 import skillbill.application.testHarnessClock
 import skillbill.goalrunner.model.GoalRunnerExecutionLease
@@ -39,9 +40,9 @@ class GoalPlanningLogPairingTest {
     assertEquals(2, log.attempts.size, "each segment is its own attempt")
     val (first, second) = log.attempts
     assertEquals(30_000L, first.durationMs)
-    assertEquals("failed", first.outcome)
+    assertEquals(GoalPlanningAttemptOutcome.FAILED, first.outcome)
     assertEquals(240_000L, second.durationMs)
-    assertEquals("succeeded", second.outcome)
+    assertEquals(GoalPlanningAttemptOutcome.SUCCEEDED, second.outcome)
     assertEquals(270_000L, log.totalPlanningMs)
     assertTrue(log.attempts.none { it.timestampsInconsistent })
   }
@@ -55,7 +56,7 @@ class GoalPlanningLogPairingTest {
     )
 
     assertEquals(2, log.attempts.size)
-    val crashed = log.attempts.first { it.outcome == "in_flight" }
+    val crashed = log.attempts.first { it.outcome == GoalPlanningAttemptOutcome.IN_FLIGHT }
     assertNull(crashed.finishedAt, "a killed attempt has no finish of its own")
     assertNull(crashed.durationMs)
     assertFalse(crashed.timestampsInconsistent)

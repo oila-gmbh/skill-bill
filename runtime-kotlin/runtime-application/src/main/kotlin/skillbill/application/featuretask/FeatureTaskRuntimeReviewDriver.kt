@@ -184,7 +184,7 @@ object FeatureTaskRuntimeReviewEnvelope {
       ?: return null
     val accounting = summary.integration
     val pass = result.integration
-    val terminalOutcome = accounting?.terminalOutcome
+    val terminalOutcome = accounting?.terminalOutcome?.wireValue
       ?: pass?.terminalOutcome?.wireValue
       ?: GoalSubtaskCommitFocusedAccounting.SKIPPED_NOT_APPLICABLE
     return GoalSubtaskCommitFocusedAccounting(

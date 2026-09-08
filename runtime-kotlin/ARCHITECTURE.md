@@ -2110,20 +2110,34 @@ durable payload whose vocabulary is intentionally owned by that boundary:
 - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseRecord.status` is owned by
   `WorkflowStepStatus`, and `FeatureTaskRuntimeGoalContinuationOutcome.status` is owned by
   `GoalRunnerTerminalStatus`; both durable decoders reject unknown values at their artifact seams.
-- `skillbill.telemetry.model.TelemetryModels.status`, `LifecycleTelemetryModels.status`, and
-  `LifecycleTelemetryModels.mode`: provider and telemetry payload labels belong to the emitting
-  contract and are not shared with workflow state.
-- `skillbill.goalrunner.model.GoalRunnerObservabilityModels.kind`, `GoalRunnerLivenessModels.phase`,
-  `skillbill.review.model.ReviewStatsModels.status`, `ReviewContextPacket.status`, and
-  `ReviewBuildTestFact.kind`/`outcome`: these labels are owned by their emitting contracts.
+- `skillbill.telemetry.model.SyncResult.status` is owned by `TelemetrySyncStatus`; the remaining
+  `FeatureTaskRuntimeStartedRecord.status`, `FeatureTaskRuntimeFinishedRecord.status`,
+  `QualityCheckStartedRecord.status`, `QualityCheckFinishedRecord.status`,
+  `FeatureVerifyStartedRecord.status`, `FeatureVerifyFinishedRecord.status`,
+  `GoalStartedRecord.status`, `GoalSubtaskFinishedRecord.status`, `GoalFinishedRecord.status`,
+  `GoalIssueFinishedRecord.status`, and `LifecycleTelemetryModels.mode` are provider and telemetry
+  labels owned by their emitting contracts.
+- `skillbill.goalrunner.model.GoalRunnerObservabilityModels.kind`,
+  `GoalRunnerLivenessModels.phase`, `skillbill.review.model.ReviewStatsModels.status`,
+  `skillbill.review.context.model.ReviewContextPacket.status`, and
+  `skillbill.review.context.model.ReviewBuildTestFact.kind`/`outcome` are exact open labels owned by
+  their emitting contracts.
 - `skillbill.scaffold.model.ScaffoldModels.mode`/`kind`,
   `skillbill.ports.scaffold.repo.model.ScaffoldValidateResult.mode`/`status`,
   `skillbill.ports.scaffold.model.ScaffoldSkillStatus.status`/`mode`,
   `skillbill.ports.agentrun.model.AgentRunLauncherModels.phase`,
   `skillbill.ports.featuretask.model.FeatureTaskPhaseSettlement.kind`, and
-  `skillbill.ports.goalrunner.planning.model.GoalPlanningContext.kind`: these are extension-owned
-  labels and remain open so platform packs can add values without changing the core runtime.
-- `skillbill.learnings.model.LearningRecord.status`, `LearningEntry.status`, and
-  `skillbill.workflow.taskruntime.model.SettlementEnvelopeRequest.status`: these are external
-  learning or settlement envelopes; their contracts validate presence and shape while the producer
-  owns the vocabulary.
+  `skillbill.ports.goalrunner.planning.model.GoalPlanningContext.kind` are extension-owned labels
+  and remain open so platform packs can add values without changing the core runtime.
+- `skillbill.learnings.model.LearningRecord.status` and `LearningEntry.status` remain external
+  learning labels whose contracts validate presence and shape while the producer owns the
+  vocabulary.
+- `skillbill.workflow.taskruntime.model.SettlementEnvelopeRequest.status` uses
+  `SettlementStatus`; prose settlement accepts only the completed, blocked, and failed members.
+- `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditGapPause.pauseKind` uses
+  `FeatureTaskRuntimeAuditGapPauseKind` at its durable artifact boundary.
+- `skillbill.review.context.model.ReviewAccountingInput.terminalOutcome` and
+  `ReviewAccountingNode.terminalOutcome` use `ReviewAccountingTerminalOutcome`; integration
+  accounting continues to use `ReviewIntegrationTerminalOutcome`.
+- `skillbill.review.context.model.ReviewBudgetOutcome.budgetKind` uses `ReviewBudgetKind`; all
+  budget dimensions are decoded once at the review budget seam and emitted through `wireValue`.
