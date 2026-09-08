@@ -241,6 +241,13 @@ class GoalRunnerResetReplanCoordinator(deps: GoalRunnerResetReplanCoordinatorDep
       workflowId,
       request.dbPathOverride,
     )
+    pruneResetSubtaskCheckpointRefs(
+      gitOperations = gitOperations,
+      repoRoot = request.repoRoot ?: repositoryRoot.path,
+      issueKey = saved.manifest.issueKey,
+      subtaskIds = listOf(subtaskId),
+      record = { message -> runCatching { diagnostics.warning(message) } },
+    )
     return GoalRunnerResetResult(
       issueKey = saved.manifest.issueKey,
       mode = "scoped_child_recovery",

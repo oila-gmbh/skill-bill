@@ -7,6 +7,7 @@ import skillbill.ports.scaffold.catalog.model.ScaffoldShowResult
 import skillbill.ports.scaffold.model.ScaffoldSkillStatus
 import skillbill.ports.scaffold.repo.model.ScaffoldUpgradeResult
 import skillbill.ports.scaffold.repo.model.ScaffoldValidateResult
+import skillbill.ports.scaffold.repo.model.ScaffoldValidationMode
 import skillbill.ports.scaffold.source.model.ScaffoldEditWithBodyFileResult
 import skillbill.ports.scaffold.source.model.ScaffoldFillResult
 import skillbill.ports.scaffold.source.model.ScaffoldSaveExactContentResult
@@ -50,13 +51,13 @@ internal fun ScaffoldExplainResult.toCliMap(): Map<String, Any?> {
 }
 
 internal fun ScaffoldValidateResult.toCliMap(): Map<String, Any?> {
-  val map = linkedMapOf<String, Any?>("repo_root" to repoRoot, "mode" to mode)
-  if (mode == "selected") {
+  val map = linkedMapOf<String, Any?>("repo_root" to repoRoot, "mode" to mode.wireValue)
+  if (mode == ScaffoldValidationMode.SELECTED) {
     map["skill_names"] = skillNames ?: emptyList<String>()
   }
-  map["status"] = status
+  map["status"] = status.wireValue
   map["issues"] = issues
-  if (mode == "selected") {
+  if (mode == ScaffoldValidationMode.SELECTED) {
     map["suggested_commands"] = suggestedCommands ?: emptyList<String>()
   }
   return map

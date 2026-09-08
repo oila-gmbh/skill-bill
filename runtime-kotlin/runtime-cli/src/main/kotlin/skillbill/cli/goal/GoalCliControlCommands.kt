@@ -141,7 +141,7 @@ class GoalResetCommand(
         subtaskId = subtaskId,
         deleteChildWorkflow = deleteChildWorkflow,
         dbPathOverride = inputs.dbPathOverride,
-        repoRoot = repoRoot?.let(Path::of),
+        repoRoot = repoRoot?.let(Path::of)?.toAbsolutePath()?.normalize() ?: inputs.repositoryRoot,
       ),
     )
     val payload = result.toGoalResetCliMap(issueKey, hard)

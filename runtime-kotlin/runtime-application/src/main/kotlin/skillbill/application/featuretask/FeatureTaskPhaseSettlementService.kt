@@ -8,6 +8,7 @@ import skillbill.boundary.OpenBoundaryMap
 import skillbill.contracts.JsonSupport
 import skillbill.ports.featuretask.FeatureTaskPhaseSettlementRepository
 import skillbill.ports.featuretask.model.FeatureTaskPhaseSettlement
+import skillbill.ports.featuretask.model.FeatureTaskPhaseSettlementKind
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import skillbill.workflow.taskruntime.ProsePhaseOutputSynthesizer
 import skillbill.workflow.taskruntime.model.SettlementEnvelopeRequest
@@ -133,7 +134,7 @@ class FeatureTaskPhaseSettlementService(
       "workflow_id" to request.workflowId,
       "phase_id" to request.phaseId,
       "attempt" to request.attempt,
-      "kind" to request.kind,
+      "kind" to request.kind.wireValue,
       "envelope" to request.envelope,
     )
   }
@@ -151,15 +152,15 @@ class FeatureTaskPhaseSettlementService(
     val workflowId: String,
     val phaseId: String,
     val attempt: Int,
-    val kind: String,
+    val kind: FeatureTaskPhaseSettlementKind,
     val envelope: Map<String, Any?>,
     val dbPathOverride: String?,
   )
 
   companion object {
-    const val KIND_COMPLETE: String = "complete"
-    const val KIND_BLOCK: String = "block"
-    const val KIND_AUDIT_SETTLE: String = "audit_settle"
+    val KIND_COMPLETE: FeatureTaskPhaseSettlementKind = FeatureTaskPhaseSettlementKind.COMPLETE
+    val KIND_BLOCK: FeatureTaskPhaseSettlementKind = FeatureTaskPhaseSettlementKind.BLOCK
+    val KIND_AUDIT_SETTLE: FeatureTaskPhaseSettlementKind = FeatureTaskPhaseSettlementKind.AUDIT_SETTLE
     private const val SUMMARY_MAX_CHARS: Int = 240
     private const val SUMMARY_ELLIPSIS_PREFIX: Int = 237
   }

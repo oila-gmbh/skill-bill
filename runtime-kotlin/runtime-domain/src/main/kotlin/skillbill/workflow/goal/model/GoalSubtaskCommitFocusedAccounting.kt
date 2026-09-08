@@ -1,29 +1,20 @@
 package skillbill.workflow.goal.model
 
 import skillbill.boundary.OpenBoundaryMap
+import skillbill.review.context.model.ReviewIntegrationTerminalOutcome
 
-/**
- * What one delegated commit-focused review pass actually did, as durable lifecycle state: the
- * commit sequence it covered, how sparsely it routed, which lanes ended incomplete (budget
- * exhaustion or a lane run that did not succeed), what the parent's relevance analysis consumed,
- * and how the single integration pass ended.
- *
- * Identities, counts, and lane names only. A commit subject, a path, or diff text here would put
- * code content into durable lifecycle state, which this record exists to stay clear of.
- */
 data class GoalSubtaskCommitFocusedAccounting(
   val commitSequenceDigest: String,
   val commitCount: Int,
   val laneCount: Int,
   val focusedCommitCount: Int,
   val skippedCommitCount: Int,
-  val integrationTerminalOutcome: String,
+  val integrationTerminalOutcome: ReviewIntegrationTerminalOutcome,
   val routingDigest: String? = null,
   val focusedPairCount: Int? = null,
   val skippedPairCount: Int? = null,
   val laneBundleSizes: Map<String, Long> = emptyMap(),
   val laneSegmentCounts: Map<String, Int> = emptyMap(),
-  /** Non-clean coverage. The integration pass never compensates for a lane named here. */
   val incompleteLanes: List<String> = emptyList(),
   val parentAnalysisPairs: Int? = null,
   val parentAnalysisBytes: Long? = null,
@@ -34,15 +25,12 @@ data class GoalSubtaskCommitFocusedAccounting(
     require(commitSequenceDigest.matches(SHA256_HEX)) {
       "Commit-focused accounting requires a SHA-256 commit sequence identity."
     }
-    require(integrationTerminalOutcome in INTEGRATION_TERMINAL_OUTCOMES) {
-      "Unknown integration terminal outcome '$integrationTerminalOutcome'."
-    }
     require(listOf(commitCount, laneCount, focusedCommitCount, skippedCommitCount).all { it >= 0 })
     require(focusedCommitCount + skippedCommitCount == commitCount) {
       "Every commit is either focused by some lane or skipped by all of them."
     }
     require(incompleteLanes.distinct().size == incompleteLanes.size)
-    if (integrationTerminalOutcome == SKIPPED_NOT_APPLICABLE) {
+    if (integrationTerminalOutcome == ReviewIntegrationTerminalOutcome.SKIPPED_NOT_APPLICABLE) {
       require(!integrationSkipReason.isNullOrBlank()) {
         "A skipped integration pass must record why it was not applicable."
       }
@@ -58,7 +46,7 @@ data class GoalSubtaskCommitFocusedAccounting(
     "lane_count" to laneCount,
     "focused_commit_count" to focusedCommitCount,
     "skipped_commit_count" to skippedCommitCount,
-    "integration_terminal_outcome" to integrationTerminalOutcome,
+    "integration_terminal_outcome" to integrationTerminalOutcome.wireValue,
   ).apply {
     routingDigest?.let { put("routing_digest", it) }
     focusedPairCount?.let { put("focused_pair_count", it) }
@@ -73,20 +61,9 @@ data class GoalSubtaskCommitFocusedAccounting(
   }
 
   companion object {
-    const val SKIPPED_NOT_APPLICABLE: String = "skipped_not_applicable"
-
-    val INTEGRATION_TERMINAL_OUTCOMES: Set<String> = setOf(
-      "completed",
-      SKIPPED_NOT_APPLICABLE,
-      "review_context_budget_exceeded",
-      "failed",
-      "timeout",
-      "interrupted",
-      "spawn_failure",
-      "process_failure",
-      "unsupported_provider",
-      "no_op_resume",
-    )
+    val SKIPPED_NOT_APPLICABLE: String = ReviewIntegrationTerminalOutcome.SKIPPED_NOT_APPLICABLE.wireValue
+    val INTEGRATION_TERMINAL_OUTCOMES: Set<String> = ReviewIntegrationTerminalOutcome.entries
+      .mapTo(linkedSetOf(), ReviewIntegrationTerminalOutcome::wireValue)
 
     private val SHA256_HEX = Regex("[0-9a-f]{64}")
 
@@ -99,7 +76,13 @@ data class GoalSubtaskCommitFocusedAccounting(
         laneCount = raw.requireReviewStateInt("lane_count", path),
         focusedCommitCount = raw.requireReviewStateInt("focused_commit_count", path),
         skippedCommitCount = raw.requireReviewStateInt("skipped_commit_count", path),
-        integrationTerminalOutcome = raw.requireReviewStateString("integration_terminal_outcome", path),
+        integrationTerminalOutcome = requireNotNull(
+          ReviewIntegrationTerminalOutcome.fromWire(
+            raw.requireReviewStateString("integration_terminal_outcome", path),
+          ),
+        ) {
+          "Unknown integration terminal outcome at '$path.integration_terminal_outcome'."
+        },
         routingDigest = raw.optionalReviewStateString("routing_digest", path),
         focusedPairCount = raw.optionalReviewStateInt("focused_pair_count", path),
         skippedPairCount = raw.optionalReviewStateInt("skipped_pair_count", path),

@@ -7,6 +7,7 @@ import skillbill.ports.telemetry.TelemetryOutboxRepository
 import skillbill.ports.telemetry.model.TelemetryOutboxRecord
 import skillbill.telemetry.model.SyncResult
 import skillbill.telemetry.model.TelemetrySettings
+import skillbill.telemetry.model.TelemetrySyncStatus
 import java.io.IOException
 import java.nio.file.Path
 
@@ -32,7 +33,7 @@ object TelemetrySyncRuntime {
     proxyConfigured = result.proxyConfigured,
     proxyUrl = result.proxyUrl,
     customProxyUrl = result.customProxyUrl,
-    syncStatus = result.status,
+    syncStatus = result.status.wireValue,
     syncedEvents = result.syncedEvents,
     pendingEvents = result.pendingEvents,
     message = result.message,
@@ -66,7 +67,7 @@ object TelemetrySyncRuntime {
         }
         return null
       }
-    if (reportFailures && result.status == "failed" && result.message != null) {
+    if (reportFailures && result.status == TelemetrySyncStatus.FAILED && result.message != null) {
       stderr("Telemetry sync failed: ${result.message}")
     }
     return result
@@ -149,7 +150,7 @@ private data class PendingBatch(
 private fun failedSyncResult(batch: PendingBatch, message: String): SyncResult {
   batch.outboxRepository.markFailed(batch.eventIds, message)
   return syncResult(
-    status = "failed",
+    status = TelemetrySyncStatus.FAILED,
     syncedEvents = batch.syncedTotal,
     pendingEvents = batch.outboxRepository.pendingCount(),
     syncContext = batch.syncContext,

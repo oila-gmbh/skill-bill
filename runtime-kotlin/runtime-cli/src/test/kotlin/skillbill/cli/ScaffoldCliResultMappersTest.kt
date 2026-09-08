@@ -11,6 +11,8 @@ import skillbill.ports.scaffold.model.ScaffoldReviewComposition
 import skillbill.ports.scaffold.model.ScaffoldSectionStatus
 import skillbill.ports.scaffold.model.ScaffoldSkillStatus
 import skillbill.ports.scaffold.repo.model.ScaffoldValidateResult
+import skillbill.ports.scaffold.repo.model.ScaffoldValidationMode
+import skillbill.ports.scaffold.repo.model.ScaffoldValidationStatus
 import kotlin.test.Test
 import kotlin.test.assertEquals
 
@@ -140,8 +142,8 @@ class ScaffoldCliResultMappersTest {
   fun `validate repo mode emits only repo_root mode status issues`() {
     val map = ScaffoldValidateResult(
       repoRoot = "/repo",
-      mode = "repo",
-      status = "pass",
+      mode = ScaffoldValidationMode.REPOSITORY,
+      status = ScaffoldValidationStatus.PASS,
       issues = emptyList(),
     ).toCliMap()
 
@@ -154,8 +156,8 @@ class ScaffoldCliResultMappersTest {
   fun `validate selected mode inserts skill_names and suggested_commands around repo keys`() {
     val map = ScaffoldValidateResult(
       repoRoot = "/repo",
-      mode = "selected",
-      status = "fail",
+      mode = ScaffoldValidationMode.SELECTED,
+      status = ScaffoldValidationStatus.FAIL,
       issues = listOf("missing frontmatter"),
       skillNames = listOf("bill-kotlin-code-review"),
       suggestedCommands = listOf("skill-bill fill bill-kotlin-code-review"),

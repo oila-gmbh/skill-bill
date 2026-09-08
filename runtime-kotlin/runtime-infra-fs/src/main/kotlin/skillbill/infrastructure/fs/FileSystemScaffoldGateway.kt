@@ -18,6 +18,8 @@ import skillbill.ports.scaffold.model.ScaffoldRenderResult
 import skillbill.ports.scaffold.model.ScaffoldSkillStatus
 import skillbill.ports.scaffold.repo.model.ScaffoldUpgradeResult
 import skillbill.ports.scaffold.repo.model.ScaffoldValidateResult
+import skillbill.ports.scaffold.repo.model.ScaffoldValidationMode
+import skillbill.ports.scaffold.repo.model.ScaffoldValidationStatus
 import skillbill.ports.scaffold.source.model.ScaffoldEditWithBodyFileResult
 import skillbill.ports.scaffold.source.model.ScaffoldFillResult
 import skillbill.ports.scaffold.source.model.ScaffoldSaveExactContentResult
@@ -115,8 +117,12 @@ class FileSystemScaffoldGateway(
     val result = AuthoringOperations.validate(repoRoot, skillNames)
     return ScaffoldValidateResult(
       repoRoot = result.repoRoot,
-      mode = result.mode,
-      status = result.status,
+      mode = requireNotNull(ScaffoldValidationMode.fromWire(result.mode)) {
+        "Unknown scaffold validation mode '${result.mode}'."
+      },
+      status = requireNotNull(ScaffoldValidationStatus.fromWire(result.status)) {
+        "Unknown scaffold validation status '${result.status}'."
+      },
       issues = result.issues,
       skillNames = result.skillNames,
       suggestedCommands = result.suggestedCommands,

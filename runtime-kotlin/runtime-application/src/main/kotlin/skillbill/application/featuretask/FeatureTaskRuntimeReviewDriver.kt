@@ -6,11 +6,13 @@ import skillbill.application.review.RuntimeOwnedReviewMode
 import skillbill.application.review.model.ParallelCodeReviewRequest
 import skillbill.application.review.model.ParallelCodeReviewResult
 import skillbill.application.reviewevidence.model.ParallelReviewScope
-import skillbill.application.subtaskreview.GoalSubtaskReviewSummaryReducer
 import skillbill.contracts.JsonSupport
 import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_CONTRACT_VERSION
+import skillbill.goalrunner.subtaskreview.FeatureTaskRuntimeVerificationSignalKeys
+import skillbill.goalrunner.subtaskreview.GoalSubtaskReviewSummaryReducer
 import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewInput
 import skillbill.review.context.model.CodeReviewExecutionMode
+import skillbill.review.context.model.ReviewIntegrationTerminalOutcome
 import skillbill.review.model.ParallelReviewMergedFinding
 import skillbill.review.model.ReviewFindingCitation
 import skillbill.workflow.goal.model.GoalSubtaskBlockerDisposition
@@ -43,6 +45,8 @@ internal data class FeatureTaskRuntimeReviewDriverWorkspace(
   val repoRoot: Path,
   val timeout: Duration?,
   val agentAddonSelection: HydratedAgentAddonSelection,
+  val baselineUntrackedPaths: List<String> = emptyList(),
+  val ownedPathspec: List<String> = emptyList(),
 )
 
 internal data class FeatureTaskRuntimeReviewCycleContext(
@@ -65,22 +69,25 @@ object FeatureTaskRuntimeReviewDriverMapper {
     )
     return ParallelCodeReviewRequest(
       agent1Id = agents.agent1Id,
-      scope = ParallelReviewScope.BRANCH,
+      scope = ParallelReviewScope.WORKTREE_FROM_BASE,
       repoRoot = workspace.repoRoot,
       timeout = workspace.timeout,
       codeReviewMode = executed,
       resolvedTier = executed,
       reviewRunId = pass.reviewRunId,
-      baseRevision = lastCommitParentRevision(input.currentHeadSha),
+      baseRevision = input.reviewBaseSha,
       headRevision = input.currentHeadSha,
       specPath = specPath(runInvariants.specReference),
       selectedAgentAddonsSection = AgentAddonPromptFormatter.format(workspace.agentAddonSelection),
+      ownedPathspec = workspace.ownedPathspec.filter(String::isNotBlank).distinct(),
+      baselineUntrackedPolicy = ParallelCodeReviewRequest.baselineUntrackedPolicy(
+        includedPaths = emptyList(),
+        excludedPaths = workspace.baselineUntrackedPaths.filter(String::isNotBlank).distinct().sorted(),
+      ),
     )
   }
 
   fun specPath(specReference: String): Path = Path.of(specReference)
-
-  internal fun lastCommitParentRevision(headSha: String): String = "$headSha^"
 }
 
 object FeatureTaskRuntimeReviewEnvelope {
@@ -98,7 +105,6 @@ object FeatureTaskRuntimeReviewEnvelope {
     val produced = linkedMapOf<String, Any?>(
       FeatureTaskRuntimeVerificationSignalKeys.REVIEW_FINDINGS to emptyList<Any?>(),
       FeatureTaskRuntimeVerificationSignalKeys.REVIEW_RUN_ID to reviewRunId,
-      FeatureTaskRuntimeVerificationSignalKeys.EVIDENCE_COVERAGE_COMPLETE to evidenceCoverageComplete(result),
       "repository_checkpoint" to mapOf("fingerprint" to cycle.repositoryFingerprint),
     )
     commitFocusedAccounting(result, cycle.resolvedTier)?.let { accounting ->
@@ -111,11 +117,7 @@ object FeatureTaskRuntimeReviewEnvelope {
       "status" to STATUS_COMPLETED,
       "summary" to prose.take(SUMMARY_MAX_CHARS),
       "produced_outputs" to produced,
-      FeatureTaskRuntimeVerificationSignalKeys.VERDICT to if (!evidenceCoverageComplete(result)) {
-        FeatureTaskRuntimeVerdict.CHANGES_REQUESTED.wireValue
-      } else {
-        extractReviewVerdict(prose).wireValue
-      },
+      FeatureTaskRuntimeVerificationSignalKeys.VERDICT to extractReviewVerdict(prose).wireValue,
     )
     val outcome = GoalSubtaskReviewSummaryReducer.outcomeFor(envelope)
     produced[FeatureTaskRuntimeVerificationSignalKeys.REVIEW_FINDINGS] = findings
@@ -173,9 +175,6 @@ object FeatureTaskRuntimeReviewEnvelope {
   private fun citationPayload(citation: ReviewFindingCitation): Map<String, Any?> =
     mapOf("path" to citation.path, "line" to citation.line)
 
-  private fun evidenceCoverageComplete(result: ParallelCodeReviewResult): Boolean =
-    result.lane1.success && result.coverage?.isCleanCoverage != false
-
   private fun commitFocusedAccounting(
     result: ParallelCodeReviewResult,
     resolvedTier: CodeReviewExecutionMode,
@@ -186,9 +185,9 @@ object FeatureTaskRuntimeReviewEnvelope {
       ?: return null
     val accounting = summary.integration
     val pass = result.integration
-    val terminalOutcome = accounting?.terminalOutcome
-      ?: pass?.terminalOutcome?.wireValue
-      ?: GoalSubtaskCommitFocusedAccounting.SKIPPED_NOT_APPLICABLE
+    val terminalOutcome = pass?.terminalOutcome
+      ?: accounting?.terminalOutcome?.let(ReviewIntegrationTerminalOutcome::fromWire)
+      ?: ReviewIntegrationTerminalOutcome.SKIPPED_NOT_APPLICABLE
     return GoalSubtaskCommitFocusedAccounting(
       commitSequenceDigest = routing.commitSequenceDigest,
       commitCount = routing.commitCount,
@@ -203,7 +202,7 @@ object FeatureTaskRuntimeReviewEnvelope {
       parentAnalysisPairs = summary.parentAnalysis?.analyzedPairs,
       parentAnalysisBytes = summary.parentAnalysis?.analyzedBytes,
       integrationSkipReason = when (terminalOutcome) {
-        GoalSubtaskCommitFocusedAccounting.SKIPPED_NOT_APPLICABLE ->
+        ReviewIntegrationTerminalOutcome.SKIPPED_NOT_APPLICABLE ->
           accounting?.skipReason?.takeIf { it.isNotBlank() }
             ?: pass?.skipReason?.takeIf { it.isNotBlank() }
             ?: result.coverage?.integrationNotApplicableReason?.takeIf { it.isNotBlank() }

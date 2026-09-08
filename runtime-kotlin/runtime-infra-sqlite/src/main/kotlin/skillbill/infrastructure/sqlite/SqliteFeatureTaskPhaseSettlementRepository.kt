@@ -4,6 +4,7 @@ import me.tatarka.inject.annotations.Inject
 import skillbill.db.core.DatabaseRuntime
 import skillbill.ports.featuretask.FeatureTaskPhaseSettlementRepository
 import skillbill.ports.featuretask.model.FeatureTaskPhaseSettlement
+import skillbill.ports.featuretask.model.FeatureTaskPhaseSettlementKind
 
 @Inject
 class SqliteFeatureTaskPhaseSettlementRepository : FeatureTaskPhaseSettlementRepository {
@@ -23,7 +24,7 @@ class SqliteFeatureTaskPhaseSettlementRepository : FeatureTaskPhaseSettlementRep
         statement.setString(PARAM_ONE, settlement.workflowId)
         statement.setString(PARAM_TWO, settlement.phaseId)
         statement.setInt(PARAM_THREE, settlement.attempt)
-        statement.setString(PARAM_FOUR, settlement.kind)
+        statement.setString(PARAM_FOUR, settlement.kind.wireValue)
         statement.setString(PARAM_FIVE, settlement.envelopeJson)
         statement.setString(PARAM_SIX, settlement.recordedAt)
         statement.executeUpdate()
@@ -54,7 +55,7 @@ class SqliteFeatureTaskPhaseSettlementRepository : FeatureTaskPhaseSettlementRep
             workflowId = rows.getString(PARAM_ONE),
             phaseId = rows.getString(PARAM_TWO),
             attempt = rows.getInt(PARAM_THREE),
-            kind = rows.getString(PARAM_FOUR),
+            kind = FeatureTaskPhaseSettlementKind.fromWire(rows.getString(PARAM_FOUR)),
             envelopeJson = rows.getString(PARAM_FIVE),
             recordedAt = rows.getString(PARAM_SIX),
           )
