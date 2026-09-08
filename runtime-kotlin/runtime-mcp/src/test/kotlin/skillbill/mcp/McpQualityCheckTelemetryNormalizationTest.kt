@@ -1,6 +1,6 @@
 package skillbill.mcp
 
-import skillbill.contracts.JsonCodec
+import skillbill.contracts.JsonSupport
 import skillbill.db.core.DatabaseRuntime
 import skillbill.mcp.core.McpToolDispatcher
 import skillbill.mcp.shared.McpRuntimeContext
@@ -150,9 +150,9 @@ private fun qualityCheckPayload(connection: Connection, eventName: String, sessi
   )
 
 private fun decodeJsonObject(rawJson: String): Map<String, Any?> {
-  val parsed = JsonCodec.parseObjectOrNull(rawJson)
+  val parsed = JsonSupport.parseObjectOrNull(rawJson)
   require(parsed != null) { "Expected JSON object but got: $rawJson" }
-  val decoded = JsonCodec.anyToStringAnyMap(JsonCodec.jsonElementToValue(parsed))
+  val decoded = JsonSupport.anyToStringAnyMap(JsonSupport.jsonElementToValue(parsed))
   require(decoded != null) { "Expected decoded JSON object but got: $rawJson" }
   return decoded
 }

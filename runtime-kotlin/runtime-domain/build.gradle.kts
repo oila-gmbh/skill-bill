@@ -3,7 +3,6 @@ import org.gradle.language.jvm.tasks.ProcessResources
 plugins {
   id("skillbill.jvm-library")
   id("skillbill.quality")
-  `java-test-fixtures`
 }
 
 tasks.named<ProcessResources>("processResources") {
@@ -16,7 +15,6 @@ tasks.named<ProcessResources>("processResources") {
 
 dependencies {
   implementation(project(":runtime-contracts"))
-  implementation(libs.kotlinx.serialization.json)
   testImplementation(libs.jackson.databind)
   testImplementation(libs.jackson.dataformat.yaml)
   testImplementation(libs.junit.jupiter)

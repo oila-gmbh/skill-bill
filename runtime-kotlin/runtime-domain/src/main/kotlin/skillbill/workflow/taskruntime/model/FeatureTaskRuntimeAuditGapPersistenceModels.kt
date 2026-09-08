@@ -4,41 +4,17 @@ import skillbill.boundary.OpenBoundaryMap
 import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_PERSISTENCE_CONTRACT_VERSION
 import skillbill.error.InvalidWorkflowStateSchemaError
 
-enum class FeatureTaskRuntimeAuditGapPauseKind(val wireValue: String) {
-  NO_PROGRESS("no_progress"),
-  WARN_THRESHOLD("warn_threshold"),
-  ;
-
-  companion object {
-    fun fromWire(value: String): FeatureTaskRuntimeAuditGapPauseKind? =
-      entries.firstOrNull { it.wireValue == value }
-  }
-}
-
 data class FeatureTaskRuntimeAuditGapPause(
-  val pauseKind: FeatureTaskRuntimeAuditGapPauseKind,
+  val pauseKind: String,
   val reason: String,
   val edgeIteration: Int,
   val operatorDecision: String? = null,
   val grantConsumed: Boolean = false,
 ) {
-  constructor(
-    pauseKind: String,
-    reason: String,
-    edgeIteration: Int,
-    operatorDecision: String? = null,
-    grantConsumed: Boolean = false,
-  ) : this(
-    pauseKind = requireNotNull(FeatureTaskRuntimeAuditGapPauseKind.fromWire(pauseKind)) {
-      "FeatureTaskRuntimeAuditGapPause.pauseKind must be no_progress or warn_threshold, was '$pauseKind'."
-    },
-    reason = reason,
-    edgeIteration = edgeIteration,
-    operatorDecision = operatorDecision,
-    grantConsumed = grantConsumed,
-  )
-
   init {
+    require(pauseKind in setOf(AUDIT_GAP_PAUSE_KIND_NO_PROGRESS, AUDIT_GAP_PAUSE_KIND_WARN_THRESHOLD)) {
+      "FeatureTaskRuntimeAuditGapPause.pauseKind must be no_progress or warn_threshold, was '$pauseKind'."
+    }
     require(reason.isNotBlank()) { "FeatureTaskRuntimeAuditGapPause.reason must be non-blank." }
     require(edgeIteration >= 1) {
       "FeatureTaskRuntimeAuditGapPause.edgeIteration must be >= 1, was $edgeIteration."
@@ -56,7 +32,7 @@ data class FeatureTaskRuntimeAuditGapPause(
   fun toArtifactMap(): Map<String, Any?> = linkedMapOf<String, Any?>(
     "contract_version" to FEATURE_TASK_RUNTIME_PERSISTENCE_CONTRACT_VERSION,
     "record_kind" to "audit_gap_pause",
-    "pause_kind" to pauseKind.wireValue,
+    "pause_kind" to pauseKind,
     "reason" to reason,
     "edge_iteration" to edgeIteration,
     "grant_consumed" to grantConsumed,
@@ -81,9 +57,7 @@ data class FeatureTaskRuntimeAuditGapPause(
         )
       }
       return FeatureTaskRuntimeAuditGapPause(
-        pauseKind = requireNotNull(FeatureTaskRuntimeAuditGapPauseKind.fromWire(raw.requireStringField("pause_kind"))) {
-          "Unknown FeatureTaskRuntimeAuditGapPause.pauseKind."
-        },
+        pauseKind = raw.requireStringField("pause_kind"),
         reason = raw.requireStringField("reason"),
         edgeIteration = raw.requireIntField("edge_iteration"),
         operatorDecision = raw.optionalStringField("operator_decision"),

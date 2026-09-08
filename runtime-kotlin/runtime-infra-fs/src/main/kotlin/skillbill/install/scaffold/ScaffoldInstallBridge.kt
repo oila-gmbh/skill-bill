@@ -6,8 +6,6 @@ import skillbill.install.model.InstallTransaction
 import skillbill.install.plan.InstallContext
 import skillbill.install.plan.detectAgents
 import skillbill.install.plan.installSkill
-import skillbill.model.toPath
-import skillbill.ports.repository.toFileLocation
 import skillbill.scaffold.authoring.parseInternalForFrontmatter
 import skillbill.scaffold.platformpack.discoverPlatformPackManifests
 import skillbill.scaffold.policy.scaffold.SKILL_KIND_ADD_ON
@@ -65,7 +63,7 @@ internal fun internalPlatformInstallSkills(plan: ScaffoldPlan): List<InstallPlan
     val internalFor = parseInternalForFrontmatter(installPath.resolve("content.md")) ?: return@mapNotNull null
     InstallPlanSkill(
       name = installPath.fileName.toString(),
-      sourceDir = installPath.toAbsolutePath().normalize().toFileLocation(),
+      sourceDir = installPath.toAbsolutePath().normalize(),
       kind = InstallPlanSkillKind.PLATFORM_PACK,
       platformSlug = plan.platform,
       internalFor = internalFor,
@@ -78,7 +76,7 @@ internal fun platformPackInstallPaths(
   repoRoot: Path,
   internalPlatformSkills: List<InstallPlanSkill>,
 ): List<Path> {
-  val internalSkillDirs = internalPlatformSkills.map { skill -> skill.sourceDir.toPath() }.toSet()
+  val internalSkillDirs = internalPlatformSkills.map { skill -> skill.sourceDir }.toSet()
   val listedPaths = plan.installPaths.filterNot { installPath ->
     installPath.toAbsolutePath().normalize() in internalSkillDirs
   }

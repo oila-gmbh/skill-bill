@@ -1,7 +1,6 @@
 package skillbill.install.nativeagent
 
 import skillbill.install.model.AgentTarget
-import skillbill.model.toPath
 import skillbill.nativeagent.rendering.NativeAgentInstallRenderOverrides
 import skillbill.nativeagent.rendering.NativeAgentInstallRenderRequest
 import skillbill.nativeagent.rendering.NativeAgentInstallRenderResult
@@ -100,7 +99,7 @@ internal fun desiredNativeAgentInventory(
   val linkedPaths = linked.toSet()
   return generated.artifacts.flatMap { artifact ->
     targets.mapNotNull { target ->
-      val agentDir = target.path.toPath()
+      val agentDir = target.path
       val installedPath = agentDir.resolve(artifact.path.fileName)
       val isOurs = installedPath in linkedPaths ||
         (Files.isSymbolicLink(installedPath) && resolveSymlinkTarget(installedPath) == artifact.path)

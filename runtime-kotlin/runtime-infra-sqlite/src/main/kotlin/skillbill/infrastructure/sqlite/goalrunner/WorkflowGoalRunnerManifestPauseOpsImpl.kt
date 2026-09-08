@@ -1,6 +1,7 @@
 package skillbill.infrastructure.sqlite.goalrunner
 
 import skillbill.goalrunner.model.GoalRunnerControlState
+import skillbill.ports.goalrunner.runner.GoalRunnerManifestPauseOps
 import skillbill.ports.goalrunner.runner.model.GoalRunnerManifestState
 import skillbill.ports.goalrunner.runner.model.GoalRunnerPausePersistenceResult
 import java.nio.file.Path

@@ -1,7 +1,6 @@
 package skillbill.testing
 
 import skillbill.install.model.InstallPlan
-import skillbill.model.toPath
 import skillbill.scaffold.platformpack.CODE_REVIEW_FALLBACK_CAPABILITY
 import skillbill.scaffold.platformpack.loadPlatformPack
 import skillbill.scaffold.rendering.areaReviewContent
@@ -19,7 +18,7 @@ internal fun assertConcreteAndManifestFallbackSelected(
 ) {
   val fallbackSlugs = plan.discoveredPlatformPacks
     .filter { pack ->
-      CODE_REVIEW_FALLBACK_CAPABILITY in loadPlatformPack(pack.packRoot.toPath()).fallbackCapabilities
+      CODE_REVIEW_FALLBACK_CAPABILITY in loadPlatformPack(pack.packRoot).fallbackCapabilities
     }
     .map { it.slug }
   assertEquals(1, fallbackSlugs.size)

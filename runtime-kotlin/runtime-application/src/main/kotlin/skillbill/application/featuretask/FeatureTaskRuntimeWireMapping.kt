@@ -1,6 +1,6 @@
 package skillbill.application.featuretask
 
-import skillbill.contracts.JsonCodec
+import skillbill.contracts.JsonSupport
 import skillbill.error.InvalidWorkflowStateSchemaError
 import java.math.BigDecimal
 
@@ -13,7 +13,7 @@ inline fun <T> wireMapping(source: String, block: () -> T): T = try {
 }
 
 fun Any?.requiredMap(source: String): Map<String, Any?> =
-  JsonCodec.anyToStringAnyMap(this) ?: invalidWire(source, "must be an object")
+  JsonSupport.anyToStringAnyMap(this) ?: invalidWire(source, "must be an object")
 
 fun Map<String, Any?>.requiredString(field: String, source: String): String =
   (this[field] as? String)?.takeIf(String::isNotBlank) ?: invalidWire("$source.$field", "must be nonblank")

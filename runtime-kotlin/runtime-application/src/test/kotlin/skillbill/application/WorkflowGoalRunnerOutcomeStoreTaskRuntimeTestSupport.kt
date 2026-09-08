@@ -1,7 +1,8 @@
 package skillbill.application
 
 import skillbill.application.workflow.model.WorkflowFamily
-import skillbill.contracts.JsonCodec
+import skillbill.application.workflow.toRecord
+import skillbill.contracts.JsonSupport
 import skillbill.ports.featuretask.model.FeatureTaskRuntimeWorkerLeaseState
 import skillbill.ports.featuretask.model.FeatureTaskRuntimeWorkerOwnership
 import skillbill.ports.taskruntime.FeatureTaskRuntimeWorkerSupervisor
@@ -14,7 +15,6 @@ import skillbill.ports.workflow.gitops.NoopWorkflowGitOperations
 import skillbill.ports.workflow.gitops.WorkflowGitOperations
 import skillbill.ports.workflow.gitops.model.WorkflowGitOperationResult
 import skillbill.ports.workflow.model.WorkflowStateRecord
-import skillbill.ports.workflow.toRecord
 import skillbill.review.context.model.CodeReviewExecutionMode
 import skillbill.workflow.engine.WorkflowEngine
 import skillbill.workflow.engine.model.WorkflowUpdateInput
@@ -246,8 +246,8 @@ internal fun taskRuntimeWorkflowRecord(workflowId: String): WorkflowStateRecord 
 }
 
 internal fun decodeArtifacts(artifactsJson: String): Map<String, Any?> {
-  val element = JsonCodec.json.parseToJsonElement(artifactsJson)
-  return requireNotNull(JsonCodec.anyToStringAnyMap(JsonCodec.jsonElementToValue(element)))
+  val element = JsonSupport.json.parseToJsonElement(artifactsJson)
+  return requireNotNull(JsonSupport.anyToStringAnyMap(JsonSupport.jsonElementToValue(element)))
 }
 
 internal fun tornBlockedReviewRecord(workflowId: String): WorkflowStateRecord {
@@ -353,5 +353,5 @@ internal object LiveProcessSupervisor : FeatureTaskRuntimeWorkerSupervisor {
 
 internal object MeasuringHeadShaGitOperations : WorkflowGitOperations by NoopWorkflowGitOperations {
   override fun headCommitSha(repoRoot: Path): WorkflowGitOperationResult =
-    WorkflowGitOperationResult.Ok(value = "measured-head-sha")
+    WorkflowGitOperationResult(status = "ok", value = "measured-head-sha")
 }

@@ -3,6 +3,7 @@ package skillbill.workflow.taskruntime.model
 import skillbill.review.model.ReviewFindingVerdict
 import skillbill.workflow.goal.model.ValidationDepth
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePlanningProjectionValidator
+import skillbill.workflow.taskruntime.NoopFeatureTaskRuntimePlanningProjectionValidator
 
 /** Everything the validator may read while projecting; no open map, no agent-supplied channel. */
 data class FeatureTaskRuntimeHandoffProjectionInputs(
@@ -41,7 +42,13 @@ data class FeatureTaskRuntimeHandoffProjectionInputs(
    */
   val validationDepth: ValidationDepth = ValidationDepth.DEFAULT,
   val qualityGateSelection: FeatureTaskRuntimeQualityGateSelection = FeatureTaskRuntimeQualityGateSelection.VALIDATE,
-  val planningProjectionValidator: FeatureTaskRuntimePlanningProjectionValidator,
+  /**
+   * Canonical planning-projections schema gate, called before a bounded projection is parsed. The
+   * default leaves the schema unenforced and exists only for suites asserting the typed Kotlin rules
+   * in isolation; production wiring passes the infra-fs-backed adapter.
+   */
+  val planningProjectionValidator: FeatureTaskRuntimePlanningProjectionValidator =
+    NoopFeatureTaskRuntimePlanningProjectionValidator,
 )
 
 /** Bound on a repository-fingerprint pointer carried in a handoff projection. */

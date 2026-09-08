@@ -1,5 +1,4 @@
 package skillbill.ports.goalrunner.persistence.model
-import skillbill.goalrunner.model.GoalContinuation
 import skillbill.goalrunner.model.GoalRunnerStoredOutcome
 import skillbill.ports.featuretask.model.FeatureTaskRuntimeWorkerOwnership
 import skillbill.ports.goalrunner.GoalRunnerPersistenceSession

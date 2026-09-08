@@ -3,12 +3,9 @@ package skillbill.application.workflow
 import skillbill.application.decomposition.DECOMPOSITION_RUNTIME_ARTIFACT_KEY
 import skillbill.application.decomposition.encodeDecompositionManifestMap
 import skillbill.application.decomposition.withRetriedSubtask
-import skillbill.contracts.JsonCodec
+import skillbill.contracts.JsonSupport
 import skillbill.error.InvalidWorkflowStateSchemaError
 import skillbill.ports.goalrunner.GoalRunnerPersistenceSession
-import skillbill.ports.workflow.get
-import skillbill.ports.workflow.saveRecord
-import skillbill.ports.workflow.toRecord
 import skillbill.workflow.decomposition.DecompositionManifestValidator
 import skillbill.workflow.engine.WorkflowEngine
 import skillbill.workflow.engine.model.WorkflowUpdateInput
@@ -24,7 +21,7 @@ fun WorkflowEngine.updateGoalParentForBlockedPhaseRetry(
 ): String? {
   val rawContinuation = childArtifacts[FEATURE_TASK_RUNTIME_GOAL_CONTINUATION_ARTIFACT_KEY]
     ?: return null
-  val continuationMap = JsonCodec.anyToStringAnyMap(rawContinuation)
+  val continuationMap = JsonSupport.anyToStringAnyMap(rawContinuation)
     ?: invalidGoalRetryProjection(
       "Workflow artifact '$FEATURE_TASK_RUNTIME_GOAL_CONTINUATION_ARTIFACT_KEY' must be an object.",
     )

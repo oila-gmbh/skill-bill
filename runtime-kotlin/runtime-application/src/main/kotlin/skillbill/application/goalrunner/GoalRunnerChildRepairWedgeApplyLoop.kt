@@ -1,4 +1,5 @@
 package skillbill.application.goalrunner
+
 import skillbill.application.decomposition.decodeArtifacts
 import skillbill.application.featuretask.buildCompletedUpstreamMissingOutputRepair
 import skillbill.application.featuretask.diagnoseUnsettledCompletedUpstreamPhaseId
@@ -9,23 +10,18 @@ import skillbill.application.goalrunner.model.GoalRunnerAppliedRepair
 import skillbill.application.goalrunner.model.GoalRunnerChildRepairApplyRequest
 import skillbill.application.goalrunner.model.GoalRunnerChildRepairApplyResult
 import skillbill.application.goalrunner.model.GoalRunnerWedgeClass
+import skillbill.application.phaseartifacts.phaseLedgerFrom
+import skillbill.application.phaseartifacts.phaseRecordsFrom
 import skillbill.application.workflow.model.WorkflowFamily
 import skillbill.application.workflow.updateGoalParentForBlockedPhaseRetry
-import skillbill.contracts.JsonCodec
-import skillbill.goalrunner.derivedTerminalOutcomeFor
-import skillbill.goalrunner.goalContinuationOutcome
+import skillbill.contracts.JsonSupport
 import skillbill.goalrunner.model.GoalRunnerTerminalStatus
 import skillbill.ports.featuretask.FeatureTaskPhaseSettlementRepository
-import skillbill.goalrunner.nonCompleteStoredOutcomeIsCorroborated
-import skillbill.goalrunner.toArtifactMap
 import skillbill.ports.workflow.WorkflowStateRepository
-import skillbill.ports.workflow.get
 import skillbill.ports.workflow.gitops.WorkflowGitOperations
 import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewBaselineRecoveryRequest
 import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewInputFailureReason
-import skillbill.ports.workflow.gitops.model.WorkflowGitOperationStatus
 import skillbill.ports.workflow.gitops.recoverGoalSubtaskReviewBaseline
-import skillbill.ports.workflow.save
 import skillbill.workflow.decomposition.DecompositionManifestValidator
 import skillbill.workflow.engine.WorkflowEngine
 import skillbill.workflow.engine.model.WorkflowStateSnapshot
@@ -39,8 +35,6 @@ import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_GOAL_CONTINUATI
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_RECORDS_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeGoalContinuationArtifact
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeQualityGateSelection
-import skillbill.workflow.taskruntime.phaseartifacts.phaseLedgerFrom
-import skillbill.workflow.taskruntime.phaseartifacts.phaseRecordsFrom
 import java.nio.file.Path
 import java.time.Clock
 
@@ -216,7 +210,7 @@ internal fun unreachableReviewRepairContext(lookup: UnreachableReviewRepairLooku
     continuation.goalBranch,
   )
   val recoveredBaseline = recovered.baseline
-  if (recovered.status != WorkflowGitOperationStatus.OK || recoveredBaseline == null) return null
+  if (!recovered.ok || recoveredBaseline == null) return null
   return UnreachableReviewRepairContext(
     review = review,
     continuation = continuation,
@@ -427,7 +421,7 @@ fun childRepairWedgeEvidenceMap(repair: GoalRunnerAppliedRepair, clock: Clock): 
 )
 
 fun continuationArtifactFromMap(artifacts: Map<String, Any?>): FeatureTaskRuntimeGoalContinuationArtifact? {
-  val raw = JsonCodec.anyToStringAnyMap(artifacts[FEATURE_TASK_RUNTIME_GOAL_CONTINUATION_ARTIFACT_KEY])
+  val raw = JsonSupport.anyToStringAnyMap(artifacts[FEATURE_TASK_RUNTIME_GOAL_CONTINUATION_ARTIFACT_KEY])
     ?: return null
   return FeatureTaskRuntimeGoalContinuationArtifact.fromArtifactMap(raw)
 }

@@ -1,6 +1,5 @@
 package skillbill.infrastructure.fs
 
-import skillbill.ports.workflow.gitops.model.WorkflowGitOperationResult
 import java.nio.file.Path
 
 internal fun currentGoalReviewBranch(repoRoot: Path, expectedBranch: String): String? =
@@ -10,7 +9,7 @@ internal fun goalReviewGitValue(repoRoot: Path, vararg args: String): String? =
   goalReviewGitValue(repoRoot, args.toList())
 
 internal fun goalReviewGitValue(repoRoot: Path, args: List<String>): String? =
-  runGitCommand(repoRoot, args).takeIf { it is WorkflowGitOperationResult.Ok }?.value
+  runGitCommand(repoRoot, args).takeIf { it.ok }?.value
 
 internal fun goalReviewUntrackedPaths(repoRoot: Path): List<String>? = runGitCommand(
   repoRoot,
@@ -18,7 +17,7 @@ internal fun goalReviewUntrackedPaths(repoRoot: Path): List<String>? = runGitCom
   "--others",
   "--exclude-standard",
   "-z",
-).takeIf { it is WorkflowGitOperationResult.Ok }
+).takeIf { it.ok }
   ?.value
   ?.split('\u0000')
   ?.filter(String::isNotBlank)

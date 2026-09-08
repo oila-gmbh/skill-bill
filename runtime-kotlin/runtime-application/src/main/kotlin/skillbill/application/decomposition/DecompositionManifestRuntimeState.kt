@@ -3,14 +3,12 @@ package skillbill.application.decomposition
 import skillbill.application.decomposition.model.DecompositionManifestFileCandidate
 import skillbill.application.decomposition.model.DecompositionManifestRuntimeUpdate
 import skillbill.boundary.OpenBoundaryMap
-import skillbill.contracts.JsonCodec
+import skillbill.contracts.JsonSupport
 import skillbill.error.InvalidDecompositionManifestSchemaError
 import skillbill.ports.workflow.decomposition.DecompositionManifestStore
 import skillbill.workflow.decomposition.DecompositionManifestValidator
 import skillbill.workflow.decomposition.model.DecompositionManifest
 import skillbill.workflow.decomposition.model.DecompositionSubtask
-import skillbill.workflow.decomposition.runtime.invalidManifest
-import skillbill.workflow.decomposition.runtime.isActiveGoalRuntime
 import java.nio.file.NoSuchFileException
 import java.nio.file.Path
 
@@ -23,9 +21,9 @@ fun archivedDecompositionManifest(repoRoot: Path, manifestPath: Path): Boolean {
 
 @OpenBoundaryMap("Persisted workflow artifact JSON decoded for decomposition runtime updates")
 fun decodeArtifacts(existingArtifactsJson: String): Map<String, Any?> =
-  JsonCodec.parseObjectOrNull(existingArtifactsJson)
-    ?.let(JsonCodec::jsonElementToValue)
-    ?.let(JsonCodec::anyToStringAnyMap)
+  JsonSupport.parseObjectOrNull(existingArtifactsJson)
+    ?.let(JsonSupport::jsonElementToValue)
+    ?.let(JsonSupport::anyToStringAnyMap)
     .orEmpty()
 
 fun loadManifestOrNull(

@@ -8,7 +8,6 @@ dependencies {
   implementation(project(":runtime-ports"))
   implementation(project(":runtime-contracts"))
   implementation(libs.kotlin.inject.runtime)
-  implementation(libs.kotlinx.serialization.json)
   implementation(libs.sqlite.jdbc)
   implementation(libs.json.schema.validator)
   implementation(libs.jackson.databind)

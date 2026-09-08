@@ -1,5 +1,4 @@
 package skillbill.application.goalrunner.planning
-
 import skillbill.application.InMemoryGoalManifestStore
 import skillbill.application.PlanningProjectionFixtures
 import skillbill.application.RecordingOutcomeStore
@@ -19,7 +18,7 @@ import skillbill.application.launchFacts
 import skillbill.application.manifest
 import skillbill.application.realFeatureTaskRuntimePhaseOutputValidator
 import skillbill.application.realPlanningProjectionValidator
-import skillbill.contracts.JsonCodec
+import skillbill.contracts.JsonSupport
 import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_CONTRACT_VERSION
 import skillbill.contracts.workflow.FeatureTaskRuntimePhaseOutputSchemaPaths
 import skillbill.contracts.workflow.GoalPlanningPreparationSchemaPaths
@@ -53,14 +52,12 @@ import skillbill.ports.goalrunner.planning.GoalPlanningContextDiscovery
 import skillbill.ports.goalrunner.planning.model.GoalPlanningBoundaryHeading
 import skillbill.ports.goalrunner.planning.model.GoalPlanningContext
 import skillbill.ports.goalrunner.runner.GoalRunnerManifestStore
-import skillbill.ports.goalrunner.runner.GoalRunnerManifestStoreDefaults
 import skillbill.ports.goalrunner.runner.GoalRunnerSubtaskLauncher
 import skillbill.ports.goalrunner.runner.model.GoalRunnerManifestState
 import skillbill.ports.goalrunner.runner.model.GoalRunnerSubtaskLaunchRequest
 import skillbill.ports.goalrunner.verification.model.GoalVerificationBoundaryDiscovery
 import skillbill.ports.learning.LearningRepository
 import skillbill.ports.persistence.UnitOfWork
-import skillbill.ports.persistence.UnitOfWorkDefaults
 import skillbill.ports.review.ReviewRepository
 import skillbill.ports.taskruntime.FeatureTaskRuntimeRunInvariantsSource
 import skillbill.ports.telemetry.LifecycleTelemetryRepository
@@ -545,8 +542,8 @@ class GoalPlanningSweepPromptTest {
     assertEquals("SKILL-56", record.normalizedIssueKey)
     assertTrue(record.repositoryIdentity.startsWith("repo-root-realpath-v1:"))
     assertEquals(".feature-specs/SKILL-56-goal/spec_subtask_1.md", record.governedSubSpecPath)
-    assertNotNull(JsonCodec.parseObjectOrNull(record.preplanPayload), "preplan payload must be strict JSON")
-    assertNotNull(JsonCodec.parseObjectOrNull(record.planPayload), "plan payload must be strict JSON")
+    assertNotNull(JsonSupport.parseObjectOrNull(record.preplanPayload), "preplan payload must be strict JSON")
+    assertNotNull(JsonSupport.parseObjectOrNull(record.planPayload), "plan payload must be strict JSON")
   }
 
   @Test
@@ -1676,12 +1673,12 @@ class GoalPlanningSweepRejectionTest {
     assertIs<GoalPlanningSweepOutcome.PreparedAll>(outcome)
     val record = harness.recordFor(1)
     assertNotNull(record, "the shared preplan and subtask plan must be persisted")
-    val preplanMap = JsonCodec.parseObjectOrNull(record.preplanPayload)
-      ?.let(JsonCodec::jsonElementToValue)
-      ?.let(JsonCodec::anyToStringAnyMap)
-    val planMap = JsonCodec.parseObjectOrNull(record.planPayload)
-      ?.let(JsonCodec::jsonElementToValue)
-      ?.let(JsonCodec::anyToStringAnyMap)
+    val preplanMap = JsonSupport.parseObjectOrNull(record.preplanPayload)
+      ?.let(JsonSupport::jsonElementToValue)
+      ?.let(JsonSupport::anyToStringAnyMap)
+    val planMap = JsonSupport.parseObjectOrNull(record.planPayload)
+      ?.let(JsonSupport::jsonElementToValue)
+      ?.let(JsonSupport::anyToStringAnyMap)
     assertNotNull(preplanMap, "preplan payload must be strict JSON, not fenced prose")
     assertNotNull(planMap, "plan payload must be strict JSON, not fenced prose")
     assertFalse(record.preplanPayload.contains("```") || record.preplanPayload.contains("Here is"))
@@ -1788,7 +1785,7 @@ class GoalPlanningSweepTimingTest {
       harness.fixtures.database.repository.markPrepared(
         prepared.withSharedPacket { packet ->
           val ordered = packet["ordered_subtasks"] as List<*>
-          val first = requireNotNull(JsonCodec.anyToStringAnyMap(ordered.first()))
+          val first = requireNotNull(JsonSupport.anyToStringAnyMap(ordered.first()))
           packet + ("ordered_subtasks" to listOf(corruptDisposition(first)))
         },
       )
@@ -2364,12 +2361,12 @@ private fun legacyV03Packet(
 }
 
 private fun normalizedPlanningOutput(payload: String): NormalizedFeatureTaskRuntimePhaseOutput {
-  val envelope = JsonCodec.parseObjectOrNull(payload)
-    ?.let(JsonCodec::jsonElementToValue)
-    ?.let(JsonCodec::anyToStringAnyMap)
+  val envelope = JsonSupport.parseObjectOrNull(payload)
+    ?.let(JsonSupport::jsonElementToValue)
+    ?.let(JsonSupport::anyToStringAnyMap)
     ?: error("fixture phase output is not an object")
   return NormalizedFeatureTaskRuntimePhaseOutput(
-    canonicalJson = JsonCodec.mapToJsonString(envelope),
+    canonicalJson = JsonSupport.mapToJsonString(envelope),
     envelope = envelope,
   )
 }
@@ -2378,14 +2375,14 @@ private fun GoalPlanningPreparationRecord.withSharedPacket(
   transform: (Map<String, Any?>) -> Map<String, Any?>,
 ): GoalPlanningPreparationRecord {
   val root = preplanRoot()
-  val produced = requireNotNull(JsonCodec.anyToStringAnyMap(root["produced_outputs"]))
-  val packet = requireNotNull(JsonCodec.anyToStringAnyMap(produced["_goal_planning_shared_context"]))
+  val produced = requireNotNull(JsonSupport.anyToStringAnyMap(root["produced_outputs"]))
+  val packet = requireNotNull(JsonSupport.anyToStringAnyMap(produced["_goal_planning_shared_context"]))
   val transformed = transform(packet - "integrity_sha256")
   val packetWithIntegrity = transformed + (
-    "integrity_sha256" to sha256HexUtf8(JsonCodec.mapToJsonString(transformed))
+    "integrity_sha256" to sha256HexUtf8(JsonSupport.mapToJsonString(transformed))
     )
   return copy(
-    preplanPayload = JsonCodec.mapToJsonString(
+    preplanPayload = JsonSupport.mapToJsonString(
       root + ("produced_outputs" to (produced + ("_goal_planning_shared_context" to packetWithIntegrity))),
     ),
   )
@@ -2393,15 +2390,15 @@ private fun GoalPlanningPreparationRecord.withSharedPacket(
 
 private fun GoalPlanningPreparationRecord.withoutSharedPacket(): GoalPlanningPreparationRecord {
   val root = preplanRoot()
-  val produced = requireNotNull(JsonCodec.anyToStringAnyMap(root["produced_outputs"]))
+  val produced = requireNotNull(JsonSupport.anyToStringAnyMap(root["produced_outputs"]))
   val withoutPacket = root + ("produced_outputs" to (produced - "_goal_planning_shared_context"))
-  return copy(preplanPayload = JsonCodec.mapToJsonString(withoutPacket))
+  return copy(preplanPayload = JsonSupport.mapToJsonString(withoutPacket))
 }
 
 private fun GoalPlanningPreparationRecord.preplanRoot(): Map<String, Any?> =
-  requireNotNull(JsonCodec.parseObjectOrNull(preplanPayload))
-    .let(JsonCodec::jsonElementToValue)
-    .let { requireNotNull(JsonCodec.anyToStringAnyMap(it)) }
+  requireNotNull(JsonSupport.parseObjectOrNull(preplanPayload))
+    .let(JsonSupport::jsonElementToValue)
+    .let { requireNotNull(JsonSupport.anyToStringAnyMap(it)) }
 
 private fun validPhaseOutcome(phase: String): AgentRunLaunchOutcome = launchFacts(stdout = phasePayload(phase))
 
@@ -2550,9 +2547,9 @@ private class FakeInvariantsSource : FeatureTaskRuntimeRunInvariantsSource {
 
 private class FakePhaseOutputValidator : FeatureTaskRuntimePhaseOutputValidator {
   override fun validatePhaseOutputText(phaseOutputText: String, sourceLabel: String) {
-    val output = JsonCodec.parseObjectOrNull(phaseOutputText)
-      ?.let(JsonCodec::jsonElementToValue)
-      ?.let(JsonCodec::anyToStringAnyMap)
+    val output = JsonSupport.parseObjectOrNull(phaseOutputText)
+      ?.let(JsonSupport::jsonElementToValue)
+      ?.let(JsonSupport::anyToStringAnyMap)
       ?: throw malformed(sourceLabel, "Phase output root must be a single JSON object.")
     val contractVersion = output["contract_version"]?.toString()
     val phaseId = output["phase_id"]?.toString()
@@ -2587,9 +2584,9 @@ private class FenceAwarePhaseOutputValidator : FeatureTaskRuntimePhaseOutputVali
         sourceLabel = sourceLabel,
         reason = "Phase output root must contain a single JSON object.",
       )
-    val output = JsonCodec.parseObjectOrNull(candidate)
-      ?.let(JsonCodec::jsonElementToValue)
-      ?.let(JsonCodec::anyToStringAnyMap)
+    val output = JsonSupport.parseObjectOrNull(candidate)
+      ?.let(JsonSupport::jsonElementToValue)
+      ?.let(JsonSupport::anyToStringAnyMap)
       ?: throw InvalidFeatureTaskRuntimePhaseOutputSchemaError(
         sourceLabel = sourceLabel,
         reason = "Phase output root must be a single JSON object.",
@@ -2777,13 +2774,13 @@ private class InMemoryPreparationRepository(
   fun blankSettledPreplanValue(identity: GoalPlanningIdentity) {
     val settled = requireNotNull(findSharedPreplan(identity))
     val root = requireNotNull(
-      JsonCodec.parseObjectOrNull(settled.preplanPayload)
-        ?.let(JsonCodec::jsonElementToValue)
-        ?.let(JsonCodec::anyToStringAnyMap),
+      JsonSupport.parseObjectOrNull(settled.preplanPayload)
+        ?.let(JsonSupport::jsonElementToValue)
+        ?.let(JsonSupport::anyToStringAnyMap),
     )
-    val produced = requireNotNull(JsonCodec.anyToStringAnyMap(root["produced_outputs"]))
+    val produced = requireNotNull(JsonSupport.anyToStringAnyMap(root["produced_outputs"]))
     overwriteSharedPreplanPayload(
-      JsonCodec.mapToJsonString(root + ("produced_outputs" to (produced + ("value" to "   ")))),
+      JsonSupport.mapToJsonString(root + ("produced_outputs" to (produced + ("value" to "   ")))),
     )
   }
 
@@ -2912,7 +2909,7 @@ private class InMemoryPreparationDatabase(
   @Synchronized
   override fun <T> transaction(dbOverride: String?, block: (UnitOfWork) -> T): T = block(unitOfWork())
 
-  private fun unitOfWork(): UnitOfWork = object : UnitOfWorkDefaults() {
+  private fun unitOfWork(): UnitOfWork = object : UnitOfWork {
     override val dbPath: Path = this@InMemoryPreparationDatabase.dbPath
     override val reviews: ReviewRepository get() = error("unused by goal planning sweep tests")
     override val learnings: LearningRepository get() = error("unused by goal planning sweep tests")
@@ -3115,7 +3112,7 @@ private class RecordingRuntimeTimingPort(
   }
 }
 
-private class MutablePauseGoalPlanningManifestStore : GoalRunnerManifestStoreDefaults() {
+private class MutablePauseGoalPlanningManifestStore : GoalRunnerManifestStore {
   var pauseRequested: Boolean = false
 
   override fun loadByIssueKey(issueKey: String, dbPathOverride: String?, repoRoot: Path?): GoalRunnerManifestState? =
@@ -3173,7 +3170,7 @@ private val fakeContextDiscovery = object : GoalPlanningContextDiscovery {
     )
 }
 
-private object NoopGoalPlanningManifestStore : GoalRunnerManifestStoreDefaults() {
+private object NoopGoalPlanningManifestStore : GoalRunnerManifestStore {
   override fun loadByIssueKey(issueKey: String, dbPathOverride: String?, repoRoot: Path?): GoalRunnerManifestState? =
     null
 
@@ -3219,7 +3216,7 @@ private class TrackingPlanningAuthorization : AgentRunSpawnAuthorization {
 
 private class AuthorizingGoalPlanningManifestStore(
   private val authorization: AgentRunSpawnAuthorization,
-) : GoalRunnerManifestStoreDefaults() {
+) : GoalRunnerManifestStore {
   override fun loadByIssueKey(issueKey: String, dbPathOverride: String?, repoRoot: Path?): GoalRunnerManifestState? =
     null
 

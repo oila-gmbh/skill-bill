@@ -3,7 +3,6 @@ package skillbill.install.plan
 import skillbill.error.InvalidInternalSkillClassificationError
 import skillbill.install.model.InstallPlanSkill
 import skillbill.install.model.InstallPlanSkillKind
-import skillbill.ports.repository.toFileLocation
 import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.test.AfterTest
@@ -172,7 +171,7 @@ class InstallPlanInternalSkillDiscoveryTest {
     kind: InstallPlanSkillKind = InstallPlanSkillKind.BASE,
   ): InstallPlanSkill = InstallPlanSkill(
     name = name,
-    sourceDir = Path.of("/repo/skills/$name").toAbsolutePath().normalize().toFileLocation(),
+    sourceDir = Path.of("/repo/skills/$name").toAbsolutePath().normalize(),
     kind = kind,
     platformSlug = if (kind == InstallPlanSkillKind.PLATFORM_PACK) "kotlin" else null,
     internalFor = internalFor,

@@ -1,9 +1,9 @@
 package skillbill.infrastructure.fs.validation
 
-import skillbill.contracts.time.JvmSystemClock
-import skillbill.workflow.taskruntime.model.ValidationGateCacheMode
+import skillbill.ports.time.JvmSystemClock
+import skillbill.ports.validation.model.ValidationGateCacheMode
 import skillbill.ports.validation.model.ValidationGateFindingParseMode
-import skillbill.workflow.taskruntime.model.ValidationGateRunOutcome
+import skillbill.ports.validation.model.ValidationGateRunOutcome
 import skillbill.ports.validation.model.ValidationGateRunRequest
 import skillbill.scaffold.model.ValidationGateCompilerDiagnosticsFormat
 import skillbill.scaffold.model.ValidationGateCompilerDiagnosticsLocator

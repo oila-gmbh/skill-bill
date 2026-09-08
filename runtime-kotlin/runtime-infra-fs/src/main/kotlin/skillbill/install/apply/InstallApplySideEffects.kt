@@ -13,10 +13,8 @@ import skillbill.install.model.McpRegistrationApplyOutcome
 import skillbill.install.model.McpRegistrationApplyStatus
 import skillbill.install.support.resolveTelemetryConfigPath
 import skillbill.model.EnvironmentContext
-import skillbill.model.toPath
 import skillbill.ports.install.mcp.InstallMcpRegistrationPort
 import skillbill.ports.install.mcp.model.InstallMcpRegistrationRequest
-import skillbill.ports.repository.toFileLocation
 import skillbill.ports.telemetry.TelemetryConfigStore
 import skillbill.ports.telemetry.TelemetryLevelMutator
 import skillbill.ports.telemetry.writeTelemetryLevel
@@ -35,7 +33,7 @@ internal fun applyTelemetryIntent(
 ): InstallTelemetryApplyOutcome {
   val environmentContext = EnvironmentContext(
     environment = plan.request.environment.ifEmpty { System.getenv() },
-    userHome = plan.request.home.toPath(),
+    userHome = plan.request.home,
   )
   val configPath = resolveTelemetryConfigPath(environmentContext.environment, environmentContext.userHome)
   val existedBefore = Files.exists(configPath)
@@ -55,7 +53,7 @@ internal fun applyTelemetryIntent(
     InstallTelemetryApplyOutcome(
       level = plan.telemetryLevel,
       status = status,
-      configPath = configPath.toFileLocation(),
+      configPath = configPath,
       clearedEvents = clearedEvents,
       message = telemetryOutcomeMessage(plan.telemetryLevel.id, status),
     )
@@ -69,7 +67,7 @@ internal fun applyTelemetryIntent(
     InstallTelemetryApplyOutcome(
       level = plan.telemetryLevel,
       status = InstallTelemetryApplyStatus.FAILED,
-      configPath = configPath.toFileLocation(),
+      configPath = configPath,
       message = "Telemetry setup failed.",
       issue = issue,
     )
@@ -139,7 +137,7 @@ internal fun applyMcpRegistrationIntent(
       )
     }
     else -> intent.agents.map { agent ->
-      registerMcpAgent(agent, runtimeMcpBin.toPath(), plan, warnings, mcpRegistrationPort)
+      registerMcpAgent(agent, runtimeMcpBin, plan, warnings, mcpRegistrationPort)
     }
   }
 }
@@ -148,7 +146,7 @@ internal fun skippedTelemetryOutcome(plan: InstallPlan, message: String): Instal
   InstallTelemetryApplyOutcome(
     level = plan.telemetryLevel,
     status = InstallTelemetryApplyStatus.SKIPPED,
-    configPath = resolveTelemetryConfigPath(emptyMap(), plan.request.home.toPath()).toFileLocation(),
+    configPath = resolveTelemetryConfigPath(emptyMap(), plan.request.home),
     message = message,
   )
 
@@ -178,7 +176,7 @@ private fun registerMcpAgent(
     InstallMcpRegistrationRequest(
       agent = agent.id,
       runtimeMcpBin = runtimeMcpBin,
-      home = plan.request.home.toPath(),
+      home = plan.request.home,
     ),
   ).mutation
   McpRegistrationApplyOutcome(

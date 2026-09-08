@@ -1,8 +1,7 @@
 package skillbill.application.goalrunner.planning
 import skillbill.application.goalplanning.sha256HexUtf8
-import skillbill.contracts.JsonCodec
+import skillbill.contracts.JsonSupport
 import skillbill.ports.goalrunner.planning.model.GoalPlanningContext
-import skillbill.ports.goalrunner.planning.model.GoalPlanningBoundaryHeadingKind
 
 object GoalPlanningSharedContextPacketValidation {
   private val BOUNDARY_MEMORY_FIELDS = setOf("catalog", "truncated")
@@ -34,9 +33,7 @@ object GoalPlanningSharedContextPacketValidation {
     require(sourcePath.isNotBlank() && !sourcePath.startsWith("/") && ".." !in sourcePath) {
       "shared context boundary memory source path is invalid"
     }
-    require(GoalPlanningBoundaryHeadingKind.fromWire(entry["kind"] as String) in CATALOG_KINDS) {
-      "shared context boundary memory kind is invalid"
-    }
+    require(entry["kind"] as String in CATALOG_KINDS) { "shared context boundary memory kind is invalid" }
     require((entry["heading"] as String).length <= GoalPlanningContext.MAX_HEADING_TEXT_CHARS) {
       "shared context boundary memory heading exceeds the length cap"
     }
@@ -94,5 +91,5 @@ object GoalPlanningSharedContextPacketValidation {
   fun isStringMap(value: Any?): Boolean =
     value is Map<*, *> && value.keys.all { it is String } && value.values.all { it is String }
 
-  fun digest(packet: Map<String, Any?>): String = sha256HexUtf8(JsonCodec.mapToJsonString(packet))
+  fun digest(packet: Map<String, Any?>): String = sha256HexUtf8(JsonSupport.mapToJsonString(packet))
 }

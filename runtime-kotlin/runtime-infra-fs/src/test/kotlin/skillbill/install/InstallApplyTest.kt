@@ -17,8 +17,6 @@ import skillbill.install.model.WindowsSymlinkDecision
 import skillbill.install.model.WindowsSymlinkFallbackState
 import skillbill.install.model.WindowsSymlinkPreflight
 import skillbill.install.model.WindowsSymlinkPreflightState
-import skillbill.model.toPath
-import skillbill.ports.repository.toFileLocation
 import java.nio.file.Files
 import java.nio.file.LinkOption
 import kotlin.test.Test
@@ -61,7 +59,7 @@ class InstallApplyTest : InstallApplyTestSupport() {
     assertFalse(skillsByName.containsKey("bill-kotlin-code-check"), "internal platform quality-check skill was applied")
     result.skills.forEach { skill ->
       assertEquals(InstallSkillStagingStatus.STAGED, skill.staging.status)
-      assertStagingUnderHomeCacheAndOutsideSource(fixture, skill.staging.stagingDir?.toPath(), skill.skillName)
+      assertStagingUnderHomeCacheAndOutsideSource(fixture, skill.staging.stagingDir, skill.skillName)
       assertEquals(setOf(InstallAgent.CODEX, InstallAgent.CLAUDE), skill.links.map { link -> link.agent }.toSet())
       assertTrue(skill.links.all { link -> link.status == InstallAgentLinkStatus.CREATED })
     }
@@ -70,7 +68,7 @@ class InstallApplyTest : InstallApplyTestSupport() {
       result.nativeAgents.map { native -> native.provider }.toSet(),
       setOf(NativeAgentProviderId.CLAUDE, NativeAgentProviderId.CODEX),
     )
-    val nativeArtifactNames = result.nativeAgents.mapNotNull { native -> native.path?.fileName }
+    val nativeArtifactNames = result.nativeAgents.mapNotNull { native -> native.path?.fileName?.toString() }
     assertTrue(nativeArtifactNames.any { name -> "bill-kotlin-code-review-worker" in name })
     assertFalse(nativeArtifactNames.any { name -> "bill-kmp-code-review-worker" in name })
     assertTrue(result.nativeAgents.any { native -> native.status == NativeAgentApplyStatus.LINKED })
@@ -78,7 +76,7 @@ class InstallApplyTest : InstallApplyTestSupport() {
       .filter { native -> native.status == NativeAgentApplyStatus.LINKED }
       .mapNotNull { native -> native.path }
       .forEach { link ->
-        val target = readSymlinkTarget(link.toPath())
+        val target = readSymlinkTarget(link)
         val installedSkills = fixture.home.toAbsolutePath().normalize().resolve(".skill-bill/installed-skills")
         assertTrue(target.startsWith(installedSkills), "target=$target installedSkills=$installedSkills")
         assertFalse(target.startsWith(fixture.home.toAbsolutePath().normalize().resolve(".skill-bill/native-agents")))
@@ -289,7 +287,7 @@ class InstallApplyTest : InstallApplyTestSupport() {
     val result = applyInstallForTest(plan)
 
     assertEquals(InstallApplyStatus.SUCCESS, result.status)
-    val nativeArtifactNames = result.nativeAgents.mapNotNull { native -> native.path?.fileName }
+    val nativeArtifactNames = result.nativeAgents.mapNotNull { native -> native.path?.fileName?.toString() }
     assertTrue(nativeArtifactNames.any { name -> "bill-kotlin-code-review-worker" in name })
     assertFalse(nativeArtifactNames.any { name -> "bill-kmp-code-review-worker" in name })
     assertFalse(nativeArtifactNames.any { name -> "bill-malformed" in name })
@@ -322,7 +320,7 @@ class InstallApplyTest : InstallApplyTestSupport() {
     val result = applyInstallForTest(plan)
 
     assertEquals(InstallApplyStatus.SUCCESS, result.status)
-    val nativeArtifactNames = result.nativeAgents.mapNotNull { native -> native.path?.fileName }
+    val nativeArtifactNames = result.nativeAgents.mapNotNull { native -> native.path?.fileName?.toString() }
     assertFalse(nativeArtifactNames.any { name -> "bill-kmp-legacy-worker" in name })
   }
 
@@ -355,7 +353,7 @@ class InstallApplyTest : InstallApplyTestSupport() {
     val result = applyInstallForTest(plan)
 
     assertEquals(InstallApplyStatus.SUCCESS, result.status)
-    val nativeArtifactNames = result.nativeAgents.mapNotNull { native -> native.path?.fileName }
+    val nativeArtifactNames = result.nativeAgents.mapNotNull { native -> native.path?.fileName?.toString() }
     assertFalse(nativeArtifactNames.any { name -> "bill-kotlin-unplanned-worker" in name })
   }
 
@@ -370,7 +368,7 @@ class InstallApplyTest : InstallApplyTestSupport() {
       ),
     )
     val tampered = plan.copy(
-      staging = plan.staging.copy(root = fixture.home.resolve("outside-installed-skills").toFileLocation()),
+      staging = plan.staging.copy(root = fixture.home.resolve("outside-installed-skills")),
     )
 
     val result = applyInstallForTest(tampered)
@@ -380,7 +378,7 @@ class InstallApplyTest : InstallApplyTestSupport() {
       .filter { native -> native.status == NativeAgentApplyStatus.LINKED }
       .mapNotNull { native -> native.path }
       .forEach { link ->
-        val target = readSymlinkTarget(link.toPath())
+        val target = readSymlinkTarget(link)
         assertTrue(target.startsWith(fixture.home.resolve(".skill-bill/installed-skills")))
         assertFalse(target.startsWith(fixture.home.resolve("outside-installed-skills")))
       }

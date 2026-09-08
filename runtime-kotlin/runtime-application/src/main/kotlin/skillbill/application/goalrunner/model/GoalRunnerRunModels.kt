@@ -4,7 +4,6 @@ import skillbill.agentaddon.model.HydratedAgentAddonSelection
 import skillbill.ports.agentrun.model.AgentRunOutputSink
 import skillbill.review.context.model.CodeReviewExecutionMode
 import skillbill.workflow.goal.model.GoalSubtaskReviewCompactFinding
-import skillbill.goalrunner.model.GoalPullRequestStatus
 import java.nio.file.Path
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.minutes
@@ -84,7 +83,7 @@ sealed interface GoalRunnerRunEvent {
     val completedCount: Int,
     val pendingCount: Int,
     val blockedCount: Int,
-    val pullRequestStatus: GoalPullRequestStatus,
+    val pullRequestStatus: String,
     val pullRequestUrl: String?,
   ) : GoalRunnerRunEvent
 }

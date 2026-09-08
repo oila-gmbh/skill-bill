@@ -1,16 +1,16 @@
 package skillbill.install.model
 
-import skillbill.model.FileLocation
 import skillbill.scaffold.model.CodeReviewBaselineLayer
+import java.nio.file.Path
 
 data class InstallAgentDefaultTarget(
   val agent: InstallAgent,
-  val path: FileLocation,
+  val path: Path,
 )
 
 data class InstallPlatformPackSnapshot(
   val slug: String,
-  val packRoot: FileLocation,
+  val packRoot: Path,
   val skills: List<InstallPlanSkill>,
   /**
    * SKILL-104 (PD8): the pack's required code-review baseline layers (from
@@ -23,7 +23,7 @@ data class InstallPlatformPackSnapshot(
 
 data class InstallPlatformPackDiscoverySnapshot(
   val slug: String,
-  val packRoot: FileLocation,
+  val packRoot: Path,
   val baselineLayers: List<CodeReviewBaselineLayer> = emptyList(),
 )
 

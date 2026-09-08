@@ -8,7 +8,6 @@ import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
-import skillbill.review.model.ReviewExecutionMode
 
 /**
  * SKILL-136 subtask 4 AC-001/002/003/007: attribution values resolve to a controlled canonical
@@ -178,10 +177,11 @@ class ReviewAttributionCanonicalizationTest {
 
   @Test
   fun `execution mode prefers the reported value then delegation evidence then unresolved`() {
-    assertEquals(ReviewExecutionMode.INLINE, resolveExecutionMode(ReviewExecutionMode.INLINE, emptyList()))
-    assertEquals(ReviewExecutionMode.INLINE, resolveExecutionMode(ReviewExecutionMode.INLINE, listOf("architecture")))
-    assertEquals(ReviewExecutionMode.DELEGATED, resolveExecutionMode(null, listOf("architecture")))
-    assertEquals(ReviewExecutionMode.UNRESOLVED, resolveExecutionMode(null, emptyList()))
+    assertEquals("inline", resolveExecutionMode("inline", emptyList()))
+    assertEquals("inline", resolveExecutionMode("inline", listOf("architecture")))
+    assertEquals(EXECUTION_MODE_DELEGATED, resolveExecutionMode(null, listOf("architecture")))
+    assertEquals(UNRESOLVED_ATTRIBUTION, resolveExecutionMode(null, emptyList()))
+    assertEquals(UNRESOLVED_ATTRIBUTION, resolveExecutionMode("  ", emptyList()))
     assertTrue(UNRESOLVED_ATTRIBUTION !in listOf("inline", EXECUTION_MODE_DELEGATED))
   }
 

@@ -126,7 +126,7 @@ data class ReviewFinishedTelemetry(
   val fallbackReason: String?,
   val platformSlug: String,
   val scopeType: String,
-  val executionMode: ReviewExecutionMode?,
+  val executionMode: String?,
   val reviewFinishedAt: String?,
   val learnings: ReviewLearningsSummary,
   val stageMetrics: ReviewStageMetrics,

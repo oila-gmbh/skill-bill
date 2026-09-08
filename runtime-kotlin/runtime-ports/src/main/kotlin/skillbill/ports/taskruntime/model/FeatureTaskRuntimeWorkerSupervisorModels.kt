@@ -14,13 +14,6 @@ sealed interface FeatureTaskRuntimeProcessInspection {
   data class Unsupported(val reason: String) : FeatureTaskRuntimeProcessInspection
 }
 
-fun FeatureTaskRuntimeProcessInspection.isConfirmedDead(): Boolean = when (this) {
-  FeatureTaskRuntimeProcessInspection.NotRunning -> true
-  FeatureTaskRuntimeProcessInspection.ExactLive -> false
-  is FeatureTaskRuntimeProcessInspection.OwnershipMismatch -> false
-  is FeatureTaskRuntimeProcessInspection.Unsupported -> false
-}
-
 /**
  * Outcome of one heartbeat tick. A tick that throws or fails transiently — a contended database being
  * the common case — must never end lease renewal: the lease is the only liveness evidence status and

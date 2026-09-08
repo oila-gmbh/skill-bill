@@ -5,9 +5,8 @@ import skillbill.agentaddon.model.AgentAddonCatalogueEntry
 import skillbill.agentaddon.model.AgentAddonCatalogueInspection
 import skillbill.agentaddon.model.AgentAddonConsumer
 import skillbill.agentaddon.model.AgentAddonDeclaration
-import skillbill.contracts.JsonCodec
+import skillbill.contracts.JsonSupport
 import skillbill.error.MissingAgentAddonDeclarationError
-import skillbill.ports.repository.toFileLocation
 import java.nio.file.Files
 import java.nio.file.LinkOption
 import java.nio.file.NoSuchFileException
@@ -103,7 +102,7 @@ internal fun parseSource(sourceRoot: Path, validator: AgentAddonSchemaValidator)
     }
     val parsed: Any? = YAMLMapper().readValue(Files.readString(manifest), Any::class.java)
     if (parsed !is Map<*, *>) invalid(sourceLabel, "manifest must be a top-level mapping")
-    val values = requireNotNull(JsonCodec.anyToStringAnyMap(parsed))
+    val values = requireNotNull(JsonSupport.anyToStringAnyMap(parsed))
     validator.validate(values, sourceLabel)
     val slug = values.string("slug", sourceLabel)
     val description = values.string("description", sourceLabel)
@@ -132,18 +131,18 @@ internal fun parseSource(sourceRoot: Path, validator: AgentAddonSchemaValidator)
       description = description,
       agents = agents,
       consumers = consumers,
-      addonRoot = sourceRoot.toFileLocation(),
-      manifestPath = manifest.toFileLocation(),
-      contentPath = content.toFileLocation(),
-      canonicalSourceIdentity = manifest.toRealPath().toFileLocation(),
+      addonRoot = sourceRoot,
+      manifestPath = manifest,
+      contentPath = content,
+      canonicalSourceIdentity = manifest.toRealPath(),
     )
   }
 }
 
 private fun validateSourceCoherence(candidates: List<AgentAddonDeclaration>) {
   val violations = mutableListOf<String>()
-  candidates.filter { it.addonRoot.fileName != it.slug }.forEach { declaration ->
-    violations += "${declaration.manifestPath}: source directory '${declaration.addonRoot.fileName}' " +
+  candidates.filter { it.addonRoot.name != it.slug }.forEach { declaration ->
+    violations += "${declaration.manifestPath}: source directory '${declaration.addonRoot.name}' " +
       "must match slug '${declaration.slug}'"
   }
   candidates.groupBy { it.slug }.filterValues { it.size > 1 }.forEach { (slug, declarations) ->

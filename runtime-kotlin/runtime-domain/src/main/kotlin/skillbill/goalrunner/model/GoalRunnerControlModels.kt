@@ -1,8 +1,6 @@
 package skillbill.goalrunner.model
 
 import skillbill.workflow.decomposition.model.DecompositionManifest
-import skillbill.workflow.model.DecompositionStatus
-import skillbill.workflow.model.decompositionStatus
 
 data class GoalRunnerExecutionLease(
   val generation: Long,
@@ -104,8 +102,6 @@ data class GoalRunnerControlState(
   fun requiresPauseBoundary(manifest: DecompositionManifest): Boolean = pauseRequested || paused || (
     stopAfterSubtaskId != null &&
       !stopAfterConsumed &&
-      manifest.subtasks.any {
-        it.id == stopAfterSubtaskId && it.status.decompositionStatus() == DecompositionStatus.COMPLETE
-      }
+      manifest.subtasks.any { it.id == stopAfterSubtaskId && it.status == "complete" }
     )
 }

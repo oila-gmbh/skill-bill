@@ -9,14 +9,23 @@ import skillbill.workflow.decomposition.model.SpecSource
 import skillbill.workflow.goal.model.GoalSubtaskOperatorDecision
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseOutputValidator
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeOperatorBlockRetry
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeProducerIteration
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeTransitionDeclaration
 import skillbill.workflow.taskruntime.model.PhaseHandoffProjectionDeclaration
-import skillbill.workflow.model.WorkflowStepStatus
-import skillbill.workflow.model.workflowStepStatus
 import java.nio.file.Path
 import java.time.Clock
+
+internal data class FeatureTaskRuntimeRunLoopDependencies(
+  val recorder: FeatureTaskRuntimePhaseRecorder,
+  val goalContinuationRecorder: FeatureTaskRuntimeGoalContinuationRecorder,
+  val outputValidator: FeatureTaskRuntimePhaseOutputValidator,
+  val phaseGates: FeatureTaskRuntimePhaseGates,
+  val subtaskLauncher: GoalRunnerSubtaskLauncher,
+  val phaseSettlementService: FeatureTaskPhaseSettlementService,
+  val activityStampWriter: AgentActivityStampWriter,
+  val clock: Clock,
+  val collaborators: FeatureTaskRuntimeRunLoopCollaborators,
+)
 
 internal data class FeatureTaskRuntimeRunLoopContext(
   val request: FeatureTaskRuntimeRunRequest,
@@ -79,6 +88,8 @@ fun reconcileCheckpointPathInventory(
   }.distinct()
 }
 
+// A reservation at or below the completed-review-output count is a stale latch from the pass that
+// already produced a result: re-entry must report the next ordinal, not replay pass one forever.
 fun resolveReviewPassNumber(reservedPassNumber: Int?, completedReviewPassCount: Int): Int {
   reservedPassNumber?.let { pass ->
     require(pass == 1) { "Review reservation allows only pass 1, was $pass." }
@@ -90,23 +101,25 @@ fun resolveReviewPassNumber(reservedPassNumber: Int?, completedReviewPassCount: 
 }
 
 class FeatureTaskRuntimeRunLoop internal constructor(
-  val recorder: FeatureTaskRuntimePhaseRecorder,
-  val goalContinuationRecorder: FeatureTaskRuntimeGoalContinuationRecorder,
-  val outputValidator: FeatureTaskRuntimePhaseOutputValidator,
-  val phaseGates: FeatureTaskRuntimePhaseGates,
-  val subtaskLauncher: GoalRunnerSubtaskLauncher,
-  val phaseSettlementService: FeatureTaskPhaseSettlementService,
-  val activityStampWriter: AgentActivityStampWriter,
-  val clock: Clock,
+  internal val dependencies: FeatureTaskRuntimeRunLoopDependencies,
   context: FeatureTaskRuntimeRunLoopContext,
   val diagnostics: RuntimeDiagnostics,
 ) {
+  val collaborators get() = dependencies.collaborators
   val request = context.request
   val state = context.state
   val observability = context.observability
   val specSource = context.specSource
   val transitions = context.transitions
   val phaseTokenAccumulator = context.phaseTokenAccumulator
+  val recorder get() = dependencies.recorder
+  val goalContinuationRecorder get() = dependencies.goalContinuationRecorder
+  val outputValidator get() = dependencies.outputValidator
+  val phaseGates get() = dependencies.phaseGates
+  val subtaskLauncher get() = dependencies.subtaskLauncher
+  val phaseSettlementService get() = dependencies.phaseSettlementService
+  val activityStampWriter get() = dependencies.activityStampWriter
+  val clock get() = dependencies.clock
   val branchSetupRunner get() = phaseGates.branchSetupRunner
   val planningStopper get() = phaseGates.planningStopper
   val gitOperations get() = phaseGates.gitOperations
@@ -116,56 +129,56 @@ class FeatureTaskRuntimeRunLoop internal constructor(
   val buildGateCoordinator get() = phaseGates.buildGateCoordinator
 
   internal val session = FeatureTaskRuntimeRunLoopSession(
-    operatorBlockRetry = recorder
-      .loadOperatorBlockRetry(request.workflowId, request.dbPathOverride)
+    operatorBlockRetry = dependencies.recorder
+      .loadOperatorBlockRetry(context.request.workflowId, context.request.dbPathOverride)
       ?.takeIf { retry ->
-        state.recordFor(retry.phaseId)?.status.let { status ->
-          status == null || status.workflowStepStatus() == WorkflowStepStatus.PENDING
-        }
+        context.state.recordFor(retry.phaseId)?.status.let { status -> status == null || status == "pending" }
       },
     initialPendingReentry = null,
   )
 
   init {
-    session.pendingReentry = FeatureTaskRuntimeRunLoopDrive.resumedReentry(this)
+    session.pendingReentry = collaborators.drive.resumedReentry(this)
     session.activeReentry = session.pendingReentry
   }
 
   fun drive() {
-    FeatureTaskRuntimeRunLoopDrive.invalidateReviewGenerationIfNeeded(this)
-    FeatureTaskRuntimeRunLoopDrive.loadMigratedAuditGapPause(this)?.let { pause ->
-      if (FeatureTaskRuntimeRunLoopDrive.resolveAuditGapPauseDriveAction(
+    collaborators.driveContinued3.invalidateReviewGenerationIfNeeded(this)
+    collaborators.driveContinued3.loadMigratedAuditGapPause(this)?.let { pause ->
+      if (collaborators.driveContinued3.resolveAuditGapPauseDriveAction(
           this,
           pause,
-        ) == FeatureTaskRuntimeRunLoopDrive.AuditGapDriveAction.Stop
+        ) == FeatureTaskRuntimeRunLoopDriveSettlementGate.AuditGapDriveAction.Stop
       ) {
         return
       }
     }
-    if (!FeatureTaskRuntimeRunLoopDrive.validateAuditGapResumeOrBlock(this)) return
-    FeatureTaskRuntimeRunLoopDrive.runPhaseDriveLoop(this)
+    if (!collaborators.driveContinued3.validateAuditGapResumeOrBlock(this)) return
+    collaborators.driveContinued3.runPhaseDriveLoop(this)
   }
 
   internal fun advance(phaseId: String): PhaseSettlement {
-    FeatureTaskRuntimeRunLoopDrive.phaseEntryBlockReason(this, phaseId)?.let { reason ->
-      FeatureTaskRuntimeRunLoopPlanningBranch.blockAt(this, phaseId, reason)
+    collaborators.drive.phaseEntryBlockReason(this, phaseId)?.let { reason ->
+      collaborators.planningBranch.blockAt(this, phaseId, reason)
       return PhaseSettlement.stop()
     }
     if (phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW && isGoalContinuationRun(request)) {
-      val carriedForward = FeatureTaskRuntimeRunLoopDrive.carriedForwardGoalReviewSettlement(this)
+      val carriedForward = collaborators.driveContinued2.carriedForwardGoalReviewSettlement(this)
       if (carriedForward != null) {
         return carriedForward
       }
     }
     if (phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT && session.auditGapRetryResumePending) {
       session.auditGapRetryResumePending = false
-      val carried = FeatureTaskRuntimeRunLoopDrive.settleCarriedForwardAuditGapAudit(this)
+      val carried = collaborators.driveContinued1.settleCarriedForwardAuditGapAudit(this)
       if (carried != null) return carried
     }
-    val reason = FeatureTaskRuntimeRunLoopDrive.advancePhaseReason(this, phaseId)
-    return FeatureTaskRuntimeRunLoopDrive.settleAdvanceOutcome(this, phaseId, reason)
+    val reason = collaborators.driveContinued4.advancePhaseReason(this, phaseId)
+    return collaborators.driveContinued4.settleAdvanceOutcome(this, phaseId, reason)
   }
 
+  // Every reason the phase cannot be entered, evaluated in order and short-circuiting: the declared
+  // ordering gate, then the resume cap guard, then the goal review-pass reconciliation.
   fun report(): FeatureTaskRuntimeRunReport {
     val branch = session.resolvedBranch
       ?: recorder.loadResolvedBranch(request.workflowId, request.dbPathOverride)?.branch
@@ -185,26 +198,15 @@ class FeatureTaskRuntimeRunLoop internal constructor(
   fun applyOperatorDecision(decision: GoalSubtaskOperatorDecision): String? {
     val auditGapPause = recorder.loadAuditGapPause(request.workflowId, request.dbPathOverride)
     if (auditGapPause != null) {
-      return FeatureTaskRuntimeRunLoopPlanningBranch.applyAuditGapPauseDecision(this, auditGapPause, decision)
+      return collaborators.planningBranch.applyAuditGapPauseDecision(this, auditGapPause, decision)
     }
     return "Operator decisions over review remediation are removed; " +
       "the run advances to validate after one implement_fix round."
   }
-}
 
-internal class FeatureTaskRuntimeRunLoopSession(
-  internal val operatorBlockRetry: FeatureTaskRuntimeOperatorBlockRetry?,
-  initialPendingReentry: PendingReentry?,
-) {
-  internal val phaseContentIdentities = mutableMapOf<String, Map<String, String>>()
-  var resolvedBranch: String? = null
-  var checkpointOwnershipDecided: Boolean = false
-  var blocked: FeatureTaskRuntimeRunReport.Blocked? = null
-  var paused: FeatureTaskRuntimeRunReport.Paused? = null
-  var auditGapRetryResumePending: Boolean = false
-  var decomposed: FeatureTaskRuntimeRunReport.Decomposed? = null
-  var operatorBlockRetryCompleted: Boolean = false
-  var pendingReentry: PendingReentry? = initialPendingReentry
-  var activeReentry: PendingReentry? = initialPendingReentry
-  var recordRejectionSettlementPending: Boolean = false
+  /**
+   * Applies an operator decision to a durable audit-gap pause without any review state. `retry_fix`
+   * sets the single-use grant (in-session flag plus the durable decision); `abandon_subtask` records
+   * the decision for the abandon path on resume; `accept_and_advance` is rejected for this pause class.
+   */
 }

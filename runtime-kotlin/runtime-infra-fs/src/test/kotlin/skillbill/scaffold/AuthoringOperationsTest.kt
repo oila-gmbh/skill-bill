@@ -68,7 +68,7 @@ class AuthoringOperationsTest {
     val status = AuthoringOperations.show(repo, skillName, contentMode = "none")
 
     assertEquals(skillName, status.skillName)
-    assertEquals("complete", status.completionStatus.wireValue)
+    assertEquals("complete", status.completionStatus)
     assertEquals(null, status.contentPreview, "content=none must not surface a content preview")
     assertEquals(null, status.content, "content=none must not surface full content")
     assertEquals(null, status.issues, "show without issues must not surface an issues list")
@@ -160,7 +160,7 @@ class AuthoringOperationsTest {
       )
     val content = Files.readString(contentFile)
 
-    assertEquals("complete", result.mutation.status.completionStatus.wireValue)
+    assertEquals("complete", result.mutation.status.completionStatus)
     assertContains(content, "# Fixture Content\n\nClean authored guidance without wrapper headings.")
     assertEquals(false, "## Descriptor" in content)
     assertEquals(false, "## Execution" in content)

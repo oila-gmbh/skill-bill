@@ -1,6 +1,5 @@
 package skillbill.infrastructure.fs
 
-import skillbill.ports.workflow.gitops.model.WorkflowGitOperationResult
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
@@ -14,13 +13,5 @@ class GitProcessSupportTest {
     assertEquals(GIT_HOOKED_COMMAND_TIMEOUT_SECONDS, gitTimeoutSeconds(listOf("commit", "--amend", "--no-edit")))
     assertEquals(GIT_HOOKED_COMMAND_TIMEOUT_SECONDS, gitTimeoutSeconds(listOf("push", "-u", "origin", "feat/x")))
     assertTrue(GIT_HOOKED_COMMAND_TIMEOUT_SECONDS > GIT_TIMEOUT_SECONDS)
-  }
-
-  @Test
-  fun `withValue changes only successful results`() {
-    val failed = WorkflowGitOperationResult.Failed(error = "failure", value = "diagnostic")
-
-    assertEquals(failed, failed.withValue("replacement"))
-    assertEquals("replacement", WorkflowGitOperationResult.Ok("original").withValue("replacement").value)
   }
 }

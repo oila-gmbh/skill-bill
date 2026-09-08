@@ -1,11 +1,11 @@
 package skillbill.application.goalrunner.planning
 
-import skillbill.contracts.time.JvmSystemClock
 import skillbill.goalplanning.FileSystemGoalPlanningBoundaryBodyResolver
 import skillbill.goalplanning.FileSystemGoalPlanningContextDiscovery
 import skillbill.ports.goalrunner.planning.model.GoalPlanningBoundaryBody
 import skillbill.ports.goalrunner.planning.model.GoalPlanningContext
 import skillbill.ports.goalrunner.planning.model.GoalPlanningResolvedBoundaryBodies
+import skillbill.ports.time.JvmSystemClock
 import skillbill.workflow.decomposition.model.DecompositionSubtask
 import java.nio.file.Files
 import kotlin.test.Test

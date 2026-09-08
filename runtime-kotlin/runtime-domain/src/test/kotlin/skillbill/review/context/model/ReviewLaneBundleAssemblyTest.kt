@@ -435,7 +435,7 @@ class ReviewLaneBundleAssemblyTest {
     val governed = launch(built, fullBundle, ReviewContextBudgetPolicy.DEFAULT.copy(maxLaneLaunchBytes = 1))
 
     val outcome = governed.budgetOutcomeOrNull()
-    assertEquals("lane_launch_bytes", outcome?.budgetKind?.wireValue)
+    assertEquals("lane_launch_bytes", outcome?.budgetKind)
     assertTrue((outcome?.observedValue ?: 0) > 1)
   }
 

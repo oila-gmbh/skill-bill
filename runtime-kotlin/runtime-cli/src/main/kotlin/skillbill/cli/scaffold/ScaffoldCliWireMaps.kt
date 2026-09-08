@@ -29,7 +29,7 @@ internal fun ScaffoldSkillStatus.toWireMap(): Map<String, Any?> {
     "area" to area,
     "content_file" to contentFile,
     "render_command" to renderCommand,
-    "completion_status" to completionStatus.wireValue,
+    "completion_status" to completionStatus,
     "section_count" to sectionCount,
     "sections" to sections.map(ScaffoldSectionStatus::toWireMap),
     "recommended_commands" to recommendedCommands,
@@ -49,7 +49,7 @@ internal fun ScaffoldSkillStatus.toWireMap(): Map<String, Any?> {
 
 internal fun ScaffoldSectionStatus.toWireMap(): Map<String, Any?> = linkedMapOf(
   "heading" to heading,
-  "status" to status.wireValue,
+  "status" to status,
   "line_count" to lineCount,
   "preview" to preview,
 )

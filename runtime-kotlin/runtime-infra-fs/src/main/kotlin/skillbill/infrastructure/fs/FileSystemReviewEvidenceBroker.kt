@@ -13,7 +13,6 @@ import skillbill.ports.review.model.ReviewToolCall
 import skillbill.ports.review.model.ReviewToolCallResult
 import skillbill.review.context.model.LANE_EVIDENCE_BYTES_DIMENSION
 import skillbill.review.context.model.ReviewBudgetEvaluator
-import skillbill.review.context.model.ReviewBudgetKind
 import skillbill.review.context.model.ReviewBudgetOutcome
 import skillbill.review.context.model.ReviewExpansionRecord
 import skillbill.review.context.model.ReviewLaneIdentity
@@ -127,7 +126,7 @@ class FileSystemReviewEvidenceBroker(binding: ReviewEvidenceBrokerBinding) : Rev
     toolCalls += 1
     val outcome = ReviewBudgetEvaluator.exceededOrNull(
       identity,
-      ReviewBudgetKind.SPECIALIST_TOOL_CALLS,
+      "specialist_tool_calls",
       budget.maxSpecialistToolCalls.toLong(),
       toolCalls.toLong(),
     )
@@ -140,7 +139,7 @@ class FileSystemReviewEvidenceBroker(binding: ReviewEvidenceBrokerBinding) : Rev
     modelTurns += 1
     return ReviewBudgetEvaluator.exceededOrNull(
       identity,
-      ReviewBudgetKind.SPECIALIST_MODEL_TURNS,
+      "specialist_model_turns",
       budget.maxSpecialistModelTurns.toLong(),
       modelTurns.toLong(),
     )?.also { readState.terminalOutcome = it }
@@ -170,7 +169,7 @@ class FileSystemReviewEvidenceBroker(binding: ReviewEvidenceBrokerBinding) : Rev
   @Synchronized
   override fun accounting(): ReviewLaneAccounting {
     val terminal = readState.terminalOutcome
-    val evidenceIncomplete = terminal?.budgetKind == ReviewBudgetKind.LANE_EVIDENCE_BYTES
+    val evidenceIncomplete = terminal?.budgetKind == LANE_EVIDENCE_BYTES_DIMENSION
     return ReviewLaneAccounting(
       lane = assignment.lane,
       authorizedReadCount = readState.authorizedReadCount,

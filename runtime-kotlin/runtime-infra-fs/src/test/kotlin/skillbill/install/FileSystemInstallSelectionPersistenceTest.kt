@@ -1,6 +1,6 @@
 package skillbill.install
 
-import skillbill.contracts.JsonCodec
+import skillbill.contracts.JsonSupport
 import skillbill.error.MalformedInstallSelectionRecordError
 import skillbill.error.MissingInstallSelectionRecordError
 import skillbill.error.UnreadableInstallSelectionRecordError
@@ -11,10 +11,8 @@ import skillbill.install.model.McpRegistrationChoice
 import skillbill.install.model.PlatformPackSelection
 import skillbill.install.model.PlatformPackSelectionMode
 import skillbill.install.model.SharedInstallSelection
-import skillbill.model.toPath
 import skillbill.ports.install.selection.model.ReadLatestSuccessfulInstallSelectionRequest
 import skillbill.ports.install.selection.model.WriteLatestSuccessfulInstallSelectionRequest
-import skillbill.ports.repository.toFileLocation
 import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.test.Test
@@ -37,7 +35,7 @@ class FileSystemInstallSelectionPersistenceTest {
       telemetryLevel = InstallTelemetryLevel.FULL,
       mcpRegistrationChoice = McpRegistrationChoice(
         register = true,
-        runtimeMcpBin = Path.of("/runtime-mcp/bin/runtime-mcp").toFileLocation(),
+        runtimeMcpBin = Path.of("/runtime-mcp/bin/runtime-mcp"),
       ),
     )
 
@@ -82,13 +80,13 @@ class FileSystemInstallSelectionPersistenceTest {
     assertEquals(setOf("kmp", "kotlin"), selection.platformPackSelection.selectedSlugs)
     assertEquals(InstallTelemetryLevel.FULL, selection.telemetryLevel)
     assertEquals(true, selection.mcpRegistrationChoice.register)
-    assertEquals(Path.of("/runtime-mcp/bin/runtime-mcp"), selection.mcpRegistrationChoice.runtimeMcpBin?.toPath())
+    assertEquals(Path.of("/runtime-mcp/bin/runtime-mcp"), selection.mcpRegistrationChoice.runtimeMcpBin)
 
     store.writeLatestSuccessfulSelection(
       WriteLatestSuccessfulInstallSelectionRequest(installHome = home, selection = selection),
     )
-    val emittedPayload = JsonCodec.anyToStringAnyMap(
-      JsonCodec.parseObjectOrNull(Files.readString(path))?.let(JsonCodec::jsonElementToValue),
+    val emittedPayload = JsonSupport.anyToStringAnyMap(
+      JsonSupport.parseObjectOrNull(Files.readString(path))?.let(JsonSupport::jsonElementToValue),
     ).orEmpty()
     assertEquals(
       mapOf(
@@ -141,7 +139,7 @@ class FileSystemInstallSelectionPersistenceTest {
       telemetryLevel = InstallTelemetryLevel.FULL,
       mcpRegistrationChoice = McpRegistrationChoice(
         register = true,
-        runtimeMcpBin = Path.of("/runtime-mcp/bin/runtime-mcp").toFileLocation(),
+        runtimeMcpBin = Path.of("/runtime-mcp/bin/runtime-mcp"),
       ),
     )
     val latestSelection = selection(
@@ -215,7 +213,7 @@ class FileSystemInstallSelectionPersistenceTest {
         telemetryLevel = InstallTelemetryLevel.ANONYMOUS,
         mcpRegistrationChoice = McpRegistrationChoice(
           register = true,
-          runtimeMcpBin = Path.of("/runtime-mcp/bin/runtime-mcp").toFileLocation(),
+          runtimeMcpBin = Path.of("/runtime-mcp/bin/runtime-mcp"),
         ),
       ),
     )
@@ -233,9 +231,9 @@ class FileSystemInstallSelectionPersistenceTest {
         store.readLatestSuccessfulSelection(ReadLatestSuccessfulInstallSelectionRequest(home)).selection,
         caseName,
       )
-      val emittedPayload = JsonCodec.anyToStringAnyMap(
-        JsonCodec.parseObjectOrNull(Files.readString(home.resolve(".skill-bill/install-selection.json")))
-          ?.let(JsonCodec::jsonElementToValue),
+      val emittedPayload = JsonSupport.anyToStringAnyMap(
+        JsonSupport.parseObjectOrNull(Files.readString(home.resolve(".skill-bill/install-selection.json")))
+          ?.let(JsonSupport::jsonElementToValue),
       ).orEmpty()
       assertFalse("recentRepoPath" in emittedPayload, caseName)
       assertFalse("firstRun.agents" in emittedPayload, caseName)
@@ -256,7 +254,7 @@ class FileSystemInstallSelectionPersistenceTest {
       telemetryLevel = InstallTelemetryLevel.ANONYMOUS,
       mcpRegistrationChoice = McpRegistrationChoice(
         register = true,
-        runtimeMcpBin = Path.of("/runtime-mcp/bin/runtime-mcp").toFileLocation(),
+        runtimeMcpBin = Path.of("/runtime-mcp/bin/runtime-mcp"),
       ),
     )
 

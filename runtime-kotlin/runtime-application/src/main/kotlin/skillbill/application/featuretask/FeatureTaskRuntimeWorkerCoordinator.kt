@@ -10,8 +10,6 @@ import skillbill.ports.taskruntime.FeatureTaskRuntimeWorkerSupervisor
 import skillbill.ports.taskruntime.model.FeatureTaskRuntimeHeartbeatPlan
 import skillbill.ports.taskruntime.model.FeatureTaskRuntimeHeartbeatTick
 import skillbill.ports.taskruntime.model.FeatureTaskRuntimeProcessInspection
-import skillbill.workflow.model.WorkflowStatus
-import skillbill.workflow.model.workflowStatus
 import java.time.Clock
 import java.time.Duration
 import java.time.Instant
@@ -24,6 +22,15 @@ import java.util.UUID
  * trigger reconciliation. This keeps liveness detection behind the injectable supervisor port with
  * no agent-identity branching (AC-005).
  */
+object FeatureTaskRuntimeCrashLiveness {
+  fun isConfirmedDead(inspection: FeatureTaskRuntimeProcessInspection): Boolean = when (inspection) {
+    FeatureTaskRuntimeProcessInspection.NotRunning -> true
+    FeatureTaskRuntimeProcessInspection.ExactLive -> false
+    is FeatureTaskRuntimeProcessInspection.OwnershipMismatch -> false
+    is FeatureTaskRuntimeProcessInspection.Unsupported -> false
+  }
+}
+
 @RuntimeSingleton
 @Inject
 class FeatureTaskRuntimeWorkerCoordinator(
@@ -77,7 +84,7 @@ class FeatureTaskRuntimeWorkerCoordinator(
       if (existing != null) return@selfManagedWrite UnownedClaim.Recover(existing)
       val row = unitOfWork.workflowStates.getFeatureTaskRuntimeWorkflow(workflowId)
         ?: throw InvalidWorkflowStateSchemaError("Feature-task runtime worker workflow '$workflowId' is missing.")
-      if (row.workflowStatus.workflowStatus() in TERMINAL_WORKFLOW_STATUSES) {
+      if (row.workflowStatus in TERMINAL_WORKFLOW_STATUSES) {
         error(
           "Cannot acquire worker ownership for terminal workflow '$workflowId' (${row.workflowStatus}).",
         )
@@ -193,7 +200,7 @@ class FeatureTaskRuntimeWorkerCoordinator(
     const val GRACE_POLLS: Int = 20
     const val GRACE_POLL_MILLIS: Long = 100
     const val UNOWNED_ACQUIRE_ATTEMPTS: Int = 3
-    val TERMINAL_WORKFLOW_STATUSES = setOf(WorkflowStatus.COMPLETED, WorkflowStatus.FAILED, WorkflowStatus.ABANDONED)
+    val TERMINAL_WORKFLOW_STATUSES: Set<String> = setOf("completed", "failed", "abandoned")
   }
 
   private sealed class UnownedClaim {

@@ -6,6 +6,7 @@ import skillbill.application.featuretask.model.FeatureTaskRuntimePhaseLaunchBrie
 import skillbill.workflow.taskruntime.FeatureTaskRuntimeHandoffProjectionValidator
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePlanningProjectionValidator
+import skillbill.workflow.taskruntime.NoopFeatureTaskRuntimePlanningProjectionValidator
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeHandoffProjectionBudget
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeHandoffPromptVisibility
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeHandoffSourceRef
@@ -71,7 +72,8 @@ object FeatureTaskRuntimePhaseBriefingAssembler {
   fun assemble(
     handoff: FeatureTaskRuntimePhaseHandoff,
     workflowId: String? = null,
-    planningProjectionValidator: FeatureTaskRuntimePlanningProjectionValidator,
+    planningProjectionValidator: FeatureTaskRuntimePlanningProjectionValidator =
+      NoopFeatureTaskRuntimePlanningProjectionValidator,
     agentAddonSelection: HydratedAgentAddonSelection = HydratedAgentAddonSelection(),
     sharedReviewEvidence: FeatureTaskRuntimeSharedReviewEvidenceReference? = null,
   ): FeatureTaskRuntimePhaseLaunchBriefing {

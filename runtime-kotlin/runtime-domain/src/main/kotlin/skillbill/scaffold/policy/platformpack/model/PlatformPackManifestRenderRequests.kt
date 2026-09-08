@@ -1,7 +1,7 @@
 package skillbill.scaffold.policy.platformpack.model
 
-import skillbill.model.FileLocation
 import skillbill.scaffold.model.CodeReviewBaselineLayer
+import java.nio.file.Path
 
 data class PlatformPackManifestRenderRequest(
   val platform: String,
@@ -25,8 +25,8 @@ data class PlatformPackManifestContentRenderRequest(
   val specialistAreas: List<String>,
   val specialistAreaMetadata: Map<String, String>,
   val baselineLayers: List<CodeReviewBaselineLayer>,
-  val packRoot: FileLocation,
-  val baselineSkillPath: FileLocation,
-  val qualityCheckSkillPath: FileLocation,
-  val specialistSkillPaths: Map<String, FileLocation>,
+  val packRoot: Path,
+  val baselineSkillPath: Path,
+  val qualityCheckSkillPath: Path,
+  val specialistSkillPaths: Map<String, Path>,
 )

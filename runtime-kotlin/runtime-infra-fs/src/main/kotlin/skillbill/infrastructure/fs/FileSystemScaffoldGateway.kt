@@ -5,7 +5,6 @@ import skillbill.agentaddon.AgentAddonDeliveryResolver
 import skillbill.agentaddon.model.AgentAddonCatalogueEntry
 import skillbill.error.MissingAgentAddonDeclarationError
 import skillbill.install.nativeagent.installNativeAgentCompositionContext
-import skillbill.model.toPath
 import skillbill.ports.scaffold.ScaffoldCatalogGateway
 import skillbill.ports.scaffold.ScaffoldGateway
 import skillbill.ports.scaffold.UnsupportedScaffoldGateway
@@ -195,7 +194,7 @@ private fun requireAgentAddonEntry(repoRoot: Path, identity: String): AgentAddon
     )
 
 private fun AgentAddonCatalogueEntry.toSkillStatus(repoRoot: Path, contentMode: String): ScaffoldSkillStatus {
-  val contentText = Files.readString(contentPath.toPath())
+  val contentText = Files.readString(contentPath)
   return ScaffoldSkillStatus(
     skillName = identity,
     packageName = "agent-addons",
@@ -204,7 +203,7 @@ private fun AgentAddonCatalogueEntry.toSkillStatus(repoRoot: Path, contentMode: 
     area = "",
     contentFile = contentPath.toString(),
     renderCommand = "skill-bill render bill-feature --repo-root ${repoRoot.toAbsolutePath().normalize()}",
-    completionStatus = skillbill.ports.scaffold.model.ScaffoldCompletionStatus.AUTHORED,
+    completionStatus = "authored",
     sectionCount = 0,
     sections = emptyList(),
     recommendedCommands = listOf("skill-bill validate", "skill-bill render bill-feature"),

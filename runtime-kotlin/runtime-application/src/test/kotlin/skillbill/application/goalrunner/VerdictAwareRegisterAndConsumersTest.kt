@@ -1,7 +1,6 @@
 package skillbill.application.goalrunner
-
-import skillbill.goalrunner.subtaskreview.GoalSubtaskReviewSummaryReducer
-import skillbill.goalrunner.subtaskreview.model.UnaddressedFindingLedgerScope
+import skillbill.application.subtaskreview.GoalSubtaskReviewSummaryReducer
+import skillbill.application.subtaskreview.UnaddressedFindingLedgerScope
 import skillbill.review.ParallelReviewMerger
 import skillbill.review.model.ParallelReviewLaneResult
 import skillbill.review.model.ParallelReviewRawFinding
@@ -14,7 +13,6 @@ import skillbill.workflow.goal.model.GoalSubtaskBlockerDispositionVerdict
 import skillbill.workflow.goal.model.ValidationDepth
 import skillbill.workflow.taskruntime.FeatureTaskRuntimeHandoffProjectionValidator
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
-import skillbill.workflow.taskruntime.NoopFeatureTaskRuntimePlanningProjectionValidator
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeHandoffProjectionBudget
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeHandoffProjectionInputs
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeHandoffProjectionValue
@@ -205,7 +203,6 @@ class VerdictAwareRegisterAndConsumersTest {
         workflowId = "wftr-1",
         validationDepth = ValidationDepth.DEFAULT,
         recordedFindingVerdicts = recordedVerdicts,
-        planningProjectionValidator = NoopFeatureTaskRuntimePlanningProjectionValidator,
       ),
     )
 }

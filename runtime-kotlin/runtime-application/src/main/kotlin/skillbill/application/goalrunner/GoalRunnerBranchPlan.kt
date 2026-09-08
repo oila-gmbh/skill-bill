@@ -3,8 +3,6 @@ package skillbill.application.goalrunner
 import skillbill.goalrunner.model.GoalRunnerReconciledOutcome
 import skillbill.workflow.decomposition.model.CurrentSubtaskIntent
 import skillbill.workflow.decomposition.model.DecompositionManifest
-import skillbill.workflow.model.DecompositionStatus
-import skillbill.workflow.model.decompositionStatus
 
 internal data class GoalRunnerBranchPlan(
   val branch: String,
@@ -16,10 +14,7 @@ fun DecompositionManifest.withAttemptedSubtask(subtaskId: Int): DecompositionMan
   status = "in_progress",
   currentSubtaskIntent = CurrentSubtaskIntent(subtaskId = subtaskId, action = "resume"),
   subtasks = subtasks.map { subtask ->
-    if (subtask.id == subtaskId && subtask.status.decompositionStatus() in setOf(
-        DecompositionStatus.BLOCKED,
-        DecompositionStatus.PENDING,
-      )) {
+    if (subtask.id == subtaskId && subtask.status in setOf("blocked", "pending")) {
       subtask.copy(status = "in_progress", blockedReason = null)
     } else {
       subtask
@@ -45,7 +40,7 @@ fun DecompositionManifest.withCompletedSubtask(
     subtasks = subtasks.map { subtask ->
       if (subtask.id == subtaskId) {
         subtask.copy(
-          status = DecompositionStatus.COMPLETE.wireValue,
+          status = "complete",
           workflowId = outcome.workflowId,
           commitSha = outcome.commitSha,
           blockedReason = null,
@@ -56,12 +51,10 @@ fun DecompositionManifest.withCompletedSubtask(
       }
     },
   )
-  return if (updated.subtasks.all {
-      it.status.decompositionStatus() in setOf(DecompositionStatus.COMPLETE, DecompositionStatus.SKIPPED)
-    }) {
-    updated.copy(status = DecompositionStatus.COMPLETE.wireValue)
+  return if (updated.subtasks.all { it.status == "complete" || it.status == "skipped" }) {
+    updated.copy(status = "complete")
   } else {
-    updated.copy(status = DecompositionStatus.IN_PROGRESS.wireValue)
+    updated.copy(status = "in_progress")
   }
 }
 

@@ -10,7 +10,6 @@ import skillbill.ports.taskruntime.model.FeatureTaskRuntimeSharedEvidenceLocator
 import skillbill.review.context.model.ForbiddenReviewOperation
 import skillbill.review.context.model.ReviewAssignment
 import skillbill.review.context.model.ReviewBudgetOutcome
-import skillbill.review.context.model.ReviewBudgetKind
 import skillbill.review.context.model.ReviewChangedHunk
 import skillbill.review.context.model.ReviewContextBudgetPolicy
 import skillbill.review.context.model.ReviewExpansionRecord
@@ -97,7 +96,7 @@ private fun readOneEvidence(
     if (state.expansionLedger.size > state.budget.maxAssignmentExpansions) {
       return exceededEvidence(
         state,
-        ReviewBudgetKind.ASSIGNMENT_EXPANSIONS,
+        "assignment_expansions",
         state.budget.maxAssignmentExpansions.toLong(),
         state.expansionLedger.size.toLong(),
       )

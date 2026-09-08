@@ -1,7 +1,7 @@
 package skillbill.workflow.taskruntime.model
 
 import skillbill.boundary.OpenBoundaryMap
-import skillbill.contracts.JsonCodec
+import skillbill.contracts.JsonSupport
 
 /** One validated projection actually delivered to a consumer phase. */
 data class FeatureTaskRuntimeHandoffProjection(
@@ -51,7 +51,7 @@ data class FeatureTaskRuntimeHandoffProjection(
         }
       }
     } else {
-      JsonCodec.mapToJsonString(toEnvelopeMap())
+      JsonSupport.mapToJsonString(toEnvelopeMap())
     }
 
   @OpenBoundaryMap("Feature-task-runtime handoff projection at the durable envelope wire seam")

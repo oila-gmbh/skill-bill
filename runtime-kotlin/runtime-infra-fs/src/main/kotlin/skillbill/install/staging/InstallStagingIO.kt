@@ -3,8 +3,6 @@ package skillbill.install.staging
 import skillbill.agentaddon.AgentAddonPointer
 import skillbill.install.identity.SKILL_CONTENT_IDENTITY_FILENAME
 import skillbill.install.model.RenderedSkill
-import skillbill.model.toPath
-import skillbill.ports.repository.toFileLocation
 import skillbill.scaffold.authoring.AuthoringTarget
 import skillbill.scaffold.authoring.normalizeMarkdownLineEndings
 import skillbill.scaffold.authoring.renderWrapper
@@ -83,13 +81,13 @@ internal fun reuseInstallStaging(input: ReuseInstallStagingInput): RenderedSkill
   val pointerFiles = staged.filter { path -> path !in authoredCopied && path !in sidecarFiles }
   return RenderedSkill(
     skillName = input.sourceSkillDir.fileName.toString(),
-    sourceSkillDir = input.sourceSkillDir.toFileLocation(),
-    stagingDir = input.finalStagingDir.toFileLocation(),
-    renderedSkillFile = skillFile.toFileLocation(),
-    renderedPointerFiles = pointerFiles.map { entry -> entry.toFileLocation() },
-    copiedAuthoredFiles = authoredCopied.map { entry -> entry.toFileLocation() },
+    sourceSkillDir = input.sourceSkillDir,
+    stagingDir = input.finalStagingDir,
+    renderedSkillFile = skillFile,
+    renderedPointerFiles = pointerFiles,
+    copiedAuthoredFiles = authoredCopied,
     contentHash = input.contentHash,
-    renderedSidecarFiles = sidecarFiles.map { entry -> entry.toFileLocation() },
+    renderedSidecarFiles = sidecarFiles,
   )
 }
 
@@ -139,7 +137,7 @@ internal fun writeRenderedPointerFiles(
   require(pointerFile.startsWith(tempDir)) {
     "Pointer '${spec.name}' staging path '$pointerFile' escapes staging dir '$tempDir'."
   }
-  renderPointer(repoRoot = repoRoot, packRoot = manifest.packRoot.toPath(), spec = spec)
+  renderPointer(repoRoot = repoRoot, packRoot = manifest.packRoot, spec = spec)
   val targetFile = repoRoot.toAbsolutePath().normalize().resolve(spec.target).normalize()
   val rendered = normalizeMarkdownLineEndings(Files.readString(targetFile)).trimEnd() + "\n"
   Files.write(pointerFile, rendered.toByteArray(StandardCharsets.UTF_8))

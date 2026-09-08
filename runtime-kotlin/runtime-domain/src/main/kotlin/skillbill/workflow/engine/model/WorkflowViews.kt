@@ -1,8 +1,6 @@
 package skillbill.workflow.engine.model
 
 import skillbill.boundary.OpenBoundaryMap
-import skillbill.workflow.model.WorkflowContinueStatus
-import skillbill.workflow.model.WorkflowResumeMode
 
 /**
  * SKILL-52.1 — Typed view models replacing the raw `Map<String, Any?>`
@@ -62,7 +60,7 @@ data class WorkflowUpdateAcknowledgementView(
 
 data class WorkflowResumeView(
   val snapshot: WorkflowSnapshotView,
-  val resumeMode: WorkflowResumeMode,
+  val resumeMode: String,
   val resumeStepId: String,
   val lastCompletedStepId: String,
   val availableArtifacts: List<String>,
@@ -93,7 +91,7 @@ data class WorkflowContinuationArtifactSummary(
 data class WorkflowCompactContinueView(
   val workflowId: String,
   val skillName: String,
-  val continueStatus: WorkflowContinueStatus,
+  val continueStatus: String,
   val workflowStatusBeforeContinue: String,
   val startedAt: String,
   val updatedAt: String,
@@ -115,7 +113,7 @@ data class WorkflowContinueView(
   val resume: WorkflowResumeView,
   val skillName: String,
   val workflowStatusBeforeContinue: String,
-  val continueStatus: WorkflowContinueStatus,
+  val continueStatus: String,
   val continueStepId: String,
   val continueStepLabel: String,
   val continueStepDirective: String,

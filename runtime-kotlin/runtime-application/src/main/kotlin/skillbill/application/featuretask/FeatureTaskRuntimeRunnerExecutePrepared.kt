@@ -20,7 +20,7 @@ fun FeatureTaskRuntimeRunner.buildExecutePreparedRunTelemetryContext(
   phaseOutcomes = {
     recorder.loadPhaseRecords(runRequest.workflowId, runRequest.dbPathOverride)
       .orEmpty()
-      .mapValues { (_, record) -> record.status.wireValue }
+      .mapValues { (_, record) -> record.status }
   },
   reviewFixIterationCount = { loadReviewFixIterationCount(runRequest) },
   auditGapIterationCount = { loadAuditGapIterationCount(runRequest) },
@@ -62,15 +62,18 @@ fun FeatureTaskRuntimeRunner.driveExecutePreparedRunLoop(
     recorder.reconcileReviewGeneration(runRequest.workflowId, runRequest.dbPathOverride),
   )
   val loop = FeatureTaskRuntimeRunLoop(
-    recorder = recorder,
-    goalContinuationRecorder = goalContinuationRecorder,
-    outputValidator = outputValidator,
-    phaseGates = phaseGates,
-    subtaskLauncher = subtaskLauncher,
-    phaseSettlementService = phaseSettlementService,
-    activityStampWriter = activityStampWriter,
-    clock = clock,
-    context = FeatureTaskRuntimeRunLoopContext(
+    FeatureTaskRuntimeRunLoopDependencies(
+      recorder = recorder,
+      goalContinuationRecorder = goalContinuationRecorder,
+      outputValidator = outputValidator,
+      phaseGates = phaseGates,
+      subtaskLauncher = subtaskLauncher,
+      phaseSettlementService = phaseSettlementService,
+      activityStampWriter = activityStampWriter,
+      clock = dependencies.clock,
+      collaborators = runLoopCollaborators,
+    ),
+    FeatureTaskRuntimeRunLoopContext(
       runRequest,
       state,
       observability,
@@ -78,7 +81,7 @@ fun FeatureTaskRuntimeRunner.driveExecutePreparedRunLoop(
       transitions,
       phaseTokenAccumulator,
     ),
-    diagnostics = diagnostics,
+    runnerDiagnostics,
   )
   runRequest.operatorDecision?.let { decision ->
     loop.applyOperatorDecision(decision)?.let { rejection ->

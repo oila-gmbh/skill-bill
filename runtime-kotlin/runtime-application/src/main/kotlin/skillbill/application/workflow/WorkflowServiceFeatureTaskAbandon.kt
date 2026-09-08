@@ -1,16 +1,13 @@
 package skillbill.application.workflow
 
 import skillbill.application.workflow.model.WorkflowUpdateResult
-import skillbill.contracts.JsonCodec
+import skillbill.contracts.JsonSupport
 import skillbill.ports.persistence.UnitOfWork
 import skillbill.ports.workflow.model.WorkflowStateRecord
-import skillbill.ports.workflow.save
 import skillbill.workflow.engine.WorkflowEngine
 import skillbill.workflow.engine.model.WorkflowStateSnapshot
 import skillbill.workflow.engine.model.WorkflowUpdateAcknowledgementView
 import skillbill.workflow.engine.model.WorkflowUpdateInput
-import skillbill.workflow.model.workflowStatus
-import skillbill.workflow.engine.model.isTerminalStatus
 import java.time.OffsetDateTime
 import java.time.ZoneOffset
 
@@ -23,7 +20,7 @@ class WorkflowServiceFeatureTaskAbandon(
     normalizedReason: String,
   ): WorkflowUpdateResult {
     val family = WorkflowFamily.TASK_RUNTIME
-    if (family.definition.isTerminalStatus(existing.workflowStatus)) {
+    if (existing.workflowStatus in family.definition.terminalStatuses) {
       return WorkflowUpdateResult.Error(
         existing.workflowId,
         "Runtime workflow '${existing.workflowId}' is already terminal with status '${existing.workflowStatus}'.",
@@ -52,7 +49,7 @@ class WorkflowServiceFeatureTaskAbandon(
     existing: WorkflowStateRecord,
     normalizedReason: String,
   ): WorkflowUpdateResult {
-    if (existing.workflowStatus.workflowStatus()?.wireValue in FEATURE_TASK_TERMINAL_STATUSES) {
+    if (existing.workflowStatus in FEATURE_TASK_TERMINAL_STATUSES) {
       return WorkflowUpdateResult.Error(
         existing.workflowId,
         "Feature-task workflow '${existing.workflowId}' is already terminal with status '${existing.workflowStatus}'.",
@@ -67,7 +64,7 @@ class WorkflowServiceFeatureTaskAbandon(
     )
     val updated = existing.copy(
       workflowStatus = "abandoned",
-      artifactsJson = JsonCodec.mapToJsonString(artifacts),
+      artifactsJson = JsonSupport.mapToJsonString(artifacts),
       finishedAt = abandonedAt,
     )
     unitOfWork.workflowStates.terminalizeLegacyProseFeatureTaskWorkflow(updated)

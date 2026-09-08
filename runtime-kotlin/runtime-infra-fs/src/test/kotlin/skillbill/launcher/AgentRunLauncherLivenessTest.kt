@@ -1,6 +1,5 @@
 package skillbill.launcher
 
-import skillbill.contracts.time.JvmSystemClock
 import skillbill.launcher.process.AgentRunActivityProbe
 import skillbill.launcher.process.AgentRunIdlePolicy
 import skillbill.launcher.process.AgentRunProcessResult
@@ -9,6 +8,7 @@ import skillbill.ports.agentrun.model.AgentRunDeclaredProgressProbe
 import skillbill.ports.agentrun.model.AgentRunOutputStream
 import skillbill.ports.agentrun.model.AgentRunProgressEmitter
 import skillbill.ports.agentrun.model.AgentRunProgressProbe
+import skillbill.ports.time.JvmSystemClock
 import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.concurrent.thread
@@ -280,6 +280,6 @@ class AgentRunLauncherLivenessTest {
     assertTrue(completed.interrupted)
     assertContains(completed.stderr, "interrupted by parent signal")
     assertEquals("parent_interrupted", completed.liveness?.reason)
-    assertEquals("killed", completed.liveness?.processState?.wireValue)
+    assertEquals("killed", completed.liveness?.processState)
   }
 }

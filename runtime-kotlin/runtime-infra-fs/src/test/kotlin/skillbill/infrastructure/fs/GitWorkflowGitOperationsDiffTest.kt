@@ -3,7 +3,6 @@ package skillbill.infrastructure.fs
 import skillbill.ports.workflow.gitops.buildGoalSubtaskReviewInput
 import skillbill.ports.workflow.gitops.captureGoalSubtaskReviewBaseline
 import skillbill.ports.workflow.gitops.model.WorkflowSelectedDiffHunksRequest
-import skillbill.ports.workflow.gitops.model.WorkflowGitOperationStatus
 import java.nio.file.Files
 import kotlin.test.Test
 import kotlin.test.assertContains
@@ -32,7 +31,7 @@ class GitWorkflowGitOperationsDiffTest {
       WorkflowSelectedDiffHunksRequest(paths = listOf("tracked.txt"), maxHunks = 1, maxLines = 10, maxBytes = 400),
     )
 
-    assertEquals(WorkflowGitOperationStatus.OK, result.status, result.error)
+    assertTrue(result.ok, result.error)
     assertEquals(1, result.selectedDiffHunks.hunks.size)
     assertEquals(true, result.selectedDiffHunks.truncated)
     assertEquals("tracked.txt", result.selectedDiffHunks.hunks.single().path)
@@ -62,7 +61,7 @@ class GitWorkflowGitOperationsDiffTest {
       ),
     )
 
-    assertEquals(WorkflowGitOperationStatus.OK, result.status, result.error)
+    assertTrue(result.ok, result.error)
     assertEquals(1, result.selectedDiffHunks.hunks.size)
     assertFalse(result.selectedDiffHunks.truncated)
   }
@@ -85,7 +84,7 @@ class GitWorkflowGitOperationsDiffTest {
       WorkflowSelectedDiffHunksRequest(paths = listOf("tracked.txt"), maxHunks = 4, maxLines = 3, maxBytes = 1_000),
     )
 
-    assertEquals(WorkflowGitOperationStatus.OK, result.status, result.error)
+    assertTrue(result.ok, result.error)
     assertEquals(3, result.selectedDiffHunks.hunks.sumOf { it.lines.size })
     assertTrue(result.selectedDiffHunks.truncated)
   }
@@ -112,7 +111,7 @@ class GitWorkflowGitOperationsDiffTest {
       ),
     )
 
-    assertEquals(WorkflowGitOperationStatus.OK, result.status, result.error)
+    assertTrue(result.ok, result.error)
     assertContains(result.selectedDiffHunks.hunks.single().lines, " ")
     assertContains(result.selectedDiffHunks.hunks.single().lines, " beta  ")
   }
@@ -139,7 +138,7 @@ class GitWorkflowGitOperationsDiffTest {
       ),
     )
 
-    assertEquals(WorkflowGitOperationStatus.OK, result.status, result.error)
+    assertTrue(result.ok, result.error)
     assertEquals(1, result.selectedDiffHunks.hunks.size)
     assertEquals(5, result.selectedDiffHunks.hunks.single().lines.size)
     assertTrue(result.selectedDiffHunks.truncated)
@@ -167,7 +166,7 @@ class GitWorkflowGitOperationsDiffTest {
       ),
     )
 
-    assertEquals(WorkflowGitOperationStatus.OK, result.status, result.error)
+    assertTrue(result.ok, result.error)
     val hunk = result.selectedDiffHunks.hunks.single()
     val emittedBytes = hunk.lines.sumOf { line -> line.toByteArray().size + 1 }
     assertTrue(result.selectedDiffHunks.truncated)
@@ -191,7 +190,7 @@ class GitWorkflowGitOperationsDiffTest {
     val branch = git(repoRoot, "branch", "--show-current")
     val baseline = ops.captureGoalSubtaskReviewBaseline(repoRoot, branch)
 
-    assertTrue(baseline.status == WorkflowGitOperationStatus.OK, baseline.error)
+    assertTrue(baseline.ok, baseline.error)
     Files.writeString(repoRoot.resolve("tracked.txt"), "base\ncommitted\n")
     git(repoRoot, "add", "tracked.txt")
     git(repoRoot, "commit", "-m", "subtask commit")
@@ -206,7 +205,7 @@ class GitWorkflowGitOperationsDiffTest {
       branch,
     )
 
-    assertTrue(input.status == WorkflowGitOperationStatus.OK, input.error)
+    assertTrue(input.ok, input.error)
     val reviewText = requireNotNull(input.input).reviewText
     assertTrue(reviewText.startsWith("scope-fingerprint:"), reviewText)
     assertFalse("committed" in reviewText)
@@ -232,14 +231,14 @@ class GitWorkflowGitOperationsDiffTest {
     val ops = GitWorkflowGitOperations()
     val branch = git(repoRoot, "branch", "--show-current")
     val baseline = ops.captureGoalSubtaskReviewBaseline(repoRoot, branch)
-    assertTrue(baseline.status == WorkflowGitOperationStatus.OK, baseline.error)
+    assertTrue(baseline.ok, baseline.error)
     Files.delete(repoRoot.resolve("retired.txt"))
     Files.writeString(repoRoot.resolve("kept.txt"), "base\nsurviving edit\n")
     git(repoRoot, "add", "-A")
 
     val input = ops.buildGoalSubtaskReviewInput(repoRoot, requireNotNull(baseline.baseline), branch)
 
-    assertTrue(input.status == WorkflowGitOperationStatus.OK, input.error)
+    assertTrue(input.ok, input.error)
     val reviewText = requireNotNull(input.input).reviewText
     assertTrue(reviewText.startsWith("scope-fingerprint:"), reviewText)
     assertFalse("retired body line" in reviewText)
@@ -258,13 +257,13 @@ class GitWorkflowGitOperationsDiffTest {
     val ops = GitWorkflowGitOperations()
     val branch = git(repoRoot, "branch", "--show-current")
     val baseline = ops.captureGoalSubtaskReviewBaseline(repoRoot, branch)
-    assertTrue(baseline.status == WorkflowGitOperationStatus.OK, baseline.error)
+    assertTrue(baseline.ok, baseline.error)
     Files.delete(repoRoot.resolve("retired.txt"))
     git(repoRoot, "add", "-A")
 
     val input = ops.buildGoalSubtaskReviewInput(repoRoot, requireNotNull(baseline.baseline), branch)
 
-    assertTrue(input.status == WorkflowGitOperationStatus.OK, input.error)
+    assertTrue(input.ok, input.error)
     val reviewText = requireNotNull(input.input).reviewText
     assertTrue(reviewText.startsWith("scope-fingerprint:"), reviewText)
     assertFalse("retired body line" in reviewText)
@@ -282,7 +281,7 @@ class GitWorkflowGitOperationsDiffTest {
 
     val result = GitWorkflowGitOperations().captureGoalSubtaskReviewBaseline(repoRoot, "feat/another-child")
 
-    assertEquals(WorkflowGitOperationStatus.ERROR, result.status)
+    assertFalse(result.ok)
     assertContains(result.error, "durable child branch 'feat/another-child'")
   }
 
@@ -303,7 +302,7 @@ class GitWorkflowGitOperationsDiffTest {
       git(repoRoot, "branch", "--show-current"),
     )
 
-    assertEquals(WorkflowGitOperationStatus.OK, result.status, result.error)
+    assertTrue(result.ok, result.error)
     assertEquals(git(repoRoot, "rev-parse", "HEAD"), requireNotNull(result.baseline).reviewBaseSha)
   }
 }

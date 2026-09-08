@@ -4,7 +4,6 @@ import skillbill.install.model.InstallAgent
 import skillbill.install.model.InstallApplyIssueKind
 import skillbill.install.model.InstallApplyStatus
 import skillbill.install.model.McpRegistrationApplyStatus
-import skillbill.model.toPath
 import java.nio.file.Files
 import kotlin.test.Test
 import kotlin.test.assertContains
@@ -31,7 +30,7 @@ class InstallApplyMcpFanOutTest : InstallApplyTestSupport() {
     assertTrue(claudeOutcome.profiles.size > 1, "expected fan-out across profiles: ${claudeOutcome.profiles}")
     assertEquals(
       setOf(fixture.home.resolve(".claude.json"), work.resolve(".claude.json")),
-      claudeOutcome.profiles.map { profile -> profile.configPath.toPath() }.toSet(),
+      claudeOutcome.profiles.map { profile -> profile.configPath }.toSet(),
     )
     assertContains(claudeOutcome.message, "Profiles (${claudeOutcome.profiles.size}):")
     assertContains(claudeOutcome.message, fixture.home.resolve(".claude.json").toString())
@@ -56,7 +55,7 @@ class InstallApplyMcpFanOutTest : InstallApplyTestSupport() {
     assertEquals(InstallApplyStatus.WARNING, result.status)
     val claudeOutcome = result.mcpRegistrationOutcomes.single { outcome -> outcome.agent == InstallAgent.CLAUDE }
     assertEquals(McpRegistrationApplyStatus.FAILED, claudeOutcome.status)
-    assertEquals(listOf(defaultConfig), claudeOutcome.profiles.map { profile -> profile.configPath.toPath() })
+    assertEquals(listOf(defaultConfig), claudeOutcome.profiles.map { profile -> profile.configPath })
     assertContains(claudeOutcome.message, malformed.toString())
     assertContains(claudeOutcome.message, "Already updated: $defaultConfig")
     assertTrue(

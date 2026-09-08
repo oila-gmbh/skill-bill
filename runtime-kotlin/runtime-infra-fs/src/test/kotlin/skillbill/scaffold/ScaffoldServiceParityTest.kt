@@ -4,7 +4,6 @@ import skillbill.error.InvalidAgentAddonSchemaError
 import skillbill.error.InvalidScaffoldPayloadError
 import skillbill.error.MissingRequiredSectionError
 import skillbill.error.RetiredScaffoldKindError
-import skillbill.model.toPath
 import skillbill.nativeagent.rendering.NativeAgentInstallRenderRequest
 import skillbill.nativeagent.rendering.NativeAgentOperations
 import skillbill.nativeagent.rendering.NativeAgentProvider
@@ -231,7 +230,7 @@ class PlatformPackScaffoldParityTest {
     APPROVED_CODE_REVIEW_AREAS.forEach { area ->
       assertEquals(
         repo.resolve("platform-packs/java/code-review/bill-java-code-review-$area/content.md"),
-        pack.declaredFiles.areas.getValue(area).toPath(),
+        pack.declaredFiles.areas.getValue(area),
       )
       assertNoGeneratedWrapperOrSupportingFiles(
         repo.resolve("platform-packs/java/code-review/bill-java-code-review-$area"),
@@ -390,13 +389,8 @@ class ScaffoldAuthoringParityTest {
     val manifest = Files.readString(manifestPath)
     val addonBody = Files.readString(repo.resolve("platform-packs/kotlin/addons/review-helper.md"))
 
-    assertEquals(
-      listOf(repo.resolve("platform-packs/kotlin/addons/review-helper.md")),
-      result.createdFiles.map {
-        it.toPath()
-      },
-    )
-    assertEquals(listOf(manifestPath), result.manifestEdits.map { it.toPath() })
+    assertEquals(listOf(repo.resolve("platform-packs/kotlin/addons/review-helper.md")), result.createdFiles)
+    assertEquals(listOf(manifestPath), result.manifestEdits)
     assertContains(addonBody, "# review-helper")
     assertContains(addonBody, "TODO: replace this placeholder with the add-on guidance body.")
     assertTrue(

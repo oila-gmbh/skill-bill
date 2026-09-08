@@ -59,7 +59,7 @@ internal fun Map<String, Any?>.withSubtaskOutcome(outcome: FeatureTaskRuntimeSub
         linkedMapOf(
           "issue_key" to outcome.issueKey,
           "subtask_id" to outcome.subtaskId,
-          "status" to outcome.status.wireValue,
+          "status" to outcome.status,
           "commit_sha" to outcome.commitSha,
           "workflow_id" to outcome.workflowId,
           "blocked_reason" to outcome.blockedReason,

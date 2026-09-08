@@ -2,9 +2,9 @@ package skillbill.mcp.review
 
 import kotlinx.serialization.json.JsonObject
 import skillbill.SkillBillVersion
-import skillbill.contracts.JsonCodec
+import skillbill.contracts.JsonSupport
 import skillbill.error.GovernedReviewEvidenceTransportError
-import skillbill.ports.review.GovernedReviewEvidenceCodec
+import skillbill.ports.review.model.GovernedReviewEvidenceCodec
 import java.io.BufferedReader
 import java.io.BufferedWriter
 import java.io.IOException
@@ -36,9 +36,9 @@ object GovernedReviewEvidenceBridge {
   }
 
   fun handleLine(line: String, forward: (String) -> String?): String? {
-    val message = JsonCodec.parseObjectOrNull(line)
-    val id = message?.get("id")?.let(JsonCodec::jsonElementToValue)
-    val method = message?.get("method")?.let(JsonCodec::jsonElementToValue)?.toString().orEmpty()
+    val message = JsonSupport.parseObjectOrNull(line)
+    val id = message?.get("id")?.let(JsonSupport::jsonElementToValue)
+    val method = message?.get("method")?.let(JsonSupport::jsonElementToValue)?.toString().orEmpty()
     return when {
       message == null -> errorResponse(null, JSON_RPC_INTERNAL_ERROR, "Parse error")
       id == null -> null
@@ -57,7 +57,7 @@ object GovernedReviewEvidenceBridge {
     }
 
   private fun JsonObject.toolName(): String =
-    JsonCodec.anyToStringAnyMap(this["params"]?.let(JsonCodec::jsonElementToValue))
+    JsonSupport.anyToStringAnyMap(this["params"]?.let(JsonSupport::jsonElementToValue))
       .orEmpty()["name"]?.toString().orEmpty()
 
   private class Connection(
@@ -81,7 +81,7 @@ object GovernedReviewEvidenceBridge {
     val writer = Channels.newOutputStream(connection).bufferedWriter()
     val reader = Channels.newInputStream(connection).bufferedReader()
     writer.appendLine(
-      JsonCodec.mapToJsonString(
+      JsonSupport.mapToJsonString(
         linkedMapOf("jsonrpc" to "2.0", "method" to "handshake", "params" to mapOf("token" to token)),
       ),
     )
@@ -114,11 +114,11 @@ object GovernedReviewEvidenceBridge {
     ),
   )
 
-  private fun successResponse(id: Any?, result: Map<String, Any?>): String = JsonCodec.mapToJsonString(
+  private fun successResponse(id: Any?, result: Map<String, Any?>): String = JsonSupport.mapToJsonString(
     linkedMapOf("jsonrpc" to "2.0", "id" to id, "result" to result),
   )
 
-  private fun errorResponse(id: Any?, code: Int, message: String): String = JsonCodec.mapToJsonString(
+  private fun errorResponse(id: Any?, code: Int, message: String): String = JsonSupport.mapToJsonString(
     linkedMapOf("jsonrpc" to "2.0", "id" to id, "error" to linkedMapOf("code" to code, "message" to message)),
   )
 }

@@ -10,22 +10,12 @@ import com.github.ajalt.clikt.parameters.options.option
 import com.github.ajalt.clikt.parameters.types.int
 import me.tatarka.inject.annotations.Inject
 import skillbill.agentaddon.model.HydratedAgentAddonSelection
-import skillbill.application.goalrunner.GoalRunner
 import skillbill.application.goalrunner.model.DEFAULT_GOAL_PLANNING_BUDGET
 import skillbill.application.goalrunner.model.GoalRunnerRunRequest
-import skillbill.application.system.RuntimeProvenanceService
-import skillbill.application.telemetry.TelemetryService
-import skillbill.cli.kernel.CliRunState
 import skillbill.cli.kernel.DocumentedCliCommand
 import skillbill.cli.kernel.drainTelemetryOnCompletion
 import skillbill.cli.kernel.invokingAgentResolutionHelp
-import skillbill.cli.model.CliRunInputs
 import skillbill.cli.model.DEFAULT_GOAL_MAX_WALL_CLOCK_MINUTES
-import skillbill.ports.agentaddon.AgentAddonSelectionPort
-import skillbill.ports.agentaddon.ExternalAgentAddonSourceConfigPort
-import skillbill.ports.agentrun.ExecutableLookup
-import skillbill.ports.diagnostics.RuntimeDiagnostics
-import skillbill.ports.system.HostPlatformPort
 import java.nio.file.Path
 import kotlin.time.Duration.Companion.minutes
 
@@ -63,16 +53,7 @@ class GoalRunSubcommands(
 
 @Inject
 class GoalRunCommand(
-  private val goalRunner: GoalRunner,
-  private val runtimeProvenanceService: RuntimeProvenanceService,
-  private val agentAddonSelectionPort: AgentAddonSelectionPort,
-  private val externalAgentAddonSourceConfigPort: ExternalAgentAddonSourceConfigPort,
-  private val executableLookup: ExecutableLookup,
-  private val telemetryService: TelemetryService,
-  private val diagnostics: RuntimeDiagnostics,
-  private val state: CliRunState,
-  private val inputs: CliRunInputs,
-  private val hostPlatform: HostPlatformPort,
+  private val deps: GoalRunDependencies,
   goalRunSubcommands: GoalRunSubcommands,
 ) : DocumentedCliCommand(
   "goal",
@@ -158,8 +139,8 @@ class GoalRunCommand(
       return
     }
     val effectiveRepoRoot = repoRoot?.let(Path::of)?.toAbsolutePath()?.normalize()
-      ?: inputs.repositoryRoot
-    val invokedAgentId = resolveInvokedAgentId(agent, inputs.environment)
+      ?: deps.inputs.repositoryRoot
+    val invokedAgentId = resolveInvokedAgentId(agent, deps.inputs.environment)
     validateGoalRunInputs(
       GoalRunInputValidationArgs(
         issueKey = issueKey,
@@ -168,8 +149,8 @@ class GoalRunCommand(
         agentAddonSelectionJson = agentAddonSelectionJson,
         agent = agent,
         agentOverride = agentOverride,
-        inputs = inputs,
-        executableLookup = executableLookup,
+        inputs = deps.inputs,
+        executableLookup = deps.executableLookup,
       ),
     )
     val runIssueKey = issueKey!!
@@ -183,31 +164,31 @@ class GoalRunCommand(
         agentAddonSelectionJson = agentAddonSelectionJson,
         receivingAgents = receivingAgents,
         effectiveRepoRoot = effectiveRepoRoot,
-        inputs = inputs,
-        agentAddonSelectionPort = agentAddonSelectionPort,
-        externalAgentAddonSourceConfigPort = externalAgentAddonSourceConfigPort,
+        inputs = deps.inputs,
+        agentAddonSelectionPort = deps.agentAddonSelectionPort,
+        externalAgentAddonSourceConfigPort = deps.externalAgentAddonSourceConfigPort,
       ),
     )
     val presenter = GoalRunPresenter(
       issueKey = runIssueKey,
-      inputs = inputs,
+      inputs = deps.inputs,
       liveOutput = !noLiveOutput,
       repoRoot = effectiveRepoRoot,
-      dbOverride = inputs.dbPathOverride,
-      runtimeProvenance = runtimeProvenanceService.current(
-        executablePathHint = inputs.environment[RUNTIME_EXECUTABLE_ENV],
-        classPath = inputs.environment[RUNTIME_CLASSPATH_ENV] ?: hostPlatform.jvmClassPath,
+      dbOverride = deps.inputs.dbPathOverride,
+      runtimeProvenance = deps.runtimeProvenanceService.current(
+        executablePathHint = deps.inputs.environment[RUNTIME_EXECUTABLE_ENV],
+        classPath = deps.inputs.environment[RUNTIME_CLASSPATH_ENV] ?: deps.hostPlatform.jvmClassPath,
         javaCommand = ProcessHandle.current().info().command().orElse(null),
-        pathSeparator = inputs.environment[RUNTIME_PATH_SEPARATOR_ENV] ?: hostPlatform.pathSeparator,
+        pathSeparator = deps.inputs.environment[RUNTIME_PATH_SEPARATOR_ENV] ?: deps.hostPlatform.pathSeparator,
       ),
     )
     presenter.emitStartupProvenance()
-    val report = goalRunner.run(
+    val report = deps.goalRunner.run(
       runRequest(runIssueKey, invokedAgentId, hydratedSelection, presenter, effectiveRepoRoot),
     )
     val payload = report.toGoalRunCliMap()
-    state.completeText(goalRunText(payload), payload, exitCode = payload.goalExitCode())
-    drainTelemetryOnCompletion(telemetryService, inputs.dbPathOverride, diagnostics)
+    deps.state.completeText(goalRunText(payload), payload, exitCode = payload.goalExitCode())
+    drainTelemetryOnCompletion(deps.telemetryService, deps.inputs.dbPathOverride, deps.diagnostics)
   }
 
   private fun runRequest(
@@ -221,7 +202,7 @@ class GoalRunCommand(
     repoRoot = effectiveRepoRoot,
     invokedAgentId = invokedAgentId,
     configuredAgentOverrideId = agentOverride,
-    dbPathOverride = inputs.dbPathOverride,
+    dbPathOverride = deps.inputs.dbPathOverride,
     timeout = maxWallClockMinutes.takeIf { it > 0 }?.minutes,
     progressIdleTimeout = progressIdleTimeoutMinutes.takeIf { it > 0 }?.minutes,
     planningBudget = planningBudgetMinutes.takeIf { it > 0 }?.minutes,

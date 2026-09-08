@@ -11,8 +11,6 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerAction
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerEntry
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseRecord
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeQualityGateSelection
-import skillbill.workflow.model.WorkflowStepStatus
-import skillbill.workflow.model.workflowStepStatus
 
 const val PHASE_STATUS_PENDING = "pending"
 const val PHASE_STATUS_COMPLETED = "completed"
@@ -51,7 +49,7 @@ fun resolveCurrentPhaseId(
 ): String? {
   if (terminalDecomposeRecorded) return null
   return currentReentryPhaseId(records, ledger) ?: phases.firstOrNull {
-    it.status.workflowStepStatus() != WorkflowStepStatus.COMPLETED &&
+    it.status != PHASE_STATUS_COMPLETED &&
       !shouldSkipPendingLoopOnlyPhase(it.phaseId, it.status, records, qualityGateSelection)
   }?.phaseId
 }
@@ -68,8 +66,8 @@ fun shouldSkipPendingLoopOnlyPhase(
   val buildStampedCurrent =
     phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_BUILD &&
       qualityGateSelection == FeatureTaskRuntimeQualityGateSelection.BUILD &&
-      records[FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW]?.status?.workflowStepStatus() == WorkflowStepStatus.COMPLETED &&
-      records[FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_BUILD]?.status?.workflowStepStatus() != WorkflowStepStatus.COMPLETED
+      records[FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW]?.status == PHASE_STATUS_COMPLETED &&
+      records[FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_BUILD]?.status != PHASE_STATUS_COMPLETED
   if (buildStampedCurrent) {
     return false
   }
@@ -108,11 +106,11 @@ fun currentReentryPhaseId(
     .filter { it.sequenceNumber > edgeEntry.sequenceNumber }
     .filter { it.action == FeatureTaskRuntimePhaseLedgerAction.COMPLETE }
     .map { it.phaseId }
-    .filter { phaseId -> records[phaseId]?.status?.workflowStepStatus() == WorkflowStepStatus.COMPLETED }
+    .filter { phaseId -> records[phaseId]?.status == PHASE_STATUS_COMPLETED }
     .toMutableSet()
   records.values
     .filter {
-      it.status.workflowStepStatus() == WorkflowStepStatus.COMPLETED &&
+      it.status == PHASE_STATUS_COMPLETED &&
         it.loopId == declaration.loopId &&
         it.edgeIteration == edgeEntry.edgeIteration
     }
@@ -133,9 +131,9 @@ fun operatorDecisionPause(
   return records.values
     .firstOrNull { record ->
       record.failureDisposition == FeatureTaskRuntimeFailureDisposition.NEEDS_USER_ACTION &&
-        when (record.status.workflowStepStatus()) {
-          WorkflowStepStatus.PAUSED -> true
-          WorkflowStepStatus.BLOCKED ->
+        when (record.status) {
+          FEATURE_TASK_RUNTIME_PHASE_STATUS_PAUSED -> true
+          FEATURE_TASK_RUNTIME_PHASE_STATUS_BLOCKED ->
             record.phaseId in OPERATOR_DECISION_QUALITY_GATE_PHASE_IDS &&
               !record.blockedReason.isNullOrBlank()
           else -> false
@@ -171,11 +169,7 @@ fun FeatureTaskRuntimePhaseRecord?.toPhaseStatus(
 } else {
   FeatureTaskRuntimePhaseStatus(
     phaseId = phaseId,
-    status = if (blocked && status.workflowStepStatus() != WorkflowStepStatus.COMPLETED) {
-      PHASE_STATUS_BLOCKED
-    } else {
-      status.wireValue
-    },
+    status = if (blocked && status != PHASE_STATUS_COMPLETED) PHASE_STATUS_BLOCKED else status,
     attemptCount = attemptCount,
     resolvedAgentId = resolvedAgentId.takeUnless { it == GOAL_PLANNING_IMPORT_AGENT_SENTINEL },
     finished = finishedAt != null,

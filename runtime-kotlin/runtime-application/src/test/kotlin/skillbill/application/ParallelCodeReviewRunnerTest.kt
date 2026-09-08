@@ -40,7 +40,6 @@ import skillbill.ports.diff.DiffResolverPort
 import skillbill.ports.goalrunner.runner.GoalRunnerSubtaskLauncher
 import skillbill.ports.goalrunner.runner.model.GoalRunnerSubtaskLaunchRequest
 import skillbill.ports.persistence.UnitOfWork
-import skillbill.ports.repository.toFileLocation
 import skillbill.ports.review.ReviewEvidenceBroker
 import skillbill.ports.review.ReviewEvidenceBrokerFactory
 import skillbill.ports.review.ReviewLaunchAgentStagingPort
@@ -477,7 +476,7 @@ class ParallelCodeReviewRunnerTest {
 
     assertTrue(result.lane1.success)
     val accounting = assertNotNull(result.lane1.accounting)
-    assertEquals("completed", accounting.terminalStatus.wireValue)
+    assertEquals("completed", accounting.terminalStatus)
     assertEquals(1, accounting.modelTurns, "An inline lane is exactly one parent turn, never a specialist child.")
     assertEquals(0L, accounting.evidenceBytes, "Inline mode never brokers evidence through a child worker.")
     assertTrue(accounting.launchBytes > 0, "The rendered parent prompt must be measured as launch bytes.")
@@ -504,7 +503,7 @@ class ParallelCodeReviewRunnerTest {
     assertFalse(result.lane1.success)
     assertContains(result.lane1.failureReason.orEmpty(), "unsupported agent")
     val accounting = assertNotNull(result.lane1.accounting)
-    assertEquals("unsupported_provider", accounting.terminalStatus.wireValue)
+    assertEquals("unsupported_provider", accounting.terminalStatus)
     assertEquals(0L, accounting.resultBytes, "No session ran, so there is no result to measure.")
   }
 
@@ -1214,12 +1213,12 @@ class ParallelCodeReviewRunnerFailureTest {
     val (runId, lanes) = database.laneWrites.last()
     assertEquals(request.reviewRunId, runId)
     assertTrue(lanes.isNotEmpty(), "A runtime-launched review must record the lanes it planned.")
-    assertTrue(lanes.all { it.resolutionState.wireValue == "resolved" })
+    assertTrue(lanes.all { it.resolutionState == "resolved" })
     assertTrue(lanes.all { it.packSlug.isNotBlank() && it.area.isNotBlank() })
     assertEquals(lanes.map { it.laneSkillName }.distinct().size, lanes.size)
     assertEquals(lanes.map { it.orderIndex }.sorted(), lanes.map { it.orderIndex })
     assertTrue(
-      lanes.all { it.reviewDisposition.wireValue == "complete" },
+      lanes.all { it.reviewDisposition == "complete" },
       "Successful parallel pass must persist complete disposition for every planned lane.",
     )
     assertTrue(database.laneWrites.size >= 2, "Plan recording and disposition finalization must both write.")
@@ -1689,15 +1688,15 @@ private fun kotlinPersistenceInlineRunner(finding: String, persistencePath: Stri
 
 private fun kotlinPersistenceManifest() = PlatformManifest(
   slug = "kotlin",
-  packRoot = Path.of("platform-packs/kotlin").toFileLocation(),
+  packRoot = Path.of("platform-packs/kotlin"),
   contractVersion = "1.3",
   routingSignals = RoutingSignals(strong = listOf("*.kt"), tieBreakers = emptyList()),
   declaredCodeReviewAreas = listOf("architecture", "persistence"),
   declaredFiles = DeclaredFiles(
-    baseline = Path.of("content.md").toFileLocation(),
+    baseline = Path.of("content.md"),
     areas = mapOf(
-      "architecture" to Path.of("architecture.md").toFileLocation(),
-      "persistence" to Path.of("persistence.md").toFileLocation(),
+      "architecture" to Path.of("architecture.md"),
+      "persistence" to Path.of("persistence.md"),
     ),
   ),
   areaMetadata = emptyMap(),
@@ -1803,16 +1802,13 @@ private fun throwingCatalogGateway(): ScaffoldCatalogGateway = object : Scaffold
 
 private fun platformManifest(slug: String, strongSignals: List<String>) = PlatformManifest(
   slug = slug,
-  packRoot = Path.of("platform-packs/$slug").toFileLocation(),
+  packRoot = Path.of("platform-packs/$slug"),
   contractVersion = "1.3",
   routingSignals = RoutingSignals(strong = strongSignals, tieBreakers = emptyList()),
   declaredCodeReviewAreas = listOf("architecture", "testing"),
   declaredFiles = DeclaredFiles(
-    baseline = Path.of("content.md").toFileLocation(),
-    areas = mapOf(
-      "architecture" to Path.of("architecture.md").toFileLocation(),
-      "testing" to Path.of("testing.md").toFileLocation(),
-    ),
+    baseline = Path.of("content.md"),
+    areas = mapOf("architecture" to Path.of("architecture.md"), "testing" to Path.of("testing.md")),
   ),
   areaMetadata = emptyMap(),
   laneConditions = mapOf(
@@ -1830,13 +1826,13 @@ private fun sparsePlatformManifest(
   val areas = listOf(requiredArea) + pathAreas.keys.toList()
   return PlatformManifest(
     slug = slug,
-    packRoot = Path.of("platform-packs/$slug").toFileLocation(),
+    packRoot = Path.of("platform-packs/$slug"),
     contractVersion = "1.3",
     routingSignals = RoutingSignals(strong = strongSignals, tieBreakers = emptyList()),
     declaredCodeReviewAreas = areas,
     declaredFiles = DeclaredFiles(
-      baseline = Path.of("content.md").toFileLocation(),
-      areas = areas.associateWith { Path.of("$it.md").toFileLocation() },
+      baseline = Path.of("content.md"),
+      areas = areas.associateWith { Path.of("$it.md") },
     ),
     areaMetadata = emptyMap(),
     laneConditions = buildMap {

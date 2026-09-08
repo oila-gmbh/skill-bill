@@ -3,7 +3,6 @@ package skillbill.scaffold.authoring
 import skillbill.agentaddon.AgentAddonDeliveryResolver
 import skillbill.agentaddon.model.AgentAddonConsumer
 import skillbill.error.ContractVersionMismatchError
-import skillbill.model.toPath
 import skillbill.scaffold.model.PlatformManifest
 import skillbill.scaffold.model.PointerSpec
 import skillbill.scaffold.platformpack.loadPlatformManifest
@@ -103,11 +102,11 @@ private fun renderAgentAddonPointerBlocks(repoRoot: Path, target: AuthoringTarge
 }
 
 private fun renderPointerBlock(repoRoot: Path, pack: PlatformManifest, spec: PointerSpec): AuthoringRenderBlock {
-  val pointerFile = pack.packRoot.resolve(spec.skillRelativeDir).resolve(spec.name).toPath().normalize()
+  val pointerFile = pack.packRoot.resolve(spec.skillRelativeDir).resolve(spec.name).normalize()
   val relativePointerFile = normalizedRelativePath(repoRoot, pointerFile)
   return AuthoringRenderBlock(
     header = "===== pointer: $relativePointerFile =====",
-    content = renderPointer(repoRoot, pack.packRoot.toPath(), spec),
+    content = renderPointer(repoRoot, pack.packRoot, spec),
   )
 }
 

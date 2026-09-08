@@ -7,18 +7,17 @@ import skillbill.application.featuretask.validation.model.ValidationGateCycleReq
 import skillbill.application.featuretask.validation.model.ValidationGateProgressStore
 import skillbill.config.model.RepoLocalConfig
 import skillbill.config.model.ValidationGateRepoConfig
-import skillbill.contracts.JsonCodec
+import skillbill.contracts.JsonSupport
 import skillbill.error.ContractVersionMismatchError
 import skillbill.ports.config.RepoLocalConfigPort
 import skillbill.ports.config.model.ReadRepoLocalConfigRequest
 import skillbill.ports.config.model.ReadRepoLocalConfigResult
 import skillbill.ports.diagnostics.NoopRuntimeDiagnostics
 import skillbill.ports.diagnostics.RuntimeDiagnostics
-import skillbill.ports.repository.toFileLocation
 import skillbill.ports.validation.ValidationGateRunner
-import skillbill.workflow.taskruntime.model.ValidationGateCacheMode
+import skillbill.ports.validation.model.ValidationGateCacheMode
 import skillbill.ports.validation.model.ValidationGateFinding
-import skillbill.workflow.taskruntime.model.ValidationGateRunOutcome
+import skillbill.ports.validation.model.ValidationGateRunOutcome
 import skillbill.ports.validation.model.ValidationGateRunRequest
 import skillbill.ports.validation.model.ValidationGateRunResult
 import skillbill.scaffold.model.DeclaredFiles
@@ -180,7 +179,7 @@ internal fun failedWith(vararg findings: ValidationGateFinding): ValidationGateR
 )
 
 internal fun completedRepair(): ValidationGateAgentRepairResult {
-  val payload = JsonCodec.mapToJsonString(mapOf("produced_outputs" to emptyMap<String, Any?>()))
+  val payload = JsonSupport.mapToJsonString(mapOf("produced_outputs" to emptyMap<String, Any?>()))
   return ValidationGateAgentRepairResult.Completed(
     FeatureTaskRuntimePhaseOutput(phaseId = "validate", iteration = 1, payload = payload),
   )
@@ -188,7 +187,7 @@ internal fun completedRepair(): ValidationGateAgentRepairResult {
 
 internal fun kotlinPackWithoutGate(): PlatformManifest = PlatformManifest(
   slug = "kotlin",
-  packRoot = validationGateTestRepoRoot.resolve("platform-packs/kotlin").toFileLocation(),
+  packRoot = validationGateTestRepoRoot.resolve("platform-packs/kotlin"),
   contractVersion = "1.7",
   routingSignals = RoutingSignals(
     strong = listOf("runtime-kotlin"),
@@ -204,7 +203,7 @@ internal fun kotlinPackWithoutGate(): PlatformManifest = PlatformManifest(
 /** Review-fallback pack: co-routed for unmatched paths; must not steal build/validate gate selection. */
 internal fun reviewFallbackPackWithoutGate(): PlatformManifest = PlatformManifest(
   slug = "generic",
-  packRoot = validationGateTestRepoRoot.resolve("platform-packs/generic").toFileLocation(),
+  packRoot = validationGateTestRepoRoot.resolve("platform-packs/generic"),
   contractVersion = "1.7",
   routingSignals = RoutingSignals(
     strong = emptyList(),
@@ -213,7 +212,7 @@ internal fun reviewFallbackPackWithoutGate(): PlatformManifest = PlatformManifes
   ),
   declaredCodeReviewAreas = emptyList(),
   declaredFiles = DeclaredFiles(
-    baseline = validationGateTestRepoRoot.resolve("code-review/bill-generic-code-review/content.md").toFileLocation(),
+    baseline = validationGateTestRepoRoot.resolve("code-review/bill-generic-code-review/content.md"),
     areas = emptyMap(),
   ),
   areaMetadata = emptyMap(),

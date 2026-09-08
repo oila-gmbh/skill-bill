@@ -1,6 +1,5 @@
 package skillbill.application
 
-import skillbill.ports.workflow.gitops.model.WorkflowGitOperationStatus
 import skillbill.application.decomposition.DecompositionManifestWriter
 import skillbill.application.decomposition.loadDecompositionManifest
 import skillbill.application.featuretask.FeatureTaskRuntimePhaseRecorder
@@ -17,10 +16,11 @@ import skillbill.application.telemetry.model.GoalSubtaskFinishedRequest
 import skillbill.application.workflow.WorkflowService
 import skillbill.application.workflow.model.WorkflowFamilyKind
 import skillbill.application.workflow.model.WorkflowOpenResult
+import skillbill.application.workflow.model.WorkflowServiceDeps
 import skillbill.application.workflow.model.WorkflowServiceOpenFeatureTaskArgs
 import skillbill.application.workflow.model.WorkflowUpdateRequest
 import skillbill.application.workflow.openFeatureTask
-import skillbill.contracts.JsonCodec
+import skillbill.contracts.JsonSupport
 import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_PERSISTENCE_CONTRACT_VERSION
 import skillbill.error.MissingCompositionLayerError
 import skillbill.infrastructure.fs.DecompositionManifestValidatorAdapter
@@ -43,8 +43,6 @@ import skillbill.ports.goalrunner.EmptyGoalRunnerControlRepository
 import skillbill.ports.learning.LearningRepository
 import skillbill.ports.learning.model.LearningResolution
 import skillbill.ports.persistence.UnitOfWork
-import skillbill.ports.persistence.UnitOfWorkDefaults
-import skillbill.ports.repository.toFileLocation
 import skillbill.ports.review.ReviewAttributionPort
 import skillbill.ports.review.ReviewInputSource
 import skillbill.ports.review.ReviewRepository
@@ -66,8 +64,8 @@ import skillbill.ports.workflow.WorkflowStateRepository
 import skillbill.ports.workflow.WorkflowStatsRepository
 import skillbill.ports.workflow.gitops.NoopWorkflowGitOperations
 import skillbill.ports.workflow.gitops.RepositoryFingerprintGitOperations
+import skillbill.ports.workflow.gitops.RepositoryFingerprintGitOperationsProvider
 import skillbill.ports.workflow.gitops.WorkflowGitOperations
-import skillbill.ports.workflow.gitops.WorkflowGitOperationsTestBase
 import skillbill.ports.workflow.gitops.model.WorkflowGitOperationResult
 import skillbill.ports.workflow.gitops.model.WorkflowSelectedDiffHunksRequest
 import skillbill.ports.workflow.gitops.model.WorkflowSelectedDiffHunksResult
@@ -218,7 +216,7 @@ internal class FakeDatabaseSessionFactory(
     return block(fakeUnitOfWork())
   }
 
-  private fun fakeUnitOfWork(): UnitOfWork = object : UnitOfWorkDefaults() {
+  private fun fakeUnitOfWork(): UnitOfWork = object : UnitOfWork {
     override val dbPath: Path = this@FakeDatabaseSessionFactory.dbPath
     override val reviews: ReviewRepository = this@FakeDatabaseSessionFactory.reviews
     override val learnings: LearningRepository = this@FakeDatabaseSessionFactory.learnings
@@ -439,13 +437,13 @@ internal class FakeReviewRepository(
   val feedbackRequests = mutableListOf<FeedbackRequest>()
   val learningSourceLookups = mutableListOf<String>()
   val savedReviews = mutableListOf<ImportedReview>()
-  val terminalStateWrites = mutableListOf<Pair<String, skillbill.review.model.ReviewExecutionMode?>>()
+  val terminalStateWrites = mutableListOf<Pair<String, String?>>()
 
   override fun saveImportedReview(review: ImportedReview, sourcePath: String?) {
     savedReviews += review
   }
 
-  override fun ensureTerminalReviewState(runId: String, executionMode: skillbill.review.model.ReviewExecutionMode?) {
+  override fun ensureTerminalReviewState(runId: String, executionMode: String?) {
     terminalStateWrites += runId to executionMode
   }
 
@@ -601,7 +599,7 @@ internal class FakeTelemetrySettingsProvider(
   private val enabled: Boolean,
 ) : TelemetrySettingsProvider {
   override fun load(materialize: Boolean): TelemetrySettings = TelemetrySettings(
-    configPath = Path.of("/fake/config.json").toFileLocation(),
+    configPath = Path.of("/fake/config.json"),
     level = if (enabled) "anonymous" else "off",
     enabled = enabled,
     installId = if (enabled) "fake-install-id" else "",
@@ -891,9 +889,9 @@ internal fun statusSection(path: Path): String {
 }
 
 internal fun decodeArtifactsForTest(artifactsJson: String): Map<String, Any?> =
-  JsonCodec.parseObjectOrNull(artifactsJson)
-    ?.let(JsonCodec::jsonElementToValue)
-    ?.let(JsonCodec::anyToStringAnyMap)
+  JsonSupport.parseObjectOrNull(artifactsJson)
+    ?.let(JsonSupport::jsonElementToValue)
+    ?.let(JsonSupport::anyToStringAnyMap)
     .orEmpty()
 
 internal fun FeatureTaskRuntimePhaseRecorder.appendPlanLedger(
@@ -944,9 +942,9 @@ internal fun FeatureTaskRuntimePhaseRecorder.recordRuntimePhase(
   ),
 )
 internal fun expectedStepStatusForRecord(record: FeatureTaskRuntimePhaseRecord): String = when {
-  record.status == skillbill.workflow.model.WorkflowStepStatus.BLOCKED -> "blocked"
+  record.status == "blocked" -> "blocked"
   record.finishedAt != null -> "completed"
-  else -> record.status.wireValue
+  else -> record.status
 }
 
 internal fun decodeStepsForTest(
@@ -954,8 +952,8 @@ internal fun decodeStepsForTest(
   workflowId: String,
 ): List<Pair<String, String>> {
   val stepsJson = requireNotNull(repository.getFeatureTaskRuntimeWorkflow(workflowId)).stepsJson
-  val element = JsonCodec.json.parseToJsonElement(stepsJson)
-  return (JsonCodec.jsonElementToValue(element) as List<*>).map { raw ->
+  val element = JsonSupport.json.parseToJsonElement(stepsJson)
+  return (JsonSupport.jsonElementToValue(element) as List<*>).map { raw ->
     val item = raw as Map<*, *>
     item["step_id"].toString() to item["status"].toString()
   }
@@ -979,14 +977,16 @@ internal fun testWorkflowService(
   database: DatabaseSessionFactory,
   gitOperations: WorkflowGitOperations = NoopWorkflowGitOperations,
 ): WorkflowService = WorkflowService(
-  database = database,
-  gitOperations = gitOperations,
-  decompositionManifestStore = FileSystemDecompositionManifestFileStore(),
-  workflowSnapshotValidator = WorkflowSnapshotValidatorInfraAdapter(),
-  decompositionManifestValidator = DecompositionManifestValidatorAdapter(),
-  decompositionManifestWriter = DecompositionManifestWriter(),
-  repositoryRoot = RepositoryRoot(Path.of("").toAbsolutePath().normalize()),
-  goalObservabilityEventValidator = NoopGoalObservabilityEventValidator,
+  WorkflowServiceDeps(
+    database = database,
+    gitOperations = gitOperations,
+    decompositionManifestStore = FileSystemDecompositionManifestFileStore(),
+    workflowSnapshotValidator = WorkflowSnapshotValidatorInfraAdapter(),
+    decompositionManifestValidator = DecompositionManifestValidatorAdapter(),
+    decompositionManifestWriter = DecompositionManifestWriter(),
+    repositoryRoot = RepositoryRoot(Path.of("").toAbsolutePath().normalize()),
+    goalObservabilityEventValidator = NoopGoalObservabilityEventValidator,
+  ),
 )
 
 internal fun loadTestDecompositionManifest(path: Path) =
@@ -1052,32 +1052,32 @@ internal class InMemoryWorkflowStateRepository(
 internal class FakeWorkflowGitOperations(
   private val commitSha: String = "commit-sha",
   private val commitError: String = "",
-) : WorkflowGitOperationsTestBase() {
+) : WorkflowGitOperations, RepositoryFingerprintGitOperationsProvider {
   val checkouts = mutableListOf<String>()
   val baseValidations = mutableListOf<String>()
   val commits = mutableListOf<String>()
 
   override fun checkoutBranch(repoRoot: Path, branch: String, baseBranch: String?): WorkflowGitOperationResult {
     checkouts += "$branch@${baseBranch.orEmpty()}"
-    return WorkflowGitOperationResult.Ok(value = branch)
+    return WorkflowGitOperationResult(status = "ok", value = branch)
   }
 
   override fun branchExists(repoRoot: Path, branch: String): WorkflowGitOperationResult =
-    WorkflowGitOperationResult.Ok(value = "true")
+    WorkflowGitOperationResult(status = "ok", value = "true")
 
   override fun currentBranch(repoRoot: Path): WorkflowGitOperationResult =
-    WorkflowGitOperationResult.Ok(value = checkouts.lastOrNull()?.substringBefore("@").orEmpty())
+    WorkflowGitOperationResult(status = "ok", value = checkouts.lastOrNull()?.substringBefore("@").orEmpty())
 
   override fun createCommit(repoRoot: Path, message: String): WorkflowGitOperationResult {
     commits += message
     if (commitError.isNotBlank()) {
-      return WorkflowGitOperationResult.Failed(error = commitError)
+      return WorkflowGitOperationResult(status = "error", error = commitError)
     }
-    return WorkflowGitOperationResult.Ok(value = commitSha)
+    return WorkflowGitOperationResult(status = "ok", value = commitSha)
   }
 
   override fun headCommitSha(repoRoot: Path): WorkflowGitOperationResult =
-    WorkflowGitOperationResult.Ok(value = commitSha)
+    WorkflowGitOperationResult(status = "ok", value = commitSha)
 
   override fun validateBranchBase(
     repoRoot: Path,
@@ -1085,24 +1085,24 @@ internal class FakeWorkflowGitOperations(
     expectedBaseBranch: String,
   ): WorkflowGitOperationResult {
     baseValidations += "$branch@$expectedBaseBranch"
-    return WorkflowGitOperationResult.Ok(value = expectedBaseBranch)
+    return WorkflowGitOperationResult(status = "ok", value = expectedBaseBranch)
   }
 
   override fun worktreeStatus(repoRoot: Path): WorkflowGitOperationResult =
-    WorkflowGitOperationResult.Ok(value = "")
+    WorkflowGitOperationResult(status = "ok", value = "")
 
   override fun worktreeActivity(repoRoot: Path): WorkflowWorktreeActivityResult =
-    WorkflowWorktreeActivityResult(status = WorkflowGitOperationStatus.OK)
+    WorkflowWorktreeActivityResult(status = "ok")
 
   override fun selectedDiffHunks(
     repoRoot: Path,
     request: WorkflowSelectedDiffHunksRequest,
-  ): WorkflowSelectedDiffHunksResult = WorkflowSelectedDiffHunksResult(status = WorkflowGitOperationStatus.OK)
+  ): WorkflowSelectedDiffHunksResult = WorkflowSelectedDiffHunksResult(status = "ok")
 
   override val repositoryFingerprintOperations: RepositoryFingerprintGitOperations =
     object : RepositoryFingerprintGitOperations {
       override fun repositoryFingerprint(repoRoot: Path): WorkflowGitOperationResult =
-        WorkflowGitOperationResult.Ok(value = "test-repository-fingerprint")
+        WorkflowGitOperationResult(status = "ok", value = "test-repository-fingerprint")
     }
 }
 
@@ -1193,16 +1193,16 @@ internal fun corruptDurableEnvelope(
   val record = requireNotNull(workflowRepository.getFeatureTaskRuntimeWorkflow(workflowId))
   val artifacts = decodeArtifactsForTest(record.artifactsJson).toMutableMap()
   val briefings = requireNotNull(
-    JsonCodec.anyToStringAnyMap((artifacts[FEATURE_TASK_RUNTIME_PHASE_BRIEFINGS_ARTIFACT_KEY])),
+    JsonSupport.anyToStringAnyMap((artifacts[FEATURE_TASK_RUNTIME_PHASE_BRIEFINGS_ARTIFACT_KEY])),
   ).toMutableMap()
-  val briefing = requireNotNull(JsonCodec.anyToStringAnyMap((briefings.getValue("implement")))).toMutableMap()
+  val briefing = requireNotNull(JsonSupport.anyToStringAnyMap((briefings.getValue("implement")))).toMutableMap()
   briefing["handoff_envelope"] = corrupt(
-    requireNotNull(JsonCodec.anyToStringAnyMap(briefing.getValue("handoff_envelope"))),
+    requireNotNull(JsonSupport.anyToStringAnyMap(briefing.getValue("handoff_envelope"))),
   )
   briefings["implement"] = briefing
   artifacts[FEATURE_TASK_RUNTIME_PHASE_BRIEFINGS_ARTIFACT_KEY] = briefings
   workflowRepository.saveFeatureTaskRuntimeWorkflow(
-    record.copy(artifactsJson = JsonCodec.mapToJsonString(artifacts)),
+    record.copy(artifactsJson = JsonSupport.mapToJsonString(artifacts)),
   )
 }
 

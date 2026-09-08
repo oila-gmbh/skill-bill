@@ -12,7 +12,9 @@ data class WorkflowScopedPathContent(
 )
 
 data class WorkflowScopedPathContentsResult(
-  val status: WorkflowGitOperationStatus,
+  val status: String,
   val pairs: List<WorkflowScopedPathContent> = emptyList(),
   val error: String = "",
-)
+) {
+  val ok: Boolean get() = status == "ok"
+}

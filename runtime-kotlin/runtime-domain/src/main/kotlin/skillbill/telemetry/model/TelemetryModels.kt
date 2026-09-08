@@ -1,9 +1,9 @@
 package skillbill.telemetry.model
 
-import skillbill.model.FileLocation
+import java.nio.file.Path
 
 data class TelemetrySettings(
-  val configPath: FileLocation,
+  val configPath: Path,
   val level: String,
   val enabled: Boolean,
   val installId: String,
@@ -13,10 +13,10 @@ data class TelemetrySettings(
 )
 
 data class SyncResult(
-  val status: TelemetrySyncStatus,
+  val status: String,
   val syncedEvents: Int,
   val pendingEvents: Int,
-  val configPath: FileLocation,
+  val configPath: Path,
   val telemetryEnabled: Boolean,
   val telemetryLevel: String,
   val remoteConfigured: Boolean,

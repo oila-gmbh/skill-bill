@@ -14,7 +14,6 @@ import skillbill.install.nativeagent.NativeAgentLinkOwnership
 import skillbill.install.nativeagent.installNativeAgentFile
 import skillbill.install.support.createNewSymlinkWithGuidance
 import skillbill.nativeagent.rendering.NativeAgentProvider
-import skillbill.ports.repository.toFileLocation
 import java.nio.file.Files
 import java.nio.file.LinkOption
 import kotlin.test.Test
@@ -244,7 +243,7 @@ class InstallNativeAgentLinkApplyJunieTest : InstallNativeAgentLinkApplyTestSupp
 
     val result = installNativeAgentFile(
       source = newSource,
-      agentTarget = AgentTarget("codex", targetDir.toFileLocation()),
+      agentTarget = AgentTarget("codex", targetDir),
       managedSourceRoots = listOf(managedRoot),
     )
 
@@ -267,7 +266,7 @@ class InstallNativeAgentLinkApplyJunieTest : InstallNativeAgentLinkApplyTestSupp
 
     val result = installNativeAgentFile(
       source = newSource,
-      agentTarget = AgentTarget("claude", targetDir.toFileLocation()),
+      agentTarget = AgentTarget("claude", targetDir),
       managedSourceRoots = listOf(managedRoot),
     )
 
@@ -289,8 +288,7 @@ class InstallNativeAgentLinkApplyJunieTest : InstallNativeAgentLinkApplyTestSupp
     val linkPath = targetDir.resolve("bill-worker.toml")
     createSymlinkOrSkip(linkPath, userSource)
 
-    val result =
-      installNativeAgentFile(newSource, AgentTarget("codex", targetDir.toFileLocation()), listOf(managedRoot))
+    val result = installNativeAgentFile(newSource, AgentTarget("codex", targetDir), listOf(managedRoot))
 
     assertTrue(result is InstallNativeAgentResult.Skipped)
     assertEquals(userSource.toAbsolutePath().normalize(), readSymlinkTarget(linkPath))
@@ -316,7 +314,7 @@ class InstallNativeAgentLinkApplyJunieTest : InstallNativeAgentLinkApplyTestSupp
 
         val result = installNativeAgentFile(
           source = currentSource,
-          agentTarget = AgentTarget(provider.name, targetDir.toFileLocation()),
+          agentTarget = AgentTarget(provider.name, targetDir),
           managedSourceRoots = listOf(currentRoot),
           ownership = NativeAgentLinkOwnership(home, provider, logicalName),
         )

@@ -1,7 +1,5 @@
 package skillbill.scaffold.runtime
 
-import skillbill.model.toPath
-import skillbill.ports.repository.toFileLocation
 import skillbill.scaffold.model.CodeReviewBaselineLayer
 import skillbill.scaffold.policy.scaffold.SKILL_KIND_PLATFORM_PACK
 import java.nio.file.Path
@@ -78,12 +76,12 @@ internal fun platformPackScaffoldPlanBody(args: PlatformPackScaffoldPlanBodyArgs
   qualityCheckSkillName = args.qualityCheckName,
   qualityCheckSkillPath = args.scaffold.packRoot.resolve("quality-check").resolve(args.qualityCheckName),
   installPaths = policyBuildPlatformPackInstallPaths(
-    packRoot = args.scaffold.packRoot.toFileLocation(),
+    packRoot = args.scaffold.packRoot,
     baselineName = args.baselineName,
     qualityCheckName = args.qualityCheckName,
-    specialistPaths = args.specialistPlan.paths.mapValues { (_, entry) -> entry.toFileLocation() },
+    specialistPaths = args.specialistPlan.paths,
     selectedAreas = args.specialistPlan.names.keys.toList(),
-  ).map { entry -> entry.toPath() },
+  ),
   contentBody = args.scaffold.payload["content_body"] as? String,
   baselineLayers = args.baselineLayers,
   subagentSpecialists = args.specialistPlan.subagents,

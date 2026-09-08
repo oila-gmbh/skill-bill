@@ -1,12 +1,12 @@
 package skillbill.install.model
 
-import skillbill.model.FileLocation
+import java.nio.file.Path
 
 data class ExternalAddonSource(
-  val path: FileLocation,
+  val path: Path,
   val platform: String,
 )
 
 data class ExternalAgentAddonSource(
-  val path: FileLocation,
+  val path: Path,
 )

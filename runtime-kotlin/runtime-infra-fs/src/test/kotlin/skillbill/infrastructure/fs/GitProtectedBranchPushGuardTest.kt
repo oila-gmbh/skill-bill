@@ -1,6 +1,5 @@
 package skillbill.infrastructure.fs
 
-import skillbill.ports.workflow.gitops.model.WorkflowGitOperationResult
 import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.test.AfterTest
@@ -46,7 +45,7 @@ class GitProtectedBranchPushGuardTest {
 
     val pushed = gitPushBranch(repo, "main", withLease = true)
 
-    assertFalse(pushed is WorkflowGitOperationResult.Ok)
+    assertFalse(pushed.ok)
     assertContains(pushed.error.orEmpty(), "Refusing to force-push protected branch 'main'")
     assertEquals(remoteHeadBefore, remoteHead())
   }
@@ -58,7 +57,7 @@ class GitProtectedBranchPushGuardTest {
     git("add", "-A")
     git("commit", "-m", "change")
 
-    assertTrue(gitPushBranch(repo, "feat/guarded", withLease = true) is WorkflowGitOperationResult.Ok)
+    assertTrue(gitPushBranch(repo, "feat/guarded", withLease = true).ok)
   }
 
   private fun remoteHead(): String {

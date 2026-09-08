@@ -1,27 +1,31 @@
 package skillbill.infrastructure.fs
 
 import skillbill.ports.workflow.gitops.CheckpointHistoryGitOperations
+import skillbill.ports.workflow.gitops.CheckpointHistoryGitOperationsProvider
 import skillbill.ports.workflow.gitops.GoalSubtaskReviewGitOperations
+import skillbill.ports.workflow.gitops.GoalSubtaskReviewGitOperationsProvider
 import skillbill.ports.workflow.gitops.RepositoryFingerprintGitOperations
+import skillbill.ports.workflow.gitops.RepositoryFingerprintGitOperationsProvider
 import skillbill.ports.workflow.gitops.RepositoryOwnedPathsGitOperations
+import skillbill.ports.workflow.gitops.RepositoryOwnedPathsGitOperationsProvider
 import skillbill.ports.workflow.gitops.RuntimePhaseFileManifestGitOperations
+import skillbill.ports.workflow.gitops.RuntimePhaseFileManifestGitOperationsProvider
 import skillbill.ports.workflow.gitops.ScopedStagingGitOperations
+import skillbill.ports.workflow.gitops.ScopedStagingGitOperationsProvider
 import skillbill.ports.workflow.gitops.SuppressionEvidenceGitOperations
 import skillbill.ports.workflow.gitops.SuppressionEvidenceGitOperationsProvider
-import skillbill.ports.workflow.gitops.WorkflowGitBranchOperations
-import skillbill.ports.workflow.gitops.WorkflowGitCommitHistoryOperations
 import skillbill.ports.workflow.gitops.WorkflowGitOperations
-import skillbill.ports.workflow.gitops.WorkflowGitRemoteOperations
-import skillbill.ports.workflow.gitops.WorkflowGitWorktreeOperations
 import skillbill.ports.workflow.gitops.model.WorkflowGitOperationResult
 import java.nio.file.Path
 
 class GitWorkflowGitOperations :
-  WorkflowGitOperations,
-  WorkflowGitBranchOperations by GitStandardWorkflowGitOperations,
-  WorkflowGitRemoteOperations by GitStandardWorkflowGitOperations,
-  WorkflowGitCommitHistoryOperations by GitStandardWorkflowGitOperations,
-  WorkflowGitWorktreeOperations by GitStandardWorkflowGitOperations,
+  WorkflowGitOperations by GitStandardWorkflowGitOperations,
+  CheckpointHistoryGitOperationsProvider,
+  GoalSubtaskReviewGitOperationsProvider,
+  RepositoryFingerprintGitOperationsProvider,
+  RepositoryOwnedPathsGitOperationsProvider,
+  RuntimePhaseFileManifestGitOperationsProvider,
+  ScopedStagingGitOperationsProvider,
   SuppressionEvidenceGitOperationsProvider {
   override val checkpointHistoryOperations: CheckpointHistoryGitOperations = GitCheckpointHistoryOperations
   override val goalSubtaskReviewOperations: GoalSubtaskReviewGitOperations = GitGoalSubtaskReviewOperations
@@ -41,12 +45,13 @@ class GitWorkflowGitOperations :
 internal object GitRepositoryOwnedPathsOperations : RepositoryOwnedPathsGitOperations {
   override fun ownedPaths(repoRoot: Path): WorkflowGitOperationResult {
     val untracked = runGitCommand(repoRoot, "ls-files", "--others", "--exclude-standard", "-z")
-    if (untracked !is WorkflowGitOperationResult.Ok) return untracked
+    if (!untracked.ok) return untracked
     val tracked = runGitCommand(repoRoot, "diff", "--name-only", "-z", "HEAD")
     // A repository with no commits has no HEAD to diff against; the untracked listing is the whole
     // owned inventory there, so an unresolvable HEAD is not a failure.
-    val trackedValue = tracked.value.takeIf { tracked is WorkflowGitOperationResult.Ok }.orEmpty()
-    return WorkflowGitOperationResult.Ok(
+    val trackedValue = tracked.value.takeIf { tracked.ok }.orEmpty()
+    return WorkflowGitOperationResult(
+      status = "ok",
       // Each -z listing terminates every entry with NUL, so the two blobs concatenate directly.
       value = untracked.value.orEmpty() + trackedValue,
     )

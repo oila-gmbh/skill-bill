@@ -1,10 +1,7 @@
 package skillbill.review
 
 import skillbill.review.model.ReviewRunLane
-import skillbill.review.model.ReviewLaneResolutionState
-import skillbill.review.context.model.ReviewLaneReviewDisposition
 import skillbill.review.plan.model.ReviewLaunchPlan
-import skillbill.review.UNRESOLVED_ATTRIBUTION
 
 /**
  * Turns a composed launch plan plus the lane names a run reported into the durable lane rows.
@@ -19,8 +16,14 @@ import skillbill.review.UNRESOLVED_ATTRIBUTION
  * never happened.
  */
 object ReviewRunLaneResolver {
+  const val RESOLVED: String = "resolved"
+  const val UNRESOLVED: String = "unresolved"
+  const val COMPLETE_DISPOSITION: String = "complete"
+  const val INCOMPLETE_DISPOSITION: String = "incomplete"
+
+  /** Lanes whose single-pass review did not finish with a complete disposition and may be resumed. */
   fun lanesToResume(lanes: List<ReviewRunLane>): List<ReviewRunLane> =
-    lanes.filter { it.reviewDisposition != ReviewLaneReviewDisposition.COMPLETE }
+    lanes.filter { it.reviewDisposition != COMPLETE_DISPOSITION }
 
   fun resolve(plan: ReviewLaunchPlan, reportedLaneNames: List<String>): List<ReviewRunLane> {
     // Narration reports a lane by skill name or by bare area ("Specialist reviews: architecture"),
@@ -36,14 +39,10 @@ object ReviewRunLaneResolver {
         required = lane.required,
         orderIndex = lane.orderIndex,
         originLayerChain = lane.originLayerChain,
-        resolutionState = if (lane.skillName in reported || lane.area in reported) {
-          ReviewLaneResolutionState.RESOLVED
-        } else {
-          ReviewLaneResolutionState.UNRESOLVED
-        },
+        resolutionState = if (lane.skillName in reported || lane.area in reported) RESOLVED else UNRESOLVED,
         // Narration is not evidence of a durable single-pass result, so an imported lane is never
         // complete: it stays resumable until a runtime pass records completion.
-        reviewDisposition = ReviewLaneReviewDisposition.INCOMPLETE,
+        reviewDisposition = INCOMPLETE_DISPOSITION,
       )
     }
     val plannedNames = planned.flatMap { listOf(it.laneSkillName, it.area) }.toSet()
@@ -51,14 +50,14 @@ object ReviewRunLaneResolver {
     return planned + unmatched.mapIndexed { index, reportedName ->
       ReviewRunLane(
         laneSkillName = reportedName,
-        packSlug = UNRESOLVED_ATTRIBUTION,
-        area = UNRESOLVED_ATTRIBUTION,
+        packSlug = UNRESOLVED,
+        area = UNRESOLVED,
         depth = 0,
         required = false,
         orderIndex = planned.size + index,
         originLayerChain = emptyList(),
-        resolutionState = ReviewLaneResolutionState.UNRESOLVED,
-        reviewDisposition = ReviewLaneReviewDisposition.INCOMPLETE,
+        resolutionState = UNRESOLVED,
+        reviewDisposition = INCOMPLETE_DISPOSITION,
       )
     }
   }

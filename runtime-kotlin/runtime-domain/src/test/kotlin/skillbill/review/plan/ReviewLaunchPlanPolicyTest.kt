@@ -5,7 +5,6 @@ import skillbill.error.AmbiguousLaneOwnershipError
 import skillbill.error.IncompatibleCompositionContractError
 import skillbill.error.MissingCompositionLayerError
 import skillbill.error.ReviewCompositionCycleError
-import skillbill.model.FileLocation
 import skillbill.scaffold.model.CodeReviewBaselineLayer
 import skillbill.scaffold.model.CodeReviewComposition
 import skillbill.scaffold.model.CodeReviewCompositionMode
@@ -14,6 +13,7 @@ import skillbill.scaffold.model.DeclaredFiles
 import skillbill.scaffold.model.PlatformManifest
 import skillbill.scaffold.model.ReviewLaneCondition
 import skillbill.scaffold.model.RoutingSignals
+import java.nio.file.Path
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
@@ -172,14 +172,14 @@ class ReviewLaunchPlanPolicyTest {
     laneConditions: Map<String, ReviewLaneCondition> = emptyMap(),
   ) = PlatformManifest(
     slug = slug,
-    packRoot = FileLocation("platform-packs/$slug"),
+    packRoot = Path.of("platform-packs", slug),
     contractVersion = "1.3",
     routingSignals = RoutingSignals(emptyList(), emptyList()),
     declaredCodeReviewAreas = areas,
     declaredFiles = DeclaredFiles(
-      baseline = FileLocation("platform-packs/$slug/code-review/bill-$slug-code-review/content.md"),
+      baseline = Path.of("platform-packs", slug, "code-review", "bill-$slug-code-review", "content.md"),
       areas = areas.associateWith {
-        FileLocation("platform-packs/$slug/code-review/bill-$slug-code-review-$it/content.md")
+        Path.of("platform-packs", slug, "code-review", "bill-$slug-code-review-$it", "content.md")
       },
     ),
     areaMetadata = emptyMap(),

@@ -79,19 +79,14 @@ class GoalRunnerFeatureTaskRuntimeIntegrationTest {
     )
 
     val child = assertIs<FeatureTaskRuntimeRunReport.Completed>(parity.childReports.single())
-    assertEquals(GoalRunnerTerminalStatus.COMPLETE, child.subtaskOutcome?.status)
+    assertEquals("complete", child.subtaskOutcome?.status)
     assertIs<GoalRunnerRunReport.Completed>(parity.report)
   }
 
   @Test
   fun `authoritative terminal fields are preserved for complete blocked and failed child reports`() {
     val completeRun = goalRunForChildReport(
-      completedChildReport(
-        status = GoalRunnerTerminalStatus.COMPLETE,
-        commitSha = "sha-complete",
-        reason = null,
-        step = "commit_push",
-      ),
+      completedChildReport(status = "complete", commitSha = "sha-complete", reason = null, step = "commit_push"),
     )
     assertIs<GoalRunnerRunReport.Completed>(completeRun.first)
     val complete = completeRun.second
@@ -103,7 +98,7 @@ class GoalRunnerFeatureTaskRuntimeIntegrationTest {
 
     val blockedRun = goalRunForChildReport(
       completedChildReport(
-        status = GoalRunnerTerminalStatus.BLOCKED,
+        status = "blocked",
         commitSha = "sha-blocked",
         reason = "durable reason",
         step = "implement",
@@ -427,7 +422,7 @@ private fun FeatureTaskRuntimeRunReport.terminalObservation(fallbackCommitSha: S
   }
   return if (outcome != null) {
     TerminalObservation(
-      outcome.status.wireValue,
+      outcome.status,
       outcome.blockedReason,
       outcome.commitSha,
       outcome.workflowId,
@@ -553,7 +548,7 @@ private fun assertReviewCompositionParity(standalone: GoalChildObservation, goal
 }
 
 private fun completedChildReport(
-  status: GoalRunnerTerminalStatus,
+  status: String,
   commitSha: String?,
   reason: String?,
   step: String,
@@ -700,7 +695,7 @@ private fun authoritativeTerminalOutcome(
   }
   if (subtaskOutcome != null) {
     return GoalRunnerStoredOutcome(
-      status = subtaskOutcome.status,
+      status = GoalRunnerTerminalStatus.valueOf(subtaskOutcome.status.uppercase()),
       workflowId = subtaskOutcome.workflowId,
       commitSha = subtaskOutcome.commitSha,
       blockedReason = subtaskOutcome.blockedReason,

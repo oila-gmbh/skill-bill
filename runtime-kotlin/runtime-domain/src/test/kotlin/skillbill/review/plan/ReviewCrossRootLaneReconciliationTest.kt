@@ -2,7 +2,6 @@ package skillbill.review.plan
 
 import org.junit.jupiter.api.Test
 import skillbill.error.AmbiguousLaneOwnershipError
-import skillbill.model.FileLocation
 import skillbill.review.plan.model.ReviewLaunchLane
 import skillbill.review.plan.model.ReviewRootLanes
 import skillbill.scaffold.model.CodeReviewBaselineLayer
@@ -12,6 +11,7 @@ import skillbill.scaffold.model.CodeReviewCompositionScope
 import skillbill.scaffold.model.DeclaredFiles
 import skillbill.scaffold.model.PlatformManifest
 import skillbill.scaffold.model.RoutingSignals
+import java.nio.file.Path
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertTrue
@@ -136,12 +136,12 @@ class ReviewCrossRootLaneReconciliationTest {
 
   private fun pack(slug: String, baselines: List<String> = emptyList()) = PlatformManifest(
     slug = slug,
-    packRoot = FileLocation("platform-packs/$slug"),
+    packRoot = Path.of("platform-packs", slug),
     contractVersion = "1.3",
     routingSignals = RoutingSignals(emptyList(), emptyList()),
     declaredCodeReviewAreas = listOf("architecture"),
     declaredFiles = DeclaredFiles(
-      baseline = FileLocation("platform-packs/$slug/code-review/bill-$slug-code-review/content.md"),
+      baseline = Path.of("platform-packs", slug, "code-review", "bill-$slug-code-review", "content.md"),
       areas = emptyMap(),
     ),
     areaMetadata = emptyMap(),

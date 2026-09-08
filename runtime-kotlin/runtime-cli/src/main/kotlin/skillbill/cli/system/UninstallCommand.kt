@@ -16,15 +16,20 @@ import skillbill.ports.system.HostPlatformPort
 import java.nio.file.Path
 
 @Inject
+data class UninstallDependencies(
+  val installAgentService: InstallAgentService,
+  val installNativeAgentLinkPort: InstallNativeAgentLinkPort,
+  val installMcpRegistrationPort: InstallMcpRegistrationPort,
+  val uninstallFileSystem: UninstallFileSystemService,
+  val hostPlatform: HostPlatformPort,
+  val diagnostics: RuntimeDiagnostics,
+)
+
+@Inject
 class UninstallCommand(
   private val state: CliRunState,
   private val inputs: CliRunInputs,
-  private val installAgentService: InstallAgentService,
-  private val installNativeAgentLinkPort: InstallNativeAgentLinkPort,
-  private val installMcpRegistrationPort: InstallMcpRegistrationPort,
-  private val uninstallFileSystem: UninstallFileSystemService,
-  private val hostPlatform: HostPlatformPort,
-  private val diagnostics: RuntimeDiagnostics,
+  private val deps: UninstallDependencies,
 ) : DocumentedCliCommand("uninstall", "Uninstall Skill Bill from local agents and runtime state.") {
   private val yes by option("--yes", "-y", help = "Skip the interactive confirmation prompt.")
     .flag(default = false)
@@ -70,12 +75,12 @@ class UninstallCommand(
   private fun uninstallPlan(): UninstallPlan {
     val home = inputs.userHome
     val stateRoot = home.resolve(".skill-bill")
-    val skillNames = installedSkillNames(uninstallFileSystem, stateRoot.resolve("installed-skills"))
+    val skillNames = installedSkillNames(deps.uninstallFileSystem, stateRoot.resolve("installed-skills"))
     val legacyNames = legacySkillNames(skillNames)
-    val claudeTargets = installAgentService.claudeRoots(home, inputs.environment).flatMap { root ->
+    val claudeTargets = deps.installAgentService.claudeRoots(home, inputs.environment).flatMap { root ->
       listOf(root.resolve("skills"), root.resolve("commands"))
     }
-    val codexTargets = installAgentService.codexRoots(home, inputs.environment)
+    val codexTargets = deps.installAgentService.codexRoots(home, inputs.environment)
       .map { root -> root.resolve("skills") }
     val agentTargets = listOf(
       home.resolve(".copilot/skills"),
@@ -102,7 +107,7 @@ class UninstallCommand(
         binDir = binDir,
         desktopAppDir = desktopAppDir,
         environment = inputs.environment,
-        os = currentOs(hostPlatform.osName),
+        os = currentOs(deps.hostPlatform.osName),
       ),
     )
   }
@@ -110,17 +115,17 @@ class UninstallCommand(
   private fun applyUninstall(plan: UninstallPlan): UninstallResult {
     val removed = mutableListOf<String>()
     val skipped = mutableListOf<String>()
-    val recorder = UninstallMutationRecorder(diagnostics)
+    val recorder = UninstallMutationRecorder(deps.diagnostics)
 
-    cleanupAgentInstallTargets(plan, installAgentService, removed, skipped, recorder)
-    cleanupNativeAgentInstallLinks(plan, installNativeAgentLinkPort, uninstallFileSystem, removed, recorder)
-    cleanupMcpRegistrations(plan, installMcpRegistrationPort, removed, recorder)
+    cleanupAgentInstallTargets(plan, deps.installAgentService, removed, skipped, recorder)
+    cleanupNativeAgentInstallLinks(plan, deps.installNativeAgentLinkPort, deps.uninstallFileSystem, removed, recorder)
+    cleanupMcpRegistrations(plan, deps.installMcpRegistrationPort, removed, recorder)
 
     plan.launchers.forEach { launcher ->
-      removeLauncher(uninstallFileSystem, launcher, removed, skipped, recorder)
+      removeLauncher(deps.uninstallFileSystem, launcher, removed, skipped, recorder)
     }
-    removeDesktop(uninstallFileSystem, plan.desktop, removed, skipped, recorder)
-    removeRecursively(uninstallFileSystem, plan.stateRoot, removed, recorder)
+    removeDesktop(deps.uninstallFileSystem, plan.desktop, removed, skipped, recorder)
+    removeRecursively(deps.uninstallFileSystem, plan.stateRoot, removed, recorder)
 
     return UninstallResult(
       failed = recorder.failed(),

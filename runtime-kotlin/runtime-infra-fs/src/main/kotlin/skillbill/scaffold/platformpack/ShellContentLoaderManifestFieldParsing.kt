@@ -1,7 +1,6 @@
 
 package skillbill.scaffold.platformpack
 
-import skillbill.ports.repository.toFileLocation
 import skillbill.scaffold.model.CodeReviewBaselineLayer
 import skillbill.scaffold.model.CodeReviewComposition
 import skillbill.scaffold.model.CodeReviewCompositionMode
@@ -104,8 +103,8 @@ internal fun parseDeclaredFiles(
     )
   }
   return DeclaredFiles(
-    baseline = baselinePath?.toFileLocation(),
-    areas = areaFiles.mapValues { (_, entry) -> entry.toFileLocation() },
+    baseline = baselinePath,
+    areas = areaFiles,
   )
 }
 

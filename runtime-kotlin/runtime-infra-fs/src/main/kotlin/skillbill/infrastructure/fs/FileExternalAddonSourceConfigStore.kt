@@ -4,12 +4,10 @@ import me.tatarka.inject.annotations.Inject
 import skillbill.error.ExternalAddonConfigError
 import skillbill.install.model.ExternalAddonSource
 import skillbill.install.support.resolveTelemetryConfigPath
-import skillbill.model.toPath
 import skillbill.ports.install.addon.ExternalAddonSourceConfigPort
 import skillbill.ports.install.addon.model.ExternalAddonSourceConfigRequest
 import skillbill.ports.install.addon.model.ExternalAddonSourceConfigResult
 import skillbill.ports.install.addon.model.ExternalAddonSourceRegistrationRequest
-import skillbill.ports.repository.toFileLocation
 import skillbill.telemetry.model.TelemetryConfigDocument
 import java.nio.file.Files
 import java.nio.file.Path
@@ -90,11 +88,11 @@ class FileExternalAddonSourceConfigStore : ExternalAddonSourceConfigPort {
     val platform = requireExternalAddonEntryPlatform(configPath, index, map)
     val resolvedPath = resolveSourcePath(userHome, rawPath)
     validateExternalAddonEntryDirectory(configPath, index, rawPath, resolvedPath)
-    return ExternalAddonSource(path = resolvedPath.toFileLocation(), platform = platform.trim())
+    return ExternalAddonSource(path = resolvedPath, platform = platform.trim())
   }
 
   private fun ExternalAddonSource.normalized(): ExternalAddonSource =
-    ExternalAddonSource(path = path.toPath().toAbsolutePath().normalize().toFileLocation(), platform = platform.trim())
+    ExternalAddonSource(path = path.toAbsolutePath().normalize(), platform = platform.trim())
 
   private fun resolveSourcePath(userHome: Path, rawPath: String): Path {
     val expanded = when {

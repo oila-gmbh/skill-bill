@@ -1,6 +1,5 @@
 package skillbill.application.goalrunner
 
-import skillbill.ports.workflow.gitops.model.WorkflowGitOperationResult
 import me.tatarka.inject.annotations.Inject
 import skillbill.application.goalrunner.model.GoalRunnerRunEvent
 import skillbill.application.goalrunner.model.GoalRunnerRunRequest
@@ -18,11 +17,8 @@ import skillbill.ports.repository.RepositoryEnclosingRootPort
 import skillbill.ports.workflow.gitops.captureGoalSubtaskReviewBaseline
 import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewBaseline
 import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewBaselineResult
-import skillbill.ports.workflow.gitops.model.WorkflowGitOperationStatus
 import skillbill.review.context.model.CodeReviewExecutionMode
 import skillbill.workflow.decomposition.model.DecompositionSubtask
-import skillbill.workflow.model.DecompositionStatus
-import skillbill.workflow.model.decompositionStatus
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import java.nio.file.Path
 
@@ -46,19 +42,19 @@ public class GoalRunnerSubtaskLaunchPrepare(
         outcomeStore.goalSubtaskReviewState(existingWorkflowId, request.dbPathOverride)
           ?.let { reviewState ->
             GoalSubtaskReviewBaselineResult(
-              status = WorkflowGitOperationStatus.OK,
+              status = "ok",
               baseline = GoalSubtaskReviewBaseline(reviewState.reviewBaseSha, reviewState.baselineUntrackedPaths),
             )
           }
           ?: GoalSubtaskReviewBaselineResult(
-            status = WorkflowGitOperationStatus.ERROR,
+            status = "error",
             error =
             "Goal-subtask review state is missing for existing child '$existingWorkflowId'; " +
               "refusing to recapture its immutable baseline.",
           )
       }.getOrElse { error ->
         GoalSubtaskReviewBaselineResult(
-          status = WorkflowGitOperationStatus.ERROR,
+          status = "error",
           error =
           "Goal-subtask review persistence is malformed for existing child '$existingWorkflowId': " +
             error.message.orEmpty(),
@@ -68,7 +64,7 @@ public class GoalRunnerSubtaskLaunchPrepare(
     val branch = state.manifest.branchPlanFor(subtaskId).branch.takeIf(String::isNotBlank)
       ?: state.manifest.featureBranch?.takeIf(String::isNotBlank)
       ?: return GoalSubtaskReviewBaselineResult(
-        status = WorkflowGitOperationStatus.ERROR,
+        status = "error",
         error = "Goal subtask '$subtaskId' has no durable child branch for review baseline capture.",
       )
     return gitOperations.captureGoalSubtaskReviewBaseline(request.repoRoot, branch)
@@ -166,7 +162,7 @@ public class GoalRunnerSubtaskLaunchPrepare(
     val subtask = requireNotNull(state.manifest.subtasks.firstOrNull { it.id == subtaskId }) {
       "Goal subtask '$subtaskId' is missing from the decomposition manifest."
     }
-    if (subtask.status.decompositionStatus() == DecompositionStatus.BLOCKED && priorWorkflowId != null) {
+    if (subtask.status == "blocked" && priorWorkflowId != null) {
       reopenBlockedChildForOperatorResume(subtaskId, priorWorkflowId, subtask, request)
     }
     val firstRun = priorWorkflowId == null
@@ -222,11 +218,11 @@ public class GoalRunnerSubtaskLaunchPrepare(
       return null
     }
     val checkout = gitOperations.checkoutBranch(request.repoRoot, branchPlan.branch, branchPlan.baseBranch)
-    val setupError = if (checkout !is WorkflowGitOperationResult.Ok) {
+    val setupError = if (!checkout.ok) {
       checkout.error
     } else if (branchPlan.validateBase) {
       gitOperations.validateBranchBase(request.repoRoot, branchPlan.branch, branchPlan.baseBranch)
-        .takeUnless { it is WorkflowGitOperationResult.Ok }
+        .takeUnless { it.ok }
         ?.error
         .orEmpty()
     } else {

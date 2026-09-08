@@ -4,7 +4,6 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertTrue
-import skillbill.review.model.ReviewExecutionMode
 
 /**
  * SKILL-159 AC-004: the reported-string surface accepts exactly the post-rename token set. An
@@ -26,7 +25,7 @@ class ReviewExecutionModeReportingTest {
   @Test
   fun `each accepted token round trips onto the reported execution mode`() {
     listOf("inline", "delegated").forEach { token ->
-      assertEquals(ReviewExecutionMode.fromWire(token), review("Execution mode: $token").executionMode)
+      assertEquals(token, review("Execution mode: $token").executionMode)
     }
   }
 
@@ -34,7 +33,7 @@ class ReviewExecutionModeReportingTest {
   // evidence that value is the explicit unresolved marker, never a silent drop to inline.
   @Test
   fun `an absent execution mode line records the explicit unresolved marker`() {
-    assertEquals(ReviewExecutionMode.UNRESOLVED, review(null).executionMode)
+    assertEquals(UNRESOLVED_ATTRIBUTION, review(null).executionMode)
   }
 
   @Test

@@ -1,6 +1,5 @@
 package skillbill.application.featuretask
 
-import skillbill.ports.workflow.gitops.model.WorkflowGitOperationResult
 import skillbill.application.featuretask.model.RemediationReconcileSnapshot
 import skillbill.application.featuretask.model.RemediationReconciliationBlocked
 import skillbill.application.featuretask.model.RemediationReconciliationCoherent
@@ -30,7 +29,7 @@ internal fun latestResolvedReviewFixCheckpointCommit(
 
 fun resolvesCommit(gitOperations: WorkflowGitOperations, repoRoot: Path, sha: String): Boolean {
   val resolved = gitOperations.resolveCommit(repoRoot, sha.trim())
-  return resolved is WorkflowGitOperationResult.Ok && resolved.value.orEmpty().trim().isNotBlank()
+  return resolved.ok && resolved.value.orEmpty().trim().isNotBlank()
 }
 
 fun resolveCheckpointRefCommit(gitOperations: WorkflowGitOperations, repoRoot: Path, checkpointRef: String): String? {
@@ -39,7 +38,7 @@ fun resolveCheckpointRefCommit(gitOperations: WorkflowGitOperations, repoRoot: P
     FEATURE_TASK_RUNTIME_CHECKPOINT_REF_NAMESPACE,
     checkpointRef,
   )
-  if (resolved !is WorkflowGitOperationResult.Ok) return null
+  if (!resolved.ok) return null
   return resolved.value.orEmpty().trim().takeIf(String::isNotBlank)
 }
 
@@ -111,11 +110,11 @@ private fun storedBranchReconciliation(
   latestRemediationResolved: ResolvedReviewFixCheckpoint?,
 ): RemediationReconciliationDecision {
   val head = gitOperations.headCommitSha(repoRoot)
-  if (head !is WorkflowGitOperationResult.Ok || head.value.isBlank()) return RemediationReconciliationCoherent
+  if (!head.ok || head.value.isBlank()) return RemediationReconciliationCoherent
   val headSha = head.value.trim()
   val onBranch = gitOperations.isCommitAncestor(repoRoot, stored, headSha)
   return when {
-    onBranch !is WorkflowGitOperationResult.Ok -> RemediationReconciliationCoherent
+    !onBranch.ok -> RemediationReconciliationCoherent
     onBranch.value == "true" -> RemediationReconciliationCoherent
     latestRemediationResolved != null -> RemediationReconciliationHeal(latestRemediationResolved.sha)
     else -> RemediationReconciliationBlocked
@@ -130,5 +129,5 @@ private fun isStrictAncestor(
 ): Boolean {
   if (ancestor == descendant) return false
   val ancestry = gitOperations.isCommitAncestor(repoRoot, ancestor, descendant)
-  return ancestry is WorkflowGitOperationResult.Ok && ancestry.value == "true"
+  return ancestry.ok && ancestry.value == "true"
 }

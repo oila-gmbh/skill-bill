@@ -23,14 +23,14 @@ internal object GitCheckpointHistoryOperations : CheckpointHistoryGitOperations 
       listOf("commit", "--amend", "-m", message)
     }
     val amended = runGitCommand(repoRoot, amendArgs)
-    if (amended !is WorkflowGitOperationResult.Ok) return amended
+    if (!amended.ok) return amended
     return runGitCommand(repoRoot, "rev-parse", "HEAD")
   }
 
   override fun headCommitMessage(repoRoot: Path): WorkflowGitOperationResult {
     val message = runGitCommand(repoRoot, "log", "-1", "--format=%B")
-    if (message !is WorkflowGitOperationResult.Ok) return message
-    return WorkflowGitOperationResult.Ok(value = message.value.orEmpty())
+    if (!message.ok) return message
+    return WorkflowGitOperationResult(status = "ok", value = message.value.orEmpty())
   }
 
   override fun updateRef(
@@ -43,7 +43,7 @@ internal object GitCheckpointHistoryOperations : CheckpointHistoryGitOperations 
       ?: return gitCheckpointRejectedRef(namespacePrefix, refName)
     val target = targetSha.trim()
     if (target.isBlank()) {
-      return WorkflowGitOperationResult.Failed(error = "A target sha is required to write ref '$ref'.")
+      return WorkflowGitOperationResult(status = "error", error = "A target sha is required to write ref '$ref'.")
     }
     return runGitCommand(repoRoot, "update-ref", ref, target).withValue(ref)
   }
@@ -52,18 +52,19 @@ internal object GitCheckpointHistoryOperations : CheckpointHistoryGitOperations 
     val ref = gitCheckpointValidatedRef(namespacePrefix, refName)
       ?: return gitCheckpointRejectedRef(namespacePrefix, refName)
     val resolved = runGitCommand(repoRoot, "for-each-ref", "--format=%(objectname)", ref)
-    if (resolved !is WorkflowGitOperationResult.Ok) {
-      return WorkflowGitOperationResult.Failed(
+    if (!resolved.ok) {
+      return WorkflowGitOperationResult(
+        status = "error",
         error = "Ref '$ref' could not be looked up (${resolved.error}).",
       )
     }
-    return WorkflowGitOperationResult.Ok(value = resolved.value.orEmpty().trim())
+    return WorkflowGitOperationResult(status = "ok", value = resolved.value.orEmpty().trim())
   }
 
   override fun listRefs(repoRoot: Path, namespacePrefix: String): WorkflowGitOperationResult {
     val prefix = namespacePrefix.trim()
     if (prefix.isBlank()) {
-      return WorkflowGitOperationResult.Failed(error = "A ref namespace prefix is required.")
+      return WorkflowGitOperationResult(status = "error", error = "A ref namespace prefix is required.")
     }
     return runGitCommand(
       repoRoot,
@@ -77,8 +78,8 @@ internal object GitCheckpointHistoryOperations : CheckpointHistoryGitOperations 
     val ref = gitCheckpointValidatedRef(namespacePrefix, refName)
       ?: return gitCheckpointRejectedRef(namespacePrefix, refName)
     val existing = runGitCommand(repoRoot, "rev-parse", "--verify", "--quiet", ref)
-    if (existing !is WorkflowGitOperationResult.Ok || existing.value.orEmpty().isBlank()) {
-      return WorkflowGitOperationResult.Ok(value = ref)
+    if (!existing.ok || existing.value.orEmpty().isBlank()) {
+      return WorkflowGitOperationResult(status = "ok", value = ref)
     }
     return runGitCommand(repoRoot, "update-ref", "-d", ref).withValue(ref)
   }

@@ -1,24 +1,24 @@
 package skillbill.launcher.review
 
-import skillbill.contracts.JsonCodec
+import skillbill.contracts.JsonSupport
 
 private const val JSON_RPC_METHOD_NOT_FOUND = -32601
 private const val JSON_RPC_INVALID_PARAMS = -32602
 
 internal fun governedReviewEvidenceToolResponse(id: Any?, payload: Map<String, Any?>): String =
-  JsonCodec.mapToJsonString(
+  JsonSupport.mapToJsonString(
     linkedMapOf(
       "jsonrpc" to "2.0",
       "id" to id,
       "result" to linkedMapOf(
-        "content" to listOf(linkedMapOf("type" to "text", "text" to JsonCodec.mapToJsonString(payload))),
+        "content" to listOf(linkedMapOf("type" to "text", "text" to JsonSupport.mapToJsonString(payload))),
         "isError" to false,
       ),
     ),
   )
 
 internal fun governedReviewEvidenceErrorResponse(id: Any?, code: Int, message: String): String =
-  JsonCodec.mapToJsonString(
+  JsonSupport.mapToJsonString(
     linkedMapOf(
       "jsonrpc" to "2.0",
       "id" to id,

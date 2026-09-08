@@ -1,8 +1,6 @@
 package skillbill.scaffold
 
 import skillbill.error.InvalidScaffoldPayloadError
-import skillbill.model.toPath
-import skillbill.ports.repository.toFileLocation
 import skillbill.scaffold.platformpack.loadPlatformPack
 import skillbill.scaffold.policy.platformpack.model.PlatformPackManifestRenderRequest
 import skillbill.scaffold.policy.platformpack.renderPlatformPackManifest
@@ -77,22 +75,14 @@ class ScaffoldBaselineLayerPayloadTest {
     val execute = scaffold(payload + ("repo_root" to executeRepo.toString()), dryRun = false)
     val executeManifest = Files.readString(executeRepo.resolve("platform-packs/androidx/platform.yaml"))
 
-    assertEquals(
-      listOf(dryRunRepo.resolve("platform-packs/androidx/platform.yaml")),
-      dryRun.manifestEdits.map {
-        it.toPath()
-      },
-    )
+    assertEquals(listOf(dryRunRepo.resolve("platform-packs/androidx/platform.yaml")), dryRun.manifestEdits)
     assertFalse(Files.exists(dryRunRepo.resolve("platform-packs/androidx/platform.yaml")))
     assertEquals(
       executeManifest,
-      dryRun.manifestPreviews.getValue(dryRunRepo.resolve("platform-packs/androidx/platform.yaml").toFileLocation()),
+      dryRun.manifestPreviews.getValue(dryRunRepo.resolve("platform-packs/androidx/platform.yaml")),
     )
     assertContains(executeManifest, "code_review_composition:")
-    assertContains(
-      execute.manifestEdits.map { it.toPath() },
-      executeRepo.resolve("platform-packs/androidx/platform.yaml"),
-    )
+    assertContains(execute.manifestEdits, executeRepo.resolve("platform-packs/androidx/platform.yaml"))
   }
 
   @Test

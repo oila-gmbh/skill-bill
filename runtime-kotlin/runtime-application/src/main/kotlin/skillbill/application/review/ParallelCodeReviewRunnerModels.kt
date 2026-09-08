@@ -1,17 +1,29 @@
 package skillbill.application.review
-
-import skillbill.review.context.model.ReviewAccountingTerminalOutcome
+import skillbill.application.idestatus.AgentActivityStampWriter
 import skillbill.application.review.model.ParallelCodeReviewRequest
 import skillbill.application.review.model.ReviewDelegatedStageLaunch
 import skillbill.application.review.model.ReviewSpecialistLaunchRequest
 import skillbill.application.reviewevidence.ReviewDiffEvidence
 import skillbill.application.reviewevidence.SharedReviewEvidenceCommits
+import skillbill.application.runtimepersistence.RuntimeOwnedPersistenceBoundary
+import skillbill.ports.config.RepoLocalConfigPort
+import skillbill.ports.diff.DiffResolverPort
+import skillbill.ports.goalrunner.runner.GoalRunnerSubtaskLauncher
+import skillbill.ports.repository.RepositoryEnclosingRootPort
+import skillbill.ports.review.GovernedReviewEvidenceEndpointBinder
 import skillbill.ports.review.GovernedReviewEvidenceEndpointHandle
 import skillbill.ports.review.NativeReviewOperationProtocol
 import skillbill.ports.review.ReviewEvidenceBroker
+import skillbill.ports.review.ReviewEvidenceBrokerFactory
+import skillbill.ports.review.ReviewLaunchAgentStagingPort
+import skillbill.ports.review.ReviewSpecialistContractProvider
 import skillbill.ports.review.model.ParallelReviewLaneRunResult
 import skillbill.ports.review.model.ReviewIntegrationPassOutcome
 import skillbill.ports.review.model.ReviewLaneAccounting
+import skillbill.ports.scaffold.install.InstalledPlatformPackCatalogPort
+import skillbill.ports.taskruntime.FeatureTaskRuntimeSharedEvidenceLocatorReadPort
+import skillbill.ports.taskruntime.FeatureTaskRuntimeSharedEvidenceResolverPort
+import skillbill.review.context.ReviewContextEnvelopeValidator
 import skillbill.review.context.model.GovernedReviewLaunch
 import skillbill.review.context.model.LANE_EVIDENCE_BYTES_DIMENSION
 import skillbill.review.context.model.ResolvedReviewExecutionMode
@@ -28,6 +40,32 @@ import skillbill.review.model.ParallelReviewRawFinding
 import skillbill.review.model.ReviewCoverageReport
 import skillbill.review.model.ReviewStageResumeReport
 import skillbill.scaffold.model.PlatformManifest
+import java.time.Clock
+
+internal data class ParallelCodeReviewRunnerPlanningDeps(
+  val diffResolver: DiffResolverPort,
+  val repoLocalConfig: RepoLocalConfigPort,
+  val reviewContextEnvelopeValidator: ReviewContextEnvelopeValidator,
+  val reviewSpecialistContractProvider: ReviewSpecialistContractProvider,
+  val installedPackCatalog: InstalledPlatformPackCatalogPort,
+  val sharedEvidenceResolver: FeatureTaskRuntimeSharedEvidenceResolverPort,
+  val sharedEvidenceLocatorReader: FeatureTaskRuntimeSharedEvidenceLocatorReadPort,
+  val specIntentProjectionResolver: SpecIntentProjectionResolver,
+  val runtimeOwnedPersistence: RuntimeOwnedPersistenceBoundary,
+  val rubricPlanning: ParallelCodeReviewRunnerRubricPlanning,
+  val clock: Clock,
+  val repositoryEnclosingRootPort: RepositoryEnclosingRootPort,
+)
+
+internal data class ParallelCodeReviewRunnerLaneLaunchDeps(
+  val parentReviewLauncher: GoalRunnerSubtaskLauncher,
+  val reviewEvidenceBrokerFactory: ReviewEvidenceBrokerFactory,
+  val governedEvidenceEndpointBinder: GovernedReviewEvidenceEndpointBinder,
+  val reviewLaunchAgentStaging: ReviewLaunchAgentStagingPort,
+  val sharedEvidenceLocatorReader: FeatureTaskRuntimeSharedEvidenceLocatorReadPort,
+  val failureHelpers: ParallelCodeReviewRunnerFailureAdmission,
+  val activityStampWriter: AgentActivityStampWriter,
+)
 
 internal data class LaunchParentLaneArgs(
   val agentId: String,
@@ -225,8 +263,8 @@ internal const val PARALLEL_REVIEW_INLINE_NATIVE_WORKER = "bill-code-review-inli
 internal const val PARALLEL_REVIEW_NO_SEQUENCE_DIGEST = "no-commit-sequence"
 internal const val PARALLEL_REVIEW_NO_FINDINGS_TOKEN = "NO_FINDINGS"
 
-internal val NO_OP_RESUME_TERMINAL_STATUS = ReviewAccountingTerminalOutcome.NO_OP_RESUME
-internal val UNSUPPORTED_PROVIDER_TERMINAL_STATUS = ReviewAccountingTerminalOutcome.UNSUPPORTED_PROVIDER
+internal const val NO_OP_RESUME_TERMINAL_STATUS: String = "no_op_resume"
+internal const val UNSUPPORTED_PROVIDER_TERMINAL_STATUS: String = "unsupported_provider"
 internal const val INLINE_FINDING_PARSE_SEAM: String = "attributeInlineFindings"
 
 internal const val PARALLEL_REVIEW_INLINE_DEPTH_DIRECTIVE: String =

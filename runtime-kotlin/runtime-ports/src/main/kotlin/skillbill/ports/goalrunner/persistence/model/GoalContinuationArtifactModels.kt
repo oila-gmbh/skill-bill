@@ -1,11 +1,17 @@
 package skillbill.ports.goalrunner.persistence.model
 import skillbill.boundary.OpenBoundaryMap
-import skillbill.goalrunner.model.GoalContinuation
 import skillbill.goalrunner.model.GoalRunnerStoredOutcome
 import skillbill.goalrunner.model.GoalRunnerSupervisionEvent
 import skillbill.ports.workflow.WorkflowStateRepository
-import skillbill.ports.workflow.model.WorkflowFamily
+import skillbill.ports.workflow.persistence.model.WorkflowFamily
 import skillbill.workflow.engine.model.WorkflowStateSnapshot
+
+data class GoalContinuation(
+  val issueKey: String,
+  val subtaskId: Int,
+  val suppressPr: Boolean,
+  val goalBranch: String?,
+)
 
 data class GoalSubtaskIdentity(
   val workflowId: String,

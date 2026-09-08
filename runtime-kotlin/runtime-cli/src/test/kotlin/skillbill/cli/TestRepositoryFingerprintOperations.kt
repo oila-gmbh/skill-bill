@@ -7,7 +7,7 @@ import java.nio.file.Path
 
 internal object TestRepositoryFingerprintOperations : RepositoryFingerprintGitOperations {
   override fun repositoryFingerprint(repoRoot: Path): WorkflowGitOperationResult =
-    WorkflowGitOperationResult.Ok(value = "test-repository-fingerprint")
+    WorkflowGitOperationResult(status = "ok", value = "test-repository-fingerprint")
 }
 
 // A measurable, empty inventory: the CLI fakes run against no real worktree, so the scope genuinely
@@ -15,5 +15,5 @@ internal object TestRepositoryFingerprintOperations : RepositoryFingerprintGitOp
 // silently reporting that same empty answer.
 internal object TestRepositoryOwnedPathsOperations : RepositoryOwnedPathsGitOperations {
   override fun ownedPaths(repoRoot: Path): WorkflowGitOperationResult =
-    WorkflowGitOperationResult.Ok(value = "")
+    WorkflowGitOperationResult(status = "ok", value = "")
 }

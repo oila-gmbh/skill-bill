@@ -1,6 +1,6 @@
 package skillbill.application
 
-import skillbill.application.goalrunner.GoalRunnerStatusTestPorts
+import skillbill.application.goalrunner.goalRunnerStatusServiceDeps
 import skillbill.application.goalrunner.model.GoalRunnerStopStatus
 import skillbill.application.goalrunner.testGoalRunnerStatusService
 import skillbill.goalrunner.model.GOAL_PAUSE_REASON_OPERATOR_REQUEST
@@ -8,7 +8,7 @@ import skillbill.goalrunner.model.GOAL_PAUSE_REASON_OPERATOR_STOP
 import skillbill.goalrunner.model.GoalRunnerControlState
 import skillbill.goalrunner.model.GoalRunnerExecutionLease
 import skillbill.ports.featuretask.model.FeatureTaskRuntimeWorkerOwnership
-import skillbill.ports.goalrunner.runner.GoalRunnerManifestStoreDefaults
+import skillbill.ports.goalrunner.runner.GoalRunnerManifestStore
 import skillbill.ports.goalrunner.runner.model.GoalRunnerManifestState
 import skillbill.ports.taskruntime.FeatureTaskRuntimeHeartbeat
 import skillbill.ports.taskruntime.FeatureTaskRuntimeWorkerSupervisor
@@ -161,11 +161,12 @@ class GoalRunnerStopVerbTest {
     val store = StopFakeManifestStore(lease = liveLease())
 
     val result = testGoalRunnerStatusService(
-      manifestStore = store,
-      outcomeStore = RecordingOutcomeStore(),
-      phaseRecorder = goalTestPhaseRecorder(),
-      clock = stopClock(),
-      ports = GoalRunnerStatusTestPorts(
+      goalRunnerStatusServiceDeps(
+        manifestStore = store,
+        outcomeStore = RecordingOutcomeStore(),
+        phaseRecorder = goalTestPhaseRecorder(),
+      ).copy(
+        clock = stopClock(),
         workerSupervisor = NoopFeatureTaskRuntimeWorkerSupervisor,
       ),
     ).stop("SKILL-168", null)
@@ -265,11 +266,12 @@ class GoalRunnerStopVerbTest {
 
   private fun stopService(store: StopFakeManifestStore, supervisor: FeatureTaskRuntimeWorkerSupervisor) =
     testGoalRunnerStatusService(
-      manifestStore = store,
-      outcomeStore = RecordingOutcomeStore(),
-      phaseRecorder = goalTestPhaseRecorder(),
-      clock = stopClock(),
-      ports = GoalRunnerStatusTestPorts(
+      goalRunnerStatusServiceDeps(
+        manifestStore = store,
+        outcomeStore = RecordingOutcomeStore(),
+        phaseRecorder = goalTestPhaseRecorder(),
+      ).copy(
+        clock = stopClock(),
         workerSupervisor = supervisor,
       ),
     )
@@ -292,7 +294,7 @@ private class StopFakeManifestStore(
   var lease: GoalRunnerExecutionLease? = null,
   control: GoalRunnerControlState = GoalRunnerControlState(),
   private val loaded: Boolean = true,
-) : GoalRunnerManifestStoreDefaults() {
+) : GoalRunnerManifestStore {
   var controlStateValue: GoalRunnerControlState = control
     private set
   var pauseNowCalls: Int = 0

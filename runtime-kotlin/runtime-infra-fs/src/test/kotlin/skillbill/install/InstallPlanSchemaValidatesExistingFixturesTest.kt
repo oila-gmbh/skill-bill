@@ -17,7 +17,6 @@ import skillbill.install.model.WindowsSymlinkDecision
 import skillbill.install.model.WindowsSymlinkPreflight
 import skillbill.install.model.WindowsSymlinkPreflightState
 import skillbill.install.model.buildInstallPlanWireMap
-import skillbill.ports.repository.toFileLocation
 import skillbill.testing.seedConformingPlatformPack
 import java.nio.file.Files
 import java.nio.file.LinkOption
@@ -71,7 +70,7 @@ class InstallPlanSchemaValidatesExistingFixturesTest {
     val explicitTargets = InstallAgent.entries.map { agent ->
       InstallAgentTarget(
         agent = agent,
-        path = fixture.home.resolve("manual-targets/${agent.id}").toFileLocation(),
+        path = fixture.home.resolve("manual-targets/${agent.id}"),
         source = InstallAgentTargetSource.MANUAL,
       )
     }
@@ -182,8 +181,8 @@ class InstallPlanSchemaValidatesExistingFixturesTest {
 
     fun targetPaths(agentTargets: List<InstallAgentTarget> = emptyList()): InstallationTargetPaths =
       InstallationTargetPaths(
-        skillsRoot = repoRoot.resolve("skills").toFileLocation(),
-        platformPacksRoot = repoRoot.resolve("platform-packs").toFileLocation(),
+        skillsRoot = repoRoot.resolve("skills"),
+        platformPacksRoot = repoRoot.resolve("platform-packs"),
         agentTargets = agentTargets,
       )
 
@@ -200,13 +199,13 @@ class InstallPlanSchemaValidatesExistingFixturesTest {
         decision = WindowsSymlinkDecision.NOT_REQUIRED,
       ),
     ): InstallPlanRequest = InstallPlanRequest(
-      repoRoot = repoRoot.toFileLocation(),
-      home = home.toFileLocation(),
+      repoRoot = repoRoot,
+      home = home,
       agentSelection = agentSelection,
       platformPackSelection = platformPackSelection,
       telemetryLevel = telemetryLevel,
-      mcpRegistrationChoice = McpRegistrationChoice(register = true, runtimeMcpBin = runtimeMcpBin.toFileLocation()),
-      runtimeDistributionInputs = RuntimeDistributionInputs(runtimeInstallRoot = runtimeInstallRoot.toFileLocation()),
+      mcpRegistrationChoice = McpRegistrationChoice(register = true, runtimeMcpBin = runtimeMcpBin),
+      runtimeDistributionInputs = RuntimeDistributionInputs(runtimeInstallRoot = runtimeInstallRoot),
       targetPaths = targetPaths,
       windowsSymlinkPreflight = windowsSymlinkPreflight,
       environment = installTestEnvironment(home),

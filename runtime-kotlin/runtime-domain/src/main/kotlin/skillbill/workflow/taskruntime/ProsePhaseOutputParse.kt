@@ -1,6 +1,6 @@
 package skillbill.workflow.taskruntime
 
-import skillbill.contracts.JsonCodec
+import skillbill.contracts.JsonSupport
 import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_CONTRACT_VERSION
 
 internal object ProsePhaseOutputParse {
@@ -47,6 +47,6 @@ internal object ProsePhaseOutputParse {
 
 private fun parseObject(raw: String): Map<String, Any?>? {
   if (raw.isBlank()) return null
-  val obj = JsonCodec.parseObjectOrNull(raw) ?: return null
-  return JsonCodec.anyToStringAnyMap(JsonCodec.jsonElementToValue(obj))
+  val obj = JsonSupport.parseObjectOrNull(raw) ?: return null
+  return JsonSupport.anyToStringAnyMap(JsonSupport.jsonElementToValue(obj))
 }

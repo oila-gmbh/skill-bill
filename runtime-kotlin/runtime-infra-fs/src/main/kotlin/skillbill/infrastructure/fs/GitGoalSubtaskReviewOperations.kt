@@ -8,7 +8,6 @@ import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewInput
 import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewInputFailureReason
 import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewInputResult
 import skillbill.ports.workflow.gitops.model.WorkflowGitOperationResult
-import skillbill.ports.workflow.gitops.model.WorkflowGitOperationStatus
 import java.nio.file.Path
 import java.security.MessageDigest
 
@@ -19,10 +18,10 @@ internal object GitGoalSubtaskReviewOperations : GoalSubtaskReviewGitOperations 
     val stable = stableSnapshot(repoRoot, expectedBranch, ::baselineSnapshot)
     val snapshot = stable.snapshot
     return if (snapshot == null) {
-      GoalSubtaskReviewBaselineResult(status = WorkflowGitOperationStatus.ERROR, error = stable.error)
+      GoalSubtaskReviewBaselineResult(status = "error", error = stable.error)
     } else {
       GoalSubtaskReviewBaselineResult(
-        status = WorkflowGitOperationStatus.OK,
+        status = "ok",
         baseline = GoalSubtaskReviewBaseline(snapshot.headSha, snapshot.untrackedPaths),
       )
     }
@@ -38,14 +37,10 @@ internal object GitGoalSubtaskReviewOperations : GoalSubtaskReviewGitOperations 
     }
     val snapshot = stable.snapshot
     return if (snapshot == null) {
-      GoalSubtaskReviewInputResult(
-        status = WorkflowGitOperationStatus.ERROR,
-        error = stable.error,
-        failureReason = stable.failureReason,
-      )
+      GoalSubtaskReviewInputResult(status = "error", error = stable.error, failureReason = stable.failureReason)
     } else {
       GoalSubtaskReviewInputResult(
-        status = WorkflowGitOperationStatus.OK,
+        status = "ok",
         input = GoalSubtaskReviewInput(
           reviewBaseSha = baseline.reviewBaseSha,
           currentHeadSha = snapshot.headSha,
@@ -66,10 +61,10 @@ internal object GitGoalSubtaskReviewOperations : GoalSubtaskReviewGitOperations 
     }
     val snapshot = stable.snapshot
     return if (snapshot == null) {
-      GoalSubtaskReviewBaselineResult(status = WorkflowGitOperationStatus.ERROR, error = stable.error)
+      GoalSubtaskReviewBaselineResult(status = "error", error = stable.error)
     } else {
       GoalSubtaskReviewBaselineResult(
-        status = WorkflowGitOperationStatus.OK,
+        status = "ok",
         baseline = request.toRecoveredBaseline(snapshot.recoveredBaseSha),
       )
     }
@@ -86,10 +81,10 @@ private fun <T> stableSnapshot(
     return GoalReviewSnapshotResult(error = "Goal-subtask durable child branch is required.")
   }
   val first = readSnapshot(repoRoot, expected)
-  val second = if (first.snapshot != null && first.error.isBlank()) readSnapshot(repoRoot, expected) else first
+  val second = if (first.ok) readSnapshot(repoRoot, expected) else first
   return when {
-    first.snapshot == null || first.error.isNotBlank() -> first
-    second.snapshot == null || second.error.isNotBlank() -> second
+    !first.ok -> first
+    !second.ok -> second
     first.snapshot != second.snapshot -> GoalReviewSnapshotResult(
       error =
       "Goal-subtask repository state changed while preparing its immutable review state; " +
@@ -126,7 +121,9 @@ private data class GoalReviewSnapshotResult<T>(
   val snapshot: T? = null,
   val error: String = "",
   val failureReason: GoalSubtaskReviewInputFailureReason? = null,
-)
+) {
+  val ok: Boolean get() = snapshot != null && error.isBlank()
+}
 
 private fun baselineSnapshot(
   repoRoot: Path,
@@ -199,22 +196,22 @@ private fun recoveredBaselineSnapshot(
   // nearest-ancestor resolution itself fails.
   val nearestAncestor = head?.takeIf {
     request.failureReason == GoalSubtaskReviewInputFailureReason.BASE_NOT_ANCESTOR &&
-      runGitCommand(repoRoot, "cat-file", "-e", "$unreachableSha^{commit}") is WorkflowGitOperationResult.Ok
+      runGitCommand(repoRoot, "cat-file", "-e", "$unreachableSha^{commit}").ok
   }?.let { currentHead ->
     goalReviewGitValue(repoRoot, "merge-base", unreachableSha, currentHead)
       ?.trim()
       ?.takeIf(String::isNotBlank)
-      ?.takeIf { runGitCommand(repoRoot, "merge-base", "--is-ancestor", it, currentHead) is WorkflowGitOperationResult.Ok }
+      ?.takeIf { runGitCommand(repoRoot, "merge-base", "--is-ancestor", it, currentHead).ok }
   }
   val branchBase = head?.takeIf { nearestAncestor == null }?.let { currentHead ->
     listOf("origin/main", "main")
-      .filter { runGitCommand(repoRoot, "rev-parse", "--verify", "--quiet", it) is WorkflowGitOperationResult.Ok }
+      .filter { runGitCommand(repoRoot, "rev-parse", "--verify", "--quiet", it).ok }
       .distinct()
       .firstNotNullOfOrNull { candidate ->
         goalReviewGitValue(repoRoot, "merge-base", candidate, currentHead)
           ?.trim()
           ?.takeIf(String::isNotBlank)
-          ?.takeIf { runGitCommand(repoRoot, "merge-base", "--is-ancestor", it, currentHead) is WorkflowGitOperationResult.Ok }
+          ?.takeIf { runGitCommand(repoRoot, "merge-base", "--is-ancestor", it, currentHead).ok }
       }
   }
   val base = nearestAncestor ?: branchBase
@@ -256,10 +253,10 @@ private fun materializeReviewInput(
   val baseExists = head?.let {
     runGitCommand(repoRoot, "cat-file", "-e", "${baseline.reviewBaseSha}^{commit}")
   }
-  val baseIsAncestor = baseExists?.takeIf { it is WorkflowGitOperationResult.Ok }?.let {
+  val baseIsAncestor = baseExists?.takeIf { it.ok }?.let {
     runGitCommand(repoRoot, "merge-base", "--is-ancestor", baseline.reviewBaseSha, head)
   }
-  val indexTree = baseIsAncestor?.takeIf { it is WorkflowGitOperationResult.Ok }?.let {
+  val indexTree = baseIsAncestor?.takeIf { it.ok }?.let {
     goalReviewGitValue(repoRoot, "write-tree")?.trim()
   }
   val untracked = indexTree?.takeIf(String::isNotBlank)?.let { goalReviewUntrackedPaths(repoRoot) }
@@ -321,7 +318,7 @@ private fun reviewInputFailure(
   material.branch == null ->
     GoalReviewInputFailure("Goal-subtask review must run on durable child branch '$expectedBranch'.")
   material.head == null -> GoalReviewInputFailure("Could not resolve current HEAD.")
-  material.baseExists !is WorkflowGitOperationResult.Ok ->
+  material.baseExists?.ok != true ->
     GoalReviewInputFailure(
       "Persisted review base '${baseline.reviewBaseSha}' is not an existing commit: " +
         material.baseExists?.error.orEmpty(),
@@ -329,7 +326,7 @@ private fun reviewInputFailure(
         GoalSubtaskReviewInputFailureReason.BASE_MISSING
       },
     )
-  material.baseIsAncestor !is WorkflowGitOperationResult.Ok ->
+  material.baseIsAncestor?.ok != true ->
     GoalReviewInputFailure(
       "Persisted review base '${baseline.reviewBaseSha}' is not an ancestor of current HEAD; " +
         "refusing a broader review scope.",
@@ -343,16 +340,15 @@ private fun reviewInputFailure(
     GoalReviewInputFailure("Could not fingerprint the worktree for review scope identity.")
   material.untracked == null ->
     GoalReviewInputFailure("Could not read untracked inventory while resolving review scope.")
-  material.patches?.let { patch -> patch.value == null || patch.error.isNotBlank() } != false ->
-    GoalReviewInputFailure(material.patches?.error.orEmpty())
+  material.patches?.ok != true -> GoalReviewInputFailure(material.patches?.error.orEmpty())
   else -> null
 }
 
 private val isDefinitiveMissingObject: (WorkflowGitOperationResult) -> Boolean =
-  { result -> result is WorkflowGitOperationResult.Failed && result.error.contains("exit code 128") }
+  { result -> result.status == "error" && result.error.contains("exit code 128") }
 
 private val isDefinitiveNonAncestor: (WorkflowGitOperationResult) -> Boolean =
-  { result -> result is WorkflowGitOperationResult.Failed && result.error.contains("exit code 1") }
+  { result -> result.status == "error" && result.error.contains("exit code 1") }
 
 private fun GoalReviewInputMaterial.toSnapshot(): GoalReviewInputSnapshot = GoalReviewInputSnapshot(
   branch = requireNotNull(branch),
@@ -366,7 +362,9 @@ private fun GoalReviewInputMaterial.toSnapshot(): GoalReviewInputSnapshot = Goal
 private data class GoalReviewStringResult(
   val value: String? = null,
   val error: String = "",
-)
+) {
+  val ok: Boolean get() = value != null && error.isBlank()
+}
 
 private fun ownedUntrackedPatches(repoRoot: Path, paths: List<String>): GoalReviewStringResult {
   val patches = StringBuilder()

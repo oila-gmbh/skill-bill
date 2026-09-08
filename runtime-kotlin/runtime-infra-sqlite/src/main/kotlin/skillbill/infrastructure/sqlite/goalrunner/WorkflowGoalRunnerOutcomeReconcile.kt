@@ -1,29 +1,26 @@
 package skillbill.infrastructure.sqlite.goalrunner
 
-import skillbill.db.decomposition.decodeArtifacts
-import skillbill.db.goalrunner.authoritativeOutcomesBySubtask
-import skillbill.db.goalrunner.goalContinuation
-import skillbill.db.goalrunner.staleRunningReason
-import skillbill.goalrunner.STALENESS_EVIDENCE_WINDOW
-import skillbill.goalrunner.declaredProgressEventFrom
 import skillbill.goalrunner.model.GoalRunnerStoredOutcome
 import skillbill.goalrunner.model.GoalRunnerTerminalStatus
-import skillbill.goalrunner.parseInstantOrNull
-import skillbill.goalrunner.terminalOutcomeFor
+import skillbill.ports.goalrunner.persistence.STALENESS_EVIDENCE_WINDOW
+import skillbill.ports.goalrunner.persistence.authoritativeOutcomesBySubtask
+import skillbill.ports.goalrunner.persistence.declaredProgressEventFrom
+import skillbill.ports.goalrunner.persistence.goalContinuation
 import skillbill.ports.goalrunner.persistence.model.GoalContinuationCandidate
 import skillbill.ports.goalrunner.persistence.model.GoalRunnerBlockWrite
 import skillbill.ports.goalrunner.persistence.model.StaleRunningCandidatesBlockRequest
+import skillbill.ports.goalrunner.persistence.parseInstantOrNull
+import skillbill.ports.goalrunner.persistence.staleRunningReason
+import skillbill.ports.goalrunner.persistence.terminalOutcomeFor
 import skillbill.ports.goalrunner.runner.model.GoalRunnerReconcileGate
 import skillbill.ports.persistence.UnitOfWork
 import skillbill.ports.workflow.WorkflowStateRepository
+import skillbill.ports.workflow.decomposition.runtime.decodeArtifacts
 import skillbill.ports.workflow.gitops.WorkflowGitOperations
-import skillbill.ports.workflow.list
-import skillbill.ports.workflow.model.WorkflowFamily
+import skillbill.ports.workflow.persistence.model.WorkflowFamily
 import skillbill.workflow.engine.WorkflowEngine
 import skillbill.workflow.goal.GoalObservabilityEventValidator
 import skillbill.workflow.goal.model.goalObservabilityLatestEventFromArtifacts
-import skillbill.workflow.model.WorkflowStatus
-import skillbill.workflow.model.workflowStatus
 import java.nio.file.Path
 import java.time.Clock
 import java.time.Duration
@@ -127,7 +124,7 @@ internal class WorkflowGoalRunnerOutcomeReconcile(
     activeSet: Set<String>,
     gate: GoalRunnerReconcileGate,
   ): Boolean {
-    if (candidate.snapshot.workflowStatus.workflowStatus() != WorkflowStatus.RUNNING) return false
+    if (candidate.snapshot.workflowStatus != "running") return false
     if (candidate.outcome?.status == GoalRunnerTerminalStatus.COMPLETE) return false
     val authoritative = initialAuthoritative[candidate.goalContinuation.subtaskId]
     val inactive = candidate.snapshot.workflowId !in activeSet

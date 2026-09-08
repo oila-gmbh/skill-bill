@@ -8,7 +8,6 @@ import skillbill.review.model.ReviewScopeDisposition
 import skillbill.review.model.ReviewSeverityAdjustment
 import skillbill.review.model.ReviewSeverityAdjustmentDirection
 import skillbill.review.model.ReviewSummary
-import skillbill.review.model.ReviewExecutionMode
 import java.sql.ResultSet
 
 fun ResultSet.toImportedFinding(): ImportedFinding = ImportedFinding(
@@ -28,7 +27,7 @@ fun ResultSet.toReviewSummary(): ReviewSummary = ReviewSummary(
   routedSkill = getString("routed_skill"),
   detectedScope = getString("detected_scope"),
   detectedStack = getString("detected_stack"),
-  executionMode = getString("execution_mode")?.let(ReviewExecutionMode::fromWire),
+  executionMode = getString("execution_mode"),
   specialistReviewsRaw = getString("specialist_reviews"),
   reviewFinishedAt = getString("review_finished_at"),
   reviewFinishedEventEmittedAt = getString("review_finished_event_emitted_at"),

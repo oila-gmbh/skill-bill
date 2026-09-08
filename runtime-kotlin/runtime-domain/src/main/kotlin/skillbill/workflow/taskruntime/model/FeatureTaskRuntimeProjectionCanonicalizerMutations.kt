@@ -1,6 +1,6 @@
 package skillbill.workflow.taskruntime.model
 
-import skillbill.contracts.JsonCodec
+import skillbill.contracts.JsonSupport
 
 internal object FeatureTaskRuntimeProjectionCanonicalizerMutations {
   fun discardUnknownKeys(
@@ -52,7 +52,7 @@ internal object FeatureTaskRuntimeProjectionCanonicalizerMutations {
   ): Any? {
     val list = value as? List<*> ?: return value
     return list.mapIndexed { index, entry ->
-      val stringKeyed = JsonCodec.anyToStringAnyMap(entry) ?: return@mapIndexed entry
+      val stringKeyed = JsonSupport.anyToStringAnyMap(entry) ?: return@mapIndexed entry
       discardUnknownKeys(stringKeyed, governedKeys, "$fieldPath[$index]", records)
     }
   }

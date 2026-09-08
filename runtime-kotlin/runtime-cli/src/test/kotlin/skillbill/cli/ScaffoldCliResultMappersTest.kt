@@ -1,7 +1,7 @@
 package skillbill.cli
 
 import skillbill.cli.scaffold.toCliMap
-import skillbill.contracts.JsonCodec
+import skillbill.contracts.JsonSupport
 import skillbill.ports.scaffold.catalog.model.ScaffoldExplainResult
 import skillbill.ports.scaffold.catalog.model.ScaffoldExplainSkill
 import skillbill.ports.scaffold.catalog.model.ScaffoldListResult
@@ -10,8 +10,6 @@ import skillbill.ports.scaffold.model.ScaffoldBaselineLayer
 import skillbill.ports.scaffold.model.ScaffoldReviewComposition
 import skillbill.ports.scaffold.model.ScaffoldSectionStatus
 import skillbill.ports.scaffold.model.ScaffoldSkillStatus
-import skillbill.ports.scaffold.model.ScaffoldCompletionStatus
-import skillbill.ports.scaffold.model.ScaffoldSectionCompletionStatus
 import skillbill.ports.scaffold.repo.model.ScaffoldValidateResult
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -40,21 +38,11 @@ class ScaffoldCliResultMappersTest {
     area = "architecture",
     contentFile = "skills/bill-kotlin-code-review/content.md",
     renderCommand = "skill-bill render bill-kotlin-code-review",
-    completionStatus = ScaffoldCompletionStatus.COMPLETE,
+    completionStatus = "complete",
     sectionCount = 2,
     sections = listOf(
-      ScaffoldSectionStatus(
-        heading = "Overview",
-        status = ScaffoldSectionCompletionStatus.FILLED,
-        lineCount = 3,
-        preview = "Intro text",
-      ),
-      ScaffoldSectionStatus(
-        heading = "Guidance",
-        status = ScaffoldSectionCompletionStatus.TODO,
-        lineCount = 0,
-        preview = "",
-      ),
+      ScaffoldSectionStatus(heading = "Overview", status = "filled", lineCount = 3, preview = "Intro text"),
+      ScaffoldSectionStatus(heading = "Guidance", status = "todo", lineCount = 0, preview = ""),
     ),
     recommendedCommands = listOf("skill-bill fill bill-kotlin-code-review"),
     reviewComposition = reviewComposition,
@@ -87,7 +75,7 @@ class ScaffoldCliResultMappersTest {
     assertEquals("bill-kotlin-code-review", map["skill_name"])
     assertEquals("code-review", map["package"])
     assertEquals(2, map["section_count"])
-    val sections = requireNotNull(JsonCodec.anyToStringAnyMapList(map["sections"]))
+    val sections = requireNotNull(JsonSupport.anyToStringAnyMapList(map["sections"]))
     assertEquals(sectionKeys, sections.first().keys.toList())
     assertEquals("Overview", sections.first()["heading"])
     assertEquals(3, sections.first()["line_count"])
@@ -121,9 +109,9 @@ class ScaffoldCliResultMappersTest {
       statusBaseKeys + listOf("review_composition", "content_preview", "content", "issues"),
       map.keys.toList(),
     )
-    val reviewComposition = requireNotNull(JsonCodec.anyToStringAnyMap(map["review_composition"]))
+    val reviewComposition = requireNotNull(JsonSupport.anyToStringAnyMap(map["review_composition"]))
     assertEquals(listOf("source", "summary", "baseline_layers"), reviewComposition.keys.toList())
-    val baselineLayers = requireNotNull(JsonCodec.anyToStringAnyMapList(reviewComposition["baseline_layers"]))
+    val baselineLayers = requireNotNull(JsonSupport.anyToStringAnyMapList(reviewComposition["baseline_layers"]))
     assertEquals(
       listOf("platform", "skill", "scope", "required", "mode"),
       baselineLayers.single().keys.toList(),
@@ -144,7 +132,7 @@ class ScaffoldCliResultMappersTest {
     assertEquals(listOf("repo_root", "skill_count", "skills"), map.keys.toList())
     assertEquals("/repo", map["repo_root"])
     assertEquals(1, map["skill_count"])
-    val skills = requireNotNull(JsonCodec.anyToStringAnyMapList(map["skills"]))
+    val skills = requireNotNull(JsonSupport.anyToStringAnyMapList(map["skills"]))
     assertEquals(statusBaseKeys, skills.single().keys.toList())
   }
 
@@ -222,7 +210,7 @@ class ScaffoldCliResultMappersTest {
       ),
       map.keys.toList(),
     )
-    val skill = requireNotNull(JsonCodec.anyToStringAnyMap(map["skill"]))
+    val skill = requireNotNull(JsonSupport.anyToStringAnyMap(map["skill"]))
     assertEquals(
       listOf("skill_name", "content_file", "render_command", "recommended_commands"),
       skill.keys.toList(),

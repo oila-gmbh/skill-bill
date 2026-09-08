@@ -1,19 +1,16 @@
 package skillbill.db.workflow
 
-import skillbill.contracts.time.JvmSystemClock
 import skillbill.db.core.DbConstants
 import skillbill.error.InvalidWorkflowStateSchemaError
+import skillbill.ports.time.JvmSystemClock
 import skillbill.ports.workflow.model.FeatureTaskWorkflowMode
 import skillbill.ports.workflow.model.WorkflowStateRecord
-import skillbill.workflow.model.WorkflowStatus
-import skillbill.workflow.model.isTerminal
 import java.sql.Connection
 import java.sql.PreparedStatement
 import java.time.ZoneOffset
 import java.time.format.DateTimeFormatter
 
-private val terminalWorkflowStatusSqlValues: String = WorkflowStatus.terminalStatuses
-  .joinToString(", ") { status -> "'${status.wireValue}'" }
+private val terminalWorkflowStatuses: Set<String> = setOf("completed", "failed", "abandoned")
 private const val SQLITE_TIMESTAMP_NOW = "strftime('%Y-%m-%dT%H:%M:%fZ', 'now')"
 private val sqliteInsertionTimestampFormatter: DateTimeFormatter =
   DateTimeFormatter.ofPattern("uuuu-MM-dd HH:mm:ss").withZone(ZoneOffset.UTC)
@@ -61,7 +58,7 @@ internal fun Connection.upsertWorkflowRow(tableName: String, row: WorkflowStateR
         ELSE $tableName.state_entered_at_estimated
       END,
       finished_at = CASE
-        WHEN excluded.workflow_status IN ($terminalWorkflowStatusSqlValues)
+        WHEN excluded.workflow_status IN ('completed', 'failed', 'abandoned')
           THEN COALESCE(NULLIF(excluded.finished_at, ''), CURRENT_TIMESTAMP)
         ELSE NULL
       END
@@ -107,7 +104,7 @@ internal fun Connection.upsertFeatureTaskWorkflowRow(
         ELSE feature_task_workflows.state_entered_at_estimated
       END,
       finished_at = CASE
-        WHEN excluded.workflow_status IN ($terminalWorkflowStatusSqlValues)
+        WHEN excluded.workflow_status IN ('completed', 'failed', 'abandoned')
           THEN COALESCE(NULLIF(excluded.finished_at, ''), CURRENT_TIMESTAMP)
         ELSE NULL
       END,
@@ -181,7 +178,7 @@ private fun PreparedStatement.bindWorkflowRow(
   parameters.text(row.issueKey)
   parameters.text(insertionTimestamp)
   parameters.text(insertionTimestamp)
-  parameters.boolean(WorkflowStatus.fromWire(row.workflowStatus)?.isTerminal == true)
+  parameters.boolean(row.workflowStatus in terminalWorkflowStatuses)
   parameters.text(row.finishedAt)
 }
 
@@ -203,7 +200,7 @@ private fun PreparedStatement.bindFeatureTaskWorkflowRow(
   parameters.text(row.issueKey)
   parameters.text(insertionTimestamp)
   parameters.text(insertionTimestamp)
-  parameters.boolean(WorkflowStatus.fromWire(row.workflowStatus)?.isTerminal == true)
+  parameters.boolean(row.workflowStatus in terminalWorkflowStatuses)
   parameters.text(row.finishedAt)
   parameters.text(mode.wireValue)
   parameters.text(implementationSkill)

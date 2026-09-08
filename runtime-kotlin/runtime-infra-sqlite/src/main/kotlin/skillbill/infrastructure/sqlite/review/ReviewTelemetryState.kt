@@ -1,12 +1,11 @@
 package skillbill.infrastructure.sqlite.review
-import skillbill.contracts.JsonCodec
+import skillbill.contracts.JsonSupport
 import skillbill.db.PARAM_ONE
 import skillbill.db.PARAM_TWO
 import skillbill.db.telemetry.TelemetryOutboxStore
-import skillbill.ports.review.toReviewFinishedTelemetryPayload
+import skillbill.ports.telemetry.model.toReviewFinishedTelemetryPayload
 import skillbill.review.model.ReviewFinishedTelemetry
 import skillbill.review.model.ReviewSummary
-import skillbill.review.model.ReviewExecutionMode
 import java.sql.Connection
 
 data class ReviewTelemetryState(
@@ -67,7 +66,7 @@ fun ensureReviewFinishedTimestamp(
  *
  * An already-recorded `review_finished_at` is never overwritten, so re-running this is a no-op.
  */
-fun ensureTerminalReviewState(connection: Connection, reviewRunId: String, executionMode: ReviewExecutionMode?) {
+fun ensureTerminalReviewState(connection: Connection, reviewRunId: String, executionMode: String?) {
   connection.prepareStatement(
     """
     UPDATE review_runs
@@ -76,7 +75,7 @@ fun ensureTerminalReviewState(connection: Connection, reviewRunId: String, execu
     WHERE review_run_id = ?
     """.trimIndent(),
   ).use { statement ->
-    statement.setString(PARAM_ONE, executionMode?.wireValue)
+    statement.setString(PARAM_ONE, executionMode)
     statement.setString(PARAM_TWO, reviewRunId)
     statement.executeUpdate()
   }
@@ -114,7 +113,7 @@ fun enqueueTelemetryEvent(
   if (enabled) {
     TelemetryOutboxStore(connection).enqueue(
       eventName,
-      JsonCodec.mapToJsonString(payload.toReviewFinishedTelemetryPayload().toPayload()),
+      JsonSupport.mapToJsonString(payload.toReviewFinishedTelemetryPayload().toPayload()),
     )
   }
 }
@@ -133,7 +132,7 @@ fun updatePendingReviewFinishedEvent(
       AND json_extract(payload_json, '$.review_session_id') = ?
     """.trimIndent(),
   ).use { statement ->
-    statement.setString(PARAM_ONE, JsonCodec.mapToJsonString(payload.toReviewFinishedTelemetryPayload().toPayload()))
+    statement.setString(PARAM_ONE, JsonSupport.mapToJsonString(payload.toReviewFinishedTelemetryPayload().toPayload()))
     statement.setString(PARAM_TWO, reviewSessionId)
     statement.executeUpdate()
   }

@@ -4,7 +4,6 @@ plugins {
 }
 
 dependencies {
-  implementation(libs.kotlinx.serialization.json)
   implementation(project(":runtime-domain"))
   implementation(project(":runtime-ports"))
   implementation(project(":runtime-contracts"))

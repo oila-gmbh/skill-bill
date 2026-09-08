@@ -2,7 +2,6 @@ package skillbill.install
 
 import skillbill.install.model.InstallAgent
 import skillbill.install.model.InstallApplyStatus
-import skillbill.model.toPath
 import java.nio.file.Files
 import java.nio.file.LinkOption
 import kotlin.test.Test
@@ -30,14 +29,14 @@ class InternalSkillCompanionInstallApplyTest : InstallApplyTestSupport() {
     val first = applyInstallForTest(plan)
     val parentStaging = first.skills.single { skill -> skill.skillName == "bill-code-review" }.staging.stagingDir
     val companion = assertNotNull(parentStaging).resolve("review-guidelines.md")
-    assertTrue(Files.isRegularFile(companion.toPath(), LinkOption.NOFOLLOW_LINKS))
-    Files.delete(companion.toPath())
+    assertTrue(Files.isRegularFile(companion, LinkOption.NOFOLLOW_LINKS))
+    Files.delete(companion)
 
     val second = applyInstallForTest(plan)
 
     assertEquals(InstallApplyStatus.SUCCESS, second.status)
-    assertTrue(Files.isRegularFile(companion.toPath(), LinkOption.NOFOLLOW_LINKS))
-    assertEquals("governed review rubric\n", Files.readString(companion.toPath()))
+    assertTrue(Files.isRegularFile(companion, LinkOption.NOFOLLOW_LINKS))
+    assertEquals("governed review rubric\n", Files.readString(companion))
   }
 
   @Test

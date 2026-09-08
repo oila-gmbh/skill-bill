@@ -8,7 +8,7 @@ import kotlinx.serialization.json.jsonPrimitive
 import skillbill.cli.core.CliRuntime
 import skillbill.cli.model.CliExecutionResult
 import skillbill.cli.model.CliRuntimeContext
-import skillbill.contracts.JsonCodec
+import skillbill.contracts.JsonSupport
 import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.test.Test
@@ -647,7 +647,7 @@ private fun scaffoldResult(arguments: List<String>, context: CliRuntimeContext):
 }
 
 private fun parseJsonObject(rawJson: String): JsonObject {
-  val parsed = JsonCodec.parseObjectOrNull(rawJson)
+  val parsed = JsonSupport.parseObjectOrNull(rawJson)
   require(parsed != null) { "Expected JSON object but got: $rawJson" }
   return parsed
 }

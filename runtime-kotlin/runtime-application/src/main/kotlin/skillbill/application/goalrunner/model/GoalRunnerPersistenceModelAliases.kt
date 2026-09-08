@@ -1,7 +1,7 @@
 package skillbill.application.goalrunner.model
 
-import skillbill.goalrunner.model.GoalContinuation as PContinuation
 import skillbill.ports.goalrunner.persistence.model.CrashReconcileExpiredWorkerRequest as PCrashExpired
+import skillbill.ports.goalrunner.persistence.model.GoalContinuation as PContinuation
 import skillbill.ports.goalrunner.persistence.model.GoalContinuationCandidate as PContinuationCandidate
 import skillbill.ports.goalrunner.persistence.model.GoalRunnerAppliedRepair as PAppliedRepair
 import skillbill.ports.goalrunner.persistence.model.GoalRunnerBlockWrite as PBlockWrite

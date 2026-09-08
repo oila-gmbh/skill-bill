@@ -1,6 +1,6 @@
 package skillbill.application.featuretask.validation
 
-import skillbill.contracts.JsonCodec
+import skillbill.contracts.JsonSupport
 import skillbill.contracts.workflow.FeatureTaskRuntimeBuildReceiptSchemaValidator
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeValidationGateRunRecord
 import kotlin.test.Test
@@ -20,11 +20,11 @@ class FeatureTaskRuntimeBuildGateReceiptProjectionTest {
       ),
       checks = emptyList(),
     )
-    val envelope = JsonCodec.parseObjectOrNull(output.payload)?.let(JsonCodec::jsonElementToValue)
-      ?.let(JsonCodec::anyToStringAnyMap)
+    val envelope = JsonSupport.parseObjectOrNull(output.payload)?.let(JsonSupport::jsonElementToValue)
+      ?.let(JsonSupport::anyToStringAnyMap)
       ?: error("build gate output must parse as an object")
-    val buildReceipt = JsonCodec.anyToStringAnyMap(
-      JsonCodec.anyToStringAnyMap(envelope["produced_outputs"])?.get("build_receipt"),
+    val buildReceipt = JsonSupport.anyToStringAnyMap(
+      JsonSupport.anyToStringAnyMap(envelope["produced_outputs"])?.get("build_receipt"),
     ) ?: error("build gate output must carry build_receipt")
     FeatureTaskRuntimeBuildReceiptSchemaValidator.validate(buildReceipt, sourceLabel = "build#1")
   }

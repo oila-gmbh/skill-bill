@@ -1,9 +1,8 @@
 package skillbill.launcher
 
-import skillbill.contracts.JsonCodec
+import skillbill.contracts.JsonSupport
 import skillbill.launcher.mcp.McpJsonConfig
 import skillbill.launcher.mcp.McpRegistrationOperations
-import skillbill.model.toPath
 import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.test.Test
@@ -15,8 +14,8 @@ import kotlin.test.assertTrue
 class McpRegistrationOperationsTest {
   private val runtimeMcpBin = Path.of("/tmp/runtime-mcp")
 
-  private fun decode(path: Path): Map<String, Any?> = JsonCodec.anyToStringAnyMap(
-    JsonCodec.parseObjectOrNull(Files.readString(path))?.let(JsonCodec::jsonElementToValue),
+  private fun decode(path: Path): Map<String, Any?> = JsonSupport.anyToStringAnyMap(
+    JsonSupport.parseObjectOrNull(Files.readString(path))?.let(JsonSupport::jsonElementToValue),
   ) ?: emptyMap()
 
   private fun skillBillServer(path: Path): Map<*, *> {
@@ -43,9 +42,9 @@ class McpRegistrationOperationsTest {
     val workConfig = work.resolve(".claude.json")
     assertEquals(
       setOf(defaultConfig, workConfig),
-      result.profiles.map { it.configPath.toPath() }.toSet(),
+      result.profiles.map { it.configPath }.toSet(),
     )
-    assertEquals(defaultConfig, result.configPath.toPath())
+    assertEquals(defaultConfig, result.configPath)
     assertTrue(result.changed)
 
     listOf(defaultConfig, workConfig).forEach { path ->
@@ -71,7 +70,7 @@ class McpRegistrationOperationsTest {
     val result = McpRegistrationOperations.unregister("claude", home, environment = emptyMap())
 
     assertTrue(result.changed)
-    assertEquals(setOf(defaultConfig, workConfig), result.profiles.map { it.configPath.toPath() }.toSet())
+    assertEquals(setOf(defaultConfig, workConfig), result.profiles.map { it.configPath }.toSet())
     listOf(defaultConfig, workConfig).forEach { path ->
       val settings = decode(path)
       assertEquals("dark", settings["theme"])
@@ -89,7 +88,7 @@ class McpRegistrationOperationsTest {
 
     val result = McpRegistrationOperations.register("claude", runtimeMcpBin, home, environment = emptyMap())
 
-    val paths = result.profiles.map { it.configPath.toPath() }
+    val paths = result.profiles.map { it.configPath }
     assertTrue(home.resolve(".claude.json") in paths)
     assertTrue(work.resolve(".claude.json") in paths)
     assertFalse(home.resolve(".claude/.claude.json") in paths)
@@ -111,7 +110,7 @@ class McpRegistrationOperationsTest {
     assertEquals(
       setOf(home.resolve(".claude.json"), work.resolve(".claude.json")),
       result.profiles.map {
-        it.configPath.toPath()
+        it.configPath
       }.toSet(),
     )
     assertEquals("/tmp/runtime-mcp", skillBillServer(work.resolve(".claude.json"))["command"])
@@ -125,8 +124,8 @@ class McpRegistrationOperationsTest {
     val result = McpRegistrationOperations.register("claude", runtimeMcpBin, home, environment = emptyMap())
     val defaultConfig = home.resolve(".claude.json")
 
-    assertEquals(defaultConfig, result.configPath.toPath())
-    assertEquals(listOf(defaultConfig), result.profiles.map { it.configPath.toPath() })
+    assertEquals(defaultConfig, result.configPath)
+    assertEquals(listOf(defaultConfig), result.profiles.map { it.configPath })
 
     val baseline = Files.createTempDirectory("mcp-baseline")
     val baselinePath = baseline.resolve(".claude.json")
@@ -174,9 +173,9 @@ class McpRegistrationOperationsTest {
 
     val defaultConfig = home.resolve(".claude.json")
     val envConfig = envRoot.resolve(".claude.json")
-    assertEquals(setOf(defaultConfig, envConfig), result.profiles.map { it.configPath.toPath() }.toSet())
-    assertFalse(envRoot.resolve(".claude.json/.claude.json") in result.profiles.map { it.configPath.toPath() })
-    assertFalse(home.resolve("${envRoot.fileName}/.claude.json") in result.profiles.map { it.configPath.toPath() })
+    assertEquals(setOf(defaultConfig, envConfig), result.profiles.map { it.configPath }.toSet())
+    assertFalse(envRoot.resolve(".claude.json/.claude.json") in result.profiles.map { it.configPath })
+    assertFalse(home.resolve("${envRoot.fileName}/.claude.json") in result.profiles.map { it.configPath })
 
     listOf(defaultConfig, envConfig).forEach { path ->
       assertEquals("/tmp/runtime-mcp", skillBillServer(path)["command"])
@@ -195,17 +194,17 @@ class McpRegistrationOperationsTest {
 
     singleTargetAgents.forEach { (agent, expected) ->
       val result = McpRegistrationOperations.register(agent, runtimeMcpBin, home, environment = emptyMap())
-      assertEquals(expected, result.configPath.toPath(), agent)
+      assertEquals(expected, result.configPath, agent)
       assertTrue(result.profiles.isEmpty(), agent)
 
       val unregistered = McpRegistrationOperations.unregister(agent, home, environment = emptyMap())
-      assertEquals(expected, unregistered.configPath.toPath(), agent)
+      assertEquals(expected, unregistered.configPath, agent)
       assertTrue(unregistered.profiles.isEmpty(), agent)
     }
 
     val codexResult = McpRegistrationOperations.register("codex", runtimeMcpBin, home, environment = emptyMap())
-    assertEquals(home.resolve(".codex/config.toml"), codexResult.configPath.toPath())
-    assertEquals(listOf(home.resolve(".codex/config.toml")), codexResult.profiles.map { it.configPath.toPath() })
+    assertEquals(home.resolve(".codex/config.toml"), codexResult.configPath)
+    assertEquals(listOf(home.resolve(".codex/config.toml")), codexResult.profiles.map { it.configPath })
   }
 
   @Test
@@ -220,7 +219,7 @@ class McpRegistrationOperationsTest {
 
     assertEquals(
       setOf(home.resolve(".codex/config.toml"), openRouter.resolve("config.toml")),
-      result.profiles.map { it.configPath.toPath() }.toSet(),
+      result.profiles.map { it.configPath }.toSet(),
     )
     listOf(home.resolve(".codex/config.toml"), openRouter.resolve("config.toml")).forEach { path ->
       assertTrue(Files.readString(path).contains("skill-bill"))
@@ -247,7 +246,7 @@ class McpRegistrationOperationsTest {
 
     val result = McpRegistrationOperations.register("cursor", runtimeMcpBin, home)
 
-    assertEquals(configPath, result.configPath.toPath())
+    assertEquals(configPath, result.configPath)
     assertTrue(result.changed)
 
     val updated = decode(configPath)
@@ -298,7 +297,7 @@ class McpRegistrationOperationsTest {
     val result = McpRegistrationOperations.unregister("cursor", home)
 
     assertTrue(result.changed)
-    assertEquals(configPath, result.configPath.toPath())
+    assertEquals(configPath, result.configPath)
 
     val updated = decode(configPath)
     assertEquals("unrelatedValue", updated["unrelatedKey"])
@@ -329,7 +328,7 @@ class McpRegistrationOperationsTest {
 
     val resultAbsent = McpRegistrationOperations.register("cursor", runtimeMcpBin, home)
     assertTrue(resultAbsent.changed)
-    assertEquals(configPath, resultAbsent.configPath.toPath())
+    assertEquals(configPath, resultAbsent.configPath)
     val serverAbsent = skillBillServer(configPath)
     assertEquals("stdio", serverAbsent["type"])
     assertEquals("/tmp/runtime-mcp", serverAbsent["command"])

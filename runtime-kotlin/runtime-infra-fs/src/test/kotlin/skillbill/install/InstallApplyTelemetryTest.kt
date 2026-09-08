@@ -5,8 +5,6 @@ import skillbill.install.model.InstallApplyIssueKind
 import skillbill.install.model.InstallApplyStatus
 import skillbill.install.model.InstallTelemetryApplyStatus
 import skillbill.install.model.InstallTelemetryLevel
-import skillbill.model.toPath
-import skillbill.ports.repository.toFileLocation
 import skillbill.ports.telemetry.TelemetryLevelMutator
 import skillbill.ports.telemetry.model.TelemetryLevelMutationResult
 import skillbill.telemetry.model.TelemetrySettings
@@ -35,7 +33,7 @@ class InstallApplyTelemetryTest : InstallApplyTestSupport() {
     assertEquals(InstallApplyStatus.SUCCESS, result.status)
     assertEquals(InstallTelemetryLevel.FULL, result.telemetryOutcome.level)
     assertEquals(InstallTelemetryApplyStatus.SUCCESS, result.telemetryOutcome.status)
-    assertEquals(fixture.home.resolve(".config/skill-bill/config.json"), result.telemetryOutcome.configPath?.toPath())
+    assertEquals(fixture.home.resolve(".config/skill-bill/config.json"), result.telemetryOutcome.configPath)
     assertEquals("Telemetry level set to 'full'.", result.telemetryOutcome.message)
     assertTrue(Files.readString(fixture.home.resolve(".config/skill-bill/config.json")).contains("\"level\":\"full\""))
   }
@@ -60,7 +58,7 @@ class InstallApplyTelemetryTest : InstallApplyTestSupport() {
 
     assertEquals(InstallApplyStatus.WARNING, result.status)
     assertEquals(InstallTelemetryApplyStatus.FAILED, result.telemetryOutcome.status)
-    assertEquals(configPath, result.telemetryOutcome.configPath?.toPath())
+    assertEquals(configPath, result.telemetryOutcome.configPath)
     assertNotNull(result.telemetryOutcome.issue)
     assertContains(result.telemetryOutcome.issue?.message.orEmpty(), "telemetry.batch_size must be an integer.")
   }
@@ -160,7 +158,7 @@ class InstallApplyTelemetryTest : InstallApplyTestSupport() {
 
     assertEquals(InstallApplyStatus.WARNING, result.status)
     assertEquals(InstallTelemetryApplyStatus.FAILED, result.telemetryOutcome.status)
-    assertEquals(configPath, result.telemetryOutcome.configPath?.toPath())
+    assertEquals(configPath, result.telemetryOutcome.configPath)
     assertNotNull(result.telemetryOutcome.issue)
     assertTrue(
       result.warnings.any { warning ->
@@ -181,7 +179,7 @@ private class RecordingTelemetryLevelMutator(
     levels += level
     return TelemetryLevelMutationResult(
       settings = TelemetrySettings(
-        configPath = Path.of("/fake/config.json").toFileLocation(),
+        configPath = Path.of("/fake/config.json"),
         level = level,
         enabled = level != "off",
         installId = "existing",

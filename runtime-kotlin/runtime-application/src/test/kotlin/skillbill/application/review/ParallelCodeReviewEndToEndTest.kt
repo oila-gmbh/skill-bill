@@ -138,7 +138,7 @@ class ParallelCodeReviewEndToEndTest {
       assertTrue(lane.counters.launchBytes > 0, "Lane '${lane.lane}' reported no launch bytes.")
       assertEquals(0, lane.counters.evidenceBytes, "Assigned hunk envelopes require no filesystem evidence reads.")
       assertTrue(lane.counters.resultBytes > 0)
-      assertEquals("completed", lane.terminalOutcome.wireValue)
+      assertEquals("completed", lane.terminalOutcome)
     }
     assertEquals(lanes.sumOf { it.counters.launchBytes }, summary.aggregateCounters.launchBytes)
     assertEquals(summary.aggregateCounters, summary.parent.inclusiveCounters)

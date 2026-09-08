@@ -37,7 +37,7 @@ class ReviewRunLaneResolverTest {
     )
     assertEquals(listOf(0, 1), resolved.map { it.depth })
     assertEquals(listOf(false, true), resolved.map { it.required })
-    assertEquals(listOf("resolved", "resolved"), resolved.map { it.resolutionState.wireValue })
+    assertEquals(listOf("resolved", "resolved"), resolved.map { it.resolutionState })
     assertEquals(listOf(listOf("kmp"), listOf("kmp", "kotlin")), resolved.map { it.originLayerChain })
   }
 
@@ -56,9 +56,9 @@ class ReviewRunLaneResolverTest {
     assertEquals(2, resolved.size, "The unknown lane must be retained, and retained only once.")
     val unresolved = resolved.last()
     assertEquals("narrated-only-lane", unresolved.laneSkillName)
-    assertEquals("unresolved", unresolved.resolutionState.wireValue)
-    assertEquals("unresolved", unresolved.packSlug)
-    assertEquals("unresolved", unresolved.area)
+    assertEquals(ReviewRunLaneResolver.UNRESOLVED, unresolved.resolutionState)
+    assertEquals(ReviewRunLaneResolver.UNRESOLVED, unresolved.packSlug)
+    assertEquals(ReviewRunLaneResolver.UNRESOLVED, unresolved.area)
     assertEquals(1, unresolved.orderIndex)
   }
 
@@ -72,7 +72,7 @@ class ReviewRunLaneResolverTest {
     val resolved = ReviewRunLaneResolver.resolve(plan, reportedLaneNames = listOf("architecture"))
 
     assertEquals(listOf("bill-kmp-code-review-architecture"), resolved.map { it.laneSkillName })
-    assertEquals(listOf("resolved"), resolved.map { it.resolutionState.wireValue })
+    assertEquals(listOf("resolved"), resolved.map { it.resolutionState })
   }
 
   @Test
@@ -87,7 +87,7 @@ class ReviewRunLaneResolverTest {
     assertEquals(listOf("bill-kmp-code-review-architecture"), resolved.map { it.laneSkillName })
     assertEquals(
       listOf("unresolved"),
-      resolved.map { it.resolutionState.wireValue },
+      resolved.map { it.resolutionState },
       "A plan is what composition would launch; an inline run reports no specialist, so the lane " +
         "row must not claim coverage that never ran.",
     )

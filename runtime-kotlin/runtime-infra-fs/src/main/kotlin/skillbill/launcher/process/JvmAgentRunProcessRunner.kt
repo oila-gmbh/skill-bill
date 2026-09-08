@@ -1,7 +1,6 @@
 package skillbill.launcher.process
 
 import me.tatarka.inject.annotations.Inject
-import skillbill.goalrunner.model.GoalRunnerProcessState
 import skillbill.ports.agentrun.model.AgentRunLivenessSnapshot
 import skillbill.ports.agentrun.model.AgentRunOutputStream
 import skillbill.ports.review.GovernedReviewEvidenceEndpointHandle
@@ -219,7 +218,7 @@ class JvmAgentRunProcessRunner(
       liveness = AgentRunLivenessSnapshot(
         phase = "watchdog",
         reason = "parent_interrupted",
-        processState = GoalRunnerProcessState.KILLED,
+        processState = "killed",
         lastOutputAt = outputTracker.lastObservedAt()?.toIsoUtc(),
       ),
       stdoutTruncated = stdout.wasTruncated(),

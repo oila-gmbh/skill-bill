@@ -8,7 +8,6 @@ import skillbill.review.model.ReviewFindingStats
 import skillbill.review.model.ReviewFinishedTelemetry
 import skillbill.review.model.ReviewHealthStats
 import skillbill.review.model.ReviewStageMetrics
-import skillbill.review.model.ReviewExecutionMode
 import skillbill.review.model.TriageDecision
 
 data class ReviewPreviewResult(
@@ -18,7 +17,7 @@ data class ReviewPreviewResult(
   val routedSkill: String?,
   val detectedScope: String?,
   val detectedStack: String?,
-  val executionMode: ReviewExecutionMode?,
+  val executionMode: String?,
 )
 
 data class ImportedReviewResult(

@@ -6,10 +6,9 @@ import skillbill.application.review.RuntimeOwnedReviewMode
 import skillbill.application.review.model.ParallelCodeReviewRequest
 import skillbill.application.review.model.ParallelCodeReviewResult
 import skillbill.application.reviewevidence.model.ParallelReviewScope
-import skillbill.contracts.JsonCodec
+import skillbill.application.subtaskreview.GoalSubtaskReviewSummaryReducer
+import skillbill.contracts.JsonSupport
 import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_CONTRACT_VERSION
-import skillbill.goalrunner.subtaskreview.FeatureTaskRuntimeVerificationSignalKeys
-import skillbill.goalrunner.subtaskreview.GoalSubtaskReviewSummaryReducer
 import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewInput
 import skillbill.review.context.model.CodeReviewExecutionMode
 import skillbill.review.model.ParallelReviewMergedFinding
@@ -121,7 +120,7 @@ object FeatureTaskRuntimeReviewEnvelope {
     val outcome = GoalSubtaskReviewSummaryReducer.outcomeFor(envelope)
     produced[FeatureTaskRuntimeVerificationSignalKeys.REVIEW_FINDINGS] = findings
     envelope[FeatureTaskRuntimeVerificationSignalKeys.VERDICT] = outcome.verdict.wireValue
-    return JsonCodec.mapToJsonString(envelope)
+    return JsonSupport.mapToJsonString(envelope)
   }
 
   fun extractReviewVerdict(prose: String): FeatureTaskRuntimeVerdict {
@@ -145,9 +144,9 @@ object FeatureTaskRuntimeReviewEnvelope {
     }
   }
 
-  fun envelopeMap(outputText: String): Map<String, Any?> = JsonCodec.parseObjectOrNull(outputText)
-    ?.let(JsonCodec::jsonElementToValue)
-    ?.let(JsonCodec::anyToStringAnyMap)
+  fun envelopeMap(outputText: String): Map<String, Any?> = JsonSupport.parseObjectOrNull(outputText)
+    ?.let(JsonSupport::jsonElementToValue)
+    ?.let(JsonSupport::anyToStringAnyMap)
     .orEmpty()
 
   fun mintReviewRunId(clock: Clock): String {
@@ -184,7 +183,7 @@ object FeatureTaskRuntimeReviewEnvelope {
       ?: return null
     val accounting = summary.integration
     val pass = result.integration
-    val terminalOutcome = accounting?.terminalOutcome?.wireValue
+    val terminalOutcome = accounting?.terminalOutcome
       ?: pass?.terminalOutcome?.wireValue
       ?: GoalSubtaskCommitFocusedAccounting.SKIPPED_NOT_APPLICABLE
     return GoalSubtaskCommitFocusedAccounting(

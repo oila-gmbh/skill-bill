@@ -4,7 +4,6 @@ import skillbill.application.idestatus.model.IdeStatusWorkflowFamily
 import skillbill.application.workflow.model.WorkflowFamily
 import skillbill.ports.persistence.UnitOfWork
 import skillbill.ports.work.model.WorkItem
-import skillbill.ports.workflow.get
 import java.time.Instant
 
 class IdeStatusLivenessAnchors(

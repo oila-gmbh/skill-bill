@@ -9,7 +9,6 @@ import skillbill.install.model.InstallPlanWireValidator
 import skillbill.install.runtime.InstallOperations
 import skillbill.launcher.mcp.McpRegistrationOperations
 import skillbill.model.EnvironmentContext
-import skillbill.model.toPath
 import skillbill.ports.install.mcp.InstallMcpRegistrationPort
 import skillbill.ports.install.mcp.model.InstallMcpRegistrationRequest
 import skillbill.ports.install.mcp.model.InstallMcpRegistrationResult
@@ -48,10 +47,10 @@ internal fun applyInstallForTest(
   plan: InstallPlan,
   telemetryLevelMutator: TelemetryLevelMutator? = null,
 ): InstallApplyResult {
-  val environment = plan.request.environment.ifEmpty { installTestEnvironment(plan.request.home.toPath()) }
+  val environment = plan.request.environment.ifEmpty { installTestEnvironment(plan.request.home) }
   val environmentContext = EnvironmentContext(
     environment = environment,
-    userHome = plan.request.home.toPath(),
+    userHome = plan.request.home,
   )
   return InstallOperations.applyInstall(
     plan,

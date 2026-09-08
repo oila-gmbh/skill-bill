@@ -6,7 +6,6 @@ import skillbill.contracts.goalplanning.GoalVerificationBoundaryCaps
 import skillbill.error.GoalVerificationBoundaryCapExceededError
 import skillbill.ports.goalrunner.planning.GoalPlanningContextDiscovery
 import skillbill.ports.goalrunner.planning.model.GoalPlanningBoundaryHeading
-import skillbill.ports.goalrunner.planning.model.GoalPlanningBoundaryHeadingKind
 import skillbill.ports.goalrunner.planning.model.GoalPlanningContext
 import skillbill.ports.goalrunner.verification.model.GoalVerificationBoundaryDiscovery
 import java.nio.file.Path
@@ -162,10 +161,10 @@ class FileSystemGoalPlanningContextDiscovery(
     return read.text.replace("\r\n", "\n").replace('\r', '\n')
   }
 
-  private fun kindOf(fileName: String): GoalPlanningBoundaryHeadingKind =
+  private fun kindOf(fileName: String): String =
     if (fileName == "history.md") GoalPlanningContext.KIND_HISTORY else GoalPlanningContext.KIND_DECISIONS
 
-  private data class Candidate(val canonical: Path, val relative: String, val kind: GoalPlanningBoundaryHeadingKind)
+  private data class Candidate(val canonical: Path, val relative: String, val kind: String)
 
   private data class Catalog(val headings: List<GoalPlanningBoundaryHeading>, val truncated: Boolean)
 

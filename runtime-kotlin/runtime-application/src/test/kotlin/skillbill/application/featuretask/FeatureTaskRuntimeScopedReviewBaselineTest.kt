@@ -2,6 +2,7 @@ package skillbill.application.featuretask
 
 import skillbill.ports.workflow.gitops.NoopWorkflowGitOperations
 import skillbill.ports.workflow.gitops.RepositoryOwnedPathsGitOperations
+import skillbill.ports.workflow.gitops.RepositoryOwnedPathsGitOperationsProvider
 import skillbill.ports.workflow.gitops.WorkflowGitOperations
 import skillbill.ports.workflow.gitops.model.WorkflowGitOperationResult
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeResolvedBranch
@@ -12,7 +13,8 @@ import kotlin.test.assertEquals
 private const val NUL: Char = '\u0000'
 
 private class OwnedPathsGitOperations(private val result: WorkflowGitOperationResult) :
-  WorkflowGitOperations by NoopWorkflowGitOperations {
+  WorkflowGitOperations by NoopWorkflowGitOperations,
+  RepositoryOwnedPathsGitOperationsProvider {
   override val repositoryOwnedPathsOperations: RepositoryOwnedPathsGitOperations =
     object : RepositoryOwnedPathsGitOperations {
       override fun ownedPaths(repoRoot: Path): WorkflowGitOperationResult = result
@@ -32,7 +34,8 @@ class FeatureTaskRuntimeScopedReviewBaselineTest {
   @Test
   fun `scoped baseline carries the owned inventory and excludes foreign untracked paths`() {
     val git = OwnedPathsGitOperations(
-      WorkflowGitOperationResult.Ok(
+      WorkflowGitOperationResult(
+        status = "ok",
         value = listOf("untracked/owned-new.kt", "foreign/sibling.kt", ".feature-specs/OTHER-1/spec.md")
           .joinToString(NUL.toString()),
       ),
@@ -49,7 +52,7 @@ class FeatureTaskRuntimeScopedReviewBaselineTest {
 
   @Test
   fun `an unreadable owned-path listing falls back to the durable baseline instead of widening`() {
-    val git = OwnedPathsGitOperations(WorkflowGitOperationResult.Failed(error = "git failed"))
+    val git = OwnedPathsGitOperations(WorkflowGitOperationResult(status = "error", error = "git failed"))
 
     val baseline = FeatureTaskRuntimeScopedReviewBaseline.of(git, repoRoot, resolved(), baseSha)
 

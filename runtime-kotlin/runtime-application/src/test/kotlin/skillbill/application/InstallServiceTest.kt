@@ -71,7 +71,6 @@ import skillbill.ports.install.selection.model.ReadLatestSuccessfulInstallSelect
 import skillbill.ports.install.selection.model.ReadLatestSuccessfulInstallSelectionResult
 import skillbill.ports.install.selection.model.WriteLatestSuccessfulInstallSelectionRequest
 import skillbill.ports.install.selection.model.WriteLatestSuccessfulInstallSelectionResult
-import skillbill.ports.repository.toFileLocation
 import skillbill.scaffold.model.DeclaredFiles
 import skillbill.scaffold.model.PlatformManifest
 import skillbill.scaffold.model.RoutingSignals
@@ -114,16 +113,8 @@ class InstallServiceTest {
     val plan = installPlan(
       request = request,
       agents = listOf(
-        InstallAgentTarget(
-          InstallAgent.CODEX,
-          home.resolve(".codex/skills").toFileLocation(),
-          InstallAgentTargetSource.MANUAL,
-        ),
-        InstallAgentTarget(
-          InstallAgent.CLAUDE,
-          home.resolve(".claude/skills").toFileLocation(),
-          InstallAgentTargetSource.MANUAL,
-        ),
+        InstallAgentTarget(InstallAgent.CODEX, home.resolve(".codex/skills"), InstallAgentTargetSource.MANUAL),
+        InstallAgentTarget(InstallAgent.CLAUDE, home.resolve(".claude/skills"), InstallAgentTargetSource.MANUAL),
       ),
     )
     val selectionPort = RecordingInstallSelectionPersistencePort()
@@ -174,16 +165,8 @@ class InstallServiceTest {
     val plan = installPlan(
       request = request,
       agents = listOf(
-        InstallAgentTarget(
-          InstallAgent.CODEX,
-          home.resolve(".codex/skills").toFileLocation(),
-          InstallAgentTargetSource.MANUAL,
-        ),
-        InstallAgentTarget(
-          InstallAgent.CLAUDE,
-          home.resolve(".claude/skills").toFileLocation(),
-          InstallAgentTargetSource.MANUAL,
-        ),
+        InstallAgentTarget(InstallAgent.CODEX, home.resolve(".codex/skills"), InstallAgentTargetSource.MANUAL),
+        InstallAgentTarget(InstallAgent.CLAUDE, home.resolve(".claude/skills"), InstallAgentTargetSource.MANUAL),
       ),
       selectedPlatformSlugs = listOf("kotlin"),
     )
@@ -213,14 +196,10 @@ class InstallServiceTest {
     val plan = installPlan(
       request = request,
       agents = listOf(
-        InstallAgentTarget(
-          InstallAgent.CLAUDE,
-          home.resolve(".claude/skills").toFileLocation(),
-          InstallAgentTargetSource.DETECTED,
-        ),
+        InstallAgentTarget(InstallAgent.CLAUDE, home.resolve(".claude/skills"), InstallAgentTargetSource.DETECTED),
         InstallAgentTarget(
           InstallAgent.CURSOR,
-          home.resolve(".cursor/skills").toFileLocation(),
+          home.resolve(".cursor/skills"),
           InstallAgentTargetSource.DETECTED,
         ),
       ),
@@ -257,7 +236,7 @@ class InstallServiceTest {
 
   private fun platformManifest(repoRoot: Path, slug: String): PlatformManifest = PlatformManifest(
     slug = slug,
-    packRoot = repoRoot.resolve("platform-packs").resolve(slug).toFileLocation(),
+    packRoot = repoRoot.resolve("platform-packs").resolve(slug),
     contractVersion = "1.1",
     routingSignals = RoutingSignals(strong = listOf(slug), tieBreakers = emptyList()),
     declaredCodeReviewAreas = emptyList(),
@@ -266,8 +245,8 @@ class InstallServiceTest {
   )
 
   private fun request(repoRoot: Path, home: Path): InstallPlanRequest = InstallPlanRequest(
-    repoRoot = repoRoot.toFileLocation(),
-    home = home.toFileLocation(),
+    repoRoot = repoRoot,
+    home = home,
     agentSelection = InstallAgentSelection(
       mode = InstallAgentSelectionMode.MANUAL,
       manualAgents = setOf(InstallAgent.CODEX),
@@ -276,14 +255,14 @@ class InstallServiceTest {
     telemetryLevel = InstallTelemetryLevel.ANONYMOUS,
     mcpRegistrationChoice = McpRegistrationChoice(
       register = true,
-      runtimeMcpBin = home.resolve(".skill-bill/runtime/runtime-mcp/bin/runtime-mcp").toFileLocation(),
+      runtimeMcpBin = home.resolve(".skill-bill/runtime/runtime-mcp/bin/runtime-mcp"),
     ),
     runtimeDistributionInputs = RuntimeDistributionInputs(
-      runtimeInstallRoot = home.resolve(".skill-bill/runtime").toFileLocation(),
+      runtimeInstallRoot = home.resolve(".skill-bill/runtime"),
     ),
     targetPaths = InstallationTargetPaths(
-      skillsRoot = repoRoot.resolve("skills").toFileLocation(),
-      platformPacksRoot = repoRoot.resolve("platform-packs").toFileLocation(),
+      skillsRoot = repoRoot.resolve("skills"),
+      platformPacksRoot = repoRoot.resolve("platform-packs"),
     ),
     windowsSymlinkPreflight = WindowsSymlinkPreflight(
       state = WindowsSymlinkPreflightState.NOT_WINDOWS,
@@ -423,7 +402,7 @@ class InstallServiceTest {
           baseSkills = listOf(
             InstallPlanSkill(
               name = "bill-code-review",
-              sourceDir = repoRoot.resolve("skills/bill-code-review").toFileLocation(),
+              sourceDir = repoRoot.resolve("skills/bill-code-review"),
               kind = InstallPlanSkillKind.BASE,
             ),
           ),
@@ -432,7 +411,7 @@ class InstallServiceTest {
           defaultAgentTargets = listOf(
             InstallAgentDefaultTarget(
               agent = InstallAgent.CODEX,
-              path = home.resolve(".codex/skills").toFileLocation(),
+              path = home.resolve(".codex/skills"),
             ),
           ),
         ),
@@ -467,13 +446,13 @@ class InstallServiceTest {
       assertSame(expectedPlatformManifests, request.platformManifests)
       return InstallStagingIntentResult(
         staging = InstallStagingIntent(
-          root = home.resolve(".skill-bill/installed-skills").toFileLocation(),
+          root = home.resolve(".skill-bill/installed-skills"),
           skillPaths = request.draft.skills.map { skill ->
             InstallStagingPathIntent(
               skillName = skill.name,
               sourceDir = skill.sourceDir,
-              stagingRoot = home.resolve(".skill-bill/installed-skills").toFileLocation(),
-              stagingDir = home.resolve(".skill-bill/installed-skills/${skill.name}-test-hash").toFileLocation(),
+              stagingRoot = home.resolve(".skill-bill/installed-skills"),
+              stagingDir = home.resolve(".skill-bill/installed-skills/${skill.name}-test-hash"),
               contentHash = "test-hash-${skill.name}",
             )
           },

@@ -17,7 +17,7 @@ fun FeatureTaskRuntimeSubtaskFinalisation.push(
 
 private fun FeatureTaskRuntimeSubtaskFinalisation.pushDirect(branch: String, commitSha: String): String? {
   val pushed = gitOperations.pushBranch(repoRoot, branch)
-  if (pushed is WorkflowGitOperationResult.Ok) return null
+  if (pushed.ok) return null
   return "the finalised subtask commit '$commitSha' could not be pushed (${pushed.error})"
 }
 
@@ -42,19 +42,18 @@ private fun FeatureTaskRuntimeSubtaskFinalisation.attemptLeasedPush(
     return pushAmended(branch, commitSha)
   }
   val pushed = gitOperations.pushBranchWithLease(repoRoot, branch)
-  if (pushed is WorkflowGitOperationResult.Ok) return null
+  if (pushed.ok) return null
   return pushed.error
 }
 
 private fun FeatureTaskRuntimeSubtaskFinalisation.pushAmended(branch: String, commitSha: String): String? {
   val pushed = gitOperations.pushBranch(repoRoot, branch)
-  if (pushed is WorkflowGitOperationResult.Ok) return null
+  if (pushed.ok) return null
   return "the reopened subtask's amended commit '$commitSha' could not be pushed (${pushed.error})"
 }
 
 private fun WorkflowGitOperationResult.namesAbsentRemote(): Boolean =
-  this is WorkflowGitOperationResult.Ok &&
-    value.trim() == WorkflowGitRemoteOperations.ABSENT_REMOTE_BRANCH
+  ok && value.trim() == WorkflowGitRemoteOperations.ABSENT_REMOTE_BRANCH
 
 private fun FeatureTaskRuntimeSubtaskFinalisation.refreshRemote(
   identity: FeatureTaskRuntimeSubtaskCommitIdentity,
@@ -63,7 +62,7 @@ private fun FeatureTaskRuntimeSubtaskFinalisation.refreshRemote(
   val refreshed = gitOperations.refreshRemoteBranch(repoRoot, branch)
   when {
     refreshed.namesAbsentRemote() -> record(leaseAbsentRecord(identity, branch))
-    refreshed is WorkflowGitOperationResult.Ok -> record(leaseRefreshRecord(identity, branch))
+    refreshed.ok -> record(leaseRefreshRecord(identity, branch))
     else -> record(leaseRefreshFailedRecord(identity, branch, refreshed.error))
   }
   return refreshed

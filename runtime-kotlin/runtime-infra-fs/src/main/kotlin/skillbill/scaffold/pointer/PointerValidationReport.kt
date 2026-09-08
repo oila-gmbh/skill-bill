@@ -1,7 +1,6 @@
 package skillbill.scaffold.pointer
 
 import skillbill.error.ShellContentContractException
-import skillbill.model.toPath
 import skillbill.scaffold.model.PlatformManifest
 import skillbill.scaffold.platformpack.loadPlatformManifest
 import java.io.File
@@ -61,7 +60,7 @@ private fun validatePackPointersDriftAndMissing(
   issues: MutableList<String>,
 ) {
   pack.pointers.forEach { spec ->
-    val pointerFile = pack.packRoot.resolve(spec.skillRelativeDir).resolve(spec.name).toPath().normalize()
+    val pointerFile = pack.packRoot.resolve(spec.skillRelativeDir).resolve(spec.name).normalize()
     declaredFiles.add(pointerFile)
     // Pointer files are stored in git as symlinks (mode 120000); on Linux/macOS they materialize
     // as real symlinks, on Windows fallback (core.symlinks=false) they materialize as regular
@@ -72,7 +71,7 @@ private fun validatePackPointersDriftAndMissing(
       issues += "${displayPointer(repoRoot, pointerFile)}: declared pointer is missing on disk"
       return@forEach
     }
-    runCatching { renderPointer(repoRoot, pack.packRoot.toPath(), spec) }
+    runCatching { renderPointer(repoRoot, pack.packRoot, spec) }
       .onFailure { error ->
         issues += "${displayPointer(repoRoot, pointerFile)}: cannot render pointer: ${error.message.orEmpty()}"
       }

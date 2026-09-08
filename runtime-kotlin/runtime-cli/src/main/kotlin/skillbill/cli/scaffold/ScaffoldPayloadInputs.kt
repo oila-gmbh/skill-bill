@@ -1,7 +1,7 @@
 package skillbill.cli.scaffold
 
 import skillbill.cli.model.CliRunInputs
-import skillbill.contracts.JsonCodec
+import skillbill.contracts.JsonSupport
 import java.nio.file.Path
 import java.time.Clock
 import java.time.LocalDate
@@ -59,9 +59,9 @@ internal fun readScaffoldPayloadText(payloadPath: String?, inputs: CliRunInputs)
 }
 
 internal fun parseScaffoldPayloadObject(payloadText: String): Map<String, Any?> {
-  val parsed = JsonCodec.parseObjectOrNull(payloadText)
+  val parsed = JsonSupport.parseObjectOrNull(payloadText)
     ?: throw IllegalArgumentException("Invalid JSON payload: expected an object.")
-  return JsonCodec.anyToStringAnyMap(JsonCodec.jsonElementToValue(parsed))
+  return JsonSupport.anyToStringAnyMap(JsonSupport.jsonElementToValue(parsed))
     ?: throw IllegalArgumentException("Invalid JSON payload: expected an object.")
 }
 

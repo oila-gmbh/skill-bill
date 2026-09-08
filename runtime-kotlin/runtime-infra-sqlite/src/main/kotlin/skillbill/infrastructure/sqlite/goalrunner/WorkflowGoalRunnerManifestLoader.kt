@@ -1,29 +1,25 @@
 package skillbill.infrastructure.sqlite.goalrunner
 import skillbill.contracts.issuekey.normalizeRequiredIssueKey
-import skillbill.db.decomposition.resolveDecompositionManifest
-import skillbill.db.decomposition.withParentStatus
-import skillbill.db.goalrunner.GoalParentProjectionWriter
-import skillbill.db.goalrunner.migrateLegacyGoalRunnerControls
-import skillbill.db.workflow.decompositionRuntime
-import skillbill.db.workflow.findDecomposedParentOrCorruptFallback
-import skillbill.db.workflow.findDecomposedParentWorkflow
-import skillbill.db.workflow.generateWorkflowId
-import skillbill.db.workflow.requireRuntimeModeForEngineWrite
 import skillbill.ports.db.DatabaseSessionFactory
+import skillbill.ports.goalrunner.persistence.GoalParentProjectionWriter
+import skillbill.ports.goalrunner.persistence.migrateLegacyGoalRunnerControls
 import skillbill.ports.goalrunner.runner.model.GoalRunnerManifestState
 import skillbill.ports.persistence.UnitOfWork
 import skillbill.ports.workflow.decomposition.DecompositionManifestStore
-import skillbill.ports.workflow.get
-import skillbill.ports.workflow.model.WorkflowFamily
-import skillbill.ports.workflow.model.toSnapshot
-import skillbill.ports.workflow.saveRecord
-import skillbill.ports.workflow.toRecord
+import skillbill.ports.workflow.decomposition.runtime.resolveDecompositionManifest
+import skillbill.ports.workflow.decomposition.runtime.withParentStatus
+import skillbill.ports.workflow.persistence.decompositionRuntime
+import skillbill.ports.workflow.persistence.findDecomposedParentOrCorruptFallback
+import skillbill.ports.workflow.persistence.findDecomposedParentWorkflow
+import skillbill.ports.workflow.persistence.generateWorkflowId
+import skillbill.ports.workflow.persistence.model.WorkflowFamily
+import skillbill.ports.workflow.persistence.requireRuntimeModeForEngineWrite
+import skillbill.ports.workflow.persistence.toRecord
+import skillbill.ports.workflow.persistence.toSnapshot
 import skillbill.workflow.decomposition.DecompositionManifestValidator
 import skillbill.workflow.decomposition.model.DecompositionManifest
 import skillbill.workflow.engine.WorkflowEngine
 import skillbill.workflow.engine.model.WorkflowUpdateInput
-import skillbill.workflow.model.DecompositionStatus
-import skillbill.workflow.model.decompositionStatus
 import java.nio.file.Path
 
 internal class WorkflowGoalRunnerManifestLoader(
@@ -163,16 +159,12 @@ internal fun mergeConcurrentGoalProgress(
   val persistedById = persisted.subtasks.associateBy { it.id }
   val mergedSubtasks = incoming.subtasks.map { candidate ->
     val current = persistedById[candidate.id]
-    if (
-      current?.status.decompositionStatus() == DecompositionStatus.COMPLETE &&
-      candidate.status.decompositionStatus() != DecompositionStatus.COMPLETE
-    ) current ?: candidate else candidate
+    if (current?.status == "complete" && candidate.status != "complete") current else candidate
   }
   val merged = incoming.copy(subtasks = mergedSubtasks)
   return if (
     persisted.currentSubtaskIntent.subtaskId > 0 &&
-    merged.subtasks.firstOrNull { it.id == persisted.currentSubtaskIntent.subtaskId }
-      ?.status.decompositionStatus() == DecompositionStatus.COMPLETE &&
+    merged.subtasks.firstOrNull { it.id == persisted.currentSubtaskIntent.subtaskId }?.status == "complete" &&
     merged.currentSubtaskIntent.subtaskId == persisted.currentSubtaskIntent.subtaskId
   ) {
     merged.copy(currentSubtaskIntent = persisted.currentSubtaskIntent).withParentStatus()
@@ -182,8 +174,7 @@ internal fun mergeConcurrentGoalProgress(
 }
 
 private fun DecompositionManifest.isCompleteGoalProjection(): Boolean =
-  status.decompositionStatus() == DecompositionStatus.COMPLETE &&
-    currentSubtaskIntent.action == "complete" && subtasks.all { subtask ->
-    subtask.status.decompositionStatus() in setOf(DecompositionStatus.COMPLETE, DecompositionStatus.SKIPPED) &&
-      (subtask.status.decompositionStatus() == DecompositionStatus.SKIPPED || !subtask.commitSha.isNullOrBlank())
+  status == "complete" && currentSubtaskIntent.action == "complete" && subtasks.all { subtask ->
+    subtask.status in setOf("complete", "skipped") &&
+      (subtask.status == "skipped" || !subtask.commitSha.isNullOrBlank())
   }

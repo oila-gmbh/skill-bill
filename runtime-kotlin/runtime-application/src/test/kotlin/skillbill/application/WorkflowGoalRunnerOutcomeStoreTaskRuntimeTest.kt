@@ -1,8 +1,10 @@
 package skillbill.application
 
 import skillbill.application.decomposition.decodeArtifacts
-import skillbill.application.goalrunner.OutcomeStoreTestArtifactPorts
+import skillbill.application.goalrunner.outcomeStoreDeps
 import skillbill.application.goalrunner.testWorkflowGoalRunnerOutcomeStore
+import skillbill.application.phaseartifacts.phaseRecordsFrom
+import skillbill.application.workflow.toSnapshot
 import skillbill.error.InvalidGoalSubtaskReviewStateSchemaError
 import skillbill.goalrunner.model.GoalAttemptLedgerAction
 import skillbill.goalrunner.model.GoalAttemptLedgerEntry
@@ -11,11 +13,9 @@ import skillbill.goalrunner.model.GoalRunnerWorkerSubtaskRequestOutcome
 import skillbill.goalrunner.model.GoalRunnerWorkerSubtaskRequestRejectionReason
 import skillbill.ports.goalrunner.runner.model.GoalRunnerAttemptLedgerRecordRequest
 import skillbill.ports.goalrunner.runner.model.GoalRunnerReconcileGate
-import skillbill.ports.workflow.model.toSnapshot
 import skillbill.review.context.model.CodeReviewExecutionMode
 import skillbill.workflow.goal.model.GoalSubtaskReviewState
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeVerdict
-import skillbill.workflow.taskruntime.phaseartifacts.phaseRecordsFrom
 import java.nio.file.Path
 import java.time.Instant
 import java.time.temporal.ChronoUnit
@@ -32,14 +32,16 @@ class WorkflowGoalRunnerOutcomeStoreTaskRuntimeTest {
     val workflows = InMemoryWorkflowStates()
     workflows.saveFeatureTaskRuntimeWorkflow(taskRuntimeWorkflowRecord("wftr-task-runtime"))
     val store = testWorkflowGoalRunnerOutcomeStore(
-      FakeDatabaseSessionFactory(workflows),
-      testWorkflowSnapshotValidator,
+      outcomeStoreDeps(
+        FakeDatabaseSessionFactory(workflows),
+        testWorkflowSnapshotValidator,
+      ),
     )
 
     val progress = requireNotNull(store.progress("wftr-task-runtime"))
 
     assertEquals("wftr-task-runtime", progress.workflowId)
-    assertEquals("running", progress.workflowStatus.wireValue)
+    assertEquals("running", progress.workflowStatus)
     assertEquals("implement", progress.currentStepId)
   }
 
@@ -48,8 +50,10 @@ class WorkflowGoalRunnerOutcomeStoreTaskRuntimeTest {
     val workflows = InMemoryWorkflowStates()
     workflows.saveFeatureTaskRuntimeWorkflow(taskRuntimeWorkflowRecord("wftr-task-runtime"))
     val store = testWorkflowGoalRunnerOutcomeStore(
-      FakeDatabaseSessionFactory(workflows),
-      testWorkflowSnapshotValidator,
+      outcomeStoreDeps(
+        FakeDatabaseSessionFactory(workflows),
+        testWorkflowSnapshotValidator,
+      ),
     )
 
     val recorded = store.recordAttemptLedgerEntry(
@@ -79,8 +83,10 @@ class WorkflowGoalRunnerOutcomeStoreTaskRuntimeTest {
     val workflows = InMemoryWorkflowStates()
     workflows.saveFeatureTaskRuntimeWorkflow(taskRuntimeWorkflowRecord("wftr-task-runtime"))
     val store = testWorkflowGoalRunnerOutcomeStore(
-      FakeDatabaseSessionFactory(workflows),
-      testWorkflowSnapshotValidator,
+      outcomeStoreDeps(
+        FakeDatabaseSessionFactory(workflows),
+        testWorkflowSnapshotValidator,
+      ),
     )
 
     val recorded = store.recordWorkerSubtaskRequestOutcomes(
@@ -127,9 +133,10 @@ class WorkflowGoalRunnerOutcomeStoreTaskRuntimeTest {
       ),
     )
     val store = testWorkflowGoalRunnerOutcomeStore(
-      database = FakeDatabaseSessionFactory(workflows),
-      workflowSnapshotValidator = testWorkflowSnapshotValidator,
-      artifactPorts = OutcomeStoreTestArtifactPorts(
+      outcomeStoreDeps(
+        database = FakeDatabaseSessionFactory(workflows),
+        workflowSnapshotValidator = testWorkflowSnapshotValidator,
+      ).copy(
         phaseOutputValidator = AlwaysValidValidator,
       ),
     )
@@ -164,8 +171,10 @@ class WorkflowGoalRunnerOutcomeStoreTaskRuntimeTest {
       ),
     )
     val store = testWorkflowGoalRunnerOutcomeStore(
-      FakeDatabaseSessionFactory(workflows),
-      testWorkflowSnapshotValidator,
+      outcomeStoreDeps(
+        FakeDatabaseSessionFactory(workflows),
+        testWorkflowSnapshotValidator,
+      ),
     )
 
     val passes = store.unemittedGoalReviewPasses("wftr-goal-review-prose")
@@ -183,8 +192,10 @@ class WorkflowGoalRunnerOutcomeStoreTaskRuntimeTest {
       runtimeCandidateRecord("wftr-alive", declaredProgressTimestamp = Instant.now()),
     )
     val store = testWorkflowGoalRunnerOutcomeStore(
-      FakeDatabaseSessionFactory(workflows),
-      testWorkflowSnapshotValidator,
+      outcomeStoreDeps(
+        FakeDatabaseSessionFactory(workflows),
+        testWorkflowSnapshotValidator,
+      ),
     )
 
     val outcomes = store.reconcileAuthoritativeOutcomes(
@@ -210,8 +221,10 @@ class WorkflowGoalRunnerOutcomeStoreTaskRuntimeTest {
       ),
     )
     val store = testWorkflowGoalRunnerOutcomeStore(
-      FakeDatabaseSessionFactory(workflows),
-      testWorkflowSnapshotValidator,
+      outcomeStoreDeps(
+        FakeDatabaseSessionFactory(workflows),
+        testWorkflowSnapshotValidator,
+      ),
     )
 
     val outcomes = store.reconcileAuthoritativeOutcomes(
@@ -241,8 +254,10 @@ class WorkflowGoalRunnerOutcomeStoreTaskRuntimeTest {
       ),
     )
     val store = testWorkflowGoalRunnerOutcomeStore(
-      FakeDatabaseSessionFactory(workflows),
-      testWorkflowSnapshotValidator,
+      outcomeStoreDeps(
+        FakeDatabaseSessionFactory(workflows),
+        testWorkflowSnapshotValidator,
+      ),
     )
 
     val outcomes = store.reconcileAuthoritativeOutcomes(
@@ -270,8 +285,10 @@ class WorkflowGoalRunnerOutcomeStoreTaskRuntimeTest {
       ),
     )
     val store = testWorkflowGoalRunnerOutcomeStore(
-      FakeDatabaseSessionFactory(workflows),
-      testWorkflowSnapshotValidator,
+      outcomeStoreDeps(
+        FakeDatabaseSessionFactory(workflows),
+        testWorkflowSnapshotValidator,
+      ),
     )
 
     val outcomes = store.reconcileAuthoritativeOutcomes(
@@ -295,8 +312,10 @@ class WorkflowGoalRunnerOutcomeStoreTaskRuntimeTest {
       runtimeCandidateRecordNoDeclaredEvent("wftr-empty-liveness", updatedAt = null),
     )
     val store = testWorkflowGoalRunnerOutcomeStore(
-      FakeDatabaseSessionFactory(workflows),
-      testWorkflowSnapshotValidator,
+      outcomeStoreDeps(
+        FakeDatabaseSessionFactory(workflows),
+        testWorkflowSnapshotValidator,
+      ),
     )
 
     val outcomes = store.reconcileAuthoritativeOutcomes(
@@ -319,9 +338,12 @@ class WorkflowGoalRunnerOutcomeStoreTaskRuntimeTest {
     workflows.saveFeatureTaskRuntimeWorkflow(crashedChildRecord("wftr-crashed-child"))
     workflows.seedWorkerOwnership(expiredLeaseOwnership("wftr-crashed-child"))
     val store = testWorkflowGoalRunnerOutcomeStore(
-      database = FakeDatabaseSessionFactory(workflows),
-      workflowSnapshotValidator = testWorkflowSnapshotValidator,
-      workerSupervisor = DeadProcessSupervisor,
+      outcomeStoreDeps(
+        database = FakeDatabaseSessionFactory(workflows),
+        workflowSnapshotValidator = testWorkflowSnapshotValidator,
+      ).copy(
+        workerSupervisor = DeadProcessSupervisor,
+      ),
     )
 
     val outcome = store.recoverAndPersistTerminalOutcome(
@@ -347,8 +369,10 @@ class WorkflowGoalRunnerOutcomeStoreTaskRuntimeTest {
     val workflows = InMemoryWorkflowStates()
     workflows.saveFeatureTaskRuntimeWorkflow(tornBlockedReviewRecord("wftr-torn-review"))
     val store = testWorkflowGoalRunnerOutcomeStore(
-      FakeDatabaseSessionFactory(workflows),
-      testWorkflowSnapshotValidator,
+      outcomeStoreDeps(
+        FakeDatabaseSessionFactory(workflows),
+        testWorkflowSnapshotValidator,
+      ),
     )
 
     assertTrue(
@@ -364,7 +388,7 @@ class WorkflowGoalRunnerOutcomeStoreTaskRuntimeTest {
     assertEquals("review", updated.currentStepId)
     val review = phaseRecordsFrom(decodeArtifacts(updated.artifactsJson))
       .getValue("review")
-    assertEquals("pending", review.status.wireValue)
+    assertEquals("pending", review.status)
   }
 
   @Test
@@ -375,9 +399,12 @@ class WorkflowGoalRunnerOutcomeStoreTaskRuntimeTest {
     liveLease.saveFeatureTaskRuntimeWorkflow(crashedChildRecord("wftr-live-lease"))
     liveLease.seedWorkerOwnership(expiredLeaseOwnership("wftr-live-lease", expiresAt = "2999-01-01T00:00:30Z"))
     val liveLeaseStore = testWorkflowGoalRunnerOutcomeStore(
-      database = FakeDatabaseSessionFactory(liveLease),
-      workflowSnapshotValidator = testWorkflowSnapshotValidator,
-      workerSupervisor = DeadProcessSupervisor,
+      outcomeStoreDeps(
+        database = FakeDatabaseSessionFactory(liveLease),
+        workflowSnapshotValidator = testWorkflowSnapshotValidator,
+      ).copy(
+        workerSupervisor = DeadProcessSupervisor,
+      ),
     )
     assertNull(
       liveLeaseStore.recoverAndPersistTerminalOutcome("wftr-live-lease", "SKILL-87.1", 1, Path.of("."), null),
@@ -389,9 +416,12 @@ class WorkflowGoalRunnerOutcomeStoreTaskRuntimeTest {
     liveProcess.saveFeatureTaskRuntimeWorkflow(crashedChildRecord("wftr-live-process"))
     liveProcess.seedWorkerOwnership(expiredLeaseOwnership("wftr-live-process"))
     val liveProcessStore = testWorkflowGoalRunnerOutcomeStore(
-      database = FakeDatabaseSessionFactory(liveProcess),
-      workflowSnapshotValidator = testWorkflowSnapshotValidator,
-      workerSupervisor = LiveProcessSupervisor,
+      outcomeStoreDeps(
+        database = FakeDatabaseSessionFactory(liveProcess),
+        workflowSnapshotValidator = testWorkflowSnapshotValidator,
+      ).copy(
+        workerSupervisor = LiveProcessSupervisor,
+      ),
     )
     assertNull(
       liveProcessStore.recoverAndPersistTerminalOutcome("wftr-live-process", "SKILL-87.1", 1, Path.of("."), null),

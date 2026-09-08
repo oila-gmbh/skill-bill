@@ -20,7 +20,7 @@ import skillbill.review.model.ImportedReview
 import skillbill.review.model.NumberedFinding
 import skillbill.review.model.ReviewFinishedTelemetry
 import skillbill.review.model.TriageDecision
-import skillbill.ports.review.toReviewFinishedTelemetryPayload as toPortReviewFinishedTelemetryPayload
+import skillbill.ports.telemetry.model.toReviewFinishedTelemetryPayload as toPortReviewFinishedTelemetryPayload
 
 internal enum class ReviewOutputAdmission {
   SUCCESS,
@@ -70,7 +70,7 @@ fun ReviewPreviewResult.toReviewPreviewContract(): ReviewPreviewContract = Revie
   routedSkill = routedSkill,
   detectedScope = detectedScope,
   detectedStack = detectedStack,
-  executionMode = executionMode?.wireValue,
+  executionMode = executionMode,
 )
 
 fun ImportedReviewResult.toImportedReviewContract(): ImportedReviewContract =

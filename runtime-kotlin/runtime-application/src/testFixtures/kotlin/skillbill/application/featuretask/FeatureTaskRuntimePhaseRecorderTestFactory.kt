@@ -1,5 +1,6 @@
 package skillbill.application.featuretask
 
+import skillbill.application.featuretask.model.FeatureTaskRuntimePhaseRecorderValidators
 import skillbill.ports.db.DatabaseSessionFactory
 import skillbill.ports.diagnostics.RuntimeDiagnostics
 import skillbill.workflow.engine.WorkflowSnapshotValidator
@@ -16,15 +17,17 @@ fun featureTaskRuntimePhaseRecorder(
   handoffFoundationValidator: FeatureTaskRuntimeHandoffFoundationValidator,
   clock: Clock,
   diagnostics: RuntimeDiagnostics,
-): FeatureTaskRuntimePhaseRecorder = FeatureTaskRuntimePhaseRecorder(
+): FeatureTaskRuntimePhaseRecorder = featureTaskRuntimePhaseRecorder(
   database = database,
   workflowSnapshotValidator = workflowSnapshotValidator,
-  handoffEnvelopeValidator = handoffEnvelopeValidator,
-  handoffFoundationValidator = handoffFoundationValidator,
-  quarantineValidator = NoopFeatureTaskRuntimeQuarantineValidator,
-  implementationAttemptValidator = NoopFeatureTaskRuntimeImplementationAttemptValidator,
-  rejectedOutputDiagnosticMetadataValidator = { },
-  producerOutputEvidenceValidator = { },
-  diagnostics = diagnostics,
+  validators = FeatureTaskRuntimePhaseRecorderValidators(
+    handoffEnvelopeValidator = handoffEnvelopeValidator,
+    handoffFoundationValidator = handoffFoundationValidator,
+    quarantineValidator = NoopFeatureTaskRuntimeQuarantineValidator,
+    implementationAttemptValidator = NoopFeatureTaskRuntimeImplementationAttemptValidator,
+    rejectedOutputDiagnosticMetadataValidator = { },
+    producerOutputEvidenceValidator = { },
+  ),
   clock = clock,
+  diagnostics = diagnostics,
 )

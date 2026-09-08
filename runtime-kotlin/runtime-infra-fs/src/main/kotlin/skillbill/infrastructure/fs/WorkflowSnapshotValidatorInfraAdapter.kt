@@ -4,7 +4,6 @@ import me.tatarka.inject.annotations.Inject
 import skillbill.contracts.workflow.CanonicalWorkflowStateSchemaValidator
 import skillbill.contracts.workflow.WorkflowStateSchemaValidator
 import skillbill.workflow.engine.WorkflowSnapshotValidator
-import skillbill.workflow.engine.model.WorkflowStateSnapshot
 
 /**
  * SKILL-52.3 Subtask 1: infra-side adapter that bridges the domain-owned
@@ -24,7 +23,7 @@ import skillbill.workflow.engine.model.WorkflowStateSnapshot
 class WorkflowSnapshotValidatorInfraAdapter : WorkflowSnapshotValidator {
   private val delegate: WorkflowStateSchemaValidator = CanonicalWorkflowStateSchemaValidator()
 
-  override fun validate(snapshot: WorkflowStateSnapshot, slug: String) {
-    delegate.validate(WorkflowStateSnapshotWireMapper.wireMap(snapshot), slug)
+  override fun validate(snapshot: Map<String, Any?>, slug: String) {
+    delegate.validate(snapshot, slug)
   }
 }

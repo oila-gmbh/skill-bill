@@ -1,6 +1,5 @@
 package skillbill.application.featuretask
 
-import skillbill.ports.workflow.gitops.model.WorkflowGitOperationResult
 import skillbill.application.featuretask.model.FeatureTaskRuntimeSubtaskCommitIdentity
 import skillbill.ports.workflow.gitops.WorkflowGitOperations
 import java.nio.file.Path
@@ -22,7 +21,7 @@ internal data class StageablePathsOutcome(
 
 internal fun WorkflowGitOperations.dirtyImplementationPaths(repoRoot: Path): DirtyPathsResult {
   val status = worktreeStatus(repoRoot)
-  if (status !is WorkflowGitOperationResult.Ok) {
+  if (!status.ok) {
     return DirtyPathsError("the worktree status could not be read before staging (${status.error})")
   }
   val paths = parseGitPorcelainPaths(status.value.orEmpty())

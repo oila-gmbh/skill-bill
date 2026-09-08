@@ -2,7 +2,6 @@ package skillbill.review
 
 import skillbill.review.model.ImportedReview
 import skillbill.review.model.ReviewIssueCategory
-import skillbill.review.model.ReviewExecutionMode
 
 object ReviewParser {
   fun parseReview(text: String): ImportedReview {
@@ -43,10 +42,10 @@ object ReviewParser {
     )
   }
 
-  private fun parseExecutionMode(text: String): ReviewExecutionMode? {
+  private fun parseExecutionMode(text: String): String? {
     val reported = reportedExecutionModePattern.find(text)?.groups?.get("value")?.value?.trim()
       ?: return null
-    return ReviewExecutionMode.fromWire(extractSummaryValue(text, "execution_mode"))
+    return extractSummaryValue(text, "execution_mode")
       ?: throw IllegalArgumentException(
         "Review output reported an unknown execution mode '$reported'. Allowed: inline, delegated.",
       )

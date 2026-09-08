@@ -1,7 +1,6 @@
 package skillbill.install
 
 import skillbill.install.runtime.InstallOperations
-import skillbill.model.toPath
 import java.nio.file.Files
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -61,7 +60,7 @@ class ClaudeConfigDirAgentPathTest {
       .filter { it.name == "claude" }
     assertEquals(
       listOf(home.resolve(".claude/skills"), workConfig.resolve("skills")),
-      claudeTargets.map { it.path.toPath() },
+      claudeTargets.map { it.path },
     )
   }
 }

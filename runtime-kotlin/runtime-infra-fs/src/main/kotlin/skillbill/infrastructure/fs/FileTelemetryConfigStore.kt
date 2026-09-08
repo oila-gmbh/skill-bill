@@ -1,7 +1,7 @@
 package skillbill.infrastructure.fs
 
 import me.tatarka.inject.annotations.Inject
-import skillbill.contracts.JsonCodec
+import skillbill.contracts.JsonSupport
 import skillbill.install.support.resolveTelemetryConfigPath
 import skillbill.install.support.resolveTelemetryStateDir
 import skillbill.model.EnvironmentContext
@@ -35,9 +35,9 @@ internal fun readTelemetryConfigFile(path: Path): TelemetryConfigDocument? {
   if (!Files.exists(path)) {
     return null
   }
-  val rawPayload = JsonCodec.parseObjectOrNull(Files.readString(path))
+  val rawPayload = JsonSupport.parseObjectOrNull(Files.readString(path))
     ?: throw IllegalArgumentException("Telemetry config at '$path' is not valid JSON.")
-  val payload = JsonCodec.anyToStringAnyMap(JsonCodec.jsonElementToValue(rawPayload))
+  val payload = JsonSupport.anyToStringAnyMap(JsonSupport.jsonElementToValue(rawPayload))
     ?: throw IllegalArgumentException("Telemetry config at '$path' must contain a JSON object.")
   return TelemetryConfigDocument(payload)
 }
@@ -73,7 +73,7 @@ internal fun ensureTelemetryConfigFile(
 
 internal fun writeTelemetryConfigFile(path: Path, document: TelemetryConfigDocument) {
   path.parent?.let(Files::createDirectories)
-  Files.writeString(path, JsonCodec.mapToJsonString(document.payload) + "\n")
+  Files.writeString(path, JsonSupport.mapToJsonString(document.payload) + "\n")
 }
 
 private fun normalizedInstallId(payload: MutableMap<String, Any?>, defaults: Map<String, Any?>): String =

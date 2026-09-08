@@ -2,7 +2,6 @@ package skillbill.scaffold.validation
 
 import skillbill.error.InvalidManifestSchemaError
 import skillbill.error.InvalidReviewSkillStructureError
-import skillbill.model.toPath
 import skillbill.nativeagent.composition.NATIVE_AGENT_BUNDLE_FILE
 import skillbill.nativeagent.composition.parseNativeAgentBundle
 import skillbill.scaffold.model.PlatformManifest
@@ -65,15 +64,15 @@ internal data class ReviewSkillStructureViolation(val path: Path, val rule: Stri
 
 internal fun validateReviewSkillStructure(pack: PlatformManifest) {
   val baseline = pack.declaredFiles.baseline ?: return
-  val bundle = baseline.toPath().parent.resolve("native-agents").resolve(NATIVE_AGENT_BUNDLE_FILE)
+  val bundle = baseline.parent.resolve("native-agents").resolve(NATIVE_AGENT_BUNDLE_FILE)
   if (!Files.isRegularFile(bundle)) return
 
   val actualAgents = parseNativeAgentBundle(bundle)
   val actualNames = actualAgents.map { it.name }
   val specialistNames = pack.declaredCodeReviewAreas
-    .map { area -> pack.declaredFiles.areas.getValue(area).toPath().parent.fileName.toString() }
+    .map { area -> pack.declaredFiles.areas.getValue(area).parent.fileName.toString() }
     .toSet()
-  val baselineName = baseline.toPath().parent.fileName.toString()
+  val baselineName = baseline.parent.fileName.toString()
   val expectedNames = specialistNames + baselineName
   val actualNameSet = actualNames.toSet()
   val governedNameSet = actualAgents.filter { it.composition != null }.map { it.name }.toSet()

@@ -6,7 +6,7 @@ import skillbill.cli.install.installPlanPayload
 import skillbill.cli.kernel.CliOutput
 import skillbill.cli.model.CliFormat
 import skillbill.cli.model.CliRuntimeContext
-import skillbill.contracts.JsonCodec
+import skillbill.contracts.JsonSupport
 import skillbill.db.core.DatabaseRuntime
 import skillbill.db.core.DbConstants
 import skillbill.db.telemetry.TelemetryOutboxStore
@@ -40,7 +40,6 @@ import skillbill.install.model.WindowsSymlinkDecision
 import skillbill.install.model.WindowsSymlinkFallbackState
 import skillbill.install.model.WindowsSymlinkPreflight
 import skillbill.install.model.WindowsSymlinkPreflightState
-import skillbill.ports.repository.toFileLocation
 import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.test.Test
@@ -736,7 +735,7 @@ private fun invalidCliInstallPlan(fixture: InstallPlanApplyFixture): InstallPlan
 
 private fun codexInstallTarget(fixture: InstallPlanApplyFixture): InstallAgentTarget = InstallAgentTarget(
   agent = InstallAgent.CODEX,
-  path = fixture.home.resolve("manual-targets/codex").toFileLocation(),
+  path = fixture.home.resolve("manual-targets/codex"),
   source = InstallAgentTargetSource.MANUAL,
 )
 
@@ -744,21 +743,21 @@ private fun invalidCliInstallRequest(
   fixture: InstallPlanApplyFixture,
   target: InstallAgentTarget,
 ): InstallPlanRequest = InstallPlanRequest(
-  repoRoot = fixture.repoRoot.toFileLocation(),
-  home = fixture.home.toFileLocation(),
+  repoRoot = fixture.repoRoot,
+  home = fixture.home,
   agentSelection = InstallAgentSelection(
     mode = InstallAgentSelectionMode.MANUAL,
     manualAgents = setOf(InstallAgent.CODEX),
   ),
   platformPackSelection = PlatformPackSelection(PlatformPackSelectionMode.NONE),
   telemetryLevel = InstallTelemetryLevel.ANONYMOUS,
-  mcpRegistrationChoice = McpRegistrationChoice(register = true, runtimeMcpBin = Path.of("").toFileLocation()),
+  mcpRegistrationChoice = McpRegistrationChoice(register = true, runtimeMcpBin = Path.of("")),
   runtimeDistributionInputs = RuntimeDistributionInputs(
-    runtimeInstallRoot = fixture.home.resolve(".skill-bill/runtime").toFileLocation(),
+    runtimeInstallRoot = fixture.home.resolve(".skill-bill/runtime"),
   ),
   targetPaths = InstallationTargetPaths(
-    skillsRoot = fixture.repoRoot.resolve("skills").toFileLocation(),
-    platformPacksRoot = fixture.repoRoot.resolve("platform-packs").toFileLocation(),
+    skillsRoot = fixture.repoRoot.resolve("skills"),
+    platformPacksRoot = fixture.repoRoot.resolve("platform-packs"),
     agentTargets = listOf(target),
   ),
   windowsSymlinkPreflight = WindowsSymlinkPreflight(
@@ -769,18 +768,18 @@ private fun invalidCliInstallRequest(
 
 private fun baseInstallPlanSkill(sourceDir: Path): InstallPlanSkill = InstallPlanSkill(
   name = "bill-code-review",
-  sourceDir = sourceDir.toFileLocation(),
+  sourceDir = sourceDir,
   kind = InstallPlanSkillKind.BASE,
 )
 
 private fun invalidCliStagingIntent(stagingRoot: Path, sourceDir: Path): InstallStagingIntent = InstallStagingIntent(
-  root = stagingRoot.toFileLocation(),
+  root = stagingRoot,
   skillPaths = listOf(
     InstallStagingPathIntent(
       skillName = "bill-code-review",
-      sourceDir = sourceDir.toFileLocation(),
-      stagingRoot = stagingRoot.toFileLocation(),
-      stagingDir = stagingRoot.resolve("bill-code-review-testhash").toFileLocation(),
+      sourceDir = sourceDir,
+      stagingRoot = stagingRoot,
+      stagingDir = stagingRoot.resolve("bill-code-review-testhash"),
       contentHash = "testhash",
     ),
   ),
@@ -788,7 +787,7 @@ private fun invalidCliStagingIntent(stagingRoot: Path, sourceDir: Path): Install
 
 private fun invalidMcpRegistrationIntent(): McpRegistrationIntent = McpRegistrationIntent(
   register = true,
-  runtimeMcpBin = Path.of("").toFileLocation(),
+  runtimeMcpBin = Path.of(""),
   agents = listOf(InstallAgent.CODEX),
 )
 
@@ -978,7 +977,7 @@ private data class InstallPlanApplyFixture(
 )
 
 private fun decodeInstallPlanApplyJson(rawJson: String): Map<String, Any?> =
-  JsonCodec.anyToStringAnyMap(JsonCodec.parseObjectOrNull(rawJson)?.let(JsonCodec::jsonElementToValue))
+  JsonSupport.anyToStringAnyMap(JsonSupport.parseObjectOrNull(rawJson)?.let(JsonSupport::jsonElementToValue))
     ?: emptyMap()
 
 private fun readInstallSelection(home: Path): Map<String, Any?> =

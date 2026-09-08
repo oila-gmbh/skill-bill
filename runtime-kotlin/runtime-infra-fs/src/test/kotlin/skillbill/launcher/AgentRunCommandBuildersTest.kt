@@ -14,7 +14,7 @@ import skillbill.launcher.mcp.McpConfigFormat
 import skillbill.launcher.process.AgentRunIdlePolicy
 import skillbill.ports.agentrun.model.ConversationIsolation
 import skillbill.ports.review.BrokerBackedNativeReviewOperationProtocol
-import skillbill.ports.review.GovernedReviewEvidenceCodec.OPERATIONS
+import skillbill.ports.review.model.GovernedReviewEvidenceCodec.OPERATIONS
 import skillbill.ports.review.model.ReviewLaunchIsolationStrategy
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import kotlin.test.Test

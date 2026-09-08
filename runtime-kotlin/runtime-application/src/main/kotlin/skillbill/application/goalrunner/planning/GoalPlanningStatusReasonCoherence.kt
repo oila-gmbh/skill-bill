@@ -3,7 +3,7 @@ import me.tatarka.inject.annotations.Inject
 import skillbill.application.goalplanning.GoalPlanningPreparationCheckpoint
 import skillbill.application.goalplanning.sha256HexUtf8
 import skillbill.application.goalrunner.planning.model.GoalPlanningStatusAlignRequest
-import skillbill.contracts.JsonCodec
+import skillbill.contracts.JsonSupport
 import skillbill.contracts.workflow.GoalPlanningPreparationSchemaPaths
 import skillbill.goalrunner.model.GoalPlanningStatusSnapshot
 import skillbill.ports.goalrunner.model.GoalPlanningContractProvenance
@@ -84,13 +84,13 @@ class LaunchAlignedGoalPlanningStatusReasonCoherence(
   }
 
   private fun planningPacketParentSpec(existing: SharedGoalPreplanCheckpoint): String? {
-    val packet = JsonCodec.parseObjectOrNull(existing.preplanPayload)
-      ?.let(JsonCodec::jsonElementToValue)
-      ?.let(JsonCodec::anyToStringAnyMap)
+    val packet = JsonSupport.parseObjectOrNull(existing.preplanPayload)
+      ?.let(JsonSupport::jsonElementToValue)
+      ?.let(JsonSupport::anyToStringAnyMap)
       ?.get("produced_outputs")
-      ?.let(JsonCodec::anyToStringAnyMap)
+      ?.let(JsonSupport::anyToStringAnyMap)
       ?.get("_goal_planning_shared_context")
-      ?.let(JsonCodec::anyToStringAnyMap)
+      ?.let(JsonSupport::anyToStringAnyMap)
       ?: return null
     return packet["parent_spec"] as? String
   }

@@ -1,6 +1,7 @@
 package skillbill.review.context.model
 
 import skillbill.contracts.review.REVIEW_CONTEXT_CONTRACT_VERSION
+import java.nio.charset.StandardCharsets
 
 enum class ReviewConversationIsolation { FRESH }
 
@@ -128,12 +129,12 @@ data class GovernedReviewLaunch(
    */
   fun budgetOutcomeOrNull(): ReviewContextBudgetExceeded? {
     val overhead = measureBundleEntries(emptyList())
-    val renderedBytes = canonicalPayload.toByteArray(Charsets.UTF_8).size.toLong()
+    val renderedBytes = canonicalPayload.toByteArray(StandardCharsets.UTF_8).size.toLong()
     val allowance = budget.maxLaneLaunchBytes * maxOf(REVIEW_MIN_LANE_BUDGET_SEGMENT_COUNT, segmentation.segments.size)
     return if (overhead > budget.maxLaneLaunchBytes || renderedBytes > allowance) {
       ReviewContextBudgetExceeded(
         lane = assignment.lane,
-        budgetKind = ReviewBudgetKind.LANE_LAUNCH_BYTES,
+        budgetKind = "lane_launch_bytes",
         configuredLimit = budget.maxLaneLaunchBytes,
         observedValue = maxOf(overhead, renderedBytes),
         packetDigest = assignment.packetDigest,
@@ -161,7 +162,7 @@ data class GovernedReviewLaunch(
         budgetLimitBytes = budget.maxLaneLaunchBytes,
       )
     }
-    return renderCanonicalPayload(entries, synthetic).toByteArray(Charsets.UTF_8).size.toLong()
+    return renderCanonicalPayload(entries, synthetic).toByteArray(StandardCharsets.UTF_8).size.toLong()
   }
 
   private fun renderCanonicalPayload(

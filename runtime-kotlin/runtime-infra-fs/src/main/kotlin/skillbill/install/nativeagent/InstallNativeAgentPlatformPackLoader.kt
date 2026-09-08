@@ -1,6 +1,5 @@
 package skillbill.install.nativeagent
 
-import skillbill.model.toPath
 import skillbill.nativeagent.platformpack.NativeAgentDeclaredFiles
 import skillbill.nativeagent.platformpack.NativeAgentGovernedAddonActivation
 import skillbill.nativeagent.platformpack.NativeAgentGovernedAddonSelection
@@ -27,12 +26,12 @@ object InstallNativeAgentPlatformPackLoader : NativeAgentPlatformPackLoader {
 
 fun PlatformManifest.toNativeAgentPlatformPack(): NativeAgentPlatformPack = NativeAgentPlatformPack(
   slug = slug,
-  packRoot = packRoot.toPath(),
+  packRoot = packRoot,
   declaredFiles = NativeAgentDeclaredFiles(
-    baseline = declaredFiles.baseline?.toPath(),
-    areas = declaredFiles.areas.mapValues { (_, entry) -> entry.toPath() },
+    baseline = declaredFiles.baseline,
+    areas = declaredFiles.areas,
   ),
-  declaredQualityCheckFile = declaredQualityCheckFile?.toPath(),
+  declaredQualityCheckFile = declaredQualityCheckFile,
   pointers = pointers.map(PointerSpec::toNativeAgentPointerSpec),
   addonUsage = addonUsage.map(GovernedAddonUsage::toNativeAgentGovernedAddonUsage),
 )

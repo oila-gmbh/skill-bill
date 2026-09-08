@@ -1,6 +1,5 @@
 package skillbill.infrastructure.fs
 
-import skillbill.ports.workflow.gitops.model.WorkflowGitOperationResult
 import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.io.path.createDirectories
@@ -51,7 +50,7 @@ class GitCheckpointHistoryOperationsTest {
 
     val amended = GitCheckpointHistoryOperations.amendHeadCommit(repo, before)
 
-    assertTrue(amended is WorkflowGitOperationResult.Ok, amended.error)
+    assertTrue(amended.ok, amended.error)
     assertEquals(head(), amended.value.trim())
     assertTrue(head() != before, "amend must rewrite HEAD")
     assertEquals("amended\n", showAtHead("owned/Base.kt"))
@@ -75,7 +74,7 @@ class GitCheckpointHistoryOperationsTest {
 
     val amended = GitCheckpointHistoryOperations.amendHeadCommit(repo, before)
 
-    assertFalse(amended is WorkflowGitOperationResult.Ok)
+    assertFalse(amended.ok)
     assertEquals(before, head())
   }
 
@@ -90,7 +89,7 @@ class GitCheckpointHistoryOperationsTest {
 
     val amended = GitCheckpointHistoryOperations.amendHeadCommit(repo, before)
 
-    assertFalse(amended is WorkflowGitOperationResult.Ok)
+    assertFalse(amended.ok)
     assertContains(amended.error.orEmpty(), "protected branch 'main'")
     assertEquals(before, head())
   }
@@ -104,7 +103,7 @@ class GitCheckpointHistoryOperationsTest {
 
     val amended = GitCheckpointHistoryOperations.amendHeadCommit(repo, "0".repeat(before.length))
 
-    assertFalse(amended is WorkflowGitOperationResult.Ok)
+    assertFalse(amended.ok)
     assertEquals(before, head())
   }
 
@@ -113,18 +112,18 @@ class GitCheckpointHistoryOperationsTest {
     val sha = head()
     val ref = "${CHECKPOINT_PREFIX}subtask-1/städte-checkpoint"
 
-    assertTrue(GitCheckpointHistoryOperations.updateRef(repo, CHECKPOINT_PREFIX, ref, sha) is WorkflowGitOperationResult.Ok)
+    assertTrue(GitCheckpointHistoryOperations.updateRef(repo, CHECKPOINT_PREFIX, ref, sha).ok)
     assertEquals(sha, GitCheckpointHistoryOperations.resolveRef(repo, CHECKPOINT_PREFIX, ref).value.trim())
     assertEquals(mapOf(ref to sha), listedRefs())
 
-    assertTrue(GitCheckpointHistoryOperations.deleteRef(repo, CHECKPOINT_PREFIX, ref) is WorkflowGitOperationResult.Ok)
+    assertTrue(GitCheckpointHistoryOperations.deleteRef(repo, CHECKPOINT_PREFIX, ref).ok)
     assertTrue(
-      GitCheckpointHistoryOperations.deleteRef(repo, CHECKPOINT_PREFIX, ref) is WorkflowGitOperationResult.Ok,
+      GitCheckpointHistoryOperations.deleteRef(repo, CHECKPOINT_PREFIX, ref).ok,
       "a repeated delete must stay idempotent so an interrupted prune can re-run",
     )
     assertEquals(emptyMap(), listedRefs())
     val absent = GitCheckpointHistoryOperations.resolveRef(repo, CHECKPOINT_PREFIX, ref)
-    assertTrue(absent is WorkflowGitOperationResult.Ok, "an absent ref must resolve ok so callers can tell it from a failed lookup")
+    assertTrue(absent.ok, "an absent ref must resolve ok so callers can tell it from a failed lookup")
     assertEquals("", absent.value.trim())
   }
 
@@ -143,9 +142,9 @@ class GitCheckpointHistoryOperationsTest {
       sha,
     )
 
-    assertFalse(update is WorkflowGitOperationResult.Ok)
-    assertFalse(delete is WorkflowGitOperationResult.Ok)
-    assertFalse(siblingPrefix is WorkflowGitOperationResult.Ok)
+    assertFalse(update.ok)
+    assertFalse(delete.ok)
+    assertFalse(siblingPrefix.ok)
     assertEquals(sha, runGitCommand(repo, "rev-parse", "refs/heads/main").value.trim())
     assertEquals(emptyMap(), listedRefs())
   }
@@ -157,11 +156,11 @@ class GitCheckpointHistoryOperationsTest {
   fun `a pre-amend ref keeps the discarded commit reachable while git log never lists it`() {
     val preAmend = head()
     val ref = "${CHECKPOINT_PREFIX}SKILL-190/3/0"
-    assertTrue(GitCheckpointHistoryOperations.updateRef(repo, CHECKPOINT_PREFIX, ref, preAmend) is WorkflowGitOperationResult.Ok)
+    assertTrue(GitCheckpointHistoryOperations.updateRef(repo, CHECKPOINT_PREFIX, ref, preAmend).ok)
     write("owned/Base.kt", "amended\n")
     git("add", "--", "owned/Base.kt")
 
-    assertTrue(GitCheckpointHistoryOperations.amendHeadCommit(repo, preAmend) is WorkflowGitOperationResult.Ok)
+    assertTrue(GitCheckpointHistoryOperations.amendHeadCommit(repo, preAmend).ok)
 
     assertTrue(head() != preAmend, "the amend must have rewritten HEAD")
     assertEquals(
@@ -185,7 +184,7 @@ class GitCheckpointHistoryOperationsTest {
 
     val message = GitCheckpointHistoryOperations.headCommitMessage(repo)
 
-    assertTrue(message is WorkflowGitOperationResult.Ok, message.error)
+    assertTrue(message.ok, message.error)
     assertContains(message.value, "Skill-Bill-Subtask: SKILL-190/3")
     assertContains(message.value, "phase=audit generation=0")
   }
@@ -209,6 +208,6 @@ class GitCheckpointHistoryOperationsTest {
 
   private fun git(vararg args: String) {
     val result = runGitCommand(repo, *args)
-    check(result is WorkflowGitOperationResult.Ok) { "git ${args.joinToString(" ")} failed: ${result.error}" }
+    check(result.ok) { "git ${args.joinToString(" ")} failed: ${result.error}" }
   }
 }

@@ -1,18 +1,17 @@
 package skillbill.application.goalrunner
 
 import skillbill.application.goalrunner.model.GoalContinuation
+import skillbill.application.subtaskreview.GoalSubtaskReviewSummaryReducer
+import skillbill.application.subtaskreview.recordedVerdicts
 import skillbill.application.workflow.model.WorkflowFamily
+import skillbill.application.workflow.toSnapshot
 import skillbill.boundary.OpenBoundaryMap
-import skillbill.contracts.JsonCodec
+import skillbill.contracts.JsonSupport
 import skillbill.error.InvalidGoalSubtaskReviewStateSchemaError
 import skillbill.error.InvalidWorkflowStateSchemaError
-import skillbill.goalrunner.asGoalRunnerIntOrNull
-import skillbill.goalrunner.subtaskreview.GoalSubtaskReviewSummaryReducer
-import skillbill.goalrunner.subtaskreview.recordedVerdicts
+import skillbill.goalrunner.model.GoalRunnerStoredOutcome
 import skillbill.ports.persistence.UnitOfWork
 import skillbill.ports.workflow.WorkflowStateRepository
-import skillbill.ports.workflow.get
-import skillbill.ports.workflow.model.toSnapshot
 import skillbill.workflow.engine.model.WorkflowStateSnapshot
 import skillbill.workflow.goal.model.GOAL_SUBTASK_REVIEW_STATE_ARTIFACT_KEY
 import skillbill.workflow.goal.model.GoalSubtaskReviewArtifactDecoder
@@ -51,10 +50,7 @@ fun validatedGoalReviewPasses(
   review.state.passResults.forEach { pass ->
     val rawResult = review.rawResults.getValue(pass.passNumber.toString())
     val output = goalReviewEmissionEnvelope(rawResult, phaseOutputValidator)
-    val recordedVerdicts = GoalSubtaskReviewSummaryReducer.recordedVerdicts(
-      unitOfWork.reviews::fetchFindingVerdicts,
-      output,
-    )
+    val recordedVerdicts = GoalSubtaskReviewSummaryReducer.recordedVerdicts(unitOfWork, output)
     val findings = GoalSubtaskReviewSummaryReducer.fromOutput(output, recordedVerdicts)
     val outcome = GoalSubtaskReviewSummaryReducer.outcomeFor(output, findings)
     if (
@@ -79,7 +75,7 @@ fun goalReviewEmissionEnvelope(
   rawResult: String,
   phaseOutputValidator: FeatureTaskRuntimePhaseOutputValidator,
 ): Map<String, Any?> {
-  if (JsonCodec.parseObjectOrNull(rawResult.trim()) == null) return emptyMap()
+  if (JsonSupport.parseObjectOrNull(rawResult.trim()) == null) return emptyMap()
   return phaseOutputValidator
     .validatePhaseOutput(rawResult, FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW)
     .requireAcceptedOutput(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW)
@@ -101,3 +97,25 @@ fun featureTaskRecordForLegacyControls(
   workflowStates: WorkflowStateRepository,
   workflowId: String,
 ): WorkflowStateSnapshot? = workflowStates.getFeatureTaskWorkflow(workflowId)?.toSnapshot()
+
+@OpenBoundaryMap("Goal continuation outcome decode from durable workflow artifacts")
+fun goalContinuationOutcome(
+  artifacts: Map<String, Any?>,
+  issueKey: String,
+  subtaskId: Int,
+  suppressPr: Boolean,
+): GoalRunnerStoredOutcome? = (artifacts["goal_continuation_outcome"] as? Map<*, *>)
+  ?.takeIf { outcome -> outcome["issue_key"]?.toString() == issueKey }
+  ?.takeIf { outcome -> outcome["subtask_id"].asGoalRunnerIntOrNull() == subtaskId }
+  ?.let { outcome ->
+    goalContinuationTerminalStatus(outcome["status"]?.toString())?.let { status ->
+      GoalRunnerStoredOutcome(
+        status = status,
+        workflowId = outcome["workflow_id"]?.toString().orEmpty(),
+        commitSha = outcome["commit_sha"]?.toString()?.takeIf(String::isNotBlank),
+        blockedReason = outcome["blocked_reason"]?.toString()?.takeIf(String::isNotBlank),
+        lastResumableStep = outcome["last_resumable_step"]?.toString()?.takeIf(String::isNotBlank),
+        suppressPr = suppressPr,
+      )
+    }
+  }

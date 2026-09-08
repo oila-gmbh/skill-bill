@@ -1,6 +1,7 @@
 package skillbill.application
 
 import skillbill.application.decomposition.decodeArtifacts
+import skillbill.application.goalrunner.outcomeStoreDeps
 import skillbill.application.goalrunner.testWorkflowGoalRunnerOutcomeStore
 import skillbill.goalrunner.model.GoalRunnerTerminalStatus
 import skillbill.ports.goalrunner.runner.model.GoalRunnerReconcileGate
@@ -28,8 +29,10 @@ class WorkflowGoalRunnerOutcomeStoreTaskRuntimeBlockedTest {
       ),
     )
     val store = testWorkflowGoalRunnerOutcomeStore(
-      FakeDatabaseSessionFactory(workflows),
-      testWorkflowSnapshotValidator,
+      outcomeStoreDeps(
+        FakeDatabaseSessionFactory(workflows),
+        testWorkflowSnapshotValidator,
+      ),
     )
 
     val outcome = requireNotNull(store.terminalOutcome("wftr-standing-block", "SKILL-176.4", 4))
@@ -54,8 +57,10 @@ class WorkflowGoalRunnerOutcomeStoreTaskRuntimeBlockedTest {
       ),
     )
     val store = testWorkflowGoalRunnerOutcomeStore(
-      FakeDatabaseSessionFactory(workflows),
-      testWorkflowSnapshotValidator,
+      outcomeStoreDeps(
+        FakeDatabaseSessionFactory(workflows),
+        testWorkflowSnapshotValidator,
+      ),
     )
 
     val readOnly = requireNotNull(store.terminalOutcome("wftr-standing-nested-reason", "SKILL-176.4", 4))
@@ -98,9 +103,12 @@ class WorkflowGoalRunnerOutcomeStoreTaskRuntimeBlockedTest {
     )
     workflows.seedWorkerOwnership(expiredLeaseOwnership("wftr-20260808-175505-c5po"))
     val store = testWorkflowGoalRunnerOutcomeStore(
-      database = FakeDatabaseSessionFactory(workflows),
-      workflowSnapshotValidator = testWorkflowSnapshotValidator,
-      workerSupervisor = DeadProcessSupervisor,
+      outcomeStoreDeps(
+        database = FakeDatabaseSessionFactory(workflows),
+        workflowSnapshotValidator = testWorkflowSnapshotValidator,
+      ).copy(
+        workerSupervisor = DeadProcessSupervisor,
+      ),
     )
 
     val readOnly = store.terminalOutcome("wftr-20260808-175505-c5po", "SKILL-176.4", 4)
@@ -147,8 +155,10 @@ class WorkflowGoalRunnerOutcomeStoreTaskRuntimeBlockedTest {
       ),
     )
     val store = testWorkflowGoalRunnerOutcomeStore(
-      FakeDatabaseSessionFactory(workflows),
-      testWorkflowSnapshotValidator,
+      outcomeStoreDeps(
+        FakeDatabaseSessionFactory(workflows),
+        testWorkflowSnapshotValidator,
+      ),
     )
 
     val first = store.reconcileAuthoritativeOutcomes(
@@ -193,9 +203,12 @@ class WorkflowGoalRunnerOutcomeStoreTaskRuntimeBlockedTest {
     val workflows = InMemoryWorkflowStates()
     workflows.saveFeatureTaskRuntimeWorkflow(completeWithoutShaContinuationRecord("wftr-complete-no-sha"))
     val store = testWorkflowGoalRunnerOutcomeStore(
-      database = FakeDatabaseSessionFactory(workflows),
-      workflowSnapshotValidator = testWorkflowSnapshotValidator,
-      gitOperations = MeasuringHeadShaGitOperations,
+      outcomeStoreDeps(
+        database = FakeDatabaseSessionFactory(workflows),
+        workflowSnapshotValidator = testWorkflowSnapshotValidator,
+      ).copy(
+        gitOperations = MeasuringHeadShaGitOperations,
+      ),
     )
 
     val readOnly = requireNotNull(store.terminalOutcome("wftr-complete-no-sha", "SKILL-176.4", 4))

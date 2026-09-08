@@ -1,8 +1,6 @@
 package skillbill.scaffold.authoring
 
 import skillbill.ports.scaffold.model.ScaffoldSectionStatus
-import skillbill.ports.scaffold.model.ScaffoldCompletionStatus
-import skillbill.ports.scaffold.model.ScaffoldSectionCompletionStatus
 
 private const val SECTION_PREVIEW_LIMIT = 200
 
@@ -60,18 +58,16 @@ internal fun sectionStatuses(text: String): List<ScaffoldSectionStatus> =
     )
   }
 
-internal fun contentCompletionStatus(text: String): ScaffoldCompletionStatus {
+internal fun contentCompletionStatus(text: String): String {
   val visibleLines = text.lines().map { line -> line.trim() }.filter { line -> line.isNotEmpty() }
   if (visibleLines.size <= 1 || hasUnresolvedPlaceholder(text)) {
-    return ScaffoldCompletionStatus.DRAFT
+    return "draft"
   }
   val sections = parseContentSections(text).second
-  return if (sections.isNotEmpty() && sections.any { (_, body) ->
-      sectionCompletionStatus(body) != ScaffoldSectionCompletionStatus.COMPLETE
-    }) {
-    ScaffoldCompletionStatus.DRAFT
+  return if (sections.isNotEmpty() && sections.any { (_, body) -> sectionCompletionStatus(body) != "complete" }) {
+    "draft"
   } else {
-    ScaffoldCompletionStatus.COMPLETE
+    "complete"
   }
 }
 
@@ -83,8 +79,8 @@ internal fun previewText(text: String, limit: Int): String {
   return if (collapsed.length <= limit) collapsed else collapsed.take(limit - 1).trimEnd() + "..."
 }
 
-private fun sectionCompletionStatus(body: String): ScaffoldSectionCompletionStatus = when {
-  body.isBlank() -> ScaffoldSectionCompletionStatus.EMPTY
-  hasUnresolvedPlaceholder(body) -> ScaffoldSectionCompletionStatus.DRAFT
-  else -> ScaffoldSectionCompletionStatus.COMPLETE
+private fun sectionCompletionStatus(body: String): String = when {
+  body.isBlank() -> "empty"
+  hasUnresolvedPlaceholder(body) -> "draft"
+  else -> "complete"
 }

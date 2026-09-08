@@ -1,5 +1,6 @@
 package skillbill.review.context.model
 
+import java.nio.charset.StandardCharsets
 import java.security.MessageDigest
 
 internal val SHA256_HEX = Regex("[a-f0-9]{64}")
@@ -45,7 +46,7 @@ internal fun canonicalFields(vararg values: Any): String = canonicalFieldList(va
 /** List form of [canonicalFields] for callers that already hold a collection. */
 internal fun canonicalFieldList(values: List<Any>): String = values.joinToString("") { value ->
   val text = value.toString()
-  "${text.toByteArray(Charsets.UTF_8).size}:$text"
+  "${text.toByteArray(StandardCharsets.UTF_8).size}:$text"
 }
 
 /** JSON scalar encoding keeps path data from becoming launch-payload structure. */
@@ -71,5 +72,5 @@ fun structuredString(value: String): String = buildString {
 }
 
 internal fun sha256(value: String): String = MessageDigest.getInstance("SHA-256")
-  .digest(value.toByteArray(Charsets.UTF_8))
+  .digest(value.toByteArray(StandardCharsets.UTF_8))
   .joinToString("") { byte -> "%02x".format(byte) }

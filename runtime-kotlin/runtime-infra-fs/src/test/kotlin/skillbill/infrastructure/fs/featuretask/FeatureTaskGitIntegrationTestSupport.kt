@@ -1,13 +1,12 @@
 package skillbill.infrastructure.fs.featuretask
 
-import skillbill.contracts.JsonCodec
+import skillbill.contracts.JsonSupport
 import skillbill.ports.db.DatabaseSessionFactory
 import skillbill.ports.goalrunner.EmptyGoalRunnerControlRepository
 import skillbill.ports.goalrunner.GoalPlanningPreparationRepository
 import skillbill.ports.goalrunner.GoalRunnerControlRepository
 import skillbill.ports.learning.LearningRepository
 import skillbill.ports.persistence.UnitOfWork
-import skillbill.ports.persistence.UnitOfWorkDefaults
 import skillbill.ports.review.ReviewRepository
 import skillbill.ports.telemetry.LifecycleTelemetryRepository
 import skillbill.ports.telemetry.TelemetryOutboxRepository
@@ -20,7 +19,6 @@ import skillbill.ports.workflow.model.FeatureTaskWorkflowCandidate
 import skillbill.ports.workflow.model.FeatureVerifySessionSummary
 import skillbill.ports.workflow.model.WorkflowStateRecord
 import skillbill.workflow.engine.WorkflowSnapshotValidator
-import skillbill.workflow.engine.model.WorkflowStateSnapshot
 import java.lang.Boolean.TYPE
 import java.lang.reflect.Method
 import java.lang.reflect.Proxy
@@ -30,7 +28,7 @@ import java.lang.Long.TYPE as LongTYPE
 
 internal val featureTaskGitIntegrationSnapshotValidator: WorkflowSnapshotValidator =
   object : WorkflowSnapshotValidator {
-    override fun validate(snapshot: WorkflowStateSnapshot, slug: String) = Unit
+    override fun validate(snapshot: Map<String, Any?>, slug: String) = Unit
   }
 
 internal class FeatureTaskGitIntegrationWorkflowRepository : WorkflowStateRepository {
@@ -38,9 +36,9 @@ internal class FeatureTaskGitIntegrationWorkflowRepository : WorkflowStateReposi
 
   fun taskRuntimeArtifacts(workflowId: String): Map<String, Any?> {
     val record = requireNotNull(taskRuntimeRows[workflowId]) { "no runtime row for $workflowId" }
-    return JsonCodec.parseObjectOrNull(record.artifactsJson)
-      ?.let(JsonCodec::jsonElementToValue)
-      ?.let(JsonCodec::anyToStringAnyMap)
+    return JsonSupport.parseObjectOrNull(record.artifactsJson)
+      ?.let(JsonSupport::jsonElementToValue)
+      ?.let(JsonSupport::anyToStringAnyMap)
       .orEmpty()
   }
 
@@ -101,7 +99,7 @@ internal class FeatureTaskGitIntegrationDatabase(
 
   override fun <T> transaction(dbOverride: String?, block: (UnitOfWork) -> T): T = block(unitOfWork())
 
-  private fun unitOfWork(): UnitOfWork = object : UnitOfWorkDefaults() {
+  private fun unitOfWork(): UnitOfWork = object : UnitOfWork {
     override val dbPath: Path = this@FeatureTaskGitIntegrationDatabase.dbPath
     override val reviews: ReviewRepository = noopPort(ReviewRepository::class.java)
     override val learnings: LearningRepository = noopPort(LearningRepository::class.java)

@@ -4,7 +4,7 @@ import skillbill.goalrunner.model.GoalRunnerExecutionLease
 
 internal class WorkflowGoalRunnerManifestLeaseOpsImpl(
   private val ctx: WorkflowGoalRunnerManifestStoreContext,
-) : GoalRunnerManifestExecutionLease {
+) : GoalRunnerManifestLeaseOps {
   override fun executionLease(parentWorkflowId: String, dbPathOverride: String?): GoalRunnerExecutionLease? =
     ctx.controls.executionLease(parentWorkflowId, dbPathOverride)
   override fun acquireExecutionLease(

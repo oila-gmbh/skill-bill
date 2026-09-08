@@ -4,7 +4,7 @@ import skillbill.application.decomposition.DECOMPOSITION_MANIFEST_FILENAME
 import skillbill.application.goalplanning.sha256HexUtf8
 import skillbill.application.goalrunner.model.GoalRunnerRunRequest
 import skillbill.application.goalrunner.planning.model.GoalPlanningPhaseProduction
-import skillbill.contracts.JsonCodec
+import skillbill.contracts.JsonSupport
 import skillbill.ports.goalrunner.model.GoalPlanningContractProvenance
 import skillbill.ports.goalrunner.model.GoalPlanningIdentity
 import skillbill.ports.goalrunner.model.SharedGoalPreplanCheckpoint
@@ -55,25 +55,25 @@ internal fun produceSharedPreplanCheckpoint(
 }
 
 fun enrichPreplan(payload: String, packet: Map<String, Any?>): String {
-  val root = JsonCodec.parseObjectOrNull(payload)
-    ?.let(JsonCodec::jsonElementToValue)
-    ?.let(JsonCodec::anyToStringAnyMap)
+  val root = JsonSupport.parseObjectOrNull(payload)
+    ?.let(JsonSupport::jsonElementToValue)
+    ?.let(JsonSupport::anyToStringAnyMap)
     ?: error("preplan payload is not a JSON object")
-  val produced = JsonCodec.anyToStringAnyMap(root["produced_outputs"])
+  val produced = JsonSupport.anyToStringAnyMap(root["produced_outputs"])
     ?: error("preplan produced_outputs is not an object")
-  return JsonCodec.mapToJsonString(
+  return JsonSupport.mapToJsonString(
     root + ("produced_outputs" to (produced + (GoalPlanningSweepConstants.SHARED_CONTEXT_FIELD to packet))),
   )
 }
 
 fun planningPacketFrom(record: SharedGoalPreplanCheckpoint): Map<String, Any?>? =
-  JsonCodec.parseObjectOrNull(record.preplanPayload)
-    ?.let(JsonCodec::jsonElementToValue)
-    ?.let(JsonCodec::anyToStringAnyMap)
+  JsonSupport.parseObjectOrNull(record.preplanPayload)
+    ?.let(JsonSupport::jsonElementToValue)
+    ?.let(JsonSupport::anyToStringAnyMap)
     ?.get("produced_outputs")
-    ?.let(JsonCodec::anyToStringAnyMap)
+    ?.let(JsonSupport::anyToStringAnyMap)
     ?.get(GoalPlanningSweepConstants.SHARED_CONTEXT_FIELD)
-    ?.let(JsonCodec::anyToStringAnyMap)
+    ?.let(JsonSupport::anyToStringAnyMap)
 
 internal fun gatherSharedContext(
   sweep: DefaultGoalPlanningSweep,

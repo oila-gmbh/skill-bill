@@ -1,17 +1,17 @@
 package skillbill.scaffold.policy.platformpack
 
-import skillbill.model.FileLocation
 import skillbill.scaffold.model.CodeReviewBaselineLayer
 import skillbill.scaffold.model.CodeReviewCompositionMode
 import skillbill.scaffold.model.CodeReviewCompositionScope
 import skillbill.scaffold.policy.platformpack.model.PlatformPackManifestContentRenderRequest
+import java.nio.file.Path
 import kotlin.test.Test
 import kotlin.test.assertEquals
 
 class PlatformPackManifestPolicyTest {
   @Test
   fun `renderPlatformPackManifestContent emits the canonical platform yaml for a starter java pack`() {
-    val packRoot = FileLocation("/repo/platform-packs/java")
+    val packRoot = Path.of("/repo/platform-packs/java")
     val baselineSkillPath = packRoot.resolve("code-review").resolve("bill-java-code-review")
     val qualityCheckSkillPath = packRoot.resolve("quality-check").resolve("bill-java-code-check")
 
@@ -60,7 +60,7 @@ class PlatformPackManifestPolicyTest {
 
   @Test
   fun `renderPlatformPackManifestContent appends baseline layers when provided`() {
-    val packRoot = FileLocation("/repo/platform-packs/java")
+    val packRoot = Path.of("/repo/platform-packs/java")
     val baselineSkillPath = packRoot.resolve("code-review").resolve("bill-java-code-review")
     val qualityCheckSkillPath = packRoot.resolve("quality-check").resolve("bill-java-code-check")
 

@@ -1,7 +1,6 @@
 package skillbill.agentaddon
 
 import skillbill.agentaddon.model.AgentAddonConsumer
-import skillbill.model.toPath
 import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.test.Test
@@ -35,7 +34,7 @@ class AgentAddonDeliveryResolverTest {
     assertEquals("Review helper", entry.description)
     assertEquals(listOf("codex"), entry.agentIds)
     assertEquals(listOf("bill-feature"), entry.consumers)
-    assertTrue(entry.manifestPath.toPath().endsWith("agent-addon.yaml"))
+    assertTrue(entry.manifestPath.endsWith("agent-addon.yaml"))
   }
 
   private fun writeAddon(repo: Path, slug: String, content: String) {

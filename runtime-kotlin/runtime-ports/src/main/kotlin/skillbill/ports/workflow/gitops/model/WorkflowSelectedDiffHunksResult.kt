@@ -19,10 +19,12 @@ data class WorkflowSelectedDiffHunksRequest(
 }
 
 data class WorkflowSelectedDiffHunksResult(
-  val status: WorkflowGitOperationStatus,
+  val status: String,
   val selectedDiffHunks: GoalObservabilitySelectedDiffHunks = GoalObservabilitySelectedDiffHunks(),
   val error: String = "",
-)
+) {
+  val ok: Boolean get() = status == "ok"
+}
 
 const val DEFAULT_SELECTED_DIFF_MAX_HUNKS: Int = 6
 const val DEFAULT_SELECTED_DIFF_MAX_LINES: Int = 120

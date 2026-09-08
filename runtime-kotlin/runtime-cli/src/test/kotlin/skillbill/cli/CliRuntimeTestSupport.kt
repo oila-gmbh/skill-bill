@@ -7,7 +7,7 @@ import skillbill.cli.model.CliRuntimeContext
 import skillbill.cli.model.ExternalCommand
 import skillbill.cli.model.ExternalCommandResult
 import skillbill.cli.model.ExternalCommandRunner
-import skillbill.contracts.JsonCodec
+import skillbill.contracts.JsonSupport
 import skillbill.db.core.DatabaseRuntime
 import skillbill.db.telemetry.LifecycleTelemetryStore
 import skillbill.db.telemetry.TelemetryOutboxStore
@@ -38,9 +38,9 @@ internal fun runJson(arguments: List<String>, context: CliRuntimeContext = CliRu
 }
 
 internal fun decodeJsonObject(rawJson: String): Map<String, Any?> {
-  val parsed = JsonCodec.parseObjectOrNull(rawJson)
+  val parsed = JsonSupport.parseObjectOrNull(rawJson)
   require(parsed != null) { "Expected JSON object but got: $rawJson" }
-  val decoded = JsonCodec.anyToStringAnyMap(JsonCodec.jsonElementToValue(parsed))
+  val decoded = JsonSupport.anyToStringAnyMap(JsonSupport.jsonElementToValue(parsed))
   require(decoded != null) { "Expected decoded JSON object but got: $rawJson" }
   return decoded
 }

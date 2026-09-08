@@ -3,7 +3,6 @@ package skillbill.scaffold
 import skillbill.error.ContractVersionMismatchError
 import skillbill.error.InvalidManifestSchemaError
 import skillbill.error.MissingManifestError
-import skillbill.ports.repository.toFileLocation
 import skillbill.scaffold.model.SkillClassManifest
 import skillbill.scaffold.model.SkillClassMatcher
 import skillbill.scaffold.platformpack.SKILL_CLASSES_DIR
@@ -316,7 +315,7 @@ class SkillClassLoaderTest {
   ): SkillClassManifest {
     return SkillClassManifest(
       classId = classId,
-      classFile = Path.of("/tmp/$classId.yaml").toFileLocation(),
+      classFile = Path.of("/tmp/$classId.yaml"),
       contractVersion = SHELL_CONTRACT_VERSION,
       matchers = matchers.map { (kind, value) ->
         when (kind) {

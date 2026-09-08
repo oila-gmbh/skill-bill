@@ -3,14 +3,12 @@ package skillbill.application.goalrunner
 import skillbill.application.decomposition.withParentStatus
 import skillbill.application.goalrunner.model.GoalRunnerResetSnapshot
 import skillbill.application.goalrunner.model.GoalRunnerResetSubtaskSnapshot
-import skillbill.goalrunner.model.GoalObservabilityProgressEvent
 import skillbill.goalrunner.model.GoalRunnerAcceptedSubtask
+import skillbill.ports.goalrunner.runner.model.GoalObservabilityProgressEvent
 import skillbill.ports.goalrunner.runner.model.GoalRunnerOutOfBandAcceptance
 import skillbill.workflow.decomposition.model.CurrentSubtaskIntent
 import skillbill.workflow.decomposition.model.DecompositionManifest
 import skillbill.workflow.decomposition.model.DecompositionSubtask
-import skillbill.workflow.model.DecompositionStatus
-import skillbill.workflow.model.decompositionStatus
 
 const val NO_CURRENT_SUBTASK_ID = 0
 const val NO_CURRENT_SUBTASK_ACTION = "none"
@@ -24,12 +22,12 @@ const val SUBTASK_STATUS_SKIPPED = "skipped"
 fun DecompositionManifest.isAtUnlaunchedBoundary(): Boolean {
   val currentSubtask = subtasks.firstOrNull { it.id == currentSubtaskIntent.subtaskId }
   val activeChildExists = subtasks.any { subtask ->
-    subtask.status.decompositionStatus() == DecompositionStatus.IN_PROGRESS && subtask.workflowId?.isNotBlank() == true
+    subtask.status == SUBTASK_STATUS_IN_PROGRESS && subtask.workflowId?.isNotBlank() == true
   }
   val unselected = currentSubtaskIntent.subtaskId == NO_CURRENT_SUBTASK_ID &&
     currentSubtaskIntent.action == NO_CURRENT_SUBTASK_ACTION
   val selectedButNotLaunched = currentSubtask?.let { subtask ->
-    subtask.status.decompositionStatus() == DecompositionStatus.PENDING &&
+    subtask.status == SUBTASK_STATUS_PENDING &&
       subtask.workflowId.isNullOrBlank() &&
       currentSubtaskIntent.action == SUBTASK_ACTION_START
   } == true
@@ -50,8 +48,7 @@ fun DecompositionManifest.resetManifest(hard: Boolean): DecompositionManifest {
   val resetSubtasks = subtasks.map { subtask ->
     when {
       hard -> freshReset(subtask)
-      subtask.status.decompositionStatus() in setOf(DecompositionStatus.COMPLETE, DecompositionStatus.SKIPPED) ->
-        subtask.copy(
+      subtask.status in setOf("complete", "skipped") -> subtask.copy(
         blockedReason = null,
         lastResumableStep = null,
       )
@@ -69,24 +66,19 @@ fun DecompositionManifest.resetManifest(hard: Boolean): DecompositionManifest {
 }
 
 fun restartIntent(subtasks: List<DecompositionSubtask>): CurrentSubtaskIntent {
-  if (subtasks.all {
-      it.status.decompositionStatus() in setOf(DecompositionStatus.COMPLETE, DecompositionStatus.SKIPPED)
-    }) {
+  if (subtasks.all { it.status in setOf("complete", "skipped") }) {
     return CurrentSubtaskIntent(subtaskId = 0, action = "complete")
   }
-  subtasks.firstOrNull { it.status.decompositionStatus() == DecompositionStatus.IN_PROGRESS }?.let { resumable ->
+  subtasks.firstOrNull { it.status == "in_progress" }?.let { resumable ->
     return CurrentSubtaskIntent(subtaskId = resumable.id, action = "resume")
   }
   val subtasksById = subtasks.associateBy(DecompositionSubtask::id)
   val nextRunnable = subtasks.firstOrNull { subtask ->
-    subtask.status.decompositionStatus() == DecompositionStatus.PENDING && subtask.dependencies.all { dependency ->
+    subtask.status == "pending" && subtask.dependencies.all { dependency ->
       val dependencySubtask = subtasksById[dependency.subtaskId]
-      dependencySubtask?.status.decompositionStatus() in setOf(
-        DecompositionStatus.COMPLETE,
-        DecompositionStatus.SKIPPED,
-      ) || (dependency.optional && dependency.skipped)
+      dependencySubtask?.status in setOf("complete", "skipped") || (dependency.optional && dependency.skipped)
     }
-  } ?: subtasks.firstOrNull { it.status.decompositionStatus() == DecompositionStatus.PENDING }
+  } ?: subtasks.firstOrNull { it.status == "pending" }
   return CurrentSubtaskIntent(
     subtaskId = nextRunnable?.id ?: 0,
     action = if (nextRunnable == null) "complete" else "start",
@@ -95,8 +87,7 @@ fun restartIntent(subtasks: List<DecompositionSubtask>): CurrentSubtaskIntent {
 
 fun replanIntent(subtask: DecompositionSubtask): CurrentSubtaskIntent {
   val action = when {
-    subtask.status.decompositionStatus() == DecompositionStatus.IN_PROGRESS ||
-      !subtask.workflowId.isNullOrBlank() -> SUBTASK_ACTION_RESUME
+    subtask.status == SUBTASK_STATUS_IN_PROGRESS || !subtask.workflowId.isNullOrBlank() -> SUBTASK_ACTION_RESUME
     else -> SUBTASK_ACTION_START
   }
   return CurrentSubtaskIntent(subtaskId = subtask.id, action = action)

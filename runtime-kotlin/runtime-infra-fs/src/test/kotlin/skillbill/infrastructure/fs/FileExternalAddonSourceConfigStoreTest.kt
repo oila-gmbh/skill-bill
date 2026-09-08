@@ -1,13 +1,11 @@
 package skillbill.infrastructure.fs
 
 import org.junit.jupiter.api.io.TempDir
-import skillbill.contracts.JsonCodec
+import skillbill.contracts.JsonSupport
 import skillbill.error.ExternalAddonConfigError
 import skillbill.install.model.ExternalAddonSource
-import skillbill.model.toPath
 import skillbill.ports.install.addon.model.ExternalAddonSourceConfigRequest
 import skillbill.ports.install.addon.model.ExternalAddonSourceRegistrationRequest
-import skillbill.ports.repository.toFileLocation
 import skillbill.telemetry.CONFIG_ENVIRONMENT_KEY
 import java.nio.file.Files
 import java.nio.file.Path
@@ -53,9 +51,9 @@ class FileExternalAddonSourceConfigStoreTest {
     val sources = store.readExternalAddonSources(request(home, configPath(home))).sources
 
     assertEquals(2, sources.size)
-    assertEquals(kotlin, sources[0].path.toPath())
+    assertEquals(kotlin, sources[0].path)
     assertEquals("kotlin", sources[0].platform)
-    assertEquals(ios, sources[1].path.toPath())
+    assertEquals(ios, sources[1].path)
     assertEquals("ios", sources[1].platform)
   }
 
@@ -72,7 +70,7 @@ class FileExternalAddonSourceConfigStoreTest {
 
     val sources = store.readExternalAddonSources(request(home, configPath(home))).sources
 
-    assertEquals(home.resolve("private/ios"), sources[0].path.toPath())
+    assertEquals(home.resolve("private/ios"), sources[0].path)
   }
 
   @Test
@@ -80,16 +78,13 @@ class FileExternalAddonSourceConfigStoreTest {
     val sourceDir = Files.createDirectories(home.resolve("private/ios"))
 
     val sources = store.registerExternalAddonSource(
-      registrationRequest(home, configPath(home), ExternalAddonSource(sourceDir.toFileLocation(), "ios")),
+      registrationRequest(home, configPath(home), ExternalAddonSource(sourceDir, "ios")),
     ).sources
 
-    assertEquals(listOf(ExternalAddonSource(sourceDir.toAbsolutePath().normalize().toFileLocation(), "ios")), sources)
-    val payload = JsonCodec.parseObjectOrNull(Files.readString(configPath(home))).toString()
+    assertEquals(listOf(ExternalAddonSource(sourceDir.toAbsolutePath().normalize(), "ios")), sources)
+    val payload = JsonSupport.parseObjectOrNull(Files.readString(configPath(home))).toString()
     assertTrue("external_addon_sources" in payload)
-    assertEquals(
-      sourceDir,
-      store.readExternalAddonSources(request(home, configPath(home))).sources.single().path.toPath(),
-    )
+    assertEquals(sourceDir, store.readExternalAddonSources(request(home, configPath(home))).sources.single().path)
   }
 
   @Test
@@ -104,10 +99,10 @@ class FileExternalAddonSourceConfigStoreTest {
     )
 
     val sources = store.registerExternalAddonSource(
-      registrationRequest(home, configPath(home), ExternalAddonSource(sourceDir.toFileLocation(), "kotlin")),
+      registrationRequest(home, configPath(home), ExternalAddonSource(sourceDir, "kotlin")),
     ).sources
 
-    assertEquals(listOf(ExternalAddonSource(sourceDir.toFileLocation(), "kotlin")), sources)
+    assertEquals(listOf(ExternalAddonSource(sourceDir, "kotlin")), sources)
     val config = Files.readString(configPath(home))
     assertEquals(1, Regex("\"platform\":\"kotlin\"").findAll(config).count())
     assertTrue("\"install_id\":\"stable-id\"" in config)
@@ -179,6 +174,6 @@ class FileExternalAddonSourceConfigStoreTest {
 
   private fun writeConfig(home: Path, payload: Map<String, Any?>) {
     Files.createDirectories(home.resolve(".skill-bill"))
-    Files.writeString(configPath(home), JsonCodec.mapToJsonString(payload) + "\n")
+    Files.writeString(configPath(home), JsonSupport.mapToJsonString(payload) + "\n")
   }
 }

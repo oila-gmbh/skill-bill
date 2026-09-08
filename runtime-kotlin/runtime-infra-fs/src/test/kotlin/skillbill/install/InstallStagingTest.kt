@@ -15,8 +15,6 @@ import skillbill.install.staging.installedSkillsCacheRoot
 import skillbill.install.staging.isContentManagedSkill
 import skillbill.install.staging.resolveStagedSymlinkTarget
 import skillbill.install.staging.stageInstalledSkill
-import skillbill.model.toPath
-import skillbill.ports.repository.toFileLocation
 import skillbill.scaffold.authoring.renderWrapper
 import skillbill.scaffold.authoring.resolveTarget
 import skillbill.scaffold.model.PlatformManifest
@@ -70,7 +68,7 @@ class InstallStagingTest {
 
     assertTrue(rendered.copiedAuthoredFiles.isNotEmpty(), "expected authored files to be copied")
     assertFalse(
-      Files.exists(rendered.stagingDir.resolve("content.md").toPath(), LinkOption.NOFOLLOW_LINKS),
+      Files.exists(rendered.stagingDir.resolve("content.md"), LinkOption.NOFOLLOW_LINKS),
       "listed-skill staging must not carry a verbatim content.md copy",
     )
     skillSnapshot.forEach { (rel, entry) ->
@@ -81,12 +79,8 @@ class InstallStagingTest {
         return@forEach
       }
       val staged = rendered.stagingDir.resolve(rel)
-      assertTrue(Files.isRegularFile(staged.toPath(), LinkOption.NOFOLLOW_LINKS), "missing staged authored file: $rel")
-      assertContentEquals(
-        entry.bytes,
-        Files.readAllBytes(staged.toPath()),
-        "byte mismatch for staged authored file $rel",
-      )
+      assertTrue(Files.isRegularFile(staged, LinkOption.NOFOLLOW_LINKS), "missing staged authored file: $rel")
+      assertContentEquals(entry.bytes, Files.readAllBytes(staged), "byte mismatch for staged authored file $rel")
     }
   }
 
@@ -97,18 +91,18 @@ class InstallStagingTest {
     val rendered = stageInstalledSkill(fixture.repoRoot, fixture.skillDir, fixture.home)
 
     assertFalse(
-      Files.exists(rendered.stagingDir.resolve("content.md").toPath(), LinkOption.NOFOLLOW_LINKS),
+      Files.exists(rendered.stagingDir.resolve("content.md"), LinkOption.NOFOLLOW_LINKS),
       "staging must not contain content.md",
     )
     assertTrue(
-      Files.isRegularFile(rendered.stagingDir.resolve("SKILL.md").toPath(), LinkOption.NOFOLLOW_LINKS),
+      Files.isRegularFile(rendered.stagingDir.resolve("SKILL.md"), LinkOption.NOFOLLOW_LINKS),
       "staging must contain SKILL.md",
     )
     assertTrue(
-      Files.isRegularFile(rendered.stagingDir.resolve(".content-hash").toPath(), LinkOption.NOFOLLOW_LINKS),
+      Files.isRegularFile(rendered.stagingDir.resolve(".content-hash"), LinkOption.NOFOLLOW_LINKS),
       "staging must contain .content-hash",
     )
-    val skillMd = Files.readString(rendered.renderedSkillFile.toPath())
+    val skillMd = Files.readString(rendered.renderedSkillFile)
     assertTrue(skillMd.contains("## Execution"), "SKILL.md must retain ## Execution")
     assertTrue(
       skillMd.contains("Authored body."),
@@ -124,7 +118,7 @@ class InstallStagingTest {
   fun `content hash incorporates source content_md and mutation forces restage`() {
     val fixture = setupFixture()
     val first = stageInstalledSkill(fixture.repoRoot, fixture.skillDir, fixture.home)
-    assertFalse(Files.exists(first.stagingDir.resolve("content.md").toPath(), LinkOption.NOFOLLOW_LINKS))
+    assertFalse(Files.exists(first.stagingDir.resolve("content.md"), LinkOption.NOFOLLOW_LINKS))
 
     Files.writeString(
       fixture.skillDir.resolve("content.md"),
@@ -140,8 +134,8 @@ class InstallStagingTest {
       first.stagingDir != second.stagingDir,
       "hash drift must force a new staging directory",
     )
-    assertFalse(Files.exists(second.stagingDir.resolve("content.md").toPath(), LinkOption.NOFOLLOW_LINKS))
-    assertTrue(Files.readString(second.renderedSkillFile.toPath()).contains("Edited body."))
+    assertFalse(Files.exists(second.stagingDir.resolve("content.md"), LinkOption.NOFOLLOW_LINKS))
+    assertTrue(Files.readString(second.renderedSkillFile).contains("Edited body."))
   }
 
   @Test
@@ -152,7 +146,7 @@ class InstallStagingTest {
 
     val target = resolveTarget(fixture.repoRoot, fixture.skillName)
     val expectedSkillBytes = renderWrapper(target).toByteArray(StandardCharsets.UTF_8)
-    assertContentEquals(expectedSkillBytes, Files.readAllBytes(rendered.renderedSkillFile.toPath()))
+    assertContentEquals(expectedSkillBytes, Files.readAllBytes(rendered.renderedSkillFile))
   }
 
   @Test
@@ -163,11 +157,11 @@ class InstallStagingTest {
 
     fixture.pointerSpecs.forEach { (manifest, spec) ->
       val staged = rendered.stagingDir.resolve(spec.name)
-      assertTrue(Files.isRegularFile(staged.toPath(), LinkOption.NOFOLLOW_LINKS), "missing pointer file ${spec.name}")
-      renderPointer(repoRoot = fixture.repoRoot, packRoot = manifest.packRoot.toPath(), spec = spec)
+      assertTrue(Files.isRegularFile(staged, LinkOption.NOFOLLOW_LINKS), "missing pointer file ${spec.name}")
+      renderPointer(repoRoot = fixture.repoRoot, packRoot = manifest.packRoot, spec = spec)
       val expected = Files.readString(fixture.repoRoot.resolve(spec.target)).trimEnd() + "\n"
-      assertEquals(expected, String(Files.readAllBytes(staged.toPath()), StandardCharsets.UTF_8))
-      assertFalse(Files.readString(staged.toPath()).contains("../"), "staged pointer ${spec.name} must not dangle")
+      assertEquals(expected, String(Files.readAllBytes(staged), StandardCharsets.UTF_8))
+      assertFalse(Files.readString(staged).contains("../"), "staged pointer ${spec.name} must not dangle")
     }
   }
 
@@ -179,14 +173,14 @@ class InstallStagingTest {
 
     val packs = rendered.stagingDir.resolve("platform-packs")
     val manifest = packs.resolve("sample/platform.yaml")
-    assertTrue(Files.isSymbolicLink(packs.toPath()), "platform-packs must be present in the staged skill dir")
+    assertTrue(Files.isSymbolicLink(packs), "platform-packs must be present in the staged skill dir")
     assertTrue(
-      Files.isRegularFile(manifest.toPath()),
+      Files.isRegularFile(manifest),
       "manifest must resolve from the staged skill dir at ${rendered.stagingDir.relativize(manifest)}",
     )
     assertEquals(
       "sample",
-      Files.readString(manifest.toPath())
+      Files.readString(manifest)
         .lineSequence()
         .first { it.startsWith("platform:") }
         .substringAfter('"')
@@ -214,18 +208,11 @@ class InstallStagingTest {
       val sourceSidecar = skillDir.resolve(fileName)
       assertFalse(Files.exists(sourceSidecar, LinkOption.NOFOLLOW_LINKS), "source must not contain $fileName")
       val staged = rendered.stagingDir.resolve(fileName)
-      assertTrue(Files.isRegularFile(staged.toPath(), LinkOption.NOFOLLOW_LINKS), "missing staged $fileName")
+      assertTrue(Files.isRegularFile(staged, LinkOption.NOFOLLOW_LINKS), "missing staged $fileName")
       val target = supportingFileTargets(repoRoot).getValue(fileName)
       val expected = Files.readString(target).trimEnd() + "\n"
-      assertEquals(
-        expected,
-        Files.readString(staged.toPath()),
-        "support sidecar must inline canonical content for $fileName",
-      )
-      assertFalse(
-        Files.readString(staged.toPath()).contains("../"),
-        "inlined sidecar must not carry a dangling relative path",
-      )
+      assertEquals(expected, Files.readString(staged), "support sidecar must inline canonical content for $fileName")
+      assertFalse(Files.readString(staged).contains("../"), "inlined sidecar must not carry a dangling relative path")
     }
   }
 
@@ -243,15 +230,15 @@ class InstallStagingTest {
 
     val target = resolveTarget(fixture.repoRoot, fixture.skillName)
     val expectedSkillBytes = renderWrapper(target).toByteArray(StandardCharsets.UTF_8)
-    assertContentEquals(expectedSkillBytes, Files.readAllBytes(rendered.renderedSkillFile.toPath()))
-    assertContentEquals(expectedSkillBytes, Files.readAllBytes(reused.renderedSkillFile.toPath()))
+    assertContentEquals(expectedSkillBytes, Files.readAllBytes(rendered.renderedSkillFile))
+    assertContentEquals(expectedSkillBytes, Files.readAllBytes(reused.renderedSkillFile))
     fixture.pointerSpecs.forEach { (manifest, spec) ->
       val staged = rendered.stagingDir.resolve(spec.name)
       val reusedStaged = reused.stagingDir.resolve(spec.name)
-      renderPointer(repoRoot = fixture.repoRoot, packRoot = manifest.packRoot.toPath(), spec = spec)
+      renderPointer(repoRoot = fixture.repoRoot, packRoot = manifest.packRoot, spec = spec)
       val expected = Files.readString(fixture.repoRoot.resolve(spec.target)).trimEnd() + "\n"
-      assertEquals(expected, String(Files.readAllBytes(staged.toPath()), StandardCharsets.UTF_8))
-      assertEquals(expected, String(Files.readAllBytes(reusedStaged.toPath()), StandardCharsets.UTF_8))
+      assertEquals(expected, String(Files.readAllBytes(staged), StandardCharsets.UTF_8))
+      assertEquals(expected, String(Files.readAllBytes(reusedStaged), StandardCharsets.UTF_8))
     }
     assertGeneratedArtifactsExcludedFromAuthoredCopy(rendered, fixture)
     assertGeneratedArtifactsExcludedFromAuthoredCopy(reused, fixture)
@@ -283,7 +270,7 @@ class InstallStagingTest {
     val fixture = setupFixture()
     val agentRoot = fixture.home.resolve("agents")
     Files.createDirectories(agentRoot)
-    val agent = AgentTarget("test-agent", agentRoot.toFileLocation())
+    val agent = AgentTarget("test-agent", agentRoot)
     // Compute the expected staging dir from production helpers BEFORE calling installSkill so the
     // oracle is independent of the SUT (no second stageInstalledSkill call after the install).
     val pointers = applicablePointers(fixture.repoRoot, fixture.skillDir)
@@ -350,14 +337,14 @@ class InstallStagingTest {
     // Drop a sentinel into the staging dir AFTER the first install. If the second install reuses
     // the dir verbatim, the sentinel survives. If the staging dir is rebuilt the sentinel is gone.
     val sentinel = first.stagingDir.resolve("sentinel.txt")
-    Files.writeString(sentinel.toPath(), "x")
+    Files.writeString(sentinel, "x")
 
     val second = stageInstalledSkill(fixture.repoRoot, fixture.skillDir, fixture.home)
 
     assertEquals(first.stagingDir, second.stagingDir)
     assertEquals(first.contentHash, second.contentHash)
     assertTrue(
-      Files.isRegularFile(sentinel.toPath(), LinkOption.NOFOLLOW_LINKS),
+      Files.isRegularFile(sentinel, LinkOption.NOFOLLOW_LINKS),
       "expected sentinel.txt to survive reuse but staging dir was rebuilt",
     )
     val staleTemps = listCacheChildren(cacheRoot).filter { it.startsWith(".staging-tmp-") }
@@ -375,7 +362,7 @@ class InstallStagingTest {
     // Plant a sibling cache dir for an unrelated, longer-named skill that happens to share the
     // current slug as a prefix. Its leaf must still match the strict `<slug>-<16-hex>` shape so
     // the regression case (its name starting with `<currentSlug>-`) is exercised correctly.
-    val firstSlug = first.stagingDir.fileName.substringBeforeLast('-')
+    val firstSlug = first.stagingDir.fileName.toString().substringBeforeLast('-')
     val unrelatedLeaf = "$firstSlug-security-0123456789abcdef"
     val unrelatedDir = cacheRoot.resolve(unrelatedLeaf)
     Files.createDirectories(unrelatedDir)
@@ -395,7 +382,7 @@ class InstallStagingTest {
     )
     // Sanity: the prior same-slug staging dir (different hash) IS pruned.
     assertFalse(
-      Files.isDirectory(first.stagingDir.toPath(), LinkOption.NOFOLLOW_LINKS),
+      Files.isDirectory(first.stagingDir, LinkOption.NOFOLLOW_LINKS),
       "expected prior same-slug staging dir ${first.stagingDir} to be pruned by ${second.stagingDir}",
     )
   }
@@ -474,8 +461,11 @@ class InstallStagingTest {
 
     val firstFeature = stageInstalledSkill(repo, feature, home)
     val firstUnrelated = stageInstalledSkill(repo, unrelated, home)
-    assertEquals("Addon body.\n", stagedText(firstFeature, "agent-addon-review-helper.md"))
-    assertEquals("Authored nested reference.\n", stagedText(firstFeature, "references/agent-addon-review-helper.md"))
+    assertEquals("Addon body.\n", Files.readString(firstFeature.stagingDir.resolve("agent-addon-review-helper.md")))
+    assertEquals(
+      "Authored nested reference.\n",
+      Files.readString(firstFeature.stagingDir.resolve("references/agent-addon-review-helper.md")),
+    )
 
     Files.writeString(addon.resolve("content.md"), "Changed addon body.\n")
     val secondFeature = stageInstalledSkill(repo, feature, home)
@@ -483,7 +473,10 @@ class InstallStagingTest {
 
     assertTrue(firstFeature.contentHash != secondFeature.contentHash)
     assertEquals(firstUnrelated.contentHash, secondUnrelated.contentHash)
-    assertEquals("Changed addon body.\n", stagedText(secondFeature, "agent-addon-review-helper.md"))
+    assertEquals(
+      "Changed addon body.\n",
+      Files.readString(secondFeature.stagingDir.resolve("agent-addon-review-helper.md")),
+    )
 
     Files.writeString(
       addon.resolve("agent-addon.yaml"),
@@ -494,7 +487,10 @@ class InstallStagingTest {
 
     assertTrue(secondFeature.contentHash != thirdFeature.contentHash)
     assertEquals(secondUnrelated.contentHash, thirdUnrelated.contentHash)
-    assertEquals("Changed addon body.\n", stagedText(thirdFeature, "agent-addon-review-helper.md"))
+    assertEquals(
+      "Changed addon body.\n",
+      Files.readString(thirdFeature.stagingDir.resolve("agent-addon-review-helper.md")),
+    )
   }
 
   @Test
@@ -505,24 +501,22 @@ class InstallStagingTest {
 
     val expectedRoot = fixture.home.resolve(".skill-bill/installed-skills").toAbsolutePath().normalize()
     assertTrue(
-      rendered.stagingDir.toPath().toAbsolutePath().normalize().startsWith(expectedRoot),
+      rendered.stagingDir.toAbsolutePath().normalize().startsWith(expectedRoot),
       "staging dir ${rendered.stagingDir} not under expected cache root $expectedRoot",
     )
     assertEquals(expectedRoot, installedSkillsCacheRoot(fixture.home))
     assertTrue(
-      rendered.renderedSkillFile.toPath().toAbsolutePath().normalize().startsWith(rendered.stagingDir.toPath()),
+      rendered.renderedSkillFile.toAbsolutePath().normalize().startsWith(rendered.stagingDir),
       "rendered SKILL.md ${rendered.renderedSkillFile} was not written under ${rendered.stagingDir}",
     )
     assertTrue(
       rendered.renderedPointerFiles.all { pointer ->
-        pointer.toPath().toAbsolutePath().normalize().startsWith(rendered.stagingDir.toPath())
+        pointer.toAbsolutePath().normalize().startsWith(rendered.stagingDir)
       },
       "rendered pointer files must stay inside the install staging dir",
     )
     assertFalse(
-      rendered.stagingDir.toPath().toAbsolutePath().normalize().startsWith(
-        fixture.repoRoot.toAbsolutePath().normalize(),
-      ),
+      rendered.stagingDir.toAbsolutePath().normalize().startsWith(fixture.repoRoot.toAbsolutePath().normalize()),
       "staging dir ${rendered.stagingDir} unexpectedly inside repo ${fixture.repoRoot}",
     )
   }
@@ -727,9 +721,6 @@ class InstallStagingTest {
       stream.map { it.fileName.toString() }.toList().toSet()
     }
   }
-
-  private fun stagedText(rendered: RenderedSkill, relativePath: String): String =
-    Files.readString(rendered.stagingDir.resolve(relativePath).toPath())
 
   private data class Fixture(
     val repoRoot: Path,

@@ -8,8 +8,6 @@ import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowQueries
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerAction
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerEntry
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseRecord
-import skillbill.workflow.model.WorkflowStepStatus
-import skillbill.workflow.model.workflowStepStatus
 
 internal data class FeatureTaskRuntimeCurrentPhaseExecutionContext(
   val currentPhaseId: String?,
@@ -129,7 +127,7 @@ class FeatureTaskRuntimeCurrentPhaseExecutionDeriver {
     ledger: List<FeatureTaskRuntimePhaseLedgerEntry>,
   ): Int? {
     val pass = record?.reviewPassNumber ?: return null
-    if (record.status.workflowStepStatus() != WorkflowStepStatus.COMPLETED) return pass
+    if (record.status != PHASE_STATUS_COMPLETED) return pass
     val latestReviewFixEdge = ledger
       .filter {
         it.action == FeatureTaskRuntimePhaseLedgerAction.LOOP_EDGE &&

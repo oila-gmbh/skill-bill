@@ -1,7 +1,5 @@
 package skillbill.application
 
-import skillbill.ports.workflow.gitops.model.WorkflowGitOperationStatus
-import skillbill.review.context.model.ReviewBudgetKind
 import skillbill.application.featurespec.FeatureSpecPreparationRuntime
 import skillbill.application.featurespec.FeatureSpecPreparationWriter
 import skillbill.application.featuretask.AcceptingFeatureTaskRuntimeHandoffEnvelopeValidator
@@ -20,10 +18,71 @@ import skillbill.application.featuretask.FeatureTaskRuntimePhaseRecorder
 import skillbill.application.featuretask.FeatureTaskRuntimePlanningStopper
 import skillbill.application.featuretask.FeatureTaskRuntimeReviewDriver
 import skillbill.application.featuretask.FeatureTaskRuntimeRunInvariantsStore
+import skillbill.application.featuretask.FeatureTaskRuntimeRunLoopAttemptSettlement
+import skillbill.application.featuretask.FeatureTaskRuntimeRunLoopAttemptSettlementPhaseOutcome
+import skillbill.application.featuretask.FeatureTaskRuntimeRunLoopAttemptSettlementReceiptFinalize
+import skillbill.application.featuretask.FeatureTaskRuntimeRunLoopAttemptSettlementRepairDispatch
+import skillbill.application.featuretask.FeatureTaskRuntimeRunLoopBackwardEdge
+import skillbill.application.featuretask.FeatureTaskRuntimeRunLoopCheckpoint
+import skillbill.application.featuretask.FeatureTaskRuntimeRunLoopCheckpointBlocking
+import skillbill.application.featuretask.FeatureTaskRuntimeRunLoopCheckpointContinuationCollaborators
+import skillbill.application.featuretask.FeatureTaskRuntimeRunLoopCheckpointOwnedPathRemediationEstablish
+import skillbill.application.featuretask.FeatureTaskRuntimeRunLoopCheckpointRemediationRollback
+import skillbill.application.featuretask.FeatureTaskRuntimeRunLoopCheckpointRemediationStage
+import skillbill.application.featuretask.FeatureTaskRuntimeRunLoopCheckpointRollbackIdentity
+import skillbill.application.featuretask.FeatureTaskRuntimeRunLoopCheckpointSubtaskCommitLedger
+import skillbill.application.featuretask.FeatureTaskRuntimeRunLoopCollaborators
+import skillbill.application.featuretask.FeatureTaskRuntimeRunLoopControlCollaborators
+import skillbill.application.featuretask.FeatureTaskRuntimeRunLoopCoreContinuationCollaborators
+import skillbill.application.featuretask.FeatureTaskRuntimeRunLoopDrive
+import skillbill.application.featuretask.FeatureTaskRuntimeRunLoopDriveAttemptLaunch
+import skillbill.application.featuretask.FeatureTaskRuntimeRunLoopDriveContinuationCollaborators
+import skillbill.application.featuretask.FeatureTaskRuntimeRunLoopDrivePhaseSelection
+import skillbill.application.featuretask.FeatureTaskRuntimeRunLoopDriveSettlementGate
+import skillbill.application.featuretask.FeatureTaskRuntimeRunLoopDriveTerminalOutcome
+import skillbill.application.featuretask.FeatureTaskRuntimeRunLoopGateContinuationCollaborators
+import skillbill.application.featuretask.FeatureTaskRuntimeRunLoopLaunch
+import skillbill.application.featuretask.FeatureTaskRuntimeRunLoopLaunchAgentSession
+import skillbill.application.featuretask.FeatureTaskRuntimeRunLoopLaunchContentIdentityParse
+import skillbill.application.featuretask.FeatureTaskRuntimeRunLoopLaunchContinuationCollaborators
+import skillbill.application.featuretask.FeatureTaskRuntimeRunLoopLaunchProcessWait
+import skillbill.application.featuretask.FeatureTaskRuntimeRunLoopOutputPersistence
+import skillbill.application.featuretask.FeatureTaskRuntimeRunLoopOutputVerification
+import skillbill.application.featuretask.FeatureTaskRuntimeRunLoopOutputVerificationContinuationCollaborators
+import skillbill.application.featuretask.FeatureTaskRuntimeRunLoopOutputVerificationDuplicateKeyMerge
+import skillbill.application.featuretask.FeatureTaskRuntimeRunLoopOutputVerificationEnvelopeWalk
+import skillbill.application.featuretask.FeatureTaskRuntimeRunLoopOutputVerificationReceiptAssembly
+import skillbill.application.featuretask.FeatureTaskRuntimeRunLoopOutputVerificationSchemaGate
+import skillbill.application.featuretask.FeatureTaskRuntimeRunLoopOutputVerificationStructuralRepair
+import skillbill.application.featuretask.FeatureTaskRuntimeRunLoopPhaseAttempts
+import skillbill.application.featuretask.FeatureTaskRuntimeRunLoopPhaseAttemptsAttemptBudget
+import skillbill.application.featuretask.FeatureTaskRuntimeRunLoopPhaseAttemptsBackoffGate
+import skillbill.application.featuretask.FeatureTaskRuntimeRunLoopPhaseAttemptsRetrySchedule
+import skillbill.application.featuretask.FeatureTaskRuntimeRunLoopPhaseContinuationCollaborators
+import skillbill.application.featuretask.FeatureTaskRuntimeRunLoopPhaseRunner
+import skillbill.application.featuretask.FeatureTaskRuntimeRunLoopPhaseRunnerMutatingPhase
+import skillbill.application.featuretask.FeatureTaskRuntimeRunLoopPhaseRunnerPhaseDispatch
+import skillbill.application.featuretask.FeatureTaskRuntimeRunLoopPhaseRunnerVerifyingPhase
+import skillbill.application.featuretask.FeatureTaskRuntimeRunLoopPlanningBranch
+import skillbill.application.featuretask.FeatureTaskRuntimeRunLoopPrimaryCollaborators
+import skillbill.application.featuretask.FeatureTaskRuntimeRunLoopRecordRejection
+import skillbill.application.featuretask.FeatureTaskRuntimeRunLoopRepairReceipt
+import skillbill.application.featuretask.FeatureTaskRuntimeRunLoopReview
+import skillbill.application.featuretask.FeatureTaskRuntimeRunLoopSettlementContinuationCollaborators
+import skillbill.application.featuretask.FeatureTaskRuntimeRunLoopSubtaskCommit
+import skillbill.application.featuretask.FeatureTaskRuntimeRunLoopSupportCollaborators
+import skillbill.application.featuretask.FeatureTaskRuntimeRunLoopTransitions
+import skillbill.application.featuretask.FeatureTaskRuntimeRunLoopValidationGate
+import skillbill.application.featuretask.FeatureTaskRuntimeRunLoopValidationGateAgnixValidate
+import skillbill.application.featuretask.FeatureTaskRuntimeRunLoopValidationGateBuildCommand
+import skillbill.application.featuretask.FeatureTaskRuntimeRunLoopValidationGateCollectCommand
+import skillbill.application.featuretask.FeatureTaskRuntimeRunLoopValidationGateContinuationCollaborators
+import skillbill.application.featuretask.FeatureTaskRuntimeRunLoopValidationGateSkillBillValidate
 import skillbill.application.featuretask.FeatureTaskRuntimeRunner
 import skillbill.application.featuretask.FeatureTaskRuntimeSpecGate
 import skillbill.application.featuretask.InMemoryFeatureTaskPhaseSettlementRepository
 import skillbill.application.featuretask.featureTaskRuntimePhaseRecorder
+import skillbill.application.featuretask.featureTaskRuntimeRunLoopCollaborators
 import skillbill.application.featuretask.model.DefaultFeatureTaskRuntimePhaseGateBranchPort
 import skillbill.application.featuretask.model.DefaultFeatureTaskRuntimePhaseGateValidationPort
 import skillbill.application.featuretask.model.FeatureTaskRuntimeAgentAssignment
@@ -33,6 +92,7 @@ import skillbill.application.featuretask.model.FeatureTaskRuntimePhaseStateReque
 import skillbill.application.featuretask.model.FeatureTaskRuntimeRunEvent
 import skillbill.application.featuretask.model.FeatureTaskRuntimeRunEventSink
 import skillbill.application.featuretask.model.FeatureTaskRuntimeRunRequest
+import skillbill.application.featuretask.model.FeatureTaskRuntimeRunnerDependencies
 import skillbill.application.featuretask.validation.FeatureTaskRuntimeBuildGateCoordinator
 import skillbill.application.featuretask.validation.FeatureTaskRuntimeBuildGateProgressStore
 import skillbill.application.featuretask.validation.FeatureTaskRuntimeValidationGateCoordinator
@@ -45,8 +105,7 @@ import skillbill.application.review.model.ParallelReviewLaneStatus
 import skillbill.application.specsource.SpecSourceResolver
 import skillbill.application.telemetry.LifecycleTelemetryService
 import skillbill.config.model.RepoLocalConfig
-import skillbill.contracts.JsonCodec
-import skillbill.contracts.time.JvmSystemClock
+import skillbill.contracts.JsonSupport
 import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_CHECKPOINT_IDENTITY_CONTRACT_VERSION
 import skillbill.error.InvalidFeatureTaskRuntimePhaseOutputSchemaError
 import skillbill.featurespec.FeatureSpecPreparationPolicy
@@ -88,8 +147,6 @@ import skillbill.ports.goalrunner.runner.GoalRunnerSubtaskLauncher
 import skillbill.ports.goalrunner.runner.model.GoalRunnerSubtaskLaunchRequest
 import skillbill.ports.learning.LearningRepository
 import skillbill.ports.persistence.UnitOfWork
-import skillbill.ports.persistence.UnitOfWorkDefaults
-import skillbill.ports.repository.toFileLocation
 import skillbill.ports.review.ReviewRepository
 import skillbill.ports.taskruntime.FeatureTaskRuntimeSharedEvidenceResolverPort
 import skillbill.ports.taskruntime.FeatureTaskRuntimeSpecStatusWriter
@@ -104,24 +161,30 @@ import skillbill.ports.telemetry.LifecycleTelemetryRepository
 import skillbill.ports.telemetry.TelemetryOutboxRepository
 import skillbill.ports.telemetry.TelemetryReconciliationRepository
 import skillbill.ports.telemetry.TelemetrySettingsProvider
+import skillbill.ports.time.JvmSystemClock
 import skillbill.ports.validation.ValidationGateRunner
-import skillbill.workflow.taskruntime.model.ValidationGateCacheMode.CACHE_ELIGIBLE
+import skillbill.ports.validation.model.ValidationGateCacheMode.CACHE_ELIGIBLE
 import skillbill.ports.validation.model.ValidationGateFinding
-import skillbill.workflow.taskruntime.model.ValidationGateRunOutcome.FAILED
-import skillbill.workflow.taskruntime.model.ValidationGateRunOutcome.PASSED
+import skillbill.ports.validation.model.ValidationGateRunOutcome.FAILED
+import skillbill.ports.validation.model.ValidationGateRunOutcome.PASSED
 import skillbill.ports.validation.model.ValidationGateRunRequest
 import skillbill.ports.validation.model.ValidationGateRunResult
 import skillbill.ports.work.EmptyWorkListRepository
 import skillbill.ports.workflow.WorkflowStateRepository
 import skillbill.ports.workflow.gitops.CheckpointHistoryGitOperations
+import skillbill.ports.workflow.gitops.CheckpointHistoryGitOperationsProvider
 import skillbill.ports.workflow.gitops.GoalSubtaskReviewGitOperations
+import skillbill.ports.workflow.gitops.GoalSubtaskReviewGitOperationsProvider
 import skillbill.ports.workflow.gitops.NoopWorkflowGitOperations
 import skillbill.ports.workflow.gitops.RepositoryFingerprintGitOperations
+import skillbill.ports.workflow.gitops.RepositoryFingerprintGitOperationsProvider
 import skillbill.ports.workflow.gitops.RepositoryOwnedPathsGitOperations
+import skillbill.ports.workflow.gitops.RepositoryOwnedPathsGitOperationsProvider
 import skillbill.ports.workflow.gitops.RuntimePhaseFileManifestGitOperations
+import skillbill.ports.workflow.gitops.RuntimePhaseFileManifestGitOperationsProvider
 import skillbill.ports.workflow.gitops.ScopedStagingGitOperations
+import skillbill.ports.workflow.gitops.ScopedStagingGitOperationsProvider
 import skillbill.ports.workflow.gitops.WorkflowGitOperations
-import skillbill.ports.workflow.gitops.WorkflowGitOperationsTestBase
 import skillbill.ports.workflow.gitops.buildGoalSubtaskReviewInput
 import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewBaseline
 import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewBaselineRecoveryRequest
@@ -159,7 +222,6 @@ import skillbill.scaffold.model.ValidationGateFindingsFormat.JUNIT_XML
 import skillbill.scaffold.model.ValidationGateFindingsLocator
 import skillbill.telemetry.model.TelemetrySettings
 import skillbill.workflow.engine.WorkflowSnapshotValidator
-import skillbill.workflow.engine.model.WorkflowStateSnapshot
 import skillbill.workflow.goal.model.GOAL_SUBTASK_REVIEW_RESULTS_ARTIFACT_KEY
 import skillbill.workflow.goal.model.GOAL_SUBTASK_REVIEW_STATE_ARTIFACT_KEY
 import skillbill.workflow.goal.model.GoalObservabilityChangedFileSummary
@@ -226,6 +288,95 @@ internal val VALIDATE_REPAIR_WITHOUT_GATE_COUNTS = """
   }
 """.trimIndent()
 
+internal fun testRunLoopPrimaryCollaborators(): FeatureTaskRuntimeRunLoopPrimaryCollaborators =
+  FeatureTaskRuntimeRunLoopPrimaryCollaborators(
+    drive = FeatureTaskRuntimeRunLoopDrive(),
+    phaseRunner = FeatureTaskRuntimeRunLoopPhaseRunner(),
+    phaseAttempts = FeatureTaskRuntimeRunLoopPhaseAttempts(),
+    launch = FeatureTaskRuntimeRunLoopLaunch(),
+    outputVerification = FeatureTaskRuntimeRunLoopOutputVerification(),
+    outputPersistence = FeatureTaskRuntimeRunLoopOutputPersistence(),
+  )
+
+internal fun testRunLoopControlCollaborators(): FeatureTaskRuntimeRunLoopControlCollaborators =
+  FeatureTaskRuntimeRunLoopControlCollaborators(
+    validationGate = FeatureTaskRuntimeRunLoopValidationGate(),
+    review = FeatureTaskRuntimeRunLoopReview(),
+    checkpoint = FeatureTaskRuntimeRunLoopCheckpoint(),
+    planningBranch = FeatureTaskRuntimeRunLoopPlanningBranch(),
+    backwardEdge = FeatureTaskRuntimeRunLoopBackwardEdge(),
+    attemptSettlement = FeatureTaskRuntimeRunLoopAttemptSettlement(),
+  )
+
+internal fun testRunLoopSupportCollaborators(): FeatureTaskRuntimeRunLoopSupportCollaborators =
+  FeatureTaskRuntimeRunLoopSupportCollaborators(
+    recordRejection = FeatureTaskRuntimeRunLoopRecordRejection(),
+    repairReceipt = FeatureTaskRuntimeRunLoopRepairReceipt(),
+    subtaskCommit = FeatureTaskRuntimeRunLoopSubtaskCommit(),
+    transitions = FeatureTaskRuntimeRunLoopTransitions(),
+  )
+
+internal fun testRunLoopCoreContinuationCollaborators(): FeatureTaskRuntimeRunLoopCoreContinuationCollaborators =
+  FeatureTaskRuntimeRunLoopCoreContinuationCollaborators(
+    settlement = FeatureTaskRuntimeRunLoopSettlementContinuationCollaborators(
+      attemptSettlementContinued1 = FeatureTaskRuntimeRunLoopAttemptSettlementPhaseOutcome(),
+      attemptSettlementContinued2 = FeatureTaskRuntimeRunLoopAttemptSettlementRepairDispatch(),
+      attemptSettlementContinued3 = FeatureTaskRuntimeRunLoopAttemptSettlementReceiptFinalize(),
+    ),
+    checkpoint = FeatureTaskRuntimeRunLoopCheckpointContinuationCollaborators(
+      checkpointContinued1 = FeatureTaskRuntimeRunLoopCheckpointOwnedPathRemediationEstablish(),
+      checkpointContinued2 = FeatureTaskRuntimeRunLoopCheckpointRemediationRollback(),
+      checkpointContinued3 = FeatureTaskRuntimeRunLoopCheckpointRemediationStage(),
+      checkpointContinued4 = FeatureTaskRuntimeRunLoopCheckpointRollbackIdentity(),
+      checkpointContinued5 = FeatureTaskRuntimeRunLoopCheckpointSubtaskCommitLedger(),
+      checkpointContinued6 = FeatureTaskRuntimeRunLoopCheckpointBlocking(),
+    ),
+    drive = FeatureTaskRuntimeRunLoopDriveContinuationCollaborators(
+      driveContinued1 = FeatureTaskRuntimeRunLoopDrivePhaseSelection(),
+      driveContinued2 = FeatureTaskRuntimeRunLoopDriveAttemptLaunch(),
+      driveContinued3 = FeatureTaskRuntimeRunLoopDriveSettlementGate(),
+      driveContinued4 = FeatureTaskRuntimeRunLoopDriveTerminalOutcome(),
+    ),
+    launch = FeatureTaskRuntimeRunLoopLaunchContinuationCollaborators(
+      launchContinued1 = FeatureTaskRuntimeRunLoopLaunchContentIdentityParse(),
+      launchContinued2 = FeatureTaskRuntimeRunLoopLaunchAgentSession(),
+      launchContinued3 = FeatureTaskRuntimeRunLoopLaunchProcessWait(),
+    ),
+  )
+
+internal fun testRunLoopGateContinuationCollaborators(): FeatureTaskRuntimeRunLoopGateContinuationCollaborators =
+  FeatureTaskRuntimeRunLoopGateContinuationCollaborators(
+    outputVerification = FeatureTaskRuntimeRunLoopOutputVerificationContinuationCollaborators(
+      outputVerificationContinued1 = FeatureTaskRuntimeRunLoopOutputVerificationSchemaGate(),
+      outputVerificationContinued2 = FeatureTaskRuntimeRunLoopOutputVerificationEnvelopeWalk(),
+      outputVerificationContinued3 = FeatureTaskRuntimeRunLoopOutputVerificationStructuralRepair(),
+      outputVerificationContinued4 = FeatureTaskRuntimeRunLoopOutputVerificationDuplicateKeyMerge(),
+      outputVerificationContinued5 = FeatureTaskRuntimeRunLoopOutputVerificationReceiptAssembly(),
+    ),
+    phase = FeatureTaskRuntimeRunLoopPhaseContinuationCollaborators(
+      phaseAttemptsContinued1 = FeatureTaskRuntimeRunLoopPhaseAttemptsAttemptBudget(),
+      phaseAttemptsContinued2 = FeatureTaskRuntimeRunLoopPhaseAttemptsRetrySchedule(),
+      phaseAttemptsContinued3 = FeatureTaskRuntimeRunLoopPhaseAttemptsBackoffGate(),
+      phaseRunnerContinued1 = FeatureTaskRuntimeRunLoopPhaseRunnerPhaseDispatch(),
+      phaseRunnerContinued2 = FeatureTaskRuntimeRunLoopPhaseRunnerMutatingPhase(),
+      phaseRunnerContinued3 = FeatureTaskRuntimeRunLoopPhaseRunnerVerifyingPhase(),
+    ),
+    validationGate = FeatureTaskRuntimeRunLoopValidationGateContinuationCollaborators(
+      validationGateContinued1 = FeatureTaskRuntimeRunLoopValidationGateCollectCommand(),
+      validationGateContinued2 = FeatureTaskRuntimeRunLoopValidationGateBuildCommand(),
+      validationGateContinued3 = FeatureTaskRuntimeRunLoopValidationGateSkillBillValidate(),
+      validationGateContinued4 = FeatureTaskRuntimeRunLoopValidationGateAgnixValidate(),
+    ),
+  )
+
+internal fun testRunLoopCollaborators(): FeatureTaskRuntimeRunLoopCollaborators =
+  featureTaskRuntimeRunLoopCollaborators(
+    primary = testRunLoopPrimaryCollaborators(),
+    control = testRunLoopControlCollaborators(),
+    support = testRunLoopSupportCollaborators(),
+    coreContinuation = testRunLoopCoreContinuationCollaborators(),
+    gateContinuation = testRunLoopGateContinuationCollaborators(),
+  )
 internal const val VALID_REVIEW_OUTPUT = """{"contract_version":"0.3","produced_outputs":{"findings":[]}}"""
 
 internal const val VALID_AUDIT_OUTPUT =
@@ -343,7 +494,7 @@ internal class RunnerHarness(
   }
   fun stripReviewedDeltaDigest() {
     val artifacts = repository.taskRuntimeArtifacts(WORKFLOW_ID).toMutableMap()
-    val state = JsonCodec
+    val state = JsonSupport
       .anyToStringAnyMap(artifacts[GOAL_SUBTASK_REVIEW_STATE_ARTIFACT_KEY])
       .orEmpty()
       .toMutableMap()
@@ -683,7 +834,7 @@ private fun disabledRuntimeLifecycleTelemetry(database: DatabaseSessionFactory):
 
 private object DisabledRuntimeTelemetrySettingsProvider : TelemetrySettingsProvider {
   override fun load(materialize: Boolean): TelemetrySettings = TelemetrySettings(
-    configPath = Path.of("/fake/config.json").toFileLocation(),
+    configPath = Path.of("/fake/config.json"),
     level = "off",
     enabled = false,
     installId = "",
@@ -867,33 +1018,36 @@ private fun harnessRunner(deps: HarnessRunnerDeps): FeatureTaskRuntimeRunner {
     deps.diagnostics,
   )
   return FeatureTaskRuntimeRunner(
-    subtaskLauncher = deps.launcher,
-    recorder = deps.recorder,
-    goalContinuationRecorder = deps.goalContinuationRecorder,
-    runInvariantsStore = deps.runInvariantsStore,
-    outputValidator = deps.validator,
-    phaseGates = runtimePhaseGates(
-      RuntimePhaseGatesDeps(
-        branchSetupRunner = branchSetupRunner,
-        planningStopper = planningStopper,
-        lifecycleTelemetry = disabledRuntimeLifecycleTelemetry(deps.database),
-        gitOperations = deps.runtimeConfig.branchSetup.gitOperations,
-        specGate = testSpecGate(deps.specScratchStore, deps.specStatusWriter),
-        planningProjectionValidator = deps.runtimeConfig.planningProjectionValidator,
-        buildReceiptValidator = deps.runtimeConfig.buildReceiptValidator,
-        sharedEvidenceResolver = deps.runtimeConfig.sharedEvidenceResolver,
-        diffResolver = deps.runtimeConfig.diffResolver,
-        recorder = deps.recorder,
-        validationGateRunnerOverride = deps.runtimeConfig.validationGateRunner,
-        validationGatePlatformManifests = deps.runtimeConfig.validationGatePlatformManifests,
-        reviewDriver = harnessReviewDriverSyncingPendingVerifyFindings(deps.runtimeConfig.reviewDriver),
+    FeatureTaskRuntimeRunnerDependencies(
+      subtaskLauncher = deps.launcher,
+      recorder = deps.recorder,
+      goalContinuationRecorder = deps.goalContinuationRecorder,
+      runInvariantsStore = deps.runInvariantsStore,
+      outputValidator = deps.validator,
+      phaseGates = runtimePhaseGates(
+        RuntimePhaseGatesDeps(
+          branchSetupRunner = branchSetupRunner,
+          planningStopper = planningStopper,
+          lifecycleTelemetry = disabledRuntimeLifecycleTelemetry(deps.database),
+          gitOperations = deps.runtimeConfig.branchSetup.gitOperations,
+          specGate = testSpecGate(deps.specScratchStore, deps.specStatusWriter),
+          planningProjectionValidator = deps.runtimeConfig.planningProjectionValidator,
+          buildReceiptValidator = deps.runtimeConfig.buildReceiptValidator,
+          sharedEvidenceResolver = deps.runtimeConfig.sharedEvidenceResolver,
+          diffResolver = deps.runtimeConfig.diffResolver,
+          recorder = deps.recorder,
+          validationGateRunnerOverride = deps.runtimeConfig.validationGateRunner,
+          validationGatePlatformManifests = deps.runtimeConfig.validationGatePlatformManifests,
+          reviewDriver = harnessReviewDriverSyncingPendingVerifyFindings(deps.runtimeConfig.reviewDriver),
+        ),
       ),
+      crashReconciler = harnessCrashReconciler(deps.database, deps.crashSupervisor),
+      phaseSettlementService = harnessPhaseSettlement(),
+      diagnostics = deps.diagnostics,
+      clock = testHarnessClock,
     ),
-    crashReconciler = harnessCrashReconciler(deps.database, deps.crashSupervisor),
-    phaseSettlementService = harnessPhaseSettlement(),
-    diagnostics = deps.diagnostics,
-    clock = testHarnessClock,
     activityStampWriter = AgentActivityStampWriter(deps.database, Clock.systemUTC()),
+    runLoopCollaborators = testRunLoopCollaborators(),
   )
 }
 
@@ -986,33 +1140,36 @@ private fun telemetryHarnessRunner(
     NoopRuntimeDiagnostics,
   )
   return FeatureTaskRuntimeRunner(
-    subtaskLauncher = launcher,
-    recorder = workflow.recorder,
-    goalContinuationRecorder = workflow.goalContinuationRecorder,
-    runInvariantsStore = workflow.runInvariantsStore,
-    outputValidator = validator,
-    phaseGates = runtimePhaseGates(
-      RuntimePhaseGatesDeps(
-        branchSetupRunner = branchSetupRunner,
-        planningStopper = planningStopper,
-        lifecycleTelemetry = FeatureTaskRuntimeLifecycleTelemetry(
-          LifecycleTelemetryService(database, EnabledRuntimeTelemetrySettingsProvider),
-          NoopRuntimeDiagnostics,
+    FeatureTaskRuntimeRunnerDependencies(
+      subtaskLauncher = launcher,
+      recorder = workflow.recorder,
+      goalContinuationRecorder = workflow.goalContinuationRecorder,
+      runInvariantsStore = workflow.runInvariantsStore,
+      outputValidator = validator,
+      phaseGates = runtimePhaseGates(
+        RuntimePhaseGatesDeps(
+          branchSetupRunner = branchSetupRunner,
+          planningStopper = planningStopper,
+          lifecycleTelemetry = FeatureTaskRuntimeLifecycleTelemetry(
+            LifecycleTelemetryService(database, EnabledRuntimeTelemetrySettingsProvider),
+            NoopRuntimeDiagnostics,
+          ),
+          gitOperations = runtimeConfig.branchSetup.gitOperations,
+          sharedEvidenceResolver = runtimeConfig.sharedEvidenceResolver,
+          diffResolver = runtimeConfig.diffResolver,
+          recorder = workflow.recorder,
+          validationGateRunnerOverride = runtimeConfig.validationGateRunner,
+          validationGatePlatformManifests = runtimeConfig.validationGatePlatformManifests,
+          reviewDriver = harnessReviewDriverSyncingPendingVerifyFindings(runtimeConfig.reviewDriver),
         ),
-        gitOperations = runtimeConfig.branchSetup.gitOperations,
-        sharedEvidenceResolver = runtimeConfig.sharedEvidenceResolver,
-        diffResolver = runtimeConfig.diffResolver,
-        recorder = workflow.recorder,
-        validationGateRunnerOverride = runtimeConfig.validationGateRunner,
-        validationGatePlatformManifests = runtimeConfig.validationGatePlatformManifests,
-        reviewDriver = harnessReviewDriverSyncingPendingVerifyFindings(runtimeConfig.reviewDriver),
       ),
+      crashReconciler = harnessCrashReconciler(database, NoopFeatureTaskRuntimeWorkerSupervisor),
+      phaseSettlementService = harnessPhaseSettlement(),
+      diagnostics = NoopRuntimeDiagnostics,
+      clock = testHarnessClock,
     ),
-    crashReconciler = harnessCrashReconciler(database, NoopFeatureTaskRuntimeWorkerSupervisor),
-    phaseSettlementService = harnessPhaseSettlement(),
-    diagnostics = NoopRuntimeDiagnostics,
-    clock = testHarnessClock,
     activityStampWriter = AgentActivityStampWriter(database, Clock.systemUTC()),
+    runLoopCollaborators = testRunLoopCollaborators(),
   )
 }
 
@@ -1211,7 +1368,7 @@ internal fun throwingBudgetReviewDriver(): FeatureTaskRuntimeReviewDriver = Feat
   throw ReviewContextBudgetExceededException(
     ReviewContextBudgetExceeded(
       lane = "architecture",
-      budgetKind = ReviewBudgetKind.PARENT_PACKET_BYTES,
+      budgetKind = "parent_packet_bytes",
       configuredLimit = 524_288,
       observedValue = 584_846,
       packetDigest = "a".repeat(64),
@@ -1403,7 +1560,7 @@ internal fun failThenPassValidationGateRunner(gateCalls: AtomicInteger): Validat
 
 internal fun kotlinPackWithValidationGate(): PlatformManifest = PlatformManifest(
   slug = "kotlin",
-  packRoot = Path.of("/tmp/repo/platform-packs/kotlin").toFileLocation(),
+  packRoot = Path.of("/tmp/repo/platform-packs/kotlin"),
   contractVersion = "1.7",
   routingSignals = RoutingSignals(
     strong = listOf("src"),
@@ -1663,9 +1820,9 @@ internal object CanonicalWrapperTestValidator : FeatureTaskRuntimePhaseOutputVal
     val trimmed = phaseOutputText.trim()
     val candidate = fencedBlock.findAll(trimmed).lastOrNull()?.groupValues?.get(1)?.trim()
       ?: trimmed.substring(trimmed.indexOf('{'), trimmed.lastIndexOf('}') + 1)
-    val envelope = JsonCodec.parseObjectOrNull(candidate)
-      ?.let(JsonCodec::jsonElementToValue)
-      ?.let(JsonCodec::anyToStringAnyMap)
+    val envelope = JsonSupport.parseObjectOrNull(candidate)
+      ?.let(JsonSupport::jsonElementToValue)
+      ?.let(JsonSupport::anyToStringAnyMap)
       ?: throw InvalidFeatureTaskRuntimePhaseOutputSchemaError(sourceLabel, "test output is not an object")
     if (envelope["phase_id"] != sourceLabel) {
       throw InvalidFeatureTaskRuntimePhaseOutputSchemaError(sourceLabel, "phase_id does not match")
@@ -1680,7 +1837,13 @@ internal class RecordingWorkflowGitOperations(
   var landedBranchAfterCheckout: String? = null,
   var existingBranches: Set<String>? = null,
   var branchExistsResult: WorkflowGitOperationResult? = null,
-) : WorkflowGitOperationsTestBase() {
+) : WorkflowGitOperations,
+  CheckpointHistoryGitOperationsProvider,
+  GoalSubtaskReviewGitOperationsProvider,
+  RepositoryFingerprintGitOperationsProvider,
+  RepositoryOwnedPathsGitOperationsProvider,
+  RuntimePhaseFileManifestGitOperationsProvider,
+  ScopedStagingGitOperationsProvider {
   var headCommitShaValue: String = ""
   var headCommitShaResult: WorkflowGitOperationResult? = null
   val runtimePhaseHeadCommitSequence = ArrayDeque<String>()
@@ -1735,8 +1898,8 @@ internal class RecordingWorkflowGitOperations(
 
   override fun checkoutBranch(repoRoot: Path, branch: String, baseBranch: String?): WorkflowGitOperationResult {
     checkoutCalls += CheckoutCall(branch, baseBranch)
-    val result = checkoutResult ?: WorkflowGitOperationResult.Ok(value = branch)
-    if (result is WorkflowGitOperationResult.Ok) {
+    val result = checkoutResult ?: WorkflowGitOperationResult(status = "ok", value = branch)
+    if (result.ok) {
       currentBranchValue = landedBranchAfterCheckout ?: branch
     }
     return result
@@ -1746,23 +1909,23 @@ internal class RecordingWorkflowGitOperations(
     branchExistsCalls += branch
     branchExistsResult?.let { return it }
     val exists = existingBranches?.contains(branch.trim()) ?: true
-    return WorkflowGitOperationResult.Ok(value = exists.toString())
+    return WorkflowGitOperationResult(status = "ok", value = exists.toString())
   }
 
   override fun currentBranch(repoRoot: Path): WorkflowGitOperationResult {
     currentBranchCalls++
-    return currentBranchResult ?: WorkflowGitOperationResult.Ok(value = currentBranchValue)
+    return currentBranchResult ?: WorkflowGitOperationResult(status = "ok", value = currentBranchValue)
   }
   override fun createCommit(repoRoot: Path, message: String): WorkflowGitOperationResult {
     createCommitMessages += message
     if (invalidShaOnRemediationCommit && message.contains("remediation checkpoint")) {
       val bogus = "not-a-valid-commit-sha"
       headCommitShaValue = bogus
-      return WorkflowGitOperationResult.Ok(value = bogus)
+      return WorkflowGitOperationResult(status = "ok", value = bogus)
     }
     val result = createCommitResult
-      ?: WorkflowGitOperationResult.Ok(value = createCommitMessages.size.toString(16).padStart(40, '0'))
-    if (result is WorkflowGitOperationResult.Ok && result.value.isNotBlank()) {
+      ?: WorkflowGitOperationResult(status = "ok", value = createCommitMessages.size.toString(16).padStart(40, '0'))
+    if (result.ok && result.value.isNotBlank()) {
       headCommitShaValue = result.value.trim()
       headCommitMessageValue = message
     }
@@ -1770,7 +1933,7 @@ internal class RecordingWorkflowGitOperations(
   }
 
   override fun localBranchHasUnpushedCommits(repoRoot: Path, branch: String): WorkflowGitOperationResult =
-    WorkflowGitOperationResult.Ok(value = localBranchHasUnpushedCommitsValue.toString())
+    WorkflowGitOperationResult(status = "ok", value = localBranchHasUnpushedCommitsValue.toString())
 
   override val checkpointHistoryOperations: CheckpointHistoryGitOperations =
     object : CheckpointHistoryGitOperations {
@@ -1782,7 +1945,8 @@ internal class RecordingWorkflowGitOperations(
       ): WorkflowGitOperationResult {
         amendHeadCommitResult?.let { return it }
         if (expectedOwnedHeadSha.trim() != headCommitShaValue.trim()) {
-          return WorkflowGitOperationResult.Failed(
+          return WorkflowGitOperationResult(
+            status = "error",
             error = "HEAD is '$headCommitShaValue' but the caller owns '$expectedOwnedHeadSha'.",
           )
         }
@@ -1792,16 +1956,16 @@ internal class RecordingWorkflowGitOperations(
             createCommitMessages += message
             val bogus = "not-a-valid-commit-sha"
             headCommitShaValue = bogus
-            return WorkflowGitOperationResult.Ok(value = bogus)
+            return WorkflowGitOperationResult(status = "ok", value = bogus)
           }
         }
         headCommitShaValue = "a${amendCommitMessages.size.toString(16)}".padStart(40, '0')
         headCommitMessageValue = replacementMessage ?: headCommitMessageValue
-        return WorkflowGitOperationResult.Ok(value = headCommitShaValue)
+        return WorkflowGitOperationResult(status = "ok", value = headCommitShaValue)
       }
 
       override fun headCommitMessage(repoRoot: Path): WorkflowGitOperationResult =
-        WorkflowGitOperationResult.Ok(value = headCommitMessageValue)
+        WorkflowGitOperationResult(status = "ok", value = headCommitMessageValue)
 
       override fun updateRef(
         repoRoot: Path,
@@ -1812,29 +1976,30 @@ internal class RecordingWorkflowGitOperations(
         updateCheckpointRefCalls += refName to targetSha
         updateCheckpointRefResult?.let { return it }
         checkpointRefs[refName] = targetSha
-        return WorkflowGitOperationResult.Ok(value = refName)
+        return WorkflowGitOperationResult(status = "ok", value = refName)
       }
 
       override fun resolveRef(repoRoot: Path, namespacePrefix: String, refName: String): WorkflowGitOperationResult =
         onResolveCheckpointRef?.invoke(refName)
           ?: resolveCheckpointRefResult
-          ?: WorkflowGitOperationResult.Ok(value = checkpointRefs[refName].orEmpty())
+          ?: WorkflowGitOperationResult(status = "ok", value = checkpointRefs[refName].orEmpty())
 
       override fun listRefs(repoRoot: Path, namespacePrefix: String): WorkflowGitOperationResult =
-        WorkflowGitOperationResult.Ok(
+        WorkflowGitOperationResult(
+          status = "ok",
           value = checkpointRefs.entries.joinToString("") { (ref, sha) -> "$sha\u0000$ref\u0000" },
         )
 
       override fun deleteRef(repoRoot: Path, namespacePrefix: String, refName: String): WorkflowGitOperationResult {
         checkpointRefs.remove(refName)
-        return WorkflowGitOperationResult.Ok(value = refName)
+        return WorkflowGitOperationResult(status = "ok", value = refName)
       }
     }
 
   override fun resetSoftToCommit(repoRoot: Path, commitSha: String): WorkflowGitOperationResult {
     resetSoftToCommitCalls += commitSha.trim()
-    val result = resetSoftToCommitResult ?: WorkflowGitOperationResult.Ok(value = commitSha.trim())
-    if (result is WorkflowGitOperationResult.Ok) {
+    val result = resetSoftToCommitResult ?: WorkflowGitOperationResult(status = "ok", value = commitSha.trim())
+    if (result.ok) {
       headCommitShaValue = commitSha.trim()
     }
     return result
@@ -1848,17 +2013,17 @@ internal class RecordingWorkflowGitOperations(
     val ancestor = ancestorSha.trim()
     val descendant = descendantSha.trim()
     if (ancestor.isBlank() || descendant.isBlank()) {
-      return WorkflowGitOperationResult.Failed(error = "Ancestor and descendant required.")
+      return WorkflowGitOperationResult(status = "error", error = "Ancestor and descendant required.")
     }
     val reachable = ancestor == descendant || (ancestor to descendant) !in nonAncestorPairs
-    return WorkflowGitOperationResult.Ok(value = if (reachable) "true" else "false")
+    return WorkflowGitOperationResult(status = "ok", value = if (reachable) "true" else "false")
   }
 
   var headCommitShaCalls: Int = 0
 
   override fun headCommitSha(repoRoot: Path): WorkflowGitOperationResult {
     headCommitShaCalls++
-    return headCommitShaResult ?: WorkflowGitOperationResult.Ok(value = headCommitShaValue)
+    return headCommitShaResult ?: WorkflowGitOperationResult(status = "ok", value = headCommitShaValue)
   }
 
   val pushedBranches: MutableList<String> = mutableListOf()
@@ -1867,29 +2032,32 @@ internal class RecordingWorkflowGitOperations(
 
   override fun pushBranch(repoRoot: Path, branch: String): WorkflowGitOperationResult {
     pushedBranches += branch
-    return pushBranchResult ?: WorkflowGitOperationResult.Ok(value = branch)
+    return pushBranchResult ?: WorkflowGitOperationResult(status = "ok", value = branch)
   }
 
   override fun pushBranchWithLease(repoRoot: Path, branch: String): WorkflowGitOperationResult {
     leasePushedBranches += branch
-    return pushBranchResult ?: WorkflowGitOperationResult.Ok(value = branch)
+    return pushBranchResult ?: WorkflowGitOperationResult(status = "ok", value = branch)
   }
 
   override fun resolveCommit(repoRoot: Path, revision: String): WorkflowGitOperationResult =
     onResolveCommit?.invoke(revision)
       ?: if (revision.startsWith("origin/")) {
-        WorkflowGitOperationResult.Failed(
+        WorkflowGitOperationResult(
+          status = "error",
           error = "Revision '$revision' does not name a commit in this repository.",
         )
       } else {
-        WorkflowGitOperationResult.Ok(
+        WorkflowGitOperationResult(
+          status = "ok",
           value = revision.takeIf { it.matches(Regex("^[0-9a-fA-F]{40,64}$")) } ?: COMMITTED_HEAD_SHA,
         )
       }
 
   override val runtimePhaseFileManifestOperations: RuntimePhaseFileManifestGitOperations =
     object : RuntimePhaseFileManifestGitOperations {
-      override fun headCommit(repoRoot: Path): WorkflowGitOperationResult = WorkflowGitOperationResult.Ok(
+      override fun headCommit(repoRoot: Path): WorkflowGitOperationResult = WorkflowGitOperationResult(
+        status = "ok",
         value = runtimePhaseHeadCommitSequence.removeFirstOrNull().orEmpty(),
       )
 
@@ -1897,7 +2065,8 @@ internal class RecordingWorkflowGitOperations(
         repoRoot: Path,
         beforeCommit: String,
         afterCommit: String,
-      ): WorkflowGitOperationResult = WorkflowGitOperationResult.Ok(
+      ): WorkflowGitOperationResult = WorkflowGitOperationResult(
+        status = "ok",
         value = if (beforeCommit == afterCommit) "" else changedPathsBetweenCommitsValue,
       )
     }
@@ -1906,10 +2075,11 @@ internal class RecordingWorkflowGitOperations(
     repoRoot: Path,
     branch: String,
     expectedBaseBranch: String,
-  ): WorkflowGitOperationResult = WorkflowGitOperationResult.Ok(value = expectedBaseBranch)
+  ): WorkflowGitOperationResult = WorkflowGitOperationResult(status = "ok", value = expectedBaseBranch)
 
   override fun worktreeStatus(repoRoot: Path): WorkflowGitOperationResult =
-    worktreeStatusResult ?: WorkflowGitOperationResult.Ok(
+    worktreeStatusResult ?: WorkflowGitOperationResult(
+      status = "ok",
       value = worktreeStatusSequence.removeFirstOrNull() ?: worktreeStatusValue,
     )
 
@@ -1917,11 +2087,11 @@ internal class RecordingWorkflowGitOperations(
     object : ScopedStagingGitOperations {
       override fun stagePaths(repoRoot: Path, paths: List<String>): WorkflowGitOperationResult {
         stagePathsCalls += paths
-        return stagePathsResult ?: WorkflowGitOperationResult.Ok(value = "")
+        return stagePathsResult ?: WorkflowGitOperationResult(status = "ok", value = "")
       }
 
       override fun captureIndexState(repoRoot: Path, paths: List<String>): WorkflowGitOperationResult =
-        captureIndexStateResult ?: WorkflowGitOperationResult.Ok(value = indexSnapshotValue)
+        captureIndexStateResult ?: WorkflowGitOperationResult(status = "ok", value = indexSnapshotValue)
 
       override fun restoreIndexState(
         repoRoot: Path,
@@ -1929,18 +2099,20 @@ internal class RecordingWorkflowGitOperations(
         snapshot: String,
       ): WorkflowGitOperationResult {
         restoreIndexStateCalls += snapshot
-        return restoreIndexStateResult ?: WorkflowGitOperationResult.Ok(value = "")
+        return restoreIndexStateResult ?: WorkflowGitOperationResult(status = "ok", value = "")
       }
 
       override fun stagedPaths(repoRoot: Path): WorkflowGitOperationResult {
         onStagedPathsRead?.invoke()
-        return stagedPathsResult ?: WorkflowGitOperationResult.Ok(
+        return stagedPathsResult ?: WorkflowGitOperationResult(
+          status = "ok",
           value = stagedPathsValue.joinToString(separator = "") { "$it\u0000" },
         )
       }
 
       override fun pathContentIdentities(repoRoot: Path, paths: List<String>): WorkflowGitOperationResult =
-        WorkflowGitOperationResult.Ok(
+        WorkflowGitOperationResult(
+          status = "ok",
           value = paths.joinToString(separator = "\u0000") { path ->
             "${contentIdentities[path] ?: "identity"}\t$path"
           },
@@ -1950,7 +2122,8 @@ internal class RecordingWorkflowGitOperations(
   override val repositoryOwnedPathsOperations: RepositoryOwnedPathsGitOperations =
     object : RepositoryOwnedPathsGitOperations {
       override fun ownedPaths(repoRoot: Path): WorkflowGitOperationResult = ownedPathsResult
-        ?: WorkflowGitOperationResult.Ok(
+        ?: WorkflowGitOperationResult(
+          status = "ok",
           value = ownedPathsValue.joinToString(separator = "") { "$it\u0000" },
         )
     }
@@ -1959,7 +2132,8 @@ internal class RecordingWorkflowGitOperations(
     object : RepositoryFingerprintGitOperations {
       override fun repositoryFingerprint(repoRoot: Path): WorkflowGitOperationResult {
         repositoryFingerprintCalls += 1
-        return WorkflowGitOperationResult.Ok(
+        return WorkflowGitOperationResult(
+          status = "ok",
           value = repositoryFingerprintSequence.removeFirstOrNull()
             ?: repositoryFingerprintValue
             ?: "repository-fingerprint-$repositoryFingerprintCalls",
@@ -1978,7 +2152,8 @@ internal class RecordingWorkflowGitOperations(
           headCommit,
           ownedPaths.distinct().sorted().joinToString("\u0000"),
         ).joinToString("\u0000").hashCode().toUInt().toString(16)
-        return WorkflowGitOperationResult.Ok(
+        return WorkflowGitOperationResult(
+          status = "ok",
           value = repositoryFingerprintSequence.removeFirstOrNull()
             ?: repositoryFingerprintValue
             ?: "repository-checkpoint-$scopeHash",
@@ -1987,7 +2162,7 @@ internal class RecordingWorkflowGitOperations(
     }
 
   override fun worktreeActivity(repoRoot: Path): WorkflowWorktreeActivityResult = WorkflowWorktreeActivityResult(
-    status = WorkflowGitOperationStatus.OK,
+    status = "ok",
     changedFileSummary = GoalObservabilityChangedFileSummary(
       total = 0,
       added = 0,
@@ -2003,14 +2178,14 @@ internal class RecordingWorkflowGitOperations(
     repoRoot: Path,
     request: WorkflowSelectedDiffHunksRequest,
   ): WorkflowSelectedDiffHunksResult = WorkflowSelectedDiffHunksResult(
-    status = WorkflowGitOperationStatus.OK,
+    status = "ok",
     selectedDiffHunks = GoalObservabilitySelectedDiffHunks(),
   )
 
   override val goalSubtaskReviewOperations: GoalSubtaskReviewGitOperations =
     object : GoalSubtaskReviewGitOperations {
       override fun captureBaseline(repoRoot: Path, expectedBranch: String) = GoalSubtaskReviewBaselineResult(
-        status = WorkflowGitOperationStatus.OK,
+        status = "ok",
         baseline = GoalSubtaskReviewBaseline("0".repeat(40), emptyList()),
       )
 
@@ -2021,7 +2196,7 @@ internal class RecordingWorkflowGitOperations(
       ): GoalSubtaskReviewInputResult {
         goalReviewBuildInputs += baseline
         return goalReviewBuildResults.removeFirstOrNull() ?: GoalSubtaskReviewInputResult(
-          status = WorkflowGitOperationStatus.OK,
+          status = "ok",
           input = GoalSubtaskReviewInput(
             reviewBaseSha = baseline.reviewBaseSha,
             currentHeadSha = baseline.reviewBaseSha,
@@ -2038,17 +2213,13 @@ internal class RecordingWorkflowGitOperations(
       ): GoalSubtaskReviewBaselineResult {
         goalReviewRecoverCalls++
         goalReviewRecoverRequests += request
-        return goalReviewRecoveredBaseline?.let {
-          GoalSubtaskReviewBaselineResult(status = WorkflowGitOperationStatus.OK, baseline = it)
-        } ?: GoalSubtaskReviewBaselineResult(
-          status = WorkflowGitOperationStatus.ERROR,
-          error = "no recovered baseline configured",
-        )
+        return goalReviewRecoveredBaseline?.let { GoalSubtaskReviewBaselineResult(status = "ok", baseline = it) }
+          ?: GoalSubtaskReviewBaselineResult(status = "error", error = "no recovered baseline configured")
       }
     }
 }
 private object NoopWorkflowSnapshotValidator : WorkflowSnapshotValidator {
-  override fun validate(snapshot: WorkflowStateSnapshot, slug: String) = Unit
+  override fun validate(snapshot: Map<String, Any?>, slug: String) = Unit
 }
 
 private fun FeatureTaskRuntimePhaseRecorder.recordPhaseStateForTest(
@@ -2168,7 +2339,7 @@ internal class RuntimeFakeDatabaseSessionFactory(
     return block(unitOfWork())
   }
 
-  private fun unitOfWork(): UnitOfWork = object : UnitOfWorkDefaults() {
+  private fun unitOfWork(): UnitOfWork = object : UnitOfWork {
     override val dbPath: Path = this@RuntimeFakeDatabaseSessionFactory.dbPath
     override val reviews: ReviewRepository = this@RuntimeFakeDatabaseSessionFactory.reviewsPort
     override val learnings: LearningRepository = this@RuntimeFakeDatabaseSessionFactory.learningsPort
@@ -2306,7 +2477,7 @@ internal class RuntimeFakeDatabaseSessionFactory(
 
 internal object EnabledRuntimeTelemetrySettingsProvider : TelemetrySettingsProvider {
   override fun load(materialize: Boolean): TelemetrySettings = TelemetrySettings(
-    configPath = Path.of("/fake/config.json").toFileLocation(),
+    configPath = Path.of("/fake/config.json"),
     level = "full",
     enabled = true,
     installId = "install-1",
@@ -2445,9 +2616,9 @@ internal class InMemoryRuntimeWorkflowRepository : WorkflowStateRepository {
 
   fun taskRuntimeArtifacts(workflowId: String): Map<String, Any?> {
     val record = requireNotNull(taskRuntimeRows[workflowId]) { "no runtime row for $workflowId" }
-    return JsonCodec.parseObjectOrNull(record.artifactsJson)
-      ?.let(JsonCodec::jsonElementToValue)
-      ?.let(JsonCodec::anyToStringAnyMap)
+    return JsonSupport.parseObjectOrNull(record.artifactsJson)
+      ?.let(JsonSupport::jsonElementToValue)
+      ?.let(JsonSupport::anyToStringAnyMap)
       .orEmpty()
   }
   fun corruptRecordsArtifact(workflowId: String, corruptValue: Any?) {
@@ -2456,14 +2627,14 @@ internal class InMemoryRuntimeWorkflowRepository : WorkflowStateRepository {
       put(FEATURE_TASK_RUNTIME_PHASE_RECORDS_ARTIFACT_KEY, corruptValue)
     }
     taskRuntimeRows[workflowId] = record.copy(
-      artifactsJson = JsonCodec.mapToJsonString(artifacts),
+      artifactsJson = JsonSupport.mapToJsonString(artifacts),
     )
   }
 
   fun replaceTaskRuntimeArtifacts(workflowId: String, artifacts: Map<String, Any?>) {
     val record = requireNotNull(taskRuntimeRows[workflowId]) { "no runtime row for $workflowId" }
     taskRuntimeRows[workflowId] = record.copy(
-      artifactsJson = JsonCodec.mapToJsonString(artifacts),
+      artifactsJson = JsonSupport.mapToJsonString(artifacts),
     )
   }
   var failSaveWhen: ((WorkflowStateRecord) -> Boolean)? = null

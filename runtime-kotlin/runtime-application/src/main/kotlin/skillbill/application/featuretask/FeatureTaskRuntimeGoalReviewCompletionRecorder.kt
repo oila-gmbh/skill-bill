@@ -3,14 +3,13 @@ package skillbill.application.featuretask
 import skillbill.application.decomposition.decodeArtifacts
 import skillbill.application.featuretask.model.FeatureTaskRuntimePhaseStateRequest
 import skillbill.application.featuretask.model.GoalReviewPhaseCompletionRequest
+import skillbill.application.subtaskreview.GoalSubtaskReviewSummaryReducer
+import skillbill.application.subtaskreview.UnaddressedFindingLedgerScope
+import skillbill.application.subtaskreview.recordedVerdicts
 import skillbill.application.workflow.model.WorkflowFamily
 import skillbill.goalrunner.model.UnaddressedFinding
-import skillbill.goalrunner.subtaskreview.GoalSubtaskReviewSummaryReducer
-import skillbill.goalrunner.subtaskreview.model.UnaddressedFindingLedgerScope
-import skillbill.goalrunner.subtaskreview.recordedVerdicts
 import skillbill.ports.db.DatabaseSessionFactory
 import skillbill.ports.persistence.UnitOfWork
-import skillbill.ports.workflow.get
 import skillbill.review.model.ReviewFindingVerdict
 import skillbill.workflow.engine.model.WorkflowStateSnapshot
 import skillbill.workflow.goal.model.GOAL_SUBTASK_REVIEW_RESULTS_ARTIFACT_KEY
@@ -28,8 +27,6 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeGoalContinuationAr
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerAction.COMPLETE
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerEntry
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseRecord
-import skillbill.workflow.model.WorkflowStepStatus
-import skillbill.workflow.model.workflowStepStatus
 import java.time.Clock
 
 class FeatureTaskRuntimeGoalReviewCompletionRecorder(
@@ -107,10 +104,7 @@ class FeatureTaskRuntimeGoalReviewCompletionRecorder(
     val envelope = requireNotNull(request.normalizedOutput) {
       "Goal review completion requires normalized output to persist the unaddressed-findings ledger."
     }.envelope
-    val recordedVerdicts = GoalSubtaskReviewSummaryReducer.recordedVerdicts(
-      unitOfWork.reviews::fetchFindingVerdicts,
-      envelope,
-    )
+    val recordedVerdicts = GoalSubtaskReviewSummaryReducer.recordedVerdicts(unitOfWork, envelope)
     val currentFindings = GoalSubtaskReviewSummaryReducer.unaddressedFindings(
       output = envelope,
       scope = UnaddressedFindingLedgerScope(
@@ -199,10 +193,7 @@ class FeatureTaskRuntimeGoalReviewCompletionRecorder(
     val output = requireNotNull(request.normalizedOutput) {
       "Goal review completion requires normalized output to persist the unaddressed-findings ledger."
     }.envelope
-    val recordedVerdicts = GoalSubtaskReviewSummaryReducer.recordedVerdicts(
-      unitOfWork.reviews::fetchFindingVerdicts,
-      output,
-    )
+    val recordedVerdicts = GoalSubtaskReviewSummaryReducer.recordedVerdicts(unitOfWork, output)
     val findings = GoalSubtaskReviewSummaryReducer.unaddressedFindings(
       output = output,
       scope = UnaddressedFindingLedgerScope(
@@ -231,7 +222,7 @@ class FeatureTaskRuntimeGoalReviewCompletionRecorder(
     require(request.phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW) {
       "Goal review completion can only persist the review phase."
     }
-    require(request.status.workflowStepStatus() == WorkflowStepStatus.COMPLETED && request.finished) {
+    require(request.status == "completed" && request.finished) {
       "Goal review completion must persist a finished completed review phase."
     }
     require(completion.rawReviewResult.isNotBlank()) { "Goal-subtask review pass result must be non-blank." }

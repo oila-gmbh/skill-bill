@@ -1,6 +1,6 @@
 package skillbill.application.review
 
-import skillbill.contracts.JsonCodec
+import skillbill.contracts.JsonSupport
 import skillbill.review.context.model.SpecIntentProjection
 
 internal fun SpecIntentProjection.toProjectionPayload(): Map<String, Any?> = linkedMapOf(
@@ -17,4 +17,5 @@ internal fun SpecIntentProjection.toProjectionPayload(): Map<String, Any?> = lin
 )
 
 internal fun specIntentProjectionUtf8Bytes(projection: SpecIntentProjection): Int =
-  JsonCodec.mapToJsonString(projection.toProjectionPayload()).toByteArray(Charsets.UTF_8).size
+  JsonSupport.mapToJsonString(projection.toProjectionPayload()).toByteArray(Charsets.UTF_8).size
+

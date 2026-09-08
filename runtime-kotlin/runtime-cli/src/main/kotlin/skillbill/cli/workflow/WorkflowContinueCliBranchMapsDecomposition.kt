@@ -2,7 +2,6 @@ package skillbill.cli.workflow
 
 import skillbill.application.workflow.model.GoalContinuationOutcome
 import skillbill.application.workflow.model.WorkflowContinueResult
-import skillbill.workflow.model.WorkflowContinueStatus
 
 internal fun WorkflowContinueResult.DecompositionStandard.toDecompositionStandardCliMap(): Map<String, Any?> =
   standardContinueMap(
@@ -20,7 +19,7 @@ internal fun WorkflowContinueResult.DecompositionMissingSubtaskWorkflow.toDecomp
   Map<String, Any?> =
   linkedMapOf(
     "status" to "error",
-    "continue_status" to WorkflowContinueStatus.BLOCKED.wireValue,
+    "continue_status" to "blocked",
     "subtask_id" to subtaskId,
     "blocked_reason" to blockedReason,
     "db_path" to dbPath,
@@ -30,7 +29,7 @@ internal fun WorkflowContinueResult.DecompositionBlockedSubtask.toDecompositionB
   Map<String, Any?> =
   linkedMapOf(
     "status" to "error",
-    "continue_status" to WorkflowContinueStatus.BLOCKED.wireValue,
+    "continue_status" to "blocked",
     "workflow_id" to workflowId,
     "issue_key" to issueKey,
     "decomposition_subtask_id" to subtaskId,
@@ -44,7 +43,7 @@ internal fun WorkflowContinueResult.DecompositionBlockedBranchStart.toDecomposit
   Map<String, Any?> =
   linkedMapOf(
     "status" to "error",
-    "continue_status" to WorkflowContinueStatus.BLOCKED.wireValue,
+    "continue_status" to "blocked",
     "workflow_id" to workflowId,
     "issue_key" to issueKey,
     "error" to blockedReason,
@@ -53,7 +52,7 @@ internal fun WorkflowContinueResult.DecompositionBlockedBranchStart.toDecomposit
 
 internal fun WorkflowContinueResult.DecompositionDone.toDecompositionDoneCliMap(): Map<String, Any?> = linkedMapOf(
   "status" to "ok",
-  "continue_status" to WorkflowContinueStatus.DONE.wireValue,
+  "continue_status" to "done",
   "workflow_id" to workflowId,
   "issue_key" to issueKey,
   "decomposition_status" to decompositionStatus,
@@ -64,7 +63,7 @@ internal fun WorkflowContinueResult.DecompositionSubtaskOutcome.toDecompositionS
   Map<String, Any?> =
   linkedMapOf(
     "status" to "ok",
-    "continue_status" to WorkflowContinueStatus.DONE.wireValue,
+    "continue_status" to "done",
     "workflow_id" to workflowId,
     "issue_key" to issueKey,
     "decomposition_subtask_id" to subtaskId,
@@ -76,7 +75,7 @@ internal fun WorkflowContinueResult.DecompositionSubtaskOutcome.toDecompositionS
 internal fun WorkflowContinueResult.DecompositionBlockedGit.toDecompositionBlockedGitCliMap(): Map<String, Any?> =
   linkedMapOf(
     "status" to "error",
-    "continue_status" to WorkflowContinueStatus.BLOCKED.wireValue,
+    "continue_status" to "blocked",
     "workflow_id" to workflowId,
     "issue_key" to issueKey,
     "blocked_reason" to blockedReason,

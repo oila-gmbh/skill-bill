@@ -11,8 +11,6 @@ import skillbill.goalrunner.model.GoalRunnerStopReason
 import skillbill.ports.goalrunner.runner.model.GoalRunnerManifestState
 import skillbill.workflow.decomposition.model.DecompositionManifest
 import skillbill.workflow.decomposition.model.DecompositionSubtask
-import skillbill.workflow.model.DecompositionStatus
-import skillbill.workflow.model.decompositionStatus
 import java.time.Clock
 import java.time.Duration
 import java.time.Instant
@@ -28,7 +26,7 @@ class GoalRunnerTelemetryEmitter(
   private val resumed: Boolean = state.manifest.subtasks.any { it.hasStarted() }
 
   private val subtasksTerminalAtSegmentStart: Set<Int> = state.manifest.subtasks
-    .filter { it.status.decompositionStatus() in TERMINAL_STATUSES }
+    .filter { it.status in TERMINAL_STATUSES }
     .map { it.id }
     .toSet()
   private val subtasksEmittedThisSegment: MutableSet<Int> = mutableSetOf()
@@ -59,7 +57,7 @@ class GoalRunnerTelemetryEmitter(
     val finishedAtInstant = clock.instant()
     val finishedAt = finishedAtInstant.toString()
     manifest.subtasks
-      .filter { it.status.decompositionStatus() in TERMINAL_STATUSES }
+      .filter { it.status in TERMINAL_STATUSES }
       .filter { it.id !in subtasksTerminalAtSegmentStart && it.id !in subtasksEmittedThisSegment }
       .forEach { subtask ->
         subtasksEmittedThisSegment += subtask.id
@@ -85,9 +83,7 @@ class GoalRunnerTelemetryEmitter(
       }
   }
 
-  private fun DecompositionSubtask.blockedReasonForTelemetry(): String? = if (
-    status.decompositionStatus() == DecompositionStatus.BLOCKED
-  ) {
+  private fun DecompositionSubtask.blockedReasonForTelemetry(): String? = if (status == "blocked") {
     normalizedBlockedReason(
       reason = blockedReason,
       category = "runtime",
@@ -108,15 +104,9 @@ class GoalRunnerTelemetryEmitter(
         startedAt = segmentStartedAt,
         finishedAt = finishedAtInstant.toString(),
         durationMs = durationMs(segmentStartedAt, finishedAtInstant),
-        subtasksComplete = manifest.subtasks.count {
-          it.status.decompositionStatus() == DecompositionStatus.COMPLETE
-        },
-        subtasksBlocked = manifest.subtasks.count {
-          it.status.decompositionStatus() == DecompositionStatus.BLOCKED
-        },
-        subtasksSkipped = manifest.subtasks.count {
-          it.status.decompositionStatus() == DecompositionStatus.SKIPPED
-        },
+        subtasksComplete = manifest.subtasks.count { it.status == "complete" },
+        subtasksBlocked = manifest.subtasks.count { it.status == "blocked" },
+        subtasksSkipped = manifest.subtasks.count { it.status == "skipped" },
         mode = "runtime",
         stopReason = stopReason,
         parentWorkflowId = state.parentWorkflowId,
@@ -143,13 +133,9 @@ class GoalRunnerTelemetryEmitter(
         issueKey = manifest.issueKey,
         parentWorkflowId = state.parentWorkflowId,
         status = "completed",
-        subtasksComplete = manifest.subtasks.count {
-          it.status.decompositionStatus() == DecompositionStatus.COMPLETE
-        },
+        subtasksComplete = manifest.subtasks.count { it.status == "complete" },
         subtasksBlocked = report.subtasksBlocked,
-        subtasksSkipped = manifest.subtasks.count {
-          it.status.decompositionStatus() == DecompositionStatus.SKIPPED
-        },
+        subtasksSkipped = manifest.subtasks.count { it.status == "skipped" },
         finishedAt = clock.instant().toString(),
         mode = "runtime",
       ),
@@ -161,10 +147,6 @@ class GoalRunnerTelemetryEmitter(
     Duration.between(Instant.parse(startedAt), finishedAt).toMillis().coerceAtLeast(0)
 
   private companion object {
-    val TERMINAL_STATUSES = setOf(
-      DecompositionStatus.COMPLETE,
-      DecompositionStatus.BLOCKED,
-      DecompositionStatus.SKIPPED,
-    )
+    val TERMINAL_STATUSES: Set<String> = setOf("complete", "blocked", "skipped")
   }
 }

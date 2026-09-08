@@ -6,9 +6,8 @@ import skillbill.application.updatecheck.model.RECOMMENDED_INSTALL_COMMAND
 import skillbill.application.updatecheck.model.Semver
 import skillbill.application.updatecheck.model.UpdateCheckResult
 import skillbill.application.updatecheck.model.UpdateCheckStatus
-import skillbill.contracts.JsonCodec
+import skillbill.contracts.JsonSupport
 import skillbill.model.TransportContext
-import skillbill.ports.telemetry.RemoteTransportPort
 import skillbill.ports.telemetry.model.RemoteTransportResponse
 import java.io.IOException
 
@@ -69,12 +68,9 @@ class UpdateCheckService(
 
   private var lastUnknown: UpdateCheckResult = unknown("release check did not complete")
 
-  private fun requireRequester(): RemoteTransportPort = transportContext.requester
-    ?: error("Remote transport is not configured for this runtime context.")
-
   private fun fetchReleases(): List<Any?>? {
     val response = try {
-      requireRequester().execute(
+      transportContext.requester.execute(
         method = "GET",
         url = RELEASES_URL,
         bodyJson = null,
@@ -94,7 +90,7 @@ class UpdateCheckService(
   }
 
   private fun parseReleasesResponse(response: RemoteTransportResponse): List<Any?>? {
-    val parsed = JsonCodec.parseArrayOrEmpty(response.body)
+    val parsed = JsonSupport.parseArrayOrEmpty(response.body)
     val errorReason = when {
       response.statusCode == HTTP_FORBIDDEN || response.statusCode == HTTP_TOO_MANY_REQUESTS ->
         "GitHub API rate limit or access limit"
@@ -131,7 +127,7 @@ class UpdateCheckService(
   private var releaseEntryMalformed = false
 
   private fun releaseCandidate(release: Any?, includePrereleases: Boolean): ReleaseCandidate? {
-    val entry = JsonCodec.anyToStringAnyMap(release)
+    val entry = JsonSupport.anyToStringAnyMap(release)
     releasePayloadMalformed = releasePayloadMalformed || entry == null
     return entry?.takeUnless { it["draft"] as? Boolean ?: false }
       ?.takeUnless { !includePrereleases && it["prerelease"] as? Boolean ?: false }

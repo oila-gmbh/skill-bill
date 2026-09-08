@@ -4,7 +4,6 @@ import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
 import skillbill.error.InvalidFallbackCapabilityError
 import skillbill.error.InvalidManifestSchemaError
-import skillbill.ports.repository.toFileLocation
 import skillbill.scaffold.model.DeclaredFiles
 import skillbill.scaffold.model.PlatformManifest
 import skillbill.scaffold.model.RoutingSignals
@@ -95,16 +94,12 @@ class PlatformPackFallbackTest {
 
   private fun pack(slug: String, review: Boolean) = PlatformManifest(
     slug = slug,
-    packRoot = tempDir.resolve(slug).toFileLocation(),
+    packRoot = tempDir.resolve(slug),
     contractVersion = "1.3",
     routingSignals = RoutingSignals(listOf("fallback-only"), emptyList()),
     declaredCodeReviewAreas = emptyList(),
     declaredFiles = DeclaredFiles(
-      baseline = if (review) {
-        tempDir.resolve(slug).resolve("code-review/bill-$slug-code-review/content.md").toFileLocation()
-      } else {
-        null
-      },
+      baseline = if (review) tempDir.resolve(slug).resolve("code-review/bill-$slug-code-review/content.md") else null,
       areas = emptyMap(),
     ),
     areaMetadata = emptyMap(),

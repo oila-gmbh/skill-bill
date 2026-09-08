@@ -21,12 +21,6 @@ data class FeatureTaskRuntimeWorkerOwnership(
 enum class FeatureTaskRuntimeWorkerLeaseState(val wireValue: String) {
   ACTIVE("active"),
   TAKEOVER_RESERVED("takeover_reserved"),
-  ;
-
-  companion object {
-    fun fromWire(value: String?): FeatureTaskRuntimeWorkerLeaseState? =
-      value?.trim()?.let { candidate -> entries.firstOrNull { it.wireValue == candidate } }
-  }
 }
 
 /**

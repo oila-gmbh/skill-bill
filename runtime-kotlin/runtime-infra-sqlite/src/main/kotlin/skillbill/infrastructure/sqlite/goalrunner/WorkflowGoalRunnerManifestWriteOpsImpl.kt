@@ -8,7 +8,7 @@ import skillbill.ports.goalrunner.runner.model.GoalRunnerScopedReplanWriteResult
 
 internal class WorkflowGoalRunnerManifestWriteOpsImpl(
   private val ctx: WorkflowGoalRunnerManifestStoreContext,
-) : GoalRunnerManifestPersistenceCommands {
+) : GoalRunnerManifestWriteOps {
   override fun planningStatus(
     parentWorkflowId: String,
     orderedSubtaskIds: List<Int>,

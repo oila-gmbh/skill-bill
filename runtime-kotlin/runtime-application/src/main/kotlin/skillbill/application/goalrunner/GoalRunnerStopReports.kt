@@ -1,20 +1,15 @@
 package skillbill.application.goalrunner
 
 import skillbill.application.featuretask.FeatureTaskRuntimePhaseRecorder
-import skillbill.goalrunner.model.GoalRunnerContinuationMode
 import skillbill.goalrunner.model.GoalRunnerLivenessSnapshot
-import skillbill.goalrunner.model.GoalRunnerProcessState
 import skillbill.goalrunner.model.GoalRunnerReconciledOutcome
 import skillbill.goalrunner.model.GoalRunnerRunReport
 import skillbill.goalrunner.model.GoalRunnerStopReason
 import skillbill.goalrunner.model.GoalRunnerStopReport
 import skillbill.goalrunner.model.GoalRunnerSupervisionEvent
-import skillbill.goalrunner.model.GoalPullRequestStatus
 import skillbill.goalrunner.model.UnaddressedFindingsLedger
 import skillbill.ports.goalrunner.runner.model.GoalRunnerWorkflowProgress
 import skillbill.workflow.decomposition.model.DecompositionManifest
-import skillbill.workflow.model.DecompositionStatus
-import skillbill.workflow.model.decompositionStatus
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFailureDisposition
 
@@ -35,7 +30,7 @@ fun completed(
   manifest: DecompositionManifest,
   attempted: List<Int>,
   pullRequestUrl: String?,
-  pullRequestStatus: GoalPullRequestStatus,
+  pullRequestStatus: String,
   ledger: UnaddressedFindingsLedger?,
 ): GoalRunnerRunReport.Completed {
   return GoalRunnerRunReport.Completed(
@@ -44,15 +39,9 @@ fun completed(
     featureName = manifest.featureName,
     pullRequestUrl = pullRequestUrl,
     pullRequestStatus = pullRequestStatus,
-    subtasksCompleted = manifest.subtasks.count { it.status.decompositionStatus() == DecompositionStatus.COMPLETE },
-    subtasksPending = manifest.subtasks.count {
-      it.status.decompositionStatus() !in setOf(
-        DecompositionStatus.COMPLETE,
-        DecompositionStatus.SKIPPED,
-        DecompositionStatus.BLOCKED,
-      )
-    },
-    subtasksBlocked = manifest.subtasks.count { it.status.decompositionStatus() == DecompositionStatus.BLOCKED },
+    subtasksCompleted = manifest.subtasks.count { it.status == "complete" },
+    subtasksPending = manifest.subtasks.count { it.status !in setOf("complete", "skipped", "blocked") },
+    subtasksBlocked = manifest.subtasks.count { it.status == "blocked" },
     unaddressedFindingCount = ledger?.findings?.size,
     unaddressedSeverityBreakdown = ledger?.severityBreakdown.orEmpty(),
   )
@@ -121,9 +110,9 @@ fun supervisionEvent(
   phase = "goal_runner_supervision",
   reason = reason.name.lowercase(),
   continuationMode = when (reason) {
-    GoalRunnerStopReason.TIMEOUT -> GoalRunnerContinuationMode.KILLED_UNRESPONSIVE_CHILD
-    GoalRunnerStopReason.INTERRUPTED -> GoalRunnerContinuationMode.KILLED_BY_PARENT_INTERRUPT
-    GoalRunnerStopReason.NO_TERMINAL_STORE_OUTCOME -> GoalRunnerContinuationMode.CONTINUE_INLINE
+    GoalRunnerStopReason.TIMEOUT -> "killed_unresponsive_child"
+    GoalRunnerStopReason.INTERRUPTED -> "killed_by_parent_interrupt"
+    GoalRunnerStopReason.NO_TERMINAL_STORE_OUTCOME -> "continue_inline"
     GoalRunnerStopReason.FAILED,
     GoalRunnerStopReason.BLOCKED,
     GoalRunnerStopReason.POLICY_BLOCKED,
@@ -132,9 +121,9 @@ fun supervisionEvent(
     GoalRunnerStopReason.RECONCILED_RESUMABLE,
     GoalRunnerStopReason.AWAITING_OPERATOR_DECISION,
     GoalRunnerStopReason.PAUSED,
-    -> GoalRunnerContinuationMode.NONE
+    -> "none"
   },
-  processState = liveness?.processState ?: GoalRunnerProcessState.UNKNOWN,
+  processState = liveness?.processState.orEmpty().ifBlank { "unknown" },
   workflowId = knownWorkflowId,
   stepId = progress?.currentStepId ?: liveness?.workflowStep,
   lastDurableProgress = progress?.latestLivenessSignal ?: liveness?.lastDurableProgressLabel,

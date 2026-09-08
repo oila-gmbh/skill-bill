@@ -1,10 +1,9 @@
 package skillbill.scaffold
 
-import skillbill.application.workflow.WorkflowWireProjections
 import skillbill.contracts.workflow.CanonicalWorkflowStateSchemaValidator
 import skillbill.contracts.workflow.WorkflowStateSchemaValidator
-import skillbill.infrastructure.fs.WorkflowSnapshotValidatorInfraAdapter
 import skillbill.workflow.engine.WorkflowEngine
+import skillbill.workflow.engine.WorkflowSnapshotValidator
 import skillbill.workflow.engine.model.WorkflowDefinition
 import skillbill.workflow.engine.model.WorkflowUpdateInput
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
@@ -41,7 +40,11 @@ import kotlin.test.Test
 class WorkflowStateSchemaValidatesExistingWorkflowsTest {
 
   private val validator: WorkflowStateSchemaValidator = CanonicalWorkflowStateSchemaValidator()
-  private val engine: WorkflowEngine = WorkflowEngine(WorkflowSnapshotValidatorInfraAdapter())
+  private val engine: WorkflowEngine = WorkflowEngine(
+    object : WorkflowSnapshotValidator {
+      override fun validate(snapshot: Map<String, Any?>, slug: String) = validator.validate(snapshot, slug)
+    },
+  )
 
   @Test
   fun `every feature-task step snapshot from the engine validates clean`() {
@@ -88,7 +91,7 @@ class WorkflowStateSchemaValidatesExistingWorkflowsTest {
       // canonical snapshot envelope. Re-validate externally to pin the
       // schema 1:1 against engine output.
       val snapshotView = engine.snapshotView(definition, record)
-      val full = WorkflowWireProjections.snapshotMap(snapshotView)
+      val full = WorkflowEngine.snapshotMap(snapshotView)
       validator.validate(full, definition.workflowName)
       // summaryView: validates internally (calls validatedSnapshotMap
       // before stripping steps/artifacts). Invoking it without an
@@ -99,7 +102,7 @@ class WorkflowStateSchemaValidatesExistingWorkflowsTest {
       // extends the envelope with non-snapshot derivative fields. The
       // snapshot-shape subset must still satisfy the schema, so
       // re-validate that subset.
-      val resumed = WorkflowWireProjections.resumeMap(engine.resumeView(definition, record))
+      val resumed = WorkflowEngine.resumeMap(engine.resumeView(definition, record))
       validator.validate(resumed.filterKeys { it in SNAPSHOT_KEYS }, definition.workflowName)
     }
   }
@@ -148,7 +151,7 @@ class WorkflowStateSchemaValidatesExistingWorkflowsTest {
       } else {
         updated
       }
-      val payload = WorkflowWireProjections.snapshotMap(engine.snapshotView(definition, withFinishedAt))
+      val payload = WorkflowEngine.snapshotMap(engine.snapshotView(definition, withFinishedAt))
       validator.validate(payload, definition.workflowName)
     }
   }

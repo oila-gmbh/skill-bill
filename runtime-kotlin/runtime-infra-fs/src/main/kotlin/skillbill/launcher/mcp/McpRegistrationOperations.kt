@@ -6,7 +6,6 @@ import skillbill.install.model.McpMutationResult
 import skillbill.install.model.McpProfileOutcome
 import skillbill.install.support.codexConfigRoots
 import skillbill.nativeagent.support.claudeConfigRoots
-import skillbill.ports.repository.toFileLocation
 import java.nio.file.Path
 
 object McpRegistrationOperations {
@@ -131,7 +130,7 @@ object McpRegistrationOperations {
 
     return McpMutationResult(
       agent = agent,
-      configPath = representativePath.toFileLocation(),
+      configPath = representativePath,
       changed = outcomes.any { it.changed },
       profiles = outcomes,
     )

@@ -1,9 +1,8 @@
 package skillbill.launcher.mcp
 
-import skillbill.contracts.JsonCodec
+import skillbill.contracts.JsonSupport
 import skillbill.install.model.McpMutationResult
 import skillbill.launcher.process.atomicWriteString
-import skillbill.ports.repository.toFileLocation
 import java.nio.file.Files
 import java.nio.file.Path
 
@@ -18,12 +17,12 @@ internal object McpJsonConfig {
       "args" to emptyList<String>(),
     )
     settings["mcpServers"] = servers
-    val afterContent = JsonCodec.mapToJsonString(settings) + "\n"
+    val afterContent = JsonSupport.mapToJsonString(settings) + "\n"
     val changed = beforeContent != afterContent
     if (changed) {
       writeJson(path, settings)
     }
-    return McpMutationResult(agent, path.toFileLocation(), changed = changed)
+    return McpMutationResult(agent, path, changed = changed)
   }
 
   fun unregister(agent: String, path: Path): McpMutationResult {
@@ -38,7 +37,7 @@ internal object McpJsonConfig {
       }
       writeJson(path, settings)
     }
-    return McpMutationResult(agent, path.toFileLocation(), changed = changed)
+    return McpMutationResult(agent, path, changed = changed)
   }
 }
 
@@ -47,14 +46,14 @@ internal fun readJsonObject(path: Path): Map<String, Any?> {
   return if (raw.isBlank()) {
     linkedMapOf()
   } else {
-    JsonCodec.anyToStringAnyMap(JsonCodec.parseObjectOrNull(raw)?.let(JsonCodec::jsonElementToValue))
+    JsonSupport.anyToStringAnyMap(JsonSupport.parseObjectOrNull(raw)?.let(JsonSupport::jsonElementToValue))
       ?: throw IllegalArgumentException("Invalid JSON config at '$path'.")
   }
 }
 
 internal fun writeJson(path: Path, settings: Map<String, Any?>) {
-  atomicWriteString(path, JsonCodec.mapToJsonString(settings) + "\n")
+  atomicWriteString(path, JsonSupport.mapToJsonString(settings) + "\n")
 }
 
 internal fun mutableStringAnyMap(value: Any?): MutableMap<String, Any?> =
-  JsonCodec.anyToStringAnyMap(value)?.toMutableMap() ?: linkedMapOf()
+  JsonSupport.anyToStringAnyMap(value)?.toMutableMap() ?: linkedMapOf()

@@ -16,18 +16,19 @@ import skillbill.application.featuretask.validation.model.ValidationGateResoluti
 import skillbill.application.featuretask.validation.model.ValidationGateTriageResult
 import skillbill.application.featuretask.validation.model.requiresUnparseableGateTriage
 import skillbill.config.model.applyValidationGateGradleWrapper
-import skillbill.contracts.JsonCodec
+import skillbill.contracts.JsonSupport
 import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_CONTRACT_VERSION
 import skillbill.ports.config.RepoLocalConfigPort
 import skillbill.ports.config.model.ReadRepoLocalConfigRequest
 import skillbill.ports.diagnostics.RuntimeDiagnostics
 import skillbill.ports.validation.ValidationGateRunner
-import skillbill.workflow.taskruntime.model.ValidationGateCacheMode
+import skillbill.ports.validation.model.ValidationGateCacheMode
 import skillbill.ports.validation.model.ValidationGateFinding
 import skillbill.ports.validation.model.ValidationGateFindingParseMode
-import skillbill.workflow.taskruntime.model.ValidationGateRunOutcome
+import skillbill.ports.validation.model.ValidationGateRunOutcome
 import skillbill.ports.validation.model.ValidationGateRunRequest
 import skillbill.ports.validation.model.ValidationGateRunResult
+import skillbill.ports.validation.model.unparseableGateFailureMessage
 import skillbill.scaffold.model.ValidationGateDeclaration
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFailureDisposition
@@ -36,7 +37,6 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeValidationGateProg
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeValidationGateRepairWindowPhase
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeValidationGateRunRecord
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeVerdict
-import skillbill.workflow.taskruntime.unparseableGateFailureMessage
 
 private const val VALIDATE_PHASE_STATUS_COMPLETED = "completed"
 
@@ -279,8 +279,8 @@ class FeatureTaskRuntimeValidationGateCoordinator(
   ) {
     state.measurements += FeatureTaskRuntimeValidationGateRunRecord(
       durationMs = result.durationMs,
-      outcome = result.outcome,
-      cacheMode = result.cacheMode,
+      outcome = result.outcome.wireValue,
+      cacheMode = result.cacheMode.wireValue,
       executedWorkUnits = result.executedWorkUnits,
     )
     persistProgress(state = state, write = write)
@@ -342,7 +342,7 @@ class FeatureTaskRuntimeValidationGateCoordinator(
         "gate_run_count" to measurements.size,
         "gate_runs" to measurements.map { it.toArtifactMap() },
       )
-      val payload = JsonCodec.mapToJsonString(
+      val payload = JsonSupport.mapToJsonString(
         mapOf(
           "contract_version" to FEATURE_TASK_RUNTIME_CONTRACT_VERSION,
           "phase_id" to FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VALIDATE,

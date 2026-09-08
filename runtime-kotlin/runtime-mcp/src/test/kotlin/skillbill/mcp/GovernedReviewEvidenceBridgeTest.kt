@@ -1,6 +1,6 @@
 package skillbill.mcp
 
-import skillbill.contracts.JsonCodec
+import skillbill.contracts.JsonSupport
 import skillbill.mcp.review.GovernedReviewEvidenceBridge
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -11,14 +11,14 @@ class GovernedReviewEvidenceBridgeTest {
   fun `the bridge advertises exactly the two governed operations`() {
     val reply = requireNotNull(
       GovernedReviewEvidenceBridge.handleLine(
-        JsonCodec.mapToJsonString(linkedMapOf("jsonrpc" to "2.0", "id" to 1, "method" to "tools/list")),
+        JsonSupport.mapToJsonString(linkedMapOf("jsonrpc" to "2.0", "id" to 1, "method" to "tools/list")),
       ) { error("tools/list must not be forwarded") },
     )
 
-    val result = JsonCodec.anyToStringAnyMap(
-      JsonCodec.parseObjectOrNull(reply)?.get("result")?.let(JsonCodec::jsonElementToValue),
+    val result = JsonSupport.anyToStringAnyMap(
+      JsonSupport.parseObjectOrNull(reply)?.get("result")?.let(JsonSupport::jsonElementToValue),
     ).orEmpty()
-    val tools = requireNotNull(JsonCodec.anyToStringAnyMapList(result["tools"]))
+    val tools = requireNotNull(JsonSupport.anyToStringAnyMapList(result["tools"]))
     assertEquals(listOf("read_evidence", "request_expansion"), tools.map { it["name"] })
   }
 
@@ -27,7 +27,7 @@ class GovernedReviewEvidenceBridgeTest {
     var forwarded = false
     val reply = requireNotNull(
       GovernedReviewEvidenceBridge.handleLine(
-        JsonCodec.mapToJsonString(
+        JsonSupport.mapToJsonString(
           linkedMapOf(
             "jsonrpc" to "2.0",
             "id" to 2,

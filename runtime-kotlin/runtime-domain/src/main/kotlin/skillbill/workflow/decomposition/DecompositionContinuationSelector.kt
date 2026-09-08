@@ -6,20 +6,12 @@ import skillbill.workflow.decomposition.model.DecompositionDependency
 import skillbill.workflow.decomposition.model.DecompositionExecutionModel
 import skillbill.workflow.decomposition.model.DecompositionManifest
 import skillbill.workflow.decomposition.model.DecompositionSubtask
-import skillbill.workflow.model.DecompositionStatus
-import skillbill.workflow.model.decompositionStatus
 
 object DecompositionContinuationSelector {
   fun select(manifest: DecompositionManifest, requestedSubtaskId: Int? = null): DecompositionContinuationSelection {
-    val inProgress = manifest.subtasks.firstOrNull {
-      it.status.decompositionStatus() == DecompositionStatus.IN_PROGRESS
-    }
-    val firstPending = manifest.subtasks.firstOrNull {
-      it.status.decompositionStatus() == DecompositionStatus.PENDING && dependenciesComplete(manifest, it)
-    }
-    val blocked = manifest.subtasks.firstOrNull {
-      it.status.decompositionStatus() == DecompositionStatus.BLOCKED
-    }
+    val inProgress = manifest.subtasks.firstOrNull { it.status == "in_progress" }
+    val firstPending = manifest.subtasks.firstOrNull { it.status == "pending" && dependenciesComplete(manifest, it) }
+    val blocked = manifest.subtasks.firstOrNull { it.status == "blocked" }
     val unconstrained = when {
       // Orphaned handoff: marked started but no durable workflow opened. Re-open fresh
       // rather than resuming a workflow that does not exist, which would block the goal.
@@ -65,7 +57,7 @@ object DecompositionContinuationSelector {
         subtask = manifest.subtasks.first(),
         reason = "Requested subtask $requestedSubtaskId is not declared in ${manifest.issueKey}.",
       )
-      requested.status.decompositionStatus() in setOf(DecompositionStatus.COMPLETE, DecompositionStatus.SKIPPED) ->
+      requested.status in setOf("complete", "skipped") ->
         DecompositionContinuationSelection.TerminalSubtask(requested)
       unconstrained is DecompositionContinuationSelection.Done -> unconstrained
       selectedSubtask?.id == requestedSubtaskId -> unconstrained
@@ -80,8 +72,8 @@ object DecompositionContinuationSelector {
     val subtasksById = manifest.subtasks.associateBy(DecompositionSubtask::id)
     return subtask.dependencies.all { dependency ->
       val dependencySubtask = subtasksById[dependency.subtaskId] ?: return@all false
-      dependencySubtask.status.decompositionStatus() == DecompositionStatus.COMPLETE ||
-        dependencySubtask.status.decompositionStatus() == DecompositionStatus.SKIPPED ||
+      dependencySubtask.status == "complete" ||
+        dependencySubtask.status == "skipped" ||
         dependency.isExplicitlySkipped()
     }
   }

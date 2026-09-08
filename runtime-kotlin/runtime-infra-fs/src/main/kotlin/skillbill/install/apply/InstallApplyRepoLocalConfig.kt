@@ -4,7 +4,6 @@ import skillbill.config.model.RepoLocalConfigKey
 import skillbill.install.model.InstallApplyIssue
 import skillbill.install.model.InstallApplyIssueKind
 import skillbill.install.model.InstallPlan
-import skillbill.model.toPath
 import java.nio.file.Files
 import java.nio.file.Path
 
@@ -18,7 +17,7 @@ import java.nio.file.Path
  * failures (mirroring orchestration-link outcome handling).
  */
 internal fun applyRepoLocalConfigScaffold(plan: InstallPlan, warnings: MutableList<InstallApplyIssue>) {
-  val repoRoot = plan.request.repoRoot.toPath().toAbsolutePath().normalize()
+  val repoRoot = plan.request.repoRoot.toAbsolutePath().normalize()
   scaffoldStep(InstallApplyIssueKind.REPO_LOCAL_CONFIG_SCAFFOLD_FAILED, warnings) {
     writeDefaultConfigIfAbsent(repoRoot)
   }

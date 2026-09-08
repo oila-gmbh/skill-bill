@@ -1,6 +1,6 @@
 package skillbill.agentaddon.model
 
-import skillbill.model.FileLocation
+import java.nio.file.Path
 
 enum class AgentAddonConsumer(val id: String) {
   BILL_FEATURE("bill-feature"),
@@ -14,26 +14,16 @@ enum class AgentAddonConsumer(val id: String) {
   }
 }
 
-enum class AgentAddonValidationStatus(val wireValue: String) {
-  VALID("valid"),
-  INVALID("invalid"),
-  ;
-
-  companion object {
-    fun fromWire(value: String): AgentAddonValidationStatus? = entries.firstOrNull { it.wireValue == value }
-  }
-}
-
 data class AgentAddonDeclaration(
   val contractVersion: String,
   val slug: String,
   val description: String,
   val agents: List<String>,
   val consumers: List<AgentAddonConsumer>,
-  val addonRoot: FileLocation,
-  val manifestPath: FileLocation,
-  val contentPath: FileLocation,
-  val canonicalSourceIdentity: FileLocation,
+  val addonRoot: Path,
+  val manifestPath: Path,
+  val contentPath: Path,
+  val canonicalSourceIdentity: Path,
 )
 
 data class AgentAddonCatalogueEntry(
@@ -42,18 +32,18 @@ data class AgentAddonCatalogueEntry(
   val description: String,
   val agentIds: List<String>,
   val consumers: List<String>,
-  val manifestPath: FileLocation,
-  val contentPath: FileLocation,
-  val validationStatus: AgentAddonValidationStatus = AgentAddonValidationStatus.VALID,
+  val manifestPath: Path,
+  val contentPath: Path,
+  val validationStatus: String = "valid",
   val diagnostics: List<String> = emptyList(),
 )
 
 data class InvalidAgentAddonCatalogueEntry(
   val identity: String,
   val slug: String,
-  val manifestPath: FileLocation,
-  val contentPath: FileLocation,
-  val validationStatus: AgentAddonValidationStatus = AgentAddonValidationStatus.INVALID,
+  val manifestPath: Path,
+  val contentPath: Path,
+  val validationStatus: String = "invalid",
   val diagnostics: List<String>,
 )
 

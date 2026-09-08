@@ -10,7 +10,7 @@ import skillbill.config.model.ValidationGateRepoConfig
 import skillbill.config.model.ValidationGateRepoConfigParse
 import skillbill.config.model.parseSpecType
 import skillbill.config.model.parseValidationGateRepoConfig
-import skillbill.contracts.JsonCodec
+import skillbill.contracts.JsonSupport
 import skillbill.error.MalformedRepoLocalConfigError
 import skillbill.error.UnreadableRepoLocalConfigError
 import skillbill.ports.config.RepoLocalConfigPort
@@ -141,7 +141,7 @@ class FileSystemRepoLocalConfig(
   private fun parseConfigMap(path: Path, payload: String): Map<String, Any?> {
     if (payload.isBlank()) return emptyMap()
     return try {
-      JsonCodec.anyToStringAnyMap(yamlMapper.readValue(payload, Any::class.java)) ?: emptyMap()
+      JsonSupport.anyToStringAnyMap(yamlMapper.readValue(payload, Any::class.java)) ?: emptyMap()
     } catch (error: JacksonException) {
       throw MalformedRepoLocalConfigError(
         path = path.toString(),

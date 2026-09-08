@@ -1,8 +1,6 @@
 package skillbill.workflow.decomposition.model
 
 import skillbill.contracts.workflow.DECOMPOSITION_MANIFEST_CONTRACT_VERSION
-import skillbill.workflow.model.DecompositionStatus
-import skillbill.workflow.model.decompositionStatus
 
 enum class DecompositionExecutionModel(val wireValue: String) {
   SAME_BRANCH_COMMIT_PER_SUBTASK("same_branch_commit_per_subtask"),
@@ -39,7 +37,7 @@ data class DecompositionSubtask(
   val participatingAgentIds: List<String> = emptyList(),
   val dependencies: List<DecompositionDependency> = emptyList(),
 ) {
-  fun hasStarted(): Boolean = status.decompositionStatus() != DecompositionStatus.PENDING ||
+  fun hasStarted(): Boolean = status != "pending" ||
     branch != null ||
     commitSha != null ||
     workflowId != null ||

@@ -1,9 +1,9 @@
 package skillbill.application.decomposition
 
+import skillbill.application.decomposition.model.LoadedDecompositionManifest
+import skillbill.application.decomposition.model.ValidatedDecompositionManifestYaml
 import skillbill.error.InvalidDecompositionManifestSchemaError
 import skillbill.ports.workflow.decomposition.DecompositionManifestStore
-import skillbill.ports.workflow.decomposition.runtime.model.LoadedDecompositionManifest
-import skillbill.ports.workflow.decomposition.runtime.model.ValidatedDecompositionManifestYaml
 import skillbill.workflow.decomposition.DecompositionManifestCodec
 import skillbill.workflow.decomposition.DecompositionManifestValidator
 import skillbill.workflow.decomposition.model.DecompositionManifest

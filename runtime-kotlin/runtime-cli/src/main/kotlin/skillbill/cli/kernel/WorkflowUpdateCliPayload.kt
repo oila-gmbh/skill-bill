@@ -1,7 +1,7 @@
 package skillbill.cli.kernel
 
-import skillbill.application.workflow.WorkflowWireProjections
 import skillbill.application.workflow.model.WorkflowUpdateResult
+import skillbill.workflow.engine.WorkflowEngine
 
 /**
  * Wire shape for every workflow-mutating CLI command, whichever command area owns it. The key order
@@ -9,8 +9,8 @@ import skillbill.application.workflow.model.WorkflowUpdateResult
  * `runtime-cli/src/test/resources/golden/cli-verify-workflow-show.json` locks it.
  */
 internal fun WorkflowUpdateResult.toPayload(): Map<String, Any?> = when (this) {
-  is WorkflowUpdateResult.Ok -> LinkedHashMap(WorkflowWireProjections.updateAcknowledgementMap(acknowledgement)).apply {
-    launchProjection?.let { put("launch_projection", WorkflowWireProjections.inputProjectionMap(it)) }
+  is WorkflowUpdateResult.Ok -> LinkedHashMap(WorkflowEngine.updateAcknowledgementMap(acknowledgement)).apply {
+    launchProjection?.let { put("launch_projection", WorkflowEngine.inputProjectionMap(it)) }
     val quotedDbPath = "'${dbPath.replace("'", "'\"'\"'")}'"
     val quotedWorkflowId = "'${acknowledgement.workflowId.replace("'", "'\"'\"'")}'"
     put(

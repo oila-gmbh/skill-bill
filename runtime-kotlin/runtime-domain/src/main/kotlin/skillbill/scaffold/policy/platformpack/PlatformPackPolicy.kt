@@ -1,7 +1,7 @@
 package skillbill.scaffold.policy.platformpack
 
-import skillbill.model.FileLocation
 import skillbill.scaffold.policy.scaffold.sharedContractNote
+import java.nio.file.Path
 
 /**
  * SKILL-52.1 subtask 2: pure-policy half of platform-pack scaffolding.
@@ -9,9 +9,8 @@ import skillbill.scaffold.policy.scaffold.sharedContractNote
  * Derives routing-signal + display-name defaults, composes the human-readable notes that ship
  * with a scaffold result, and produces the deterministic install-path list.
  *
- * Uses the domain `FileLocation` value type only for path arithmetic (`resolve`) — there is no IO.
- * `PlatformPackSelection` and `PlatformPackDefaults` live in `skillbill.scaffold.policy.scaffold.model`
- * per the domain `model` rule.
+ * Uses `java.nio.file.Path` only for path arithmetic (`resolve`) — there is no IO. `PlatformPackSelection`
+ * and `PlatformPackDefaults` live in `skillbill.scaffold.policy.scaffold.model` per the domain `model` rule.
  */
 
 // SKILL-52.2 subtask 2 (Task 11): `resolvePlatformPackSelection(payload)` was retired from this
@@ -50,12 +49,12 @@ fun platformPackNotes(platform: String, presetUsed: Boolean, selectedAreas: List
  * shell first, then quality-check shell, then each selected specialist area.
  */
 fun buildPlatformPackInstallPaths(
-  packRoot: FileLocation,
+  packRoot: Path,
   baselineName: String,
   qualityCheckName: String,
-  specialistPaths: Map<String, FileLocation>,
+  specialistPaths: Map<String, Path>,
   selectedAreas: List<String>,
-): List<FileLocation> = buildList {
+): List<Path> = buildList {
   add(packRoot.resolve("code-review").resolve(baselineName))
   add(packRoot.resolve("quality-check").resolve(qualityCheckName))
   selectedAreas.forEach { area ->

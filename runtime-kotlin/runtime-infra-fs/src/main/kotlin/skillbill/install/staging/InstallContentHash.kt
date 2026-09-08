@@ -1,7 +1,6 @@
 package skillbill.install.staging
 
 import skillbill.agentaddon.AgentAddonPointer
-import skillbill.model.toPath
 import skillbill.scaffold.model.PlatformManifest
 import skillbill.scaffold.model.PointerSpec
 import java.io.File
@@ -66,7 +65,7 @@ private fun updatePointerHash(digest: MessageDigest, newline: ByteArray, inputs:
       val line = "${spec.skillRelativeDir}|${spec.name}|${spec.target}"
       digest.update(line.toByteArray(StandardCharsets.UTF_8))
       digest.update(newline)
-      val repoRoot = manifest.packRoot.toPath().toAbsolutePath().normalize().parent?.parent
+      val repoRoot = manifest.packRoot.toAbsolutePath().normalize().parent?.parent
         ?: error("Platform pack '${manifest.slug}' root '${manifest.packRoot}' has no repo root parent.")
       val targetFile = repoRoot.resolve(spec.target).normalize()
       require(targetFile.startsWith(repoRoot)) {

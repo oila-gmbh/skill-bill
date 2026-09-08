@@ -93,7 +93,6 @@ internal data class HandoffProjectionValidatorInputsFixture(
     validationDepth = validationDepth,
     qualityGateSelection = qualityGateSelection,
     priorGapMemory = priorGapMemory,
-    planningProjectionValidator = NoopFeatureTaskRuntimePlanningProjectionValidator,
   )
 }
 

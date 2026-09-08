@@ -4,8 +4,8 @@ import skillbill.application.review.model.FeatureTaskRuntimeStatsResult
 import skillbill.application.review.model.FeatureVerifyStatsResult
 import skillbill.application.review.model.GoalStatsResult
 import skillbill.application.review.model.ReviewStatsResult
+import skillbill.application.workflow.toPayload
 import skillbill.contracts.JsonPayloadContract
-import skillbill.ports.workflow.model.toPayload
 
 fun ReviewStatsResult.toReviewStatsPayload(): JsonPayloadContract = MapPayloadContract(
   LinkedHashMap(stats.toPayload()).apply {

@@ -1,7 +1,6 @@
 package skillbill.scaffold
 
 import org.junit.jupiter.api.Assumptions
-import skillbill.model.toPath
 import skillbill.scaffold.platformpack.discoverPlatformPackManifests
 import skillbill.scaffold.pointer.renderPointer
 import java.nio.file.Files
@@ -30,13 +29,10 @@ class PointerRoundTripTest {
     packs.forEach { pack ->
       pack.pointers.forEach { spec ->
         val pointerFile = pack.packRoot.resolve(spec.skillRelativeDir).resolve(spec.name)
-        val rendered = renderPointer(repoRoot, pack.packRoot.toPath(), spec)
+        val rendered = renderPointer(repoRoot, pack.packRoot, spec)
         assertTrue(rendered.isNotBlank(), "Pointer render was blank at $pointerFile")
-        assertTrue(
-          !Files.exists(pointerFile.toPath()),
-          "Declared pointer should not be committed on disk: $pointerFile",
-        )
-        checked.add(pointerFile.toPath())
+        assertTrue(!Files.exists(pointerFile), "Declared pointer should not be committed on disk: $pointerFile")
+        checked.add(pointerFile)
       }
     }
     assertTrue(checked.isNotEmpty(), "Expected to round-trip at least one declared pointer")

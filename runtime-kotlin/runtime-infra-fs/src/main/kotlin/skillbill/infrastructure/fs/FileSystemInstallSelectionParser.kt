@@ -1,18 +1,17 @@
 package skillbill.infrastructure.fs
 
-import skillbill.contracts.JsonCodec
+import skillbill.contracts.JsonSupport
 import skillbill.install.model.InstallAgent
 import skillbill.install.model.InstallTelemetryLevel
 import skillbill.install.model.McpRegistrationChoice
 import skillbill.install.model.PlatformPackSelection
 import skillbill.install.model.PlatformPackSelectionMode
 import skillbill.install.model.SharedInstallSelection
-import skillbill.ports.repository.toFileLocation
 import java.nio.file.Path
 
 internal fun parseInstallSelectionPayload(path: Path, rawPayload: String): SharedInstallSelection {
-  val payload = JsonCodec.anyToStringAnyMap(
-    JsonCodec.parseObjectOrNull(rawPayload)?.let(JsonCodec::jsonElementToValue),
+  val payload = JsonSupport.anyToStringAnyMap(
+    JsonSupport.parseObjectOrNull(rawPayload)?.let(JsonSupport::jsonElementToValue),
   ) ?: throw malformedInstallSelection(path, "Root value must be a JSON object.")
   return runCatching { payload.toInstallSelection(path) }
     .getOrElse { error -> throw error.toMalformedInstallSelection(path) }
@@ -71,7 +70,7 @@ private fun Map<String, Any?>.toMcpRegistrationChoice(path: Path): McpRegistrati
   }
   return McpRegistrationChoice(
     register = requireBoolean(path, "register"),
-    runtimeMcpBin = runtimeMcpBin?.toFileLocation(),
+    runtimeMcpBin = runtimeMcpBin,
   )
 }
 

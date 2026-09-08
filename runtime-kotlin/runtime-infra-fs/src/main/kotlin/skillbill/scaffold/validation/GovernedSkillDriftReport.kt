@@ -1,7 +1,6 @@
 package skillbill.scaffold.validation
 
 import skillbill.error.ShellContentContractException
-import skillbill.model.toPath
 import skillbill.scaffold.authoring.AuthoringRenderResult
 import skillbill.scaffold.authoring.AuthoringTarget
 import skillbill.scaffold.authoring.discoverTargets
@@ -106,13 +105,10 @@ private fun validatePointerRenderability(root: Path, issues: MutableList<String>
           return@forEach
         }
         pack.pointers.forEach { spec ->
-          runCatching { renderPointer(root, pack.packRoot.toPath(), spec) }
+          runCatching { renderPointer(root, pack.packRoot, spec) }
             .onFailure { error ->
               val pointerFile = pack.packRoot.resolve(spec.skillRelativeDir).resolve(spec.name)
-              issues += "${driftDisplayPath(
-                root,
-                pointerFile.toPath(),
-              )}: cannot resolve platform.yaml pointer target " +
+              issues += "${driftDisplayPath(root, pointerFile)}: cannot resolve platform.yaml pointer target " +
                 "'${spec.target}': ${error.message.orEmpty()}"
             }
         }

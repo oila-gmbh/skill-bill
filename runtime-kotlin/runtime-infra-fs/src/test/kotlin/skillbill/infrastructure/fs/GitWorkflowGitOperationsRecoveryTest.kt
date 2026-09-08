@@ -5,7 +5,6 @@ import skillbill.ports.workflow.gitops.captureGoalSubtaskReviewBaseline
 import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewBaseline
 import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewBaselineRecoveryRequest
 import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewInputFailureReason
-import skillbill.ports.workflow.gitops.model.WorkflowGitOperationStatus
 import skillbill.ports.workflow.gitops.recoverGoalSubtaskReviewBaseline
 import java.nio.file.Files
 import kotlin.test.Test
@@ -31,7 +30,7 @@ class GitWorkflowGitOperationsRecoveryTest {
       git(repoRoot, "branch", "--show-current"),
     )
 
-    assertTrue(result.status == WorkflowGitOperationStatus.OK, result.error)
+    assertTrue(result.ok, result.error)
     assertEquals(git(repoRoot, "rev-parse", "HEAD"), requireNotNull(result.baseline).reviewBaseSha)
   }
 
@@ -54,7 +53,7 @@ class GitWorkflowGitOperationsRecoveryTest {
     )
     val input = GitWorkflowGitOperations().buildGoalSubtaskReviewInput(repoRoot, baseline, branch)
 
-    assertTrue(input.status == WorkflowGitOperationStatus.OK, input.error)
+    assertTrue(input.ok, input.error)
     assertTrue(requireNotNull(input.input).trackedDelta.startsWith("scope-fingerprint:"))
   }
 
@@ -84,7 +83,7 @@ class GitWorkflowGitOperationsRecoveryTest {
       branch,
     )
 
-    assertTrue(input.status == WorkflowGitOperationStatus.OK, input.error)
+    assertTrue(input.ok, input.error)
     val reviewText = requireNotNull(input.input).reviewText
     assertTrue(reviewText.startsWith("scope-fingerprint:"), reviewText)
     assertFalse("current subtask marker" in reviewText)
@@ -107,7 +106,7 @@ class GitWorkflowGitOperationsRecoveryTest {
       "main",
     )
 
-    assertTrue(result.status != WorkflowGitOperationStatus.OK, result.error)
+    assertFalse(result.ok)
     assertContains(result.error, "Persisted review base")
     assertFalse("origin/main" in result.error)
   }
@@ -155,10 +154,10 @@ class GitWorkflowGitOperationsRecoveryTest {
       "feat/demo",
     )
 
-    assertTrue(unsafe.status != WorkflowGitOperationStatus.OK, unsafe.error)
+    assertFalse(unsafe.ok)
     assertEquals(GoalSubtaskReviewInputFailureReason.BASE_NOT_ANCESTOR, unsafe.failureReason)
-    assertTrue(recovered.status == WorkflowGitOperationStatus.OK, recovered.error)
-    assertTrue(input.status == WorkflowGitOperationStatus.OK, input.error)
+    assertTrue(recovered.ok, recovered.error)
+    assertTrue(input.ok, input.error)
     assertTrue(requireNotNull(input.input).reviewText.startsWith("scope-fingerprint:"))
   }
 
@@ -179,7 +178,7 @@ class GitWorkflowGitOperationsRecoveryTest {
 
     val result = GitWorkflowGitOperations().buildGoalSubtaskReviewInput(repoRoot, baseline, "feat/child-one")
 
-    assertTrue(result.status != WorkflowGitOperationStatus.OK, result.error)
+    assertFalse(result.ok)
     assertContains(result.error, "durable child branch 'feat/child-one'")
   }
 
@@ -226,9 +225,9 @@ class GitWorkflowGitOperationsRecoveryTest {
       "feat/skill-15",
     )
 
-    assertTrue(unsafe.status != WorkflowGitOperationStatus.OK, unsafe.error)
+    assertFalse(unsafe.ok)
     assertEquals(GoalSubtaskReviewInputFailureReason.BASE_NOT_ANCESTOR, unsafe.failureReason)
-    assertTrue(recovered.status == WorkflowGitOperationStatus.OK, recovered.error)
+    assertTrue(recovered.ok, recovered.error)
     assertEquals(parent, requireNotNull(recovered.baseline).reviewBaseSha)
     assertTrue(
       recovered.baseline!!.reviewBaseSha != branchBase,
@@ -269,7 +268,7 @@ class GitWorkflowGitOperationsRecoveryTest {
       "feat/orphan-goal",
     )
 
-    assertTrue(recovered.status != WorkflowGitOperationStatus.OK, recovered.error)
+    assertFalse(recovered.ok)
     assertContains(recovered.error, unreachable)
     assertContains(recovered.error, "feat/orphan-goal")
   }
@@ -303,7 +302,7 @@ class GitWorkflowGitOperationsRecoveryTest {
       "feat/missing-base",
     )
 
-    assertTrue(recovered.status == WorkflowGitOperationStatus.OK, recovered.error)
+    assertTrue(recovered.ok, recovered.error)
     assertEquals(branchBase, requireNotNull(recovered.baseline).reviewBaseSha)
   }
 }

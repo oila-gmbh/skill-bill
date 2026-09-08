@@ -2,7 +2,7 @@ package skillbill.mcp
 
 import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.dataformat.yaml.YAMLMapper
-import skillbill.contracts.JsonCodec
+import skillbill.contracts.JsonSupport
 import skillbill.db.core.DatabaseRuntime
 import skillbill.db.telemetry.LifecycleTelemetryStore
 import skillbill.error.InvalidTelemetryEventSchemaError
@@ -13,7 +13,7 @@ import skillbill.infrastructure.sqlite.review.ReviewStatsRuntime
 import skillbill.mcp.telemetry.TELEMETRY_EVENT_CONTRACT_VERSION
 import skillbill.mcp.telemetry.TelemetryEventSchemaPaths
 import skillbill.mcp.telemetry.TelemetryEventSchemaValidator
-import skillbill.ports.review.toReviewFinishedTelemetryPayload
+import skillbill.ports.telemetry.model.toReviewFinishedTelemetryPayload
 import skillbill.review.ReviewParser
 import skillbill.review.normalizeTelemetrySlug
 import skillbill.telemetry.model.FeatureTaskRuntimeFinishedRecord
@@ -435,7 +435,7 @@ class TelemetryReliabilityContractTest {
           resultSet.getString("payload_json")
         }
       }
-      val parsed = requireNotNull(JsonCodec.parseObjectOrNull(payloadJson))
+      val parsed = requireNotNull(JsonSupport.parseObjectOrNull(payloadJson))
       linkedMapOf<String, Any?>().apply {
         val contractEventName = if (eventName == "skillbill_review_finished") {
           eventName
@@ -444,7 +444,7 @@ class TelemetryReliabilityContractTest {
         }
         put("event_name", contractEventName)
         put("contract_version", TELEMETRY_EVENT_CONTRACT_VERSION)
-        putAll(requireNotNull(JsonCodec.anyToStringAnyMap(JsonCodec.jsonElementToValue(parsed))))
+        putAll(requireNotNull(JsonSupport.anyToStringAnyMap(JsonSupport.jsonElementToValue(parsed))))
       }
     }
   }

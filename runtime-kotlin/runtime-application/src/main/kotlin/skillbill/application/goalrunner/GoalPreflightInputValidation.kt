@@ -2,8 +2,8 @@ package skillbill.application.goalrunner
 
 import skillbill.error.InvalidDecompositionManifestSchemaError
 import skillbill.error.InvalidFeatureTaskExecutionIdentitySchemaError
+import skillbill.ports.continuation.FeatureTaskExecutionIdentityPolicy
 import skillbill.ports.repository.RepositoryEnclosingRootPort
-import skillbill.ports.workflow.FeatureTaskExecutionIdentityPolicy
 import java.nio.file.Path
 
 object GoalPreflightInputValidation {

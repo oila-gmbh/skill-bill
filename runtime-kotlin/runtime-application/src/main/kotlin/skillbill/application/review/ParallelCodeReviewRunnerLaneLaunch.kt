@@ -1,6 +1,5 @@
 package skillbill.application.review
 
-import skillbill.application.idestatus.AgentActivityStampWriter
 import skillbill.application.review.model.ParallelCodeReviewRequest
 import skillbill.application.review.model.ReviewSpecialistLaunchRequest
 import skillbill.application.review.model.ReviewWorkerKind
@@ -8,22 +7,16 @@ import skillbill.ports.agentrun.model.AgentRunLaunchFacts
 import skillbill.ports.agentrun.model.ConversationIsolation
 import skillbill.ports.agentrun.model.SkillRunRequest
 import skillbill.ports.agentrun.model.UnsupportedAgentRunLaunch
-import skillbill.ports.goalrunner.runner.GoalRunnerSubtaskLauncher
 import skillbill.ports.goalrunner.runner.model.GoalRunnerSubtaskLaunchRequest
 import skillbill.ports.review.BrokerBackedNativeReviewOperationProtocol
-import skillbill.ports.review.GovernedReviewEvidenceEndpointBinder
 import skillbill.ports.review.ReviewEvidenceBroker
-import skillbill.ports.review.ReviewEvidenceBrokerFactory
-import skillbill.ports.review.ReviewLaunchAgentStagingPort
 import skillbill.ports.review.model.ParallelReviewLaneOutcome
 import skillbill.ports.review.model.ParallelReviewLaneRunResult
 import skillbill.ports.review.model.ReviewEvidenceBrokerBinding
 import skillbill.ports.review.model.ReviewLaneAccounting
 import skillbill.ports.review.model.ReviewLaunchAgentStagingRequest
-import skillbill.ports.taskruntime.FeatureTaskRuntimeSharedEvidenceLocatorReadPort
 import skillbill.review.context.model.ResolvedReviewExecutionMode
 import skillbill.review.context.model.ReviewBudgetEvaluator
-import skillbill.review.context.model.ReviewAccountingTerminalOutcome
 import skillbill.review.context.model.ReviewContextBudgetExceededException
 import skillbill.review.context.model.ReviewContextBudgetPolicy
 import skillbill.review.context.model.ReviewContextPacket
@@ -37,14 +30,15 @@ import java.nio.file.Path
 import kotlin.coroutines.cancellation.CancellationException
 
 internal class ParallelCodeReviewRunnerLaneLaunch(
-  private val parentReviewLauncher: GoalRunnerSubtaskLauncher,
-  private val reviewEvidenceBrokerFactory: ReviewEvidenceBrokerFactory,
-  private val governedEvidenceEndpointBinder: GovernedReviewEvidenceEndpointBinder,
-  private val reviewLaunchAgentStaging: ReviewLaunchAgentStagingPort,
-  val sharedEvidenceLocatorReader: FeatureTaskRuntimeSharedEvidenceLocatorReadPort,
-  private val failureAdmission: ParallelCodeReviewRunnerFailureAdmission,
-  private val activityStampWriter: AgentActivityStampWriter,
+  deps: ParallelCodeReviewRunnerLaneLaunchDeps,
 ) {
+  private val parentReviewLauncher = deps.parentReviewLauncher
+  private val reviewEvidenceBrokerFactory = deps.reviewEvidenceBrokerFactory
+  private val governedEvidenceEndpointBinder = deps.governedEvidenceEndpointBinder
+  private val reviewLaunchAgentStaging = deps.reviewLaunchAgentStaging
+  val sharedEvidenceLocatorReader = deps.sharedEvidenceLocatorReader
+  private val failureHelpers = deps.failureHelpers
+  private val activityStampWriter = deps.activityStampWriter
 
   internal fun runLanes(initial: ParallelCodeReviewInitialRun): ParallelReviewLaneRunResult {
     val request = initial.request
@@ -186,7 +180,7 @@ internal class ParallelCodeReviewRunnerLaneLaunch(
       success = false,
       rawOutput = "",
       failureReason = "governed evidence broker ${unbound.fault.wireValue} failed",
-      accounting = inlineParentAccounting(launch, ReviewAccountingTerminalOutcome.FAILED, null, null),
+      accounting = inlineParentAccounting(launch, "unbound_broker", null, null),
       reviewDisposition = bundleState.disposition,
       bundleCompositionDigest = bundleState.bundleCompositionDigest,
       segmentAccounting = bundleState.segments,
@@ -229,11 +223,11 @@ internal class ParallelCodeReviewRunnerLaneLaunch(
       outcome.stdout.toByteArray().size.toLong(),
     )
     val launchReason = budgetOutcome?.let { ReviewContextBudgetExceededException(it).message }
-      ?: failureAdmission.laneFailureReason(outcome)
+      ?: failureHelpers.laneFailureReason(outcome)
     val evidenceAccounting = evidenceBroker.accounting()
     val completion = parallelCodeReviewBrokerEvidenceCompletionState(bundleState, evidenceAccounting)
     val softAdmission = if (launchReason == null) {
-      failureAdmission.softAdmitFindings(outcome.stdout, launch)
+      failureHelpers.softAdmitFindings(outcome.stdout, launch)
     } else {
       ParallelCodeReviewSoftRegisterAdmission(emptyList(), null, 0)
     }
@@ -272,7 +266,7 @@ private inline fun <T> Result<T>.getOrElseRethrowingCancellation(onFailure: () -
 
 private fun inlineParentAccounting(
   launch: ParallelCodeReviewInlineParentLaunch,
-  terminalStatus: ReviewAccountingTerminalOutcome,
+  terminalStatus: String,
   outcome: AgentRunLaunchFacts?,
   brokerAccounting: ReviewLaneAccounting?,
   completionState: ReviewLaneCompletionState = launch.bundleState,

@@ -3,7 +3,6 @@ package skillbill.scaffold.authoring
 import skillbill.ports.scaffold.model.ScaffoldBaselineLayer
 import skillbill.ports.scaffold.model.ScaffoldReviewComposition
 import skillbill.ports.scaffold.model.ScaffoldSkillStatus
-import skillbill.ports.scaffold.model.ScaffoldCompletionStatus
 import skillbill.scaffold.model.CodeReviewBaselineLayer
 import java.nio.file.Files
 import java.nio.file.Path
@@ -72,11 +71,11 @@ private fun baselineLayer(layer: CodeReviewBaselineLayer): ScaffoldBaselineLayer
 internal fun recommendedCommands(
   repoRoot: Path,
   target: AuthoringTarget,
-  completionStatus: ScaffoldCompletionStatus,
+  completionStatus: String,
   issues: List<String>,
 ): List<String> {
   val commands = mutableListOf("skill-bill show ${target.skillName} --repo-root $repoRoot")
-  if (completionStatus != ScaffoldCompletionStatus.COMPLETE) {
+  if (completionStatus != "complete") {
     commands += "skill-bill fill ${target.skillName} --repo-root $repoRoot --body-file <file>"
   }
   if (issues.isNotEmpty()) {

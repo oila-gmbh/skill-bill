@@ -5,7 +5,6 @@ import skillbill.workflow.decomposition.model.DecompositionExecutionModel
 import skillbill.workflow.decomposition.model.DecompositionStackBranch
 import skillbill.workflow.decomposition.model.DecompositionSubtask
 import skillbill.workflow.decomposition.model.SpecSource
-import skillbill.workflow.decomposition.runtime.invalidManifest
 import java.nio.file.Path
 
 fun parseSubtasks(

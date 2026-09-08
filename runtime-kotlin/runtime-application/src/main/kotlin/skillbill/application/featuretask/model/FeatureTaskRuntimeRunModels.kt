@@ -5,7 +5,6 @@ import skillbill.agentaddon.model.HydratedAgentAddonSelection
 import skillbill.application.decomposition.decompositionManifestPath
 import skillbill.application.decomposition.parentSpecPath
 import skillbill.config.model.CompactionSettings
-import skillbill.goalrunner.model.GoalRunnerTerminalStatus
 import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewBaseline
 import skillbill.review.context.model.CodeReviewExecutionMode
 import skillbill.workflow.goal.model.GoalSubtaskOperatorDecision
@@ -183,7 +182,7 @@ sealed interface FeatureTaskRuntimeRunReport {
 data class FeatureTaskRuntimeSubtaskOutcome(
   val issueKey: String,
   val subtaskId: Int,
-  val status: GoalRunnerTerminalStatus,
+  val status: String,
   val commitSha: String?,
   val workflowId: String,
   val blockedReason: String?,
@@ -194,7 +193,7 @@ data class FeatureTaskRuntimeSubtaskOutcome(
   init {
     require(issueKey.isNotBlank()) { "issueKey is required." }
     require(subtaskId > 0) { "subtaskId must be positive." }
-    require(status.wireValue.isNotBlank()) { "status is required." }
+    require(status.isNotBlank()) { "status is required." }
     require(workflowId.isNotBlank()) { "workflowId is required." }
     require(lastResumableStep.isNotBlank()) { "lastResumableStep is required." }
   }

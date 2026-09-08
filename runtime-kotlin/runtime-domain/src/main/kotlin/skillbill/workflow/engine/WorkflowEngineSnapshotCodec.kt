@@ -1,14 +1,16 @@
 package skillbill.workflow.engine
 
-import skillbill.contracts.JsonCodec
+import kotlinx.serialization.json.JsonElement
+import skillbill.contracts.JsonSupport
 import skillbill.error.InvalidWorkflowStateSchemaError
 import skillbill.workflow.engine.model.WorkflowDefinition
 import skillbill.workflow.engine.model.WorkflowSnapshotView
-import skillbill.workflow.engine.model.WorkflowStateSnapshot
 import skillbill.workflow.engine.model.WorkflowStepState
 
-internal fun snapshotViewFrom(record: WorkflowStateSnapshot): WorkflowSnapshotView {
-  val steps = decodeSteps(record.stepsJson).map { stepMap ->
+internal fun snapshotViewFromMap(map: Map<String, Any?>): WorkflowSnapshotView {
+  val rawSteps = requiredStringAnyMapList(map["steps"], "steps")
+  val artifacts = requiredStringAnyMap(map["artifacts"], "artifacts")
+  val steps = rawSteps.map { stepMap ->
     WorkflowStepState(
       stepId = stepMap["step_id"] as String,
       status = stepMap["status"] as String,
@@ -19,20 +21,26 @@ internal fun snapshotViewFrom(record: WorkflowStateSnapshot): WorkflowSnapshotVi
     )
   }
   return WorkflowSnapshotView(
-    workflowId = record.workflowId,
-    sessionId = record.sessionId.orEmpty(),
-    workflowName = record.workflowName,
-    mode = record.mode,
-    contractVersion = record.contractVersion,
-    workflowStatus = record.workflowStatus,
-    currentStepId = record.currentStepId.orEmpty(),
+    workflowId = map["workflow_id"] as String,
+    sessionId = map["session_id"] as String,
+    workflowName = map["workflow_name"] as String,
+    mode = map["mode"] as? String,
+    contractVersion = map["contract_version"] as String,
+    workflowStatus = map["workflow_status"] as String,
+    currentStepId = map["current_step_id"] as String,
     steps = steps,
-    artifacts = decodeObject(record.artifactsJson),
-    startedAt = record.startedAt.orEmpty(),
-    updatedAt = record.updatedAt.orEmpty(),
-    finishedAt = record.finishedAt.orEmpty(),
+    artifacts = artifacts,
+    startedAt = map["started_at"] as String,
+    updatedAt = map["updated_at"] as String,
+    finishedAt = map["finished_at"] as String,
   )
 }
+
+internal fun workflowStepMap(step: WorkflowStepState): Map<String, Any?> = linkedMapOf(
+  "step_id" to step.stepId,
+  "status" to step.status,
+  "attempt_count" to step.attemptCount,
+)
 
 internal fun defaultSteps(definition: WorkflowDefinition, initialStepId: String): List<Map<String, Any?>> {
   var seenInitial = false
@@ -73,4 +81,7 @@ internal fun mergeStepUpdates(
 internal fun workflowStep(stepId: String, status: String, attemptCount: Int): Map<String, Any?> =
   linkedMapOf("step_id" to stepId, "status" to status, "attempt_count" to attemptCount)
 
-internal fun jsonString(value: Any?): String = JsonCodec.valueToJsonString(value)
+internal fun jsonString(value: Any?): String = JsonSupport.json.encodeToString(
+  JsonElement.serializer(),
+  JsonSupport.valueToJsonElement(value),
+)

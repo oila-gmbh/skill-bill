@@ -3,7 +3,6 @@ package skillbill.agentaddon
 import skillbill.error.InvalidAgentAddonSchemaError
 import skillbill.error.MissingAgentAddonDeclarationError
 import skillbill.install.model.InstallAgent
-import skillbill.ports.repository.toFileLocation
 import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.test.Test
@@ -46,7 +45,7 @@ class AgentAddonSourceLoaderTest {
     assertEquals(listOf("external-addon", "repo-addon"), declarations.map { it.slug })
     assertTrue(
       declarations.first { it.slug == "external-addon" }.manifestPath
-        .startsWith(external.resolve("agent-addons").toFileLocation()),
+        .startsWith(external.resolve("agent-addons")),
     )
   }
 
@@ -141,7 +140,7 @@ class AgentAddonSourceLoaderTest {
     assertEquals(2, inspection.invalidEntries.size)
     assertTrue(
       inspection.invalidEntries.all { entry ->
-        entry.validationStatus.wireValue == "invalid" &&
+        entry.validationStatus == "invalid" &&
           entry.diagnostics.any { it.contains("duplicate slug 'shared-slug'") } &&
           entry.diagnostics.any { it.contains("source directory") }
       },

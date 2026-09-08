@@ -7,11 +7,13 @@ import skillbill.application.featuretask.model.FeatureTaskContinuationLookupResu
 import skillbill.application.workflow.WorkflowService
 import skillbill.application.workflow.model.WorkflowFamilyKind
 import skillbill.application.workflow.model.WorkflowOpenResult
+import skillbill.application.workflow.model.WorkflowServiceDeps
 import skillbill.application.workflow.model.WorkflowServiceOpenArgs
 import skillbill.application.workflow.model.WorkflowServiceOpenFeatureTaskArgs
 import skillbill.application.workflow.model.WorkflowUpdateRequest
 import skillbill.application.workflow.openFeatureTask
-import skillbill.contracts.JsonCodec
+import skillbill.application.workflow.toRecord
+import skillbill.contracts.JsonSupport
 import skillbill.error.InvalidFeatureTaskExecutionIdentitySchemaError
 import skillbill.error.LegacyProseWorkflowError
 import skillbill.ports.workflow.decomposition.UnavailableDecompositionManifestStore
@@ -19,7 +21,6 @@ import skillbill.ports.workflow.gitops.NoopWorkflowGitOperations
 import skillbill.ports.workflow.model.FeatureTaskRouteScope
 import skillbill.ports.workflow.model.FeatureTaskWorkflowMode
 import skillbill.ports.workflow.model.WorkflowStateRecord
-import skillbill.ports.workflow.toRecord
 import skillbill.workflow.decomposition.model.CurrentSubtaskIntent
 import skillbill.workflow.decomposition.model.DecompositionManifest
 import skillbill.workflow.decomposition.model.DecompositionSubtask
@@ -317,14 +318,16 @@ class FeatureTaskContinuationLookupServiceTest {
     val states = InMemoryWorkflowStates()
     val database = FakeDatabaseSessionFactory(states)
     val service = WorkflowService(
-      database = database,
-      gitOperations = NoopWorkflowGitOperations,
-      decompositionManifestStore = UnavailableDecompositionManifestStore,
-      workflowSnapshotValidator = testWorkflowSnapshotValidator,
-      decompositionManifestValidator = testDecompositionManifestValidator,
-      decompositionManifestWriter = testDecompositionManifestWriter,
-      repositoryRoot = testRepositoryRoot,
-      goalObservabilityEventValidator = NoopGoalObservabilityEventValidator,
+      WorkflowServiceDeps(
+        database = database,
+        gitOperations = NoopWorkflowGitOperations,
+        decompositionManifestStore = UnavailableDecompositionManifestStore,
+        workflowSnapshotValidator = testWorkflowSnapshotValidator,
+        decompositionManifestValidator = testDecompositionManifestValidator,
+        decompositionManifestWriter = testDecompositionManifestWriter,
+        repositoryRoot = testRepositoryRoot,
+        goalObservabilityEventValidator = NoopGoalObservabilityEventValidator,
+      ),
     )
     return Fixture(
       states = states,
@@ -417,7 +420,7 @@ class FeatureTaskContinuationLookupServiceTest {
           currentStepId = "assess",
           stepsJson =
           """[{"step_id":"assess","status":"completed"},{"step_id":"create_branch","status":"pending"}]""",
-          artifactsJson = JsonCodec.mapToJsonString(artifacts),
+          artifactsJson = JsonSupport.mapToJsonString(artifacts),
           startedAt = null,
           updatedAt = null,
           finishedAt = null,

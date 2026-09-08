@@ -1,18 +1,15 @@
 package skillbill.infrastructure.sqlite.goalrunner
 
-import skillbill.db.goalrunner.migrateLegacyGoalRunnerControls
-import skillbill.db.workflow.decompositionRuntime
 import skillbill.goalrunner.model.GoalRunnerControlState
 import skillbill.ports.agentrun.model.AgentRunSpawnAuthorization
+import skillbill.ports.goalrunner.persistence.migrateLegacyGoalRunnerControls
 import skillbill.ports.goalrunner.runner.model.GoalRunnerLaunchAuthorizationDeniedException
 import skillbill.ports.goalrunner.runner.model.GoalRunnerManifestState
 import skillbill.ports.persistence.UnitOfWork
-import skillbill.ports.workflow.get
-import skillbill.ports.workflow.model.WorkflowFamily
+import skillbill.ports.workflow.persistence.decompositionRuntime
+import skillbill.ports.workflow.persistence.model.WorkflowFamily
 import skillbill.workflow.decomposition.DecompositionManifestValidator
 import skillbill.workflow.engine.model.WorkflowStateSnapshot
-import skillbill.workflow.model.DecompositionStatus
-import skillbill.workflow.model.decompositionStatus
 
 internal fun reconcileControlStateForManifest(
   unitOfWork: UnitOfWork,
@@ -55,9 +52,7 @@ internal fun GoalRunnerControlCoordinator.spawnAuthorization(
 
 internal fun GoalRunnerControlState.targetReached(state: GoalRunnerManifestState): Boolean =
   stopAfterSubtaskId?.let { targetId ->
-    state.manifest.subtasks.any {
-      it.id == targetId && it.status.decompositionStatus() == DecompositionStatus.COMPLETE
-    }
+    state.manifest.subtasks.any { it.id == targetId && it.status == "complete" }
   } == true && !stopAfterConsumed
 
 internal fun GoalRunnerControlCoordinator.bindRepositoryIdentity(

@@ -15,7 +15,6 @@ import skillbill.cli.kernel.formatOption
 import skillbill.cli.kernel.parseAgentAddonSelection
 import skillbill.cli.model.CliRunInputs
 import skillbill.error.ShellContentContractException
-import skillbill.model.toPath
 import skillbill.ports.agentaddon.AgentAddonSelectionPort
 import skillbill.ports.agentaddon.ExternalAgentAddonSourceConfigPort
 import skillbill.ports.agentaddon.model.ExternalAgentAddonSourceConfigRequest
@@ -58,7 +57,7 @@ class AgentAddonResolveSelectionCommand(
         receivingAgents,
         externalSourceConfig.readExternalAgentAddonSources(
           ExternalAgentAddonSourceConfigRequest(inputs.userHome, inputs.environment),
-        ).sources.map { source -> source.path.toPath() },
+        ).sources.map { it.path },
       )
       linkedMapOf(
         "contract_version" to "0.1",

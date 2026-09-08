@@ -19,8 +19,6 @@ import skillbill.install.staging.installedSkillStagingDir
 import skillbill.install.staging.installedSkillsCacheRoot
 import skillbill.install.staging.prepareInternalStaging
 import skillbill.install.staging.validateAgentAddonPointerNamespace
-import skillbill.model.toPath
-import skillbill.ports.repository.toFileLocation
 import skillbill.scaffold.model.PlatformManifest
 import skillbill.scaffold.model.PointerSpec
 import java.nio.file.Files
@@ -39,7 +37,7 @@ internal fun buildInstallStagingIntent(
   draftSkills: List<InstallPlanSkill>,
   platformManifests: List<PlatformManifest>,
 ): InstallStagingIntent {
-  val stagingRoot = installedSkillsCacheRoot(request.home.toPath())
+  val stagingRoot = installedSkillsCacheRoot(request.home)
   val selectedPackSkills = draftSkills.filter { skill ->
     skill.kind == InstallPlanSkillKind.PLATFORM_PACK && skill.internalFor != null
   }
@@ -47,7 +45,7 @@ internal fun buildInstallStagingIntent(
   val selectedManifests = platformManifests.filter { manifest -> manifest.slug in selectedSlugs }
   val context = StagingIntentContext(request, platformManifests, selectedPackSkills, selectedManifests)
   return InstallStagingIntent(
-    root = stagingRoot.toFileLocation(),
+    root = stagingRoot,
     skillPaths = draftSkills.filter { skill -> skill.internalFor == null }
       .map { skill -> buildSkillStagingPathIntent(context, skill, stagingRoot) },
   )
@@ -59,20 +57,20 @@ private fun buildSkillStagingPathIntent(
   stagingRoot: Path,
 ): InstallStagingPathIntent {
   val request = context.request
-  val pointers = applicablePointers(request.repoRoot.toPath(), skill.sourceDir.toPath(), context.platformManifests)
+  val pointers = applicablePointers(request.repoRoot, skill.sourceDir, context.platformManifests)
   val supportPointers = generatedSupportPointersFor(
-    repoRoot = request.repoRoot.toPath(),
-    sourceSkillDir = skill.sourceDir.toPath(),
+    repoRoot = request.repoRoot,
+    sourceSkillDir = skill.sourceDir,
     skillName = skill.name,
-    skillsRoot = request.targetPaths.skillsRoot.toPath(),
+    skillsRoot = request.targetPaths.skillsRoot,
     selectedPlatformManifests = context.selectedPlatformManifests,
   )
   val internal = prepareInternalStaging(
     InternalStagingPreparation(
-      repoRoot = request.repoRoot.toPath(),
-      parentSourceDir = skill.sourceDir.toPath(),
+      repoRoot = request.repoRoot,
+      parentSourceDir = skill.sourceDir,
       parentSkillName = skill.name,
-      skillsRoot = request.targetPaths.skillsRoot.toPath(),
+      skillsRoot = request.targetPaths.skillsRoot,
       selectedPackSkills = context.selectedPackSkills,
       platformManifests = context.platformManifests,
       selectedPlatformManifests = context.selectedPlatformManifests,
@@ -80,19 +78,19 @@ private fun buildSkillStagingPathIntent(
       parentPointerNames = pointers.map { (_, pointer) -> pointer.name }.toSet(),
     ),
   )
-  validatePointerInputs(request.repoRoot.toPath(), skill.sourceDir.toPath(), pointers, internal.supportPointers)
-  val authored = authoredFilesFor(skill.sourceDir.toPath(), pointers, internal.supportPointers, internal.sidecarNames)
-  val addonPointers = agentAddonPointersForSkill(request.repoRoot.toPath(), skill.name)
+  validatePointerInputs(request.repoRoot, skill.sourceDir, pointers, internal.supportPointers)
+  val authored = authoredFilesFor(skill.sourceDir, pointers, internal.supportPointers, internal.sidecarNames)
+  val addonPointers = agentAddonPointersForSkill(request.repoRoot, skill.name)
   validateAgentAddonPointerNamespace(
     skill.name,
-    authoredStagingNames(skill.sourceDir.toPath(), authored) + internal.sidecarNames + pointers.map { it.second.name } +
+    authoredStagingNames(skill.sourceDir, authored) + internal.sidecarNames + pointers.map { it.second.name } +
       internal.supportPointers.map { it.name } +
       listOf("SKILL.md", ".content-hash", SKILL_CONTENT_IDENTITY_FILENAME),
     addonPointers,
   )
   val contentHash = computeInstallContentHash(
     InstallContentHashInputs(
-      sourceSkillDir = skill.sourceDir.toPath(),
+      sourceSkillDir = skill.sourceDir,
       authored = authored,
       applicablePointers = pointers,
       generatedSupportPointers = internal.supportPointers,
@@ -103,12 +101,8 @@ private fun buildSkillStagingPathIntent(
   return InstallStagingPathIntent(
     skillName = skill.name,
     sourceDir = skill.sourceDir,
-    stagingRoot = stagingRoot.toFileLocation(),
-    stagingDir = installedSkillStagingDir(
-      request.home.toPath(),
-      skill.sourceDir.toPath(),
-      contentHash,
-    ).toFileLocation(),
+    stagingRoot = stagingRoot,
+    stagingDir = installedSkillStagingDir(request.home, skill.sourceDir, contentHash),
     contentHash = contentHash,
   )
 }
@@ -123,7 +117,7 @@ private fun validatePointerInputs(
   val realRepoRoot = repoRoot.toRealPath()
   val resolvedSource = sourceSkillDir.toAbsolutePath().normalize()
   pointers.forEach { (manifest, spec) ->
-    val pointerFile = manifest.packRoot.toPath().toAbsolutePath().normalize()
+    val pointerFile = manifest.packRoot.toAbsolutePath().normalize()
       .resolve(spec.skillRelativeDir).normalize().resolve(spec.name).normalize()
     val targetFile = resolvedRepoRoot.resolve(spec.target).normalize()
     validatePointerTarget(spec.name, targetFile, pointerFile, resolvedRepoRoot, realRepoRoot)

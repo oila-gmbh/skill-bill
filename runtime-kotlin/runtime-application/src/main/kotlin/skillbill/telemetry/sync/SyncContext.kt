@@ -3,7 +3,6 @@ package skillbill.telemetry.sync
 import skillbill.application.telemetry.model.TelemetryStatusResult
 import skillbill.telemetry.model.SyncResult
 import skillbill.telemetry.model.TelemetrySettings
-import skillbill.telemetry.model.TelemetrySyncStatus
 import java.nio.file.Path
 
 internal data class SyncContext(
@@ -29,7 +28,7 @@ internal fun telemetrySyncTarget(result: SyncResult): String = when {
 }
 
 internal fun syncResult(
-  status: TelemetrySyncStatus,
+  status: String,
   syncedEvents: Int,
   pendingEvents: Int,
   syncContext: SyncContext,
@@ -65,7 +64,7 @@ internal fun baseStatusResult(dbPath: Path, settings: TelemetrySettings): Teleme
 )
 
 internal fun disabledSyncResult(settings: TelemetrySettings): SyncResult = syncResult(
-  status = TelemetrySyncStatus.DISABLED,
+  status = "disabled",
   syncedEvents = 0,
   pendingEvents = 0,
   syncContext = syncContext(settings, pendingEvents = 0),
@@ -73,7 +72,7 @@ internal fun disabledSyncResult(settings: TelemetrySettings): SyncResult = syncR
 )
 
 internal fun unconfiguredSyncResult(syncContext: SyncContext): SyncResult = syncResult(
-  status = TelemetrySyncStatus.UNCONFIGURED,
+  status = "unconfigured",
   syncedEvents = 0,
   pendingEvents = syncContext.pendingEvents,
   syncContext = syncContext,
@@ -81,7 +80,7 @@ internal fun unconfiguredSyncResult(syncContext: SyncContext): SyncResult = sync
 )
 
 internal fun noopSyncResult(syncContext: SyncContext): SyncResult = syncResult(
-  status = TelemetrySyncStatus.NOOP,
+  status = "noop",
   syncedEvents = 0,
   pendingEvents = 0,
   syncContext = syncContext,
@@ -90,7 +89,7 @@ internal fun noopSyncResult(syncContext: SyncContext): SyncResult = syncResult(
 
 internal fun completedSyncResult(syncContext: SyncContext, syncedTotal: Int, pendingEvents: Int): SyncResult =
   syncResult(
-    status = TelemetrySyncStatus.SYNCED,
+    status = "synced",
     syncedEvents = syncedTotal,
     pendingEvents = pendingEvents,
     syncContext = syncContext,

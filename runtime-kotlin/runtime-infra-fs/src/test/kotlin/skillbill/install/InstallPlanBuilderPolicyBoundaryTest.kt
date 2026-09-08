@@ -13,7 +13,6 @@ import skillbill.install.model.RuntimeDistributionInputs
 import skillbill.install.model.WindowsSymlinkDecision
 import skillbill.install.model.WindowsSymlinkPreflight
 import skillbill.install.model.WindowsSymlinkPreflightState
-import skillbill.ports.repository.toFileLocation
 import skillbill.testing.seedConformingPlatformPack
 import java.nio.file.Files
 import java.nio.file.LinkOption
@@ -108,8 +107,8 @@ class InstallPlanBuilderPolicyBoundaryTest {
     fun request(
       platformPackSelection: PlatformPackSelection = PlatformPackSelection(mode = PlatformPackSelectionMode.NONE),
     ): InstallPlanRequest = InstallPlanRequest(
-      repoRoot = repoRoot.toFileLocation(),
-      home = home.toFileLocation(),
+      repoRoot = repoRoot,
+      home = home,
       agentSelection = InstallAgentSelection(
         mode = InstallAgentSelectionMode.MANUAL,
         manualAgents = setOf(InstallAgent.CODEX),
@@ -118,12 +117,12 @@ class InstallPlanBuilderPolicyBoundaryTest {
       telemetryLevel = InstallTelemetryLevel.ANONYMOUS,
       mcpRegistrationChoice = McpRegistrationChoice(
         register = true,
-        runtimeMcpBin = runtimeInstallRoot.resolve("runtime-mcp/bin/runtime-mcp").toFileLocation(),
+        runtimeMcpBin = runtimeInstallRoot.resolve("runtime-mcp/bin/runtime-mcp"),
       ),
-      runtimeDistributionInputs = RuntimeDistributionInputs(runtimeInstallRoot = runtimeInstallRoot.toFileLocation()),
+      runtimeDistributionInputs = RuntimeDistributionInputs(runtimeInstallRoot = runtimeInstallRoot),
       targetPaths = InstallationTargetPaths(
-        skillsRoot = repoRoot.resolve("skills").toFileLocation(),
-        platformPacksRoot = repoRoot.resolve("platform-packs").toFileLocation(),
+        skillsRoot = repoRoot.resolve("skills"),
+        platformPacksRoot = repoRoot.resolve("platform-packs"),
       ),
       windowsSymlinkPreflight = WindowsSymlinkPreflight(
         state = WindowsSymlinkPreflightState.NOT_WINDOWS,

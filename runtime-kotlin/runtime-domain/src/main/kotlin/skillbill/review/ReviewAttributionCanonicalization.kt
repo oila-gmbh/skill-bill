@@ -3,7 +3,6 @@ package skillbill.review
 import skillbill.review.model.CanonicalAttribution
 import skillbill.review.model.CanonicalScope
 import skillbill.review.model.ImportedReview
-import skillbill.review.model.ReviewExecutionMode
 import skillbill.review.model.ReviewAttributionResolutionError
 
 const val UNRESOLVED_ATTRIBUTION: String = "unresolved"
@@ -89,15 +88,9 @@ fun resolveCanonicalScope(rawValue: String?): CanonicalAttribution {
 
 // execution_mode is derived, never defaulted: an explicit reported value wins, otherwise the run's
 // own specialist-review evidence proves delegation, otherwise the value is explicitly unresolved.
-fun resolveExecutionMode(
-  reportedExecutionMode: ReviewExecutionMode?,
-  specialistReviews: List<String>,
-): ReviewExecutionMode =
-  reportedExecutionMode ?: if (specialistReviews.isNotEmpty()) {
-    ReviewExecutionMode.DELEGATED
-  } else {
-    ReviewExecutionMode.UNRESOLVED
-  }
+fun resolveExecutionMode(reportedExecutionMode: String?, specialistReviews: List<String>): String =
+  reportedExecutionMode?.trim()?.takeIf(String::isNotEmpty)
+    ?: if (specialistReviews.isNotEmpty()) EXECUTION_MODE_DELEGATED else UNRESOLVED_ATTRIBUTION
 
 fun ImportedReview.withCanonicalAttribution(
   knownPackSkillNames: Set<String>,

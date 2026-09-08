@@ -8,17 +8,19 @@ interface WorkflowGitRemoteOperations {
     const val ABSENT_REMOTE_BRANCH = "absent"
   }
 
-  fun pushBranch(repoRoot: Path, branch: String): WorkflowGitOperationResult = WorkflowGitOperationResult.Failed(
+  fun pushBranch(repoRoot: Path, branch: String): WorkflowGitOperationResult = WorkflowGitOperationResult(
+    status = "error",
     error = "This git operations implementation cannot push branch '$branch'.",
   )
 
-  fun pushBranchWithLease(repoRoot: Path, branch: String): WorkflowGitOperationResult = WorkflowGitOperationResult.Failed(
+  fun pushBranchWithLease(repoRoot: Path, branch: String): WorkflowGitOperationResult = WorkflowGitOperationResult(
+    status = "error",
     error = "This git operations implementation cannot push branch '$branch' under a lease.",
   )
 
   fun refreshRemoteBranch(repoRoot: Path, branch: String): WorkflowGitOperationResult =
-    WorkflowGitOperationResult.Ok(value = branch.trim())
+    WorkflowGitOperationResult(status = "ok", value = branch.trim())
 
   fun localBranchHasUnpushedCommits(repoRoot: Path, branch: String): WorkflowGitOperationResult =
-    WorkflowGitOperationResult.Ok(value = "false")
+    WorkflowGitOperationResult(status = "ok", value = "false")
 }

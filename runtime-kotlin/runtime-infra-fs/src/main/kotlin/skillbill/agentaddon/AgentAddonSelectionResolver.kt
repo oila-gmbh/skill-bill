@@ -7,7 +7,6 @@ import skillbill.agentaddon.model.HydratedAgentAddonSelection
 import skillbill.agentaddon.model.HydratedAgentAddonSelectionEntry
 import skillbill.agentaddon.model.PersistedAgentAddonSelectionEntry
 import skillbill.error.InvalidAgentAddonSelectionError
-import skillbill.model.toPath
 import skillbill.ports.agentaddon.AgentAddonSelectionPort
 import java.nio.file.Files
 import java.nio.file.Path
@@ -38,8 +37,8 @@ class AgentAddonSelectionResolver : AgentAddonSelectionPort {
         hydrate(
           slug = slug,
           description = declaration.description,
-          sourceIdentity = declaration.canonicalSourceIdentity.toPath(),
-          contentPath = declaration.contentPath.toPath(),
+          sourceIdentity = declaration.canonicalSourceIdentity,
+          contentPath = declaration.contentPath,
         )
       },
     )

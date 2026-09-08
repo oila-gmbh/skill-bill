@@ -2,7 +2,6 @@ package skillbill.launcher.mcp
 
 import skillbill.install.model.McpMutationResult
 import skillbill.launcher.process.atomicWriteString
-import skillbill.ports.repository.toFileLocation
 import java.nio.file.Files
 import java.nio.file.Path
 
@@ -17,7 +16,7 @@ internal object McpTomlConfig {
     filtered += "args = []"
     filtered += ""
     writeLines(path, filtered)
-    return McpMutationResult(agent, path.toFileLocation(), changed = true)
+    return McpMutationResult(agent, path, changed = true)
   }
 
   fun unregister(agent: String, path: Path): McpMutationResult {
@@ -27,7 +26,7 @@ internal object McpTomlConfig {
     if (changed) {
       writeLines(path, filtered.dropLastWhile { it.isBlank() } + "")
     }
-    return McpMutationResult(agent, path.toFileLocation(), changed = changed)
+    return McpMutationResult(agent, path, changed = changed)
   }
 
   data class GovernedServer(

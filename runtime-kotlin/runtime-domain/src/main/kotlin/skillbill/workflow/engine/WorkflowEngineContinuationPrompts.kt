@@ -2,7 +2,6 @@ package skillbill.workflow.engine
 
 import skillbill.workflow.engine.model.WorkflowDefinition
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
-import skillbill.workflow.model.WorkflowContinueStatus
 
 internal data class ContinuationArtifactKeys(
   val currentStepArtifactKeys: List<String>,
@@ -13,7 +12,7 @@ internal data class ContinuationBriefRequest(
   val definition: WorkflowDefinition,
   val workflowId: String,
   val resumeStepId: String,
-  val continueStatus: WorkflowContinueStatus,
+  val continueStatus: String,
   val nextAction: String,
   val artifactKeys: ContinuationArtifactKeys,
 )
@@ -32,14 +31,14 @@ internal fun continuationBrief(request: ContinuationBriefRequest): String {
     "current-step context instead of reconstructing prior context from chat history. " +
     "Omitted artifact keys ($omittedArtifacts) remain private phase context. Explicit operator diagnostics " +
     "may inspect them with `workflow show`; phase agents must not. Workflow activation status: " +
-    "`${request.continueStatus.wireValue}`. Next action: ${request.nextAction}"
+    "`${request.continueStatus}`. Next action: ${request.nextAction}"
 }
 
 internal data class ContinuationIdentity(
   val workflowId: String,
   val sessionId: String,
   val resumeStepId: String,
-  val continueStatus: WorkflowContinueStatus,
+  val continueStatus: String,
   val nextAction: String,
   val nextAttemptCount: Int,
 )
@@ -69,7 +68,7 @@ internal fun continuationEntryPrompt(request: ContinuationEntryPromptRequest): S
       "Use `${request.definition.skillName}` in continuation mode.",
       "Workflow id: ${identity.workflowId}",
       "Session id: ${identity.sessionId.ifBlank { "(none)" }}",
-      "Continue status: ${identity.continueStatus.wireValue}",
+      "Continue status: ${identity.continueStatus}",
       "Resume step: ${identity.resumeStepId} " +
         "(${request.definition.stepLabels[identity.resumeStepId] ?: identity.resumeStepId})",
     )

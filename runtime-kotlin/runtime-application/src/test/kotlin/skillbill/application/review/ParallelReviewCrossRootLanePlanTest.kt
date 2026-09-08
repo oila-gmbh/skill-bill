@@ -58,8 +58,8 @@ class ParallelReviewCrossRootLanePlanTest {
       "Reconciliation removes a duplicate lane, never the last lane for an area.",
     )
     assertEquals(
-      withoutDuplicate.durableLanes.associate { it.area to it.reviewDisposition.wireValue },
-      withDuplicate.durableLanes.associate { it.area to it.reviewDisposition.wireValue },
+      withoutDuplicate.durableLanes.associate { it.area to it.reviewDisposition },
+      withDuplicate.durableLanes.associate { it.area to it.reviewDisposition },
       "A lane dropped as a cross-root duplicate must not reduce any lane disposition.",
     )
     assertTrue(

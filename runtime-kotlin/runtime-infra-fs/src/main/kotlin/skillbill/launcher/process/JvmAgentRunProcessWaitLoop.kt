@@ -3,7 +3,6 @@ import skillbill.goalrunner.model.GoalRunnerLivenessClassifier
 import skillbill.goalrunner.model.GoalRunnerLivenessDecision
 import skillbill.goalrunner.model.GoalRunnerLivenessInputs
 import skillbill.goalrunner.model.GoalRunnerLivenessState
-import skillbill.goalrunner.model.GoalRunnerProcessState
 import skillbill.ports.agentrun.model.AgentRunDeclaredProgressSnapshot
 import skillbill.ports.agentrun.model.AgentRunLivenessSnapshot
 import skillbill.ports.agentrun.model.AgentRunProgressEmission
@@ -82,12 +81,7 @@ internal class ProcessWaitLoop(
         progressIdleTimedOut = false,
         fileActivityGraceExhausted = false,
         wallClockTimedOut = false,
-        liveness = declaredLiveness(
-          "review_budget",
-          "review_context_budget_exceeded",
-          GoalRunnerProcessState.KILLED,
-          killLivenessState(),
-        ),
+        liveness = declaredLiveness("review_budget", "review_context_budget_exceeded", "killed", killLivenessState()),
       )
     }
     val waitMillis = waitMillisBeforeNextPoll() ?: return ProcessWait(
@@ -95,12 +89,7 @@ internal class ProcessWaitLoop(
       progressIdleTimedOut = false,
       fileActivityGraceExhausted = false,
       wallClockTimedOut = true,
-      liveness = declaredLiveness(
-        "watchdog",
-        "wall_clock_timeout",
-        GoalRunnerProcessState.KILLED,
-        killLivenessState(),
-      ),
+      liveness = declaredLiveness("watchdog", "wall_clock_timeout", "killed", killLivenessState()),
     )
     return when {
       process.waitFor(waitMillis, TimeUnit.MILLISECONDS) ->
@@ -109,16 +98,12 @@ internal class ProcessWaitLoop(
           progressIdleTimedOut = false,
           fileActivityGraceExhausted = false,
           wallClockTimedOut = false,
-          liveness = liveness("watchdog", "process_exited", GoalRunnerProcessState.EXITED),
+          liveness = liveness("watchdog", "process_exited", "exited"),
         )
       else -> pollProgress()
     }
   }
-  private fun liveness(
-    phase: String,
-    reason: String,
-    processState: GoalRunnerProcessState,
-  ): AgentRunLivenessSnapshot =
+  private fun liveness(phase: String, reason: String, processState: String): AgentRunLivenessSnapshot =
     declaredLiveness(phase, reason, processState, livenessState = null)
   private fun killLivenessState(): GoalRunnerLivenessState {
     if (declaredTracker.activeOperationName != null) return GoalRunnerLivenessState.WORKING
@@ -133,7 +118,7 @@ internal class ProcessWaitLoop(
   internal fun declaredLiveness(
     phase: String,
     reason: String,
-    processState: GoalRunnerProcessState,
+    processState: String,
     livenessState: GoalRunnerLivenessState?,
   ): AgentRunLivenessSnapshot {
     val declared = declaredTracker.latestEvent

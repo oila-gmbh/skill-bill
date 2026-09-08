@@ -1,6 +1,6 @@
 package skillbill.application
 
-import skillbill.contracts.JsonCodec
+import skillbill.contracts.JsonSupport
 import skillbill.error.InvalidFeatureTaskRuntimePlanningProjectionSchemaError
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -47,9 +47,9 @@ class PhaseOutputFixtureParityTest {
     )
   }
   private fun parsedOutputs(producedOutputs: String): Map<String, Any?> {
-    val json = requireNotNull(JsonCodec.parseObjectOrNull(producedOutputs)) {
+    val json = requireNotNull(JsonSupport.parseObjectOrNull(producedOutputs)) {
       "fixture produced_outputs must be a JSON object"
     }
-    return requireNotNull(JsonCodec.anyToStringAnyMap(JsonCodec.jsonElementToValue(json)))
+    return requireNotNull(JsonSupport.anyToStringAnyMap(JsonSupport.jsonElementToValue(json)))
   }
 }

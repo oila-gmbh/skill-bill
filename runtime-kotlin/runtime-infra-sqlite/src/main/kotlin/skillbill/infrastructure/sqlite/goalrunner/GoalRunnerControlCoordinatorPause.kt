@@ -1,15 +1,14 @@
 package skillbill.infrastructure.sqlite.goalrunner
 
-import skillbill.db.goalrunner.goalRepositoryIdentity
-import skillbill.db.goalrunner.migrateLegacyGoalRunnerControls
-import skillbill.db.workflow.findDecomposedParentWorkflow
 import skillbill.goalrunner.model.GOAL_PAUSE_REASON_OPERATOR_REQUEST
 import skillbill.goalrunner.model.GoalRunnerControlState
+import skillbill.ports.goalrunner.persistence.goalRepositoryIdentity
+import skillbill.ports.goalrunner.persistence.migrateLegacyGoalRunnerControls
 import skillbill.ports.goalrunner.runner.model.GoalRunnerPausePersistenceResult
 import skillbill.ports.persistence.UnitOfWork
-import skillbill.ports.workflow.get
-import skillbill.ports.workflow.model.WorkflowFamily
-import skillbill.ports.workflow.model.toSnapshot
+import skillbill.ports.workflow.persistence.findDecomposedParentWorkflow
+import skillbill.ports.workflow.persistence.model.WorkflowFamily
+import skillbill.ports.workflow.persistence.toSnapshot
 import java.nio.file.Path
 
 internal fun GoalRunnerControlCoordinator.persistPauseRequest(

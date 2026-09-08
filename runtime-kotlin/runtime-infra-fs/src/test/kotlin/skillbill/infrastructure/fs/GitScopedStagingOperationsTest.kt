@@ -1,6 +1,5 @@
 package skillbill.infrastructure.fs
 
-import skillbill.ports.workflow.gitops.model.WorkflowGitOperationResult
 import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.io.path.createDirectories
@@ -45,7 +44,7 @@ class GitScopedStagingOperationsTest {
 
     val result = GitScopedStagingOperations.stagePaths(repo, listOf("owned/nested/"))
 
-    assertTrue(result is WorkflowGitOperationResult.Ok, result.error)
+    assertTrue(result.ok, result.error)
     val index = indexSnapshot().keys
     assertTrue("owned/nested/One.kt" in index)
     assertTrue("owned/nested/Two.kt" in index)
@@ -66,7 +65,7 @@ class GitScopedStagingOperationsTest {
 
     val result = GitScopedStagingOperations.stagePaths(repo, listOf("owned/Owned.kt"))
 
-    assertTrue(result is WorkflowGitOperationResult.Ok, result.error)
+    assertTrue(result.ok, result.error)
     val after = indexSnapshot()
     assertEquals(
       setOf("owned/Owned.kt"),
@@ -88,7 +87,7 @@ class GitScopedStagingOperationsTest {
 
     val result = GitScopedStagingOperations.stagePaths(repo, listOf("tracked/Base.kt"))
 
-    assertTrue(result is WorkflowGitOperationResult.Ok, result.error)
+    assertTrue(result.ok, result.error)
     assertFalse("tracked/Base.kt" in indexSnapshot().keys, "a deleted owned path must be staged as a deletion")
   }
 
@@ -103,7 +102,7 @@ class GitScopedStagingOperationsTest {
 
     val result = GitScopedStagingOperations.stagePaths(repo, listOf("tracked/Base.kt", "owned/Live.kt"))
 
-    assertTrue(result is WorkflowGitOperationResult.Ok, result.error)
+    assertTrue(result.ok, result.error)
     assertFalse("tracked/Base.kt" in indexSnapshot().keys, "an already-staged deletion must remain staged")
     assertTrue("owned/Live.kt" in indexSnapshot().keys, "a live owned path in the same batch must still be staged")
   }
@@ -121,7 +120,7 @@ class GitScopedStagingOperationsTest {
       listOf("owned/Live.kt", "feature/sitejournals/agent/history.md"),
     )
 
-    assertTrue(result is WorkflowGitOperationResult.Ok, result.error)
+    assertTrue(result.ok, result.error)
     assertTrue("owned/Live.kt" in indexSnapshot().keys)
     assertFalse("feature/sitejournals/agent/history.md" in indexSnapshot().keys)
   }
@@ -138,7 +137,7 @@ class GitScopedStagingOperationsTest {
 
     val result = GitScopedStagingOperations.stagePaths(repo, listOf("tracked/secret.md"))
 
-    assertTrue(result is WorkflowGitOperationResult.Ok, result.error)
+    assertTrue(result.ok, result.error)
     val indexSha = indexSnapshot()["tracked/secret.md"]?.split(' ')?.getOrNull(1)
     val worktreeSha = runGitCommand(repo, "hash-object", "--", "tracked/secret.md").value.orEmpty().trim()
     assertEquals(worktreeSha, indexSha, "a tracked ignored path must still receive the worktree update")
@@ -152,7 +151,7 @@ class GitScopedStagingOperationsTest {
     val paths = listOf("owned/a file with spaces.kt", "owned/ünïcødé.kt")
     val result = GitScopedStagingOperations.stagePaths(repo, paths)
 
-    assertTrue(result is WorkflowGitOperationResult.Ok, result.error)
+    assertTrue(result.ok, result.error)
     assertTrue(indexSnapshot().keys.containsAll(paths), "quoted and non-ASCII paths must survive unchanged")
   }
 
@@ -164,17 +163,17 @@ class GitScopedStagingOperationsTest {
     val owned = listOf("owned/Owned.kt", "tracked/Base.kt")
 
     val snapshot = GitScopedStagingOperations.captureIndexState(repo, owned)
-    assertTrue(snapshot is WorkflowGitOperationResult.Ok, snapshot.error)
+    assertTrue(snapshot.ok, snapshot.error)
     val before = indexSnapshot()
 
     // Model a checkpoint that staged and then failed before committing.
-    assertTrue(GitScopedStagingOperations.stagePaths(repo, owned) is WorkflowGitOperationResult.Ok)
+    assertTrue(GitScopedStagingOperations.stagePaths(repo, owned).ok)
     assertTrue("owned/Owned.kt" in indexSnapshot().keys, "precondition: staging actually mutated the index")
     val worktreeBefore = read("owned/Owned.kt")
 
     val restored = GitScopedStagingOperations.restoreIndexState(repo, owned, snapshot.value.orEmpty())
 
-    assertTrue(restored is WorkflowGitOperationResult.Ok, restored.error)
+    assertTrue(restored.ok, restored.error)
     assertEquals(before, indexSnapshot(), "the pre-checkpoint index must be restored exactly")
     assertFalse(
       "owned/Owned.kt" in indexSnapshot().keys,
@@ -192,9 +191,9 @@ class GitScopedStagingOperationsTest {
 
     val snapshot = GitScopedStagingOperations.captureIndexState(repo, owned)
     val foreignEntryBefore = indexSnapshot()["foreign/Staged.kt"]
-    assertTrue(GitScopedStagingOperations.stagePaths(repo, owned) is WorkflowGitOperationResult.Ok)
+    assertTrue(GitScopedStagingOperations.stagePaths(repo, owned).ok)
 
-    assertTrue(GitScopedStagingOperations.restoreIndexState(repo, owned, snapshot.value.orEmpty()) is WorkflowGitOperationResult.Ok)
+    assertTrue(GitScopedStagingOperations.restoreIndexState(repo, owned, snapshot.value.orEmpty()).ok)
 
     assertEquals(foreignEntryBefore, indexSnapshot()["foreign/Staged.kt"])
   }
@@ -207,7 +206,7 @@ class GitScopedStagingOperationsTest {
 
     val snapshot = GitScopedStagingOperations.captureIndexState(repo, listOf("owned/Owned.kt"))
 
-    assertTrue(snapshot is WorkflowGitOperationResult.Ok, snapshot.error)
+    assertTrue(snapshot.ok, snapshot.error)
     val paths = snapshot.value.orEmpty().split(GIT_NUL).filter(String::isNotBlank)
       .map { it.substringAfter('\t') }
     assertEquals(listOf("owned/Owned.kt"), paths)
@@ -221,7 +220,7 @@ class GitScopedStagingOperationsTest {
 
     val staged = GitScopedStagingOperations.stagedPaths(repo)
 
-    assertTrue(staged is WorkflowGitOperationResult.Ok, staged.error)
+    assertTrue(staged.ok, staged.error)
     assertEquals(
       listOf("foreign/Staged.kt"),
       staged.value.orEmpty().split(GIT_NUL).filter(String::isNotBlank),
@@ -232,7 +231,7 @@ class GitScopedStagingOperationsTest {
   fun `an empty inventory stages nothing and reports success`() {
     val before = indexSnapshot()
 
-    assertTrue(GitScopedStagingOperations.stagePaths(repo, emptyList()) is WorkflowGitOperationResult.Ok)
+    assertTrue(GitScopedStagingOperations.stagePaths(repo, emptyList()).ok)
 
     assertEquals(before, indexSnapshot())
   }
@@ -245,7 +244,7 @@ class GitScopedStagingOperationsTest {
 
     val paths = listOf("owned/Owned.kt", "owned/Spaced Path.kt", "owned/Absent.kt")
     val first = GitScopedStagingOperations.pathContentIdentities(repo, paths)
-    assertTrue(first is WorkflowGitOperationResult.Ok, first.error)
+    assertTrue(first.ok, first.error)
     val identities = contentIdentities(first.value.orEmpty())
     assertEquals(setOf("owned/Owned.kt", "owned/Spaced Path.kt"), identities.keys)
 
@@ -290,6 +289,6 @@ class GitScopedStagingOperationsTest {
 
   private fun git(vararg args: String) {
     val result = runGitCommand(repo, *args)
-    assertTrue(result is WorkflowGitOperationResult.Ok, "git ${args.joinToString(" ")} failed: ${result.error}")
+    assertTrue(result.ok, "git ${args.joinToString(" ")} failed: ${result.error}")
   }
 }

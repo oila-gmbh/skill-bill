@@ -4,17 +4,14 @@ import skillbill.application.decomposition.DECOMPOSITION_RUNTIME_ARTIFACT_KEY
 import skillbill.application.decomposition.asStringAnyMapOrNull
 import skillbill.application.decomposition.decodeArtifacts
 import skillbill.application.decomposition.decodeDecompositionManifestMap
+import skillbill.application.decomposition.isActiveGoalRuntime
 import skillbill.error.LegacyProseWorkflowError
 import skillbill.ports.workflow.WorkflowStateRepository
 import skillbill.ports.workflow.model.FeatureTaskWorkflowMode
 import skillbill.ports.workflow.model.WorkflowStateRecord
-import skillbill.ports.workflow.model.toSnapshot
 import skillbill.workflow.decomposition.DecompositionManifestValidator
 import skillbill.workflow.decomposition.model.DecompositionManifest
-import skillbill.workflow.decomposition.runtime.isActiveGoalRuntime
 import skillbill.workflow.engine.model.WorkflowStateSnapshot
-import skillbill.workflow.model.WorkflowStatus
-import skillbill.workflow.model.workflowStatus
 
 fun WorkflowStateSnapshot.decompositionRuntime(validator: DecompositionManifestValidator): DecompositionManifest? =
   decodeArtifacts(artifactsJson)[DECOMPOSITION_RUNTIME_ARTIFACT_KEY].asStringAnyMapOrNull()
@@ -23,7 +20,7 @@ fun WorkflowStateSnapshot.decompositionRuntime(validator: DecompositionManifestV
 fun WorkflowStateSnapshot.hasDecompositionPlan(): Boolean =
   decodeArtifacts(artifactsJson)["plan"].asStringAnyMapOrNull()?.get("mode") == "decompose"
 
-val IMPLEMENT_TERMINAL_STATUSES: Set<WorkflowStatus> = WorkflowStatus.terminalStatuses
+val IMPLEMENT_TERMINAL_STATUSES: Set<String> = setOf("completed", "failed", "abandoned")
 
 fun WorkflowStateRepository.listFeatureTaskWorkflowsForParentDiscovery(): List<WorkflowStateRecord> {
   val byId = LinkedHashMap<String, WorkflowStateRecord>()
@@ -81,7 +78,7 @@ private data class DecomposedParentLookupCandidate(
 private fun DecomposedParentLookupCandidate.isStaleAbandonedLineage(
   currentProjectedManifest: DecompositionManifest?,
 ): Boolean {
-  if (currentProjectedManifest == null || record.workflowStatus.workflowStatus() != WorkflowStatus.ABANDONED) return false
+  if (currentProjectedManifest == null || record.workflowStatus != "abandoned") return false
   if (manifest.subtasks.any { subtask -> subtask.hasStarted() }) return false
   return manifest.subtasks.map { it.specPath } != currentProjectedManifest.subtasks.map { it.specPath }
 }

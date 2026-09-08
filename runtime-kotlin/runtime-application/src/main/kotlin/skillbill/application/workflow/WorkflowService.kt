@@ -1,9 +1,7 @@
 package skillbill.application.workflow
 
-import skillbill.ports.workflow.gitops.model.WorkflowGitOperationResult
 import me.tatarka.inject.annotations.Inject
-import skillbill.application.decomposition.DecompositionManifestWriteGuard
-import skillbill.application.decomposition.DecompositionManifestWriter
+import skillbill.application.decomposition.DecompositionManifestProjectionSupport
 import skillbill.application.workflow.model.BuildFeatureTaskExecutionIdentityArgs
 import skillbill.application.workflow.model.ContinueExistingWorkflowArgs
 import skillbill.application.workflow.model.DecompositionRuntimeWriteArgs
@@ -17,41 +15,29 @@ import skillbill.application.workflow.model.WorkflowLatestResult
 import skillbill.application.workflow.model.WorkflowListResult
 import skillbill.application.workflow.model.WorkflowOpenResult
 import skillbill.application.workflow.model.WorkflowResumeResult
+import skillbill.application.workflow.model.WorkflowServiceDeps
 import skillbill.application.workflow.model.WorkflowServiceOpenArgs
 import skillbill.application.workflow.model.WorkflowUpdateRequest
 import skillbill.application.workflow.model.WorkflowUpdateResult
 import skillbill.contracts.issuekey.normalizeIssueKey
-import skillbill.model.RepositoryRoot
-import skillbill.ports.db.DatabaseSessionFactory
-import skillbill.ports.workflow.decomposition.DecompositionManifestStore
-import skillbill.ports.workflow.get
-import skillbill.ports.workflow.gitops.WorkflowGitOperations
 import skillbill.ports.workflow.gitops.repositoryFingerprint
-import skillbill.ports.workflow.latest
-import skillbill.ports.workflow.list
 import skillbill.ports.workflow.model.FeatureTaskWorkflowMode
-import skillbill.ports.workflow.model.toSnapshot
-import skillbill.ports.workflow.save
-import skillbill.workflow.decomposition.DecompositionManifestValidator
 import skillbill.workflow.engine.WorkflowEngine
-import skillbill.workflow.engine.WorkflowSnapshotValidator
-import skillbill.workflow.goal.GoalObservabilityEventValidator
 
 @Inject
-class WorkflowService(
-  private val database: DatabaseSessionFactory,
-  private val gitOperations: WorkflowGitOperations,
-  private val decompositionManifestStore: DecompositionManifestStore,
-  workflowSnapshotValidator: WorkflowSnapshotValidator,
-  private val decompositionManifestValidator: DecompositionManifestValidator,
-  private val decompositionManifestWriter: DecompositionManifestWriter,
-  private val repositoryRoot: RepositoryRoot,
-  val goalObservabilityEventValidator: GoalObservabilityEventValidator,
-) {
+class WorkflowService(deps: WorkflowServiceDeps) {
+  private val database = deps.database
+  private val gitOperations = deps.gitOperations
+  private val decompositionManifestStore = deps.decompositionManifestStore
+  private val workflowSnapshotValidator = deps.workflowSnapshotValidator
+  private val decompositionManifestValidator = deps.decompositionManifestValidator
+  private val decompositionManifestWriter = deps.decompositionManifestWriter
+  private val repositoryRoot = deps.repositoryRoot
+  val goalObservabilityEventValidator = deps.goalObservabilityEventValidator
 
   private val engine: WorkflowEngine = WorkflowEngine(workflowSnapshotValidator) {
     val resolved = gitOperations.repositoryFingerprint(repositoryRoot.path)
-    check(resolved is WorkflowGitOperationResult.Ok) { resolved.error }
+    check(resolved.ok) { resolved.error }
     resolved.value.orEmpty()
   }
   private val featureTaskAbandon = WorkflowServiceFeatureTaskAbandon(engine)
@@ -156,7 +142,7 @@ class WorkflowService(
       buildUpdateOk(engine, family.definition, updated, effectiveInput, unitOfWork.dbPath.toString())
     }
     projectionArtifactsJson?.let { artifactsJson ->
-      DecompositionManifestWriteGuard.requireWritten(
+      DecompositionManifestProjectionSupport.requireWritten(
         decompositionManifestWriter.writeProjectionFromWorkflowState(
           repositoryRoot.path,
           artifactsJson,
@@ -329,7 +315,7 @@ class WorkflowService(
       }.result
     }
     projectionArtifactsJson?.let { artifactsJson ->
-      DecompositionManifestWriteGuard.requireWritten(
+      DecompositionManifestProjectionSupport.requireWritten(
         decompositionManifestWriter.writeProjectionFromWorkflowState(
           repositoryRoot.path,
           artifactsJson,

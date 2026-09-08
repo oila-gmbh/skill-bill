@@ -1,5 +1,7 @@
 package skillbill.review.context.model
 
+import java.nio.charset.StandardCharsets
+
 data class ReviewContextPacket(
   val reviewId: String,
   val repositoryIdentity: String,
@@ -123,7 +125,7 @@ data class ReviewContextPacket(
 
   val canonicalBytes: Long
     get() = (canonicalValue() + expansionLedgerDigest + expansionLedger.joinToString("\n") { it.canonical })
-      .toByteArray(Charsets.UTF_8).size.toLong()
+      .toByteArray(StandardCharsets.UTF_8).size.toLong()
 
   private fun canonicalValue(): String = listOf(
     reviewId,

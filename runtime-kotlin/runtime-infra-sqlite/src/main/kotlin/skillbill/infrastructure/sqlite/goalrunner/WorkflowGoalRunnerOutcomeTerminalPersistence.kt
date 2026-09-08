@@ -1,26 +1,22 @@
 package skillbill.infrastructure.sqlite.goalrunner
 
-import skillbill.db.decomposition.decodeArtifacts
-import skillbill.db.goalrunner.goalContinuation
-import skillbill.db.goalrunner.missingResultPrefixTerminalOutcomeArtifact
-import skillbill.db.goalrunner.workflowFamilyFor
-import skillbill.goalrunner.commitShaFrom
-import skillbill.goalrunner.goalContinuationOutcome
 import skillbill.goalrunner.model.GoalRunnerStoredOutcome
 import skillbill.goalrunner.model.GoalRunnerTerminalStatus
-import skillbill.goalrunner.terminalOutcomeFor
+import skillbill.ports.goalrunner.persistence.commitShaFrom
+import skillbill.ports.goalrunner.persistence.goalContinuation
+import skillbill.ports.goalrunner.persistence.goalContinuationOutcome
+import skillbill.ports.goalrunner.persistence.missingResultPrefixTerminalOutcomeArtifact
 import skillbill.ports.goalrunner.persistence.model.CrashReconcileExpiredWorkerRequest
 import skillbill.ports.goalrunner.persistence.model.GoalSubtaskIdentity
+import skillbill.ports.goalrunner.persistence.terminalOutcomeFor
+import skillbill.ports.goalrunner.persistence.workflowFamilyFor
 import skillbill.ports.taskruntime.FeatureTaskRuntimeWorkerSupervisor
 import skillbill.ports.workflow.WorkflowStateRepository
-import skillbill.ports.workflow.get
+import skillbill.ports.workflow.decomposition.runtime.decodeArtifacts
 import skillbill.ports.workflow.gitops.WorkflowGitOperations
 import skillbill.ports.workflow.gitops.model.WorkflowGitOperationResult
-import skillbill.ports.workflow.save
 import skillbill.workflow.engine.WorkflowEngine
 import skillbill.workflow.engine.model.WorkflowUpdateInput
-import skillbill.workflow.model.WorkflowStatus
-import skillbill.workflow.model.workflowStatus
 import java.nio.file.Path
 import java.time.Clock
 
@@ -66,9 +62,7 @@ internal class WorkflowGoalRunnerOutcomeTerminalPersistence(
     }
     ?.goalBranch
     ?.takeIf(String::isNotBlank)
-    ?.takeIf { branch ->
-      gitOperations.validateBranchBase(repoRoot, "origin/$branch", "HEAD") is WorkflowGitOperationResult.Ok
-    }
+    ?.takeIf { branch -> gitOperations.validateBranchBase(repoRoot, "origin/$branch", "HEAD").ok }
     ?.let { gitOperations.headCommitSha(repoRoot).measuredCommitSha() }
     ?.let { commitSha ->
       GoalRunnerStoredOutcome(
@@ -90,7 +84,7 @@ internal class WorkflowGoalRunnerOutcomeTerminalPersistence(
     val ownership = workflowStates.getFeatureTaskRuntimeWorkerOwnership(workflowId)
     val row = ownership?.let { workflowStates.getFeatureTaskRuntimeWorkflow(workflowId) }
     val continuation = row
-      ?.takeIf { it.workflowStatus.workflowStatus() == WorkflowStatus.RUNNING }
+      ?.takeIf { it.workflowStatus == "running" }
       ?.let { goalContinuation(decodeArtifacts(it.artifactsJson)) }
       ?.takeIf { it.issueKey == issueKey && it.subtaskId == subtaskId }
     if (ownership == null || row == null || continuation == null) return null
@@ -204,7 +198,4 @@ internal class WorkflowGoalRunnerOutcomeTerminalPersistence(
   }
 }
 
-internal fun WorkflowGitOperationResult.measuredCommitSha(): String? = when (this) {
-  is WorkflowGitOperationResult.Ok -> value.trim().takeIf(String::isNotBlank)
-  is WorkflowGitOperationResult.Failed -> null
-}
+internal fun WorkflowGitOperationResult.measuredCommitSha(): String? = value.trim().takeIf { ok && it.isNotBlank() }

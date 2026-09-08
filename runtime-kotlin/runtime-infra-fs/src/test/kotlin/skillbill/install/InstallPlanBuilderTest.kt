@@ -22,8 +22,6 @@ import skillbill.install.staging.applicablePointers
 import skillbill.install.staging.authoredFilesFor
 import skillbill.install.staging.computeInstallContentHash
 import skillbill.install.staging.generatedSupportPointersFor
-import skillbill.model.toPath
-import skillbill.ports.repository.toFileLocation
 import java.io.FileNotFoundException
 import java.nio.file.Files
 import java.nio.file.Path
@@ -184,7 +182,7 @@ class InstallPlanBuilderTest : InstallPlanBuilderTestSupport() {
           agentTargets = listOf(
             InstallAgentTarget(
               agent = InstallAgent.CLAUDE,
-              path = claudeTarget.toFileLocation(),
+              path = claudeTarget,
               source = InstallAgentTargetSource.MANUAL,
             ),
           ),
@@ -193,13 +191,10 @@ class InstallPlanBuilderTest : InstallPlanBuilderTestSupport() {
     )
 
     assertEquals(listOf(InstallAgent.CLAUDE, InstallAgent.CODEX), plan.agents.map { target -> target.agent })
-    assertEquals(claudeTarget, plan.agents.first { target -> target.agent == InstallAgent.CLAUDE }.path.toPath())
-    assertEquals(
-      fixture.home.resolve(".agents/skills"),
-      plan.agents.first { it.agent == InstallAgent.CODEX }.path.toPath(),
-    )
+    assertEquals(claudeTarget, plan.agents.first { target -> target.agent == InstallAgent.CLAUDE }.path)
+    assertEquals(fixture.home.resolve(".agents/skills"), plan.agents.first { it.agent == InstallAgent.CODEX }.path)
     assertEquals(listOf(InstallAgent.CLAUDE, InstallAgent.CODEX), plan.mcpRegistrationIntent.agents)
-    assertEquals(fixture.runtimeMcpBin, plan.mcpRegistrationIntent.runtimeMcpBin?.toPath())
+    assertEquals(fixture.runtimeMcpBin, plan.mcpRegistrationIntent.runtimeMcpBin)
     assertTrue(plan.mcpRegistrationIntent.register)
     assertEquals(beforeHome, snapshotTree(fixture.home), "planning must not mutate the home tree")
   }
@@ -225,7 +220,7 @@ class InstallPlanBuilderTest : InstallPlanBuilderTestSupport() {
         fixture.home.resolve(".codex/skills"),
         fixture.home.resolve(".agents/skills"),
       ),
-      plan.agents.map { target -> target.path.toPath() },
+      plan.agents.map { target -> target.path },
     )
   }
 
@@ -235,7 +230,7 @@ class InstallPlanBuilderTest : InstallPlanBuilderTestSupport() {
     Files.createDirectories(fixture.home.resolve(".codex"))
     val detectedTarget = InstallAgentTarget(
       agent = InstallAgent.CLAUDE,
-      path = fixture.home.resolve("detected-claude").toFileLocation(),
+      path = fixture.home.resolve("detected-claude"),
       source = InstallAgentTargetSource.MANUAL,
     )
 
@@ -250,7 +245,7 @@ class InstallPlanBuilderTest : InstallPlanBuilderTestSupport() {
 
     assertEquals(listOf(InstallAgent.CLAUDE), plan.agents.map { target -> target.agent })
     assertEquals(listOf(InstallAgentTargetSource.DETECTED), plan.agents.map { target -> target.source })
-    assertEquals(fixture.home.resolve("detected-claude"), plan.agents.single().path.toPath())
+    assertEquals(fixture.home.resolve("detected-claude"), plan.agents.single().path)
     assertEquals(1, plan.agents.size)
   }
 }
@@ -437,9 +432,7 @@ class InstallPlanBuilderPlatformSelectionTest : InstallPlanBuilderTestSupport() 
     val error = assertFailsWith<FileNotFoundException> {
       planInstallForTest(
         fixture.request(
-          targetPaths = fixture.targetPaths().copy(
-            skillsRoot = fixture.repoRoot.resolve("missing-skills").toFileLocation(),
-          ),
+          targetPaths = fixture.targetPaths().copy(skillsRoot = fixture.repoRoot.resolve("missing-skills")),
         ),
       )
     }
@@ -469,7 +462,7 @@ class InstallPlanBuilderPlatformSelectionTest : InstallPlanBuilderTestSupport() 
     val error = assertFailsWith<IllegalArgumentException> {
       planInstallForTest(
         fixture.request(
-          targetPaths = fixture.targetPaths().copy(skillsRoot = emptySkillsRoot.toFileLocation()),
+          targetPaths = fixture.targetPaths().copy(skillsRoot = emptySkillsRoot),
         ),
       )
     }
@@ -487,7 +480,7 @@ class InstallPlanBuilderPlatformSelectionTest : InstallPlanBuilderTestSupport() 
 
     val plan = planInstallForTest(
       fixture.request(
-        targetPaths = fixture.targetPaths().copy(skillsRoot = packagedSkillsRoot.toFileLocation()),
+        targetPaths = fixture.targetPaths().copy(skillsRoot = packagedSkillsRoot),
       ),
     )
 
@@ -595,11 +588,11 @@ class InstallPlanBuilderPlatformSelectionTest : InstallPlanBuilderTestSupport() 
       ),
     )
 
-    assertEquals(fixture.home.resolve(".skill-bill/installed-skills"), plan.staging.root.toPath())
+    assertEquals(fixture.home.resolve(".skill-bill/installed-skills"), plan.staging.root)
     assertTrue(plan.staging.skillPaths.isNotEmpty())
     assertTrue(plan.staging.skillPaths.all { path -> path.stagingDir.startsWith(plan.staging.root) })
     assertEquals(InstallTelemetryLevel.FULL, plan.telemetryLevel)
-    assertEquals(fixture.runtimeInstallRoot, plan.runtimeDistributionInputs.runtimeInstallRoot.toPath())
+    assertEquals(fixture.runtimeInstallRoot, plan.runtimeDistributionInputs.runtimeInstallRoot)
     assertEquals(WindowsSymlinkPreflightState.DECISION_REQUIRED, plan.windowsSymlinkPreflight.state)
     assertEquals(WindowsSymlinkDecision.REQUIRE_USER_ACTION, plan.windowsSymlinkPreflight.decision)
     assertEquals(
@@ -616,7 +609,7 @@ class InstallPlanBuilderPlatformSelectionTest : InstallPlanBuilderTestSupport() 
     val error = assertFailsWith<InvalidInstallPlanSchemaError> {
       planInstallForTest(
         fixture.request().copy(
-          mcpRegistrationChoice = McpRegistrationChoice(register = true, runtimeMcpBin = Path.of("").toFileLocation()),
+          mcpRegistrationChoice = McpRegistrationChoice(register = true, runtimeMcpBin = Path.of("")),
         ),
       )
     }

@@ -61,7 +61,7 @@ internal fun GoalRunnerRunReport.toGoalRunCliMap(): Map<String, Any?> = when (th
     "subtasks_blocked" to subtasksBlocked,
     "unaddressed_findings" to unaddressedFindingCount,
     "unaddressed_severity_breakdown" to unaddressedSeverityBreakdown,
-    "pull_request_status" to pullRequestStatus.wireValue,
+    "pull_request_status" to pullRequestStatus,
     "pull_request_url" to pullRequestUrl,
   )
   is GoalRunnerRunReport.Stopped -> linkedMapOf(

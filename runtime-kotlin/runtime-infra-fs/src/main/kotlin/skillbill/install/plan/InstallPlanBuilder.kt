@@ -15,16 +15,14 @@ import skillbill.install.model.validateInstallPlanWireSnapshot
 import skillbill.install.policy.InstallPlanPolicy
 import skillbill.install.support.claudeSkillTargets
 import skillbill.install.support.codexSkillTargets
-import skillbill.model.toPath
 import skillbill.ports.install.plan.model.InstallPlanningFacts
-import skillbill.ports.repository.toFileLocation
 import skillbill.review.plan.ReviewFallbackResolver
 import skillbill.scaffold.model.PlatformManifest
 import java.nio.file.Path
 
 internal fun buildInstallPlan(request: InstallPlanRequest, wireValidator: InstallPlanWireValidator): InstallPlan {
   requireSupportedAgentContract()
-  val platformManifests = discoverPlatformManifests(request.targetPaths.platformPacksRoot.toPath())
+  val platformManifests = discoverPlatformManifests(request.targetPaths.platformPacksRoot)
   val policyInput = buildInstallPolicyInput(request, platformManifests, enforceContractVersion = true)
   val draft = InstallPlanPolicy.buildPlanDraft(policyInput)
   validateInstallPlanInternalSkills(draft.skills)
@@ -51,7 +49,7 @@ private fun buildInstallPolicyInput(
   platformManifests: List<PlatformManifest>,
   enforceContractVersion: Boolean,
 ): InstallPolicyInput {
-  val baseSkills = discoverBaseSkills(request.targetPaths.skillsRoot.toPath())
+  val baseSkills = discoverBaseSkills(request.targetPaths.skillsRoot)
   val resolvedReviewFallback = baseSkills
     .takeIf { skills -> skills.any { it.name == "bill-code-review" } }
     ?.let { ReviewFallbackResolver.resolveOptional(platformManifests) }
@@ -82,14 +80,14 @@ private fun buildInstallPolicyInput(
         baselineLayers = manifest.codeReviewComposition?.baselineLayers.orEmpty(),
       )
     },
-    detectedAgentTargets = detectAgents(request.home.toPath(), installPlanEnvironment(request)).map { target ->
+    detectedAgentTargets = detectAgents(request.home, installPlanEnvironment(request)).map { target ->
       InstallAgentTarget(
         agent = InstallAgent.fromId(target.name),
         path = target.path,
         source = InstallAgentTargetSource.DETECTED,
       )
     },
-    defaultAgentTargets = multiRootDefaultTargets(request.home.toPath(), installPlanEnvironment(request)),
+    defaultAgentTargets = multiRootDefaultTargets(request.home, installPlanEnvironment(request)),
   )
 }
 
@@ -107,7 +105,7 @@ internal fun enumerateInstallPlanSkills(
 ): List<InstallPlanSkill> {
   requireSupportedAgentContract()
   val platformManifests = discoverPlatformManifests(
-    request.targetPaths.platformPacksRoot.toPath(),
+    request.targetPaths.platformPacksRoot,
     enforceContractVersion,
   )
   val skills = InstallPlanPolicy.buildPlanDraft(
@@ -119,18 +117,18 @@ internal fun enumerateInstallPlanSkills(
 
 internal fun collectInstallPlanningFacts(request: InstallPlanRequest): InstallPlanningFacts {
   requireSupportedAgentContract()
-  val platformManifests = discoverPlatformManifests(request.targetPaths.platformPacksRoot.toPath())
+  val platformManifests = discoverPlatformManifests(request.targetPaths.platformPacksRoot)
   return InstallPlanningFacts(
-    baseSkills = discoverBaseSkills(request.targetPaths.skillsRoot.toPath()),
+    baseSkills = discoverBaseSkills(request.targetPaths.skillsRoot),
     platformManifests = platformManifests,
-    detectedAgentTargets = detectAgents(request.home.toPath(), installPlanEnvironment(request)).map { target ->
+    detectedAgentTargets = detectAgents(request.home, installPlanEnvironment(request)).map { target ->
       InstallAgentTarget(
         agent = InstallAgent.fromId(target.name),
         path = target.path,
         source = InstallAgentTargetSource.DETECTED,
       )
     },
-    defaultAgentTargets = multiRootDefaultTargets(request.home.toPath(), installPlanEnvironment(request)),
+    defaultAgentTargets = multiRootDefaultTargets(request.home, installPlanEnvironment(request)),
   )
 }
 
@@ -163,11 +161,11 @@ private fun multiRootDefaultTargets(
   val agent = InstallAgent.fromId(agentId)
   when (agentId) {
     "claude" -> claudeSkillTargets(home, environment).map { skillPath ->
-      InstallAgentDefaultTarget(agent = agent, path = skillPath.toFileLocation())
+      InstallAgentDefaultTarget(agent = agent, path = skillPath)
     }
     "codex" -> codexSkillTargets(home, environment).map { skillPath ->
-      InstallAgentDefaultTarget(agent = agent, path = skillPath.toFileLocation())
+      InstallAgentDefaultTarget(agent = agent, path = skillPath)
     }
-    else -> listOf(InstallAgentDefaultTarget(agent = agent, path = path.toFileLocation()))
+    else -> listOf(InstallAgentDefaultTarget(agent = agent, path = path))
   }
 }

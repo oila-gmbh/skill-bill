@@ -7,9 +7,7 @@ import skillbill.install.plan.installSkill
 import skillbill.install.plan.uninstallTargets
 import skillbill.install.staging.StageInstalledSkillInput
 import skillbill.install.staging.stageInstalledSkill
-import skillbill.model.toPath
 import skillbill.nativeagent.testNativeAgentCompositionContext
-import skillbill.ports.repository.toFileLocation
 import skillbill.scaffold.authoring.renderWrapper
 import skillbill.scaffold.authoring.resolveTarget
 import skillbill.scaffold.runtime.RepoValidationRuntime
@@ -32,7 +30,7 @@ class InternalSkillStagingPackTest : InternalSkillStagingTestSupport() {
     val error = assertFailsWith<InvalidInternalSkillClassificationError> {
       installSkill(
         skillPath = fixture.childDir,
-        agentTargets = listOf(AgentTarget("test-agent", agentRoot.toFileLocation())),
+        agentTargets = listOf(AgentTarget("test-agent", agentRoot)),
         context = InstallContext(repoRoot = fixture.repoRoot, home = fixture.home),
       )
     }
@@ -55,7 +53,7 @@ class InternalSkillStagingPackTest : InternalSkillStagingTestSupport() {
 
     val links = installSkill(
       skillPath = fixture.parentDir,
-      agentTargets = listOf(AgentTarget("test-agent", agentRoot.toFileLocation())),
+      agentTargets = listOf(AgentTarget("test-agent", agentRoot)),
       context = InstallContext(repoRoot = fixture.repoRoot, home = fixture.home),
     )
     val parentLink = links.single()
@@ -224,17 +222,17 @@ class InternalSkillStagingPackTest : InternalSkillStagingTestSupport() {
     )
 
     val sidecar = rendered.stagingDir.resolve("${fixture.packChildName}.md")
-    assertTrue(Files.isRegularFile(sidecar.toPath(), LinkOption.NOFOLLOW_LINKS), "missing pack sidecar at $sidecar")
+    assertTrue(Files.isRegularFile(sidecar, LinkOption.NOFOLLOW_LINKS), "missing pack sidecar at $sidecar")
     assertTrue(sidecar in rendered.renderedSidecarFiles, "pack sidecar not reported in renderedSidecarFiles")
     val packChildTarget = resolveTarget(fixture.repoRoot, fixture.packChildName)
     assertEquals(
       renderWrapper(packChildTarget),
-      Files.readString(sidecar.toPath()),
+      Files.readString(sidecar),
       "pack sidecar must carry the same full governed wrapper a listed pack skill would render",
     )
     listOf("review-orchestrator.md", "specialist-contract.md").forEach { name ->
       val stagedPointer = rendered.stagingDir.resolve(name)
-      assertTrue(Files.isRegularFile(stagedPointer.toPath(), LinkOption.NOFOLLOW_LINKS), "missing child pointer $name")
+      assertTrue(Files.isRegularFile(stagedPointer, LinkOption.NOFOLLOW_LINKS), "missing child pointer $name")
       assertTrue(stagedPointer in rendered.renderedPointerFiles, "$name must be reported as a rendered pointer")
     }
   }
@@ -247,7 +245,7 @@ class InternalSkillStagingPackTest : InternalSkillStagingTestSupport() {
     val unselected = stageInstalledSkill(fixture.repoRoot, fixture.parentDir, fixture.home)
     assertTrue(unselected.renderedSidecarFiles.isEmpty(), "unselected pack must stage no sidecars")
     assertFalse(
-      Files.exists(unselected.stagingDir.resolve("${fixture.packChildName}.md").toPath(), LinkOption.NOFOLLOW_LINKS),
+      Files.exists(unselected.stagingDir.resolve("${fixture.packChildName}.md"), LinkOption.NOFOLLOW_LINKS),
       "unselected pack sidecar must not be written",
     )
 
@@ -311,7 +309,7 @@ class InternalSkillStagingPackTest : InternalSkillStagingTestSupport() {
       ),
     )
     val sidecar = first.stagingDir.resolve("${fixture.packChildName}.md")
-    Files.delete(sidecar.toPath())
+    Files.delete(sidecar)
 
     val second = stageInstalledSkill(
       StageInstalledSkillInput(
@@ -323,7 +321,7 @@ class InternalSkillStagingPackTest : InternalSkillStagingTestSupport() {
     )
     assertEquals(first.contentHash, second.contentHash)
     assertTrue(
-      Files.isRegularFile(second.stagingDir.resolve("${fixture.packChildName}.md").toPath(), LinkOption.NOFOLLOW_LINKS),
+      Files.isRegularFile(second.stagingDir.resolve("${fixture.packChildName}.md"), LinkOption.NOFOLLOW_LINKS),
       "a pruned pack sidecar must be re-rendered instead of reused broken",
     )
   }
@@ -339,7 +337,7 @@ class InternalSkillStagingPackTest : InternalSkillStagingTestSupport() {
         selectedPackSkills = listOf(fixture.packChildPlanSkill),
       ),
     )
-    Files.delete(first.stagingDir.resolve("specialist-contract.md").toPath())
+    Files.delete(first.stagingDir.resolve("specialist-contract.md"))
 
     val second = stageInstalledSkill(
       StageInstalledSkillInput(
@@ -351,6 +349,6 @@ class InternalSkillStagingPackTest : InternalSkillStagingTestSupport() {
     )
 
     assertEquals(first.contentHash, second.contentHash)
-    assertTrue(Files.isRegularFile(second.stagingDir.resolve("specialist-contract.md").toPath()))
+    assertTrue(Files.isRegularFile(second.stagingDir.resolve("specialist-contract.md")))
   }
 }

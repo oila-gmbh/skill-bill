@@ -3,9 +3,8 @@ package skillbill.application.planningprojection
 import skillbill.error.InvalidGoalPlanningPreparationSchemaError
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePlanningProjectionValidator
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePlanningProjectionContract
-import skillbill.workflow.model.WorkflowStepStatus
-import skillbill.workflow.model.workflowStepStatus
 
+private const val PHASE_OUTPUT_STATUS_COMPLETED = "completed"
 private const val SCHEMA_GATE_DETAIL_MAX_CHARS = 500
 
 private fun boundedSchemaGateDetail(validationReason: String): String =
@@ -20,7 +19,7 @@ fun producerProjectionGateReason(
   outputMap: Map<String, Any?>,
   planningProjectionValidator: FeatureTaskRuntimePlanningProjectionValidator,
 ): String? {
-  if ((outputMap["status"] as? String).workflowStepStatus() != WorkflowStepStatus.COMPLETED) return null
+  if (outputMap["status"] != PHASE_OUTPUT_STATUS_COMPLETED) return null
   val expectedKind = FeatureTaskRuntimePlanningProjectionContract.producedProjectionKindFor(phaseId)
     ?: return null
   return unresolvedProducerProjectionKindReason(phaseId, expectedKind, planningProjectionValidator)

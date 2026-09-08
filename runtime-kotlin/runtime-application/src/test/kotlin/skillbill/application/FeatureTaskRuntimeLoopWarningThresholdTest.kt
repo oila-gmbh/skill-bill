@@ -238,7 +238,7 @@ class FeatureTaskRuntimeLoopWarningThresholdTest {
         launchedPhases = harness.launchedPromptPhaseOrder(),
         reviewFixIterations = loopEdgeIterations(harness, FeatureTaskRuntimePhaseWorkflowDefinition.REVIEW_FIX_LOOP_ID),
         phaseStatuses = harness.recorder.loadPhaseRecords(WORKFLOW_ID).orEmpty()
-          .mapValues { (_, record) -> record.status.wireValue },
+          .mapValues { (_, record) -> record.status },
       )
     }
 

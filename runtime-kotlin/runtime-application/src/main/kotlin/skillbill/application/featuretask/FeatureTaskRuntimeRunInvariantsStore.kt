@@ -3,12 +3,10 @@ package skillbill.application.featuretask
 import me.tatarka.inject.annotations.Inject
 import skillbill.application.decomposition.decodeArtifacts
 import skillbill.application.workflow.model.WorkflowFamily
-import skillbill.contracts.JsonCodec
+import skillbill.contracts.JsonSupport
 import skillbill.error.InvalidWorkflowStateSchemaError
 import skillbill.ports.db.DatabaseSessionFactory
 import skillbill.ports.workflow.WorkflowStateRepository
-import skillbill.ports.workflow.get
-import skillbill.ports.workflow.save
 import skillbill.workflow.engine.WorkflowEngine
 import skillbill.workflow.engine.WorkflowSnapshotValidator
 import skillbill.workflow.engine.model.WorkflowStateSnapshot
@@ -86,7 +84,7 @@ class FeatureTaskRuntimeRunInvariantsStore(
 
 private fun runInvariantsFrom(artifacts: Map<String, Any?>): FeatureTaskRuntimeRunInvariants? {
   val raw = artifacts[FEATURE_TASK_RUNTIME_RUN_INVARIANTS_ARTIFACT_KEY] ?: return null
-  val entryMap = JsonCodec.anyToStringAnyMap(raw)
+  val entryMap = JsonSupport.anyToStringAnyMap(raw)
     ?: throw InvalidWorkflowStateSchemaError(
       "Feature-task-runtime artifact '$FEATURE_TASK_RUNTIME_RUN_INVARIANTS_ARTIFACT_KEY' must decode to a map.",
     )

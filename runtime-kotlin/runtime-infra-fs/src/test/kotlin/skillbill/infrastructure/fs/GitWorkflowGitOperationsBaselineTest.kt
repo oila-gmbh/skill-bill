@@ -1,7 +1,5 @@
 package skillbill.infrastructure.fs
 
-import skillbill.ports.workflow.gitops.model.WorkflowGitOperationResult
-import skillbill.ports.workflow.gitops.model.WorkflowGitOperationStatus
 import skillbill.ports.workflow.gitops.runtimePhaseChangedPathsBetweenCommits
 import skillbill.ports.workflow.gitops.runtimePhaseHeadCommit
 import java.nio.file.Files
@@ -36,7 +34,7 @@ class GitWorkflowGitOperationsBaselineTest {
       requireNotNull(after.value),
     )
 
-    assertTrue(result is WorkflowGitOperationResult.Ok, result.error)
+    assertTrue(result.ok, result.error)
     assertContains(result.value.orEmpty(), ".feature-specs/SKILL-124-demo/spec.md")
   }
 
@@ -54,7 +52,7 @@ class GitWorkflowGitOperationsBaselineTest {
 
     val result = GitWorkflowGitOperations().createCommit(repoRoot, "SKILL-52 subtask 1: demo")
 
-    assertTrue(result is WorkflowGitOperationResult.Ok, result.error)
+    assertTrue(result.ok, result.error)
     val committedFiles = git(repoRoot, "show", "--name-only", "--format=", "HEAD")
     assertContains(committedFiles, "runtime.txt")
     assertContains(committedFiles, ".feature-specs/SKILL-52-demo/decomposition-manifest.yaml")
@@ -75,7 +73,7 @@ class GitWorkflowGitOperationsBaselineTest {
 
     val result = GitWorkflowGitOperations().createCommit(repoRoot, "chore: nothing staged")
 
-    assertTrue(result is WorkflowGitOperationResult.Ok, result.error)
+    assertTrue(result.ok, result.error)
     assertEquals("", result.value)
     assertEquals(before, git(repoRoot, "rev-parse", "HEAD"))
     assertContains(git(repoRoot, "status", "--porcelain"), "tracked.txt")
@@ -96,9 +94,9 @@ class GitWorkflowGitOperationsBaselineTest {
     val present = ops.branchExists(repoRoot, "feat/present")
     val absent = ops.branchExists(repoRoot, "feat/absent")
 
-    assertTrue(present is WorkflowGitOperationResult.Ok, present.error)
+    assertTrue(present.ok, present.error)
     assertEquals("true", present.value)
-    assertTrue(absent is WorkflowGitOperationResult.Ok, absent.error)
+    assertTrue(absent.ok, absent.error)
     assertEquals("false", absent.value)
     assertFalse(git(repoRoot, "branch", "--list", "feat/absent").contains("feat/absent"))
   }
@@ -109,7 +107,7 @@ class GitWorkflowGitOperationsBaselineTest {
 
     val result = GitWorkflowGitOperations().branchExists(repoRoot, "feat/persisted")
 
-    assertFalse(result is WorkflowGitOperationResult.Ok)
+    assertFalse(result.ok)
     assertContains(result.error, "git rev-parse")
   }
 
@@ -136,7 +134,7 @@ class GitWorkflowGitOperationsBaselineTest {
 
     val result = GitWorkflowGitOperations().checkoutBranch(repoRoot, "feat/takeover")
 
-    assertTrue(result is WorkflowGitOperationResult.Ok, result.error)
+    assertTrue(result.ok, result.error)
     assertEquals("feat/takeover", git(repoRoot, "branch", "--show-current"))
     assertEquals(
       "base\ntarget\nlocal-change\n",
@@ -171,7 +169,7 @@ class GitWorkflowGitOperationsBaselineTest {
 
     val result = GitWorkflowGitOperations().checkoutBranch(repoRoot, "feat/takeover")
 
-    assertTrue(result is WorkflowGitOperationResult.Ok, result.error)
+    assertTrue(result.ok, result.error)
     assertEquals("feat/takeover", git(repoRoot, "branch", "--show-current"))
     val status = git(repoRoot, "status", "--porcelain")
     assertContains(status, "M  staged.txt")
@@ -192,7 +190,7 @@ class GitWorkflowGitOperationsBaselineTest {
 
     val result = GitWorkflowGitOperations().worktreeActivity(repoRoot)
 
-    assertEquals(WorkflowGitOperationStatus.OK, result.status, result.error)
+    assertTrue(result.ok, result.error)
     assertEquals(2, result.changedFileSummary?.total)
     assertEquals(1, result.changedFileSummary?.modified)
     assertEquals(1, result.changedFileSummary?.untracked)
@@ -212,7 +210,7 @@ class GitWorkflowGitOperationsBaselineTest {
 
     val result = GitWorkflowGitOperations().worktreeActivity(repoRoot)
 
-    assertEquals(WorkflowGitOperationStatus.OK, result.status, result.error)
+    assertTrue(result.ok, result.error)
     assertEquals(0, result.changedFileSummary?.total)
     assertEquals(0, result.changedFileSummary?.modified)
     assertEquals(0, result.changedFileSummary?.renamed)
@@ -242,7 +240,7 @@ class GitWorkflowGitOperationsBaselineTest {
 
     val result = GitWorkflowGitOperations().worktreeActivity(repoRoot)
 
-    assertEquals(WorkflowGitOperationStatus.OK, result.status, result.error)
+    assertTrue(result.ok, result.error)
     assertEquals(4, result.changedFileSummary?.total)
     assertEquals(1, result.changedFileSummary?.modified)
     assertEquals(1, result.changedFileSummary?.renamed)
@@ -274,7 +272,7 @@ class GitWorkflowGitOperationsBaselineTest {
 
     val result = GitWorkflowGitOperations().worktreeActivity(repoRoot)
 
-    assertEquals(WorkflowGitOperationStatus.OK, result.status, result.error)
+    assertTrue(result.ok, result.error)
     assertEquals(changedFiles, result.changedFileSummary?.total)
     assertEquals(changedFiles, result.changedFileSummary?.modified)
     assertEquals(changedFiles, result.diffStat?.filesChanged)

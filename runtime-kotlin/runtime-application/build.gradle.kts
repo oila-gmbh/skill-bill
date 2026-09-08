@@ -12,15 +12,12 @@ dependencies {
   api(project(":runtime-domain"))
   api(project(":runtime-ports"))
   implementation(libs.kotlin.inject.runtime)
-  implementation(libs.kotlinx.serialization.json)
   // The harness must enforce budgets through the real FileSystemReviewEvidenceBroker; main source
   // still depends on the port only.
   testFixturesImplementation(project(":runtime-infra-fs"))
   testFixturesImplementation(project(":runtime-infra-sqlite"))
   testFixturesImplementation(testFixtures(project(":runtime-ports")))
-  testFixturesImplementation(testFixtures(project(":runtime-domain")))
   testImplementation(testFixtures(project(":runtime-ports")))
-  testImplementation(testFixtures(project(":runtime-domain")))
   // SKILL-174: the "an unselected body never reaches the plan prompt" proof must run the real
   // discovery and resolver against an on-disk fixture. A stub that filters by heading id would only
   // restate itself, and main source still depends on the port only.

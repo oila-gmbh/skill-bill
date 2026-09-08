@@ -1,5 +1,7 @@
 package skillbill.review.context.model
 
+import java.nio.charset.StandardCharsets
+
 data class ReviewHunkEvidenceLocator(
   val storePath: String,
   val hunkHeader: String,
@@ -77,7 +79,7 @@ data class ReviewChangedHunk(
   val hunkId: String = indexedHunkId ?: sha256(canonicalIdentity(this, content))
 
   val contentBytes: Long = indexedContentBytes
-    ?: content.replace("\r\n", "\n").toByteArray(Charsets.UTF_8).size.toLong()
+    ?: content.replace("\r\n", "\n").toByteArray(StandardCharsets.UTF_8).size.toLong()
 
   internal fun packetCanonical(): String = canonicalFields(
     hunkId,
@@ -96,7 +98,7 @@ data class ReviewChangedHunk(
       indexedContentDigest = digestOfBody(normalized),
       indexedEvidenceLocator = locator,
       indexedHunkId = idFor(this, normalized),
-      indexedContentBytes = normalized.toByteArray(Charsets.UTF_8).size.toLong(),
+      indexedContentBytes = normalized.toByteArray(StandardCharsets.UTF_8).size.toLong(),
     )
   }
 

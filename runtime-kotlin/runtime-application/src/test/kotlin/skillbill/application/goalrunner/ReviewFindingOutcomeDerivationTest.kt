@@ -1,9 +1,9 @@
 package skillbill.application.goalrunner
+import skillbill.application.subtaskreview.GoalSubtaskReviewSummaryReducer
+import skillbill.application.subtaskreview.UnaddressedFindingLedgerScope
 import skillbill.goalrunner.model.ReviewFindingOutcome
 import skillbill.goalrunner.model.UnaddressedFinding
 import skillbill.goalrunner.model.toOutcomeRecord
-import skillbill.goalrunner.subtaskreview.GoalSubtaskReviewSummaryReducer
-import skillbill.goalrunner.subtaskreview.model.UnaddressedFindingLedgerScope
 import skillbill.workflow.goal.model.GoalSubtaskBlockerDisposition
 import skillbill.workflow.goal.model.GoalSubtaskBlockerDispositionVerdict
 import kotlin.test.Test

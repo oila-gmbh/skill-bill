@@ -1,6 +1,5 @@
 package skillbill.scaffold.substance
 
-import skillbill.model.toPath
 import skillbill.scaffold.model.PlatformManifest
 import java.nio.file.Files
 import java.nio.file.Path
@@ -54,7 +53,7 @@ internal fun specialistMetrics(
       root,
       pack.slug,
       area,
-      path.toPath(),
+      path,
       inherited = false,
     )
   }
@@ -77,7 +76,7 @@ internal fun findAreaSource(
 ): Path? {
   if (slug in visiting) return null
   val pack = packs[slug] ?: return null
-  pack.declaredFiles.areas[area]?.let { return it.toPath() }
+  pack.declaredFiles.areas[area]?.let { return it }
   return pack.codeReviewComposition?.baselineLayers.orEmpty().filter { it.required }.firstNotNullOfOrNull { layer ->
     packs[layer.platform]?.takeIf {
       it.routedSkillName == layer.skill

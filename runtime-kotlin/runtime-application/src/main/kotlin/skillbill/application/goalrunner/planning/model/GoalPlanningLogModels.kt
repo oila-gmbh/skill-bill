@@ -4,17 +4,6 @@ import java.nio.file.Path
 import java.time.Duration
 import java.time.Instant
 
-enum class GoalPlanningAttemptOutcome(val wireValue: String) {
-  IN_FLIGHT("in_flight"),
-  FAILED("failed"),
-  SUCCEEDED("succeeded"),
-  ;
-
-  companion object {
-    fun fromWire(value: String): GoalPlanningAttemptOutcome? = entries.firstOrNull { it.wireValue == value }
-  }
-}
-
 data class GoalPlanningLogRequest(
   val issueKey: String,
   val repoRoot: Path? = null,
@@ -34,7 +23,7 @@ data class GoalPlanningLogAttempt(
   val attempt: Int,
   val startedAt: Instant?,
   val finishedAt: Instant?,
-  val outcome: GoalPlanningAttemptOutcome,
+  val outcome: String,
   val rule: String? = null,
   val reason: String? = null,
   val agentId: String? = null,
@@ -68,8 +57,8 @@ data class GoalPlanningLog(
   val attempts: List<GoalPlanningLogAttempt> = emptyList(),
 ) {
   val totalAttempts: Int get() = attempts.size
-  val failedAttempts: Int get() = attempts.count { it.outcome == GoalPlanningAttemptOutcome.FAILED }
-  val succeededAttempts: Int get() = attempts.count { it.outcome == GoalPlanningAttemptOutcome.SUCCEEDED }
+  val failedAttempts: Int get() = attempts.count { it.outcome == "failed" }
+  val succeededAttempts: Int get() = attempts.count { it.outcome == "succeeded" }
 
   val totalPlanningMs: Long get() = attempts.mapNotNull(GoalPlanningLogAttempt::durationMs).sum()
 
@@ -79,7 +68,7 @@ data class GoalPlanningLog(
    * mismatch.
    */
   val firstAttemptFailures: Int
-    get() = attempts.count { it.attempt == 1 && it.outcome == GoalPlanningAttemptOutcome.FAILED }
+    get() = attempts.count { it.attempt == 1 && it.outcome == "failed" }
 
   val phasesObserved: Int get() = attempts.map { it.phaseId }.distinct().size
 }

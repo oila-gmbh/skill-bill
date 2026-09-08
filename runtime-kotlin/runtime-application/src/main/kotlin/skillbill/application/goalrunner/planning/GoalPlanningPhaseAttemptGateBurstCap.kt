@@ -4,15 +4,15 @@ import skillbill.application.featuretask.boundedSchemaGateDetail
 import skillbill.application.goalrunner.EmptyOrStoppedArgs
 import skillbill.application.goalrunner.planning.model.GoalPlanningPhaseProduction
 import skillbill.application.planningprojection.producerProjectionGateReason
-import skillbill.contracts.JsonCodec
+import skillbill.contracts.JsonSupport
 import skillbill.error.InvalidFeatureTaskRuntimeHandoffProjectionError
 import skillbill.error.InvalidFeatureTaskRuntimePlanningProjectionSchemaError
 import skillbill.ports.goalrunner.runner.model.GoalRunnerLaunchAuthorizationDeniedException
 
 fun DefaultGoalPlanningSweep.projectionGateReason(payload: String, phaseId: String): String? {
-  val envelope = JsonCodec.parseObjectOrNull(payload)
-    ?.let(JsonCodec::jsonElementToValue)
-    ?.let(JsonCodec::anyToStringAnyMap)
+  val envelope = JsonSupport.parseObjectOrNull(payload)
+    ?.let(JsonSupport::jsonElementToValue)
+    ?.let(JsonSupport::anyToStringAnyMap)
     ?: return "Goal planning '$phaseId' payload is not a JSON object."
   return producerProjectionGateReason(phaseId, envelope, planningProjectionValidator)
     ?.let(::boundedSchemaGateDetail)

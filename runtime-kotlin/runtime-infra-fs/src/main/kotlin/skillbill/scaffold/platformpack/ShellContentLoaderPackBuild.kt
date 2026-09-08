@@ -3,7 +3,6 @@ package skillbill.scaffold.platformpack
 
 import org.yaml.snakeyaml.Yaml
 import org.yaml.snakeyaml.error.YAMLException
-import skillbill.ports.repository.toFileLocation
 import skillbill.scaffold.model.PlatformManifest
 import java.io.IOException
 import java.nio.file.Files
@@ -60,7 +59,7 @@ internal fun assemblePlatformManifest(
   val pointers = parsePointers(manifest, slug)
   return PlatformManifest(
     slug = slug,
-    packRoot = packRoot.toFileLocation(),
+    packRoot = packRoot,
     contractVersion = requireStringField(manifest, slug, "contract_version"),
     routingSignals = routingSignals,
     declaredCodeReviewAreas = declaredAreas,
@@ -69,7 +68,7 @@ internal fun assemblePlatformManifest(
     laneConditions = laneConditions,
     displayName = parseOptionalString(manifest, slug, "display_name"),
     notes = parseOptionalString(manifest, slug, "notes"),
-    declaredQualityCheckFile = declaredQualityCheckFile?.toFileLocation(),
+    declaredQualityCheckFile = declaredQualityCheckFile,
     validationGate = parseValidationGate(manifest, slug),
     codeReviewComposition = parseCodeReviewComposition(manifest, slug),
     fallbackCapabilities = parseFallbackCapabilities(manifest, slug),

@@ -1,6 +1,5 @@
 package skillbill.infrastructure.fs
 
-import skillbill.ports.repository.toFileLocation
 import skillbill.ports.review.model.ReviewOwnedFileEvidence
 import skillbill.scaffold.model.DeclaredFiles
 import skillbill.scaffold.model.GovernedAddonActivation
@@ -293,11 +292,11 @@ class FileSystemReviewRubricResolverTest {
 
   private fun manifest(root: Path, baseline: Path, areas: Map<String, Path> = emptyMap()) = PlatformManifest(
     slug = "kotlin",
-    packRoot = root.toFileLocation(),
+    packRoot = root,
     contractVersion = "1.3",
     routingSignals = RoutingSignals(listOf(".kt"), emptyList()),
     declaredCodeReviewAreas = areas.keys.toList(),
-    declaredFiles = DeclaredFiles(baseline.toFileLocation(), areas.mapValues { (_, path) -> path.toFileLocation() }),
+    declaredFiles = DeclaredFiles(baseline, areas),
     areaMetadata = emptyMap(),
   )
 }

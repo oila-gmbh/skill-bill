@@ -1,54 +1,38 @@
 package skillbill.application.goalrunner
 
-import me.tatarka.inject.annotations.Inject
-import skillbill.application.featuretask.FeatureTaskRuntimePhaseRecorder
-import skillbill.application.featuretask.FeatureTaskRuntimeStatusService
 import skillbill.application.featuretask.agentAttributionFromPhaseState
 import skillbill.application.featuretask.model.FeatureTaskRuntimeStatusRequest
+import skillbill.application.goalrunner.model.GoalRunnerStatusProjectionAssemblerDeps
 import skillbill.application.goalrunner.model.GoalRunnerStatusRequest
-import skillbill.application.goalrunner.planning.GoalPlanningStatusReasonCoherence
 import skillbill.application.goalrunner.planning.model.GoalPlanningStatusAlignRequest
 import skillbill.error.ShellContentContractException
 import skillbill.goalrunner.model.ExecutionLiveness
 import skillbill.goalrunner.model.GoalRunnerStatusProjection
-import skillbill.goalrunner.model.GoalRunnerStatusProjectionRuntimeInputs
+import skillbill.goalrunner.model.GoalRunnerStatusProjectionExtras
 import skillbill.goalrunner.model.GoalRunnerStatusProjector
-import skillbill.model.RepositoryRoot
-import skillbill.ports.diagnostics.RuntimeDiagnostics
 import skillbill.ports.featuretask.model.FeatureTaskRuntimeWorkerOwnership
-import skillbill.ports.goalrunner.runner.GoalRunnerAttemptLedgerStore
-import skillbill.ports.goalrunner.runner.GoalRunnerManifestStore
-import skillbill.ports.goalrunner.runner.GoalRunnerWorkflowOutcomeStore
 import skillbill.ports.goalrunner.runner.model.GoalRunnerManifestState
 import skillbill.ports.goalrunner.runner.model.GoalRunnerOutOfBandAcceptance
-import skillbill.ports.taskruntime.FeatureTaskRuntimeWorkerSupervisor
 import skillbill.ports.taskruntime.model.FeatureTaskRuntimeProcessInspection
-import skillbill.ports.workflow.gitops.WorkflowGitOperations
-import skillbill.ports.workflow.gitops.model.WorkflowGitOperationStatus
 import skillbill.ports.workflow.gitops.model.WorkflowSelectedDiffHunksRequest
 import skillbill.ports.workflow.model.FeatureTaskWorkflowMode
 import skillbill.workflow.decomposition.model.DecompositionManifest
 import skillbill.workflow.decomposition.model.DecompositionSubtask
-import skillbill.workflow.model.DecompositionStatus
-import skillbill.workflow.model.decompositionStatus
 import java.io.IOException
-import java.time.Clock
 import java.time.Instant
 
-@Inject
-class GoalRunnerStatusProjectionAssembler(
-  val manifestStore: GoalRunnerManifestStore,
-  val outcomeStore: GoalRunnerWorkflowOutcomeStore,
-  val phaseRecorder: FeatureTaskRuntimePhaseRecorder,
-  val gitOperations: WorkflowGitOperations,
-  val attemptLedgerStore: GoalRunnerAttemptLedgerStore,
-  val clock: Clock,
-  val workerSupervisor: FeatureTaskRuntimeWorkerSupervisor,
-  val planningStatusReasonCoherence: GoalPlanningStatusReasonCoherence,
-  val diagnostics: RuntimeDiagnostics,
-  val runtimeStatusService: FeatureTaskRuntimeStatusService?,
-  val repositoryRoot: RepositoryRoot,
-) {
+class GoalRunnerStatusProjectionAssembler(deps: GoalRunnerStatusProjectionAssemblerDeps) {
+  val manifestStore = deps.manifestStore
+  val outcomeStore = deps.outcomeStore
+  val phaseRecorder = deps.phaseRecorder
+  val gitOperations = deps.gitOperations
+  val attemptLedgerStore = deps.attemptLedgerStore
+  val clock = deps.clock
+  val workerSupervisor = deps.workerSupervisor
+  val planningStatusReasonCoherence = deps.planningStatusReasonCoherence
+  val diagnostics = deps.diagnostics
+  val runtimeStatusService = deps.runtimeStatusService
+  val repositoryRoot = deps.repositoryRoot
   fun project(loadedState: GoalRunnerManifestState, request: GoalRunnerStatusRequest): GoalRunnerStatusProjection {
     val acceptances = manifestStore.outOfBandAcceptances(loadedState.parentWorkflowId, request.dbPathOverride)
     val manifest = reconcileStatusManifest(loadedState, request, acceptances)
@@ -58,7 +42,7 @@ class GoalRunnerStatusProjectionAssembler(
     return GoalRunnerStatusProjector.project(
       manifest = manifest,
       activeAgent = resolveActiveAgent(currentSubtask, request.dbPathOverride),
-      extras = statusProjectionRuntimeInputs(
+      extras = statusProjectionExtras(
         loadedState = loadedState,
         request = request,
         manifest = manifest,
@@ -83,13 +67,13 @@ class GoalRunnerStatusProjectionAssembler(
   }
 }
 
-internal fun GoalRunnerStatusProjectionAssembler.statusProjectionRuntimeInputs(
+internal fun GoalRunnerStatusProjectionAssembler.statusProjectionExtras(
   loadedState: GoalRunnerManifestState,
   request: GoalRunnerStatusRequest,
   manifest: DecompositionManifest,
   currentSubtask: DecompositionSubtask?,
   acceptances: Map<Int, GoalRunnerOutOfBandAcceptance>,
-): GoalRunnerStatusProjectionRuntimeInputs {
+): GoalRunnerStatusProjectionExtras {
   val childWorkflowId = currentSubtask?.workflowId?.takeIf(String::isNotBlank)
   val progress = childWorkflowId?.let { workflowId ->
     outcomeStore.progress(workflowId, request.dbPathOverride)
@@ -98,7 +82,7 @@ internal fun GoalRunnerStatusProjectionAssembler.statusProjectionRuntimeInputs(
   val ledgerSummary = runCatching {
     attemptLedgerStore.readAttemptLedgerSummary(loadedState.manifest.issueKey, request.dbPathOverride)
   }.getOrNull()
-  return GoalRunnerStatusProjectionRuntimeInputs(
+  return GoalRunnerStatusProjectionExtras(
     executionLiveness = resolveExecutionLiveness(
       parentWorkflowId = loadedState.parentWorkflowId,
       currentSubtask = currentSubtask,
@@ -136,12 +120,11 @@ internal fun GoalRunnerStatusProjectionAssembler.alignedPlanningStatus(
   manifest: DecompositionManifest,
   currentSubtask: DecompositionSubtask?,
 ) = currentSubtask?.takeIf { subtask ->
-  subtask.status.decompositionStatus() == DecompositionStatus.BLOCKED &&
-    subtask.lastResumableStep in setOf("preplan", "plan")
+  subtask.status == "blocked" && subtask.lastResumableStep in setOf("preplan", "plan")
 }.let { planningBlock ->
   manifestStore.planningStatus(
     loadedState.parentWorkflowId,
-    manifest.subtasks.filter { it.status.decompositionStatus() != DecompositionStatus.SKIPPED }.map { it.id },
+    manifest.subtasks.filter { it.status != "skipped" }.map { it.id },
     planningBlock?.id,
     planningBlock?.blockedReason,
     request.dbPathOverride,
@@ -272,7 +255,7 @@ internal fun GoalRunnerStatusProjectionAssembler.requestedDiffStat(request: Goal
   if (request.includeDiffStat) {
     request.repoRoot
       ?.let(gitOperations::worktreeActivity)
-      ?.takeIf { result -> result.status == WorkflowGitOperationStatus.OK }
+      ?.takeIf { result -> result.ok }
       ?.diffStat
   } else {
     null
@@ -292,7 +275,7 @@ internal fun GoalRunnerStatusProjectionAssembler.requestedSelectedDiffHunks(requ
           ),
         )
       }
-      ?.takeIf { result -> result.status == WorkflowGitOperationStatus.OK }
+      ?.takeIf { result -> result.ok }
       ?.selectedDiffHunks
   } else {
     null

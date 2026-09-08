@@ -1,6 +1,5 @@
 package skillbill.application.featuretask
 
-import skillbill.ports.workflow.gitops.model.WorkflowGitOperationResult
 import skillbill.application.featuretask.model.FeatureTaskRuntimeCheckpointRefPruneRequest
 import skillbill.application.featuretask.model.FeatureTaskRuntimeCommitPushHandoffResult
 import skillbill.application.featuretask.model.FeatureTaskRuntimeSubtaskFinalisationBlocked
@@ -58,13 +57,13 @@ internal data class FinalisationStagingBlocked(
 internal fun FeatureTaskRuntimeSubtaskFinalisation.prepareStaging(stageable: List<String>): FinalisationStagingOutcome {
   if (stageable.isEmpty()) return FinalisationStagingReady(restoreState = "")
   val snapshot = gitOperations.captureIndexState(repoRoot, stageable)
-  if (snapshot !is WorkflowGitOperationResult.Ok) {
+  if (!snapshot.ok) {
     return FinalisationStagingBlocked(
       blocked("the pre-finalisation index could not be captured (${snapshot.error})"),
     )
   }
   val staged = gitOperations.stagePaths(repoRoot, stageable)
-  if (staged !is WorkflowGitOperationResult.Ok) {
+  if (!staged.ok) {
     return FinalisationStagingBlocked(
       blocked(restoring(staged.error, stageable, snapshot.value.orEmpty())),
     )
@@ -101,7 +100,7 @@ fun FeatureTaskRuntimeSubtaskFinalisation.commitAndPush(
       record = record,
     ),
   )
-  if (commit !is WorkflowGitOperationResult.Ok) return blocked(restoring(commit.error, stageable, restoreState))
+  if (!commit.ok) return blocked(restoring(commit.error, stageable, restoreState))
   val commitSha = commit.value.orEmpty().trim().takeIf(String::isNotBlank)
     ?: return blocked(restoring("the finalisation commit returned an empty sha", stageable, restoreState))
   val recordFailure = recordCommit(commitSha, stageable)
@@ -155,7 +154,7 @@ private fun FeatureTaskRuntimeSubtaskFinalisation.finalizeCommittedSubtask(
 
 fun FeatureTaskRuntimeSubtaskFinalisation.restoring(error: String, paths: List<String>, snapshot: String): String {
   val restored = gitOperations.restoreIndexState(repoRoot, paths, snapshot)
-  return if (restored is WorkflowGitOperationResult.Ok) {
+  return if (restored.ok) {
     "$error; the pre-finalisation index was restored and the working tree is unchanged"
   } else {
     "$error; the pre-finalisation index could NOT be restored (${restored.error}) — inspect " +

@@ -2,7 +2,6 @@ package skillbill.telemetry.settings
 
 import me.tatarka.inject.annotations.Inject
 import skillbill.model.EnvironmentContext
-import skillbill.ports.repository.toFileLocation
 import skillbill.ports.telemetry.TelemetryConfigStore
 import skillbill.ports.telemetry.TelemetrySettingsProvider
 import skillbill.telemetry.DEFAULT_TELEMETRY_BATCH_SIZE
@@ -45,7 +44,7 @@ internal fun loadTelemetrySettingsFromStore(
       "Run 'skill-bill telemetry enable' to create one."
   }
   return TelemetrySettings(
-    configPath = configPath.toFileLocation(),
+    configPath = configPath,
     level = envSettings.level,
     enabled = enabled,
     installId = envSettings.installId,

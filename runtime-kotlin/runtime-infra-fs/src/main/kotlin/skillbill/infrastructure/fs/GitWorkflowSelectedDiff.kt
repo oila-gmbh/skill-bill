@@ -1,6 +1,5 @@
 package skillbill.infrastructure.fs
 
-import skillbill.ports.workflow.gitops.model.WorkflowGitOperationStatus
 import skillbill.ports.workflow.gitops.model.WorkflowSelectedDiffHunksRequest
 import skillbill.ports.workflow.gitops.model.WorkflowSelectedDiffHunksResult
 import skillbill.workflow.goal.model.GoalObservabilitySelectedDiffHunk
@@ -29,11 +28,11 @@ internal fun appendSelectedDiffHunks(
     staged = staged,
     budget = budget,
   )
-  if (result.status != WorkflowGitOperationStatus.OK) {
-    return WorkflowSelectedDiffHunksResult(status = WorkflowGitOperationStatus.ERROR, error = result.error)
+  if (!result.ok) {
+    return WorkflowSelectedDiffHunksResult(status = "error", error = result.error)
   }
   chunks += result.hunks.hunks
-  return WorkflowSelectedDiffHunksResult(status = WorkflowGitOperationStatus.OK, selectedDiffHunks = result.hunks)
+  return WorkflowSelectedDiffHunksResult(status = "ok", selectedDiffHunks = result.hunks)
 }
 
 internal fun readSelectedDiffHunks(
@@ -78,7 +77,7 @@ internal fun readSelectedDiffHunks(
     process.destroyForcibly()
     closeInputAndJoin(process, outputThread)
     SelectedDiffReadResult(
-      status = WorkflowGitOperationStatus.ERROR,
+      status = "error",
       error = gitTimedOutError(args),
     )
   } else {
@@ -86,20 +85,22 @@ internal fun readSelectedDiffHunks(
     val failure = readFailure
     val parsed = parser.result()
     when {
-      failure != null -> SelectedDiffReadResult(status = WorkflowGitOperationStatus.ERROR, error = failure.message.orEmpty())
+      failure != null -> SelectedDiffReadResult(status = "error", error = failure.message.orEmpty())
       !parsed.truncated && process.exitValue() != 0 ->
-        SelectedDiffReadResult(status = WorkflowGitOperationStatus.ERROR, error = errorOutput.toString().trim())
-      else -> SelectedDiffReadResult(status = WorkflowGitOperationStatus.OK, hunks = parsed)
+        SelectedDiffReadResult(status = "error", error = errorOutput.toString().trim())
+      else -> SelectedDiffReadResult(status = "ok", hunks = parsed)
     }
   }
   return result
 }
 
 internal data class SelectedDiffReadResult(
-  val status: WorkflowGitOperationStatus,
+  val status: String,
   val hunks: GoalObservabilitySelectedDiffHunks = GoalObservabilitySelectedDiffHunks(),
   val error: String = "",
-)
+) {
+  val ok: Boolean get() = status == "ok"
+}
 
 internal data class BoundedDiffLine(
   val text: String,

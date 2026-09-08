@@ -1,7 +1,6 @@
 package skillbill.goalrunner.model
 
 import skillbill.boundary.OpenBoundaryMap
-import skillbill.workflow.model.WorkflowStatus
 
 const val GOAL_ATTEMPT_LEDGER_ARTIFACT_KEY: String = "goal_attempt_ledger"
 const val GOAL_ATTEMPT_LEDGER_LIMIT: Int = 200
@@ -34,37 +33,6 @@ enum class GoalAttemptLedgerAction(val wireValue: String) {
   }
 }
 
-sealed interface GoalAttemptLaunchOutcome {
-  val wireValue: String
-
-  data object SpawnFailed : GoalAttemptLaunchOutcome {
-    override val wireValue: String = "spawn_failed"
-  }
-
-  data object TimedOut : GoalAttemptLaunchOutcome {
-    override val wireValue: String = "timed_out"
-  }
-
-  data object Interrupted : GoalAttemptLaunchOutcome {
-    override val wireValue: String = "interrupted"
-  }
-
-  data class Exited(val statusCode: Int?) : GoalAttemptLaunchOutcome {
-    override val wireValue: String = if (statusCode == 0) "exited_ok" else "exited_${statusCode ?: "unknown"}"
-  }
-
-  companion object {
-    fun fromWire(value: String): GoalAttemptLaunchOutcome? = when (value) {
-      "spawn_failed" -> SpawnFailed
-      "timed_out" -> TimedOut
-      "interrupted" -> Interrupted
-      "exited_ok" -> Exited(0)
-      "exited_unknown" -> Exited(null)
-      else -> value.removePrefix("exited_").toIntOrNull()?.let(::Exited)
-    }
-  }
-}
-
 data class GoalAttemptLedgerEntry(
   val action: GoalAttemptLedgerAction,
   val sequenceNumber: Int,
@@ -72,11 +40,11 @@ data class GoalAttemptLedgerEntry(
   val issueKey: String? = null,
   val subtaskId: Int? = null,
   val previousWorkflowId: String? = null,
-  val previousStatus: WorkflowStatus? = null,
+  val previousStatus: String? = null,
   val previousStep: String? = null,
   val blockedReason: String? = null,
   val latestLiveness: String? = null,
-  val launchOutcome: GoalAttemptLaunchOutcome? = null,
+  val launchOutcome: String? = null,
   val timedOut: Boolean? = null,
   val interrupted: Boolean? = null,
   val childSessionPath: String? = null,
@@ -106,11 +74,11 @@ data class GoalAttemptLedgerEntry(
       "issue_key" to issueKey,
       "subtask_id" to subtaskId,
       "previous_workflow_id" to previousWorkflowId,
-      "previous_status" to previousStatus?.wireValue,
+      "previous_status" to previousStatus,
       "previous_step" to previousStep,
       "blocked_reason" to blockedReason,
       "latest_liveness" to latestLiveness,
-      "launch_outcome" to launchOutcome?.wireValue,
+      "launch_outcome" to launchOutcome,
       "timed_out" to timedOut,
       "interrupted" to interrupted,
       "child_session_path" to childSessionPath,

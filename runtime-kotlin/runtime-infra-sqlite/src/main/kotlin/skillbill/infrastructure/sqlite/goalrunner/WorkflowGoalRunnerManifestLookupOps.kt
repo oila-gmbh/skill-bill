@@ -1,5 +1,6 @@
 package skillbill.infrastructure.sqlite.goalrunner
 
+import skillbill.ports.goalrunner.runner.GoalRunnerManifestLookup
 import skillbill.ports.goalrunner.runner.model.GoalRunnerManifestState
 import java.nio.file.Path
 
