@@ -412,7 +412,8 @@ private class GoalChildPlanningImportMatcher(
     if (ledger.size < PLANNING_PHASE_IDS.size) return false
     return ledger.take(PLANNING_PHASE_IDS.size).withIndex().all { (index, entry) ->
       listOf(
-        entry["action"] == "complete",
+        (entry["action"] as? String)?.let(FeatureTaskRuntimePhaseLedgerAction::fromWire) ==
+          FeatureTaskRuntimePhaseLedgerAction.COMPLETE,
         (entry["sequence_number"] as? Number)?.toInt() == index,
         entry["phase_id"] == PLANNING_PHASE_IDS[index],
         (entry["attempt_count"] as? Number)?.toInt() == 1,

@@ -102,9 +102,7 @@ object IdeStatusSelectionPolicy {
     IdeStatusLifecycleState.IDLE -> IdeStatusSelectionTier.IDLE
   }
 
-  fun lifecycleFromDurableState(currentState: String): IdeStatusLifecycleState? = when (
-    IdeStatusDurableWorkflowState.fromWire(currentState)
-  ) {
+  internal fun lifecycleFromDurableState(currentState: IdeStatusDurableWorkflowState): IdeStatusLifecycleState = when (currentState) {
     IdeStatusDurableWorkflowState.RUNNING, IdeStatusDurableWorkflowState.PENDING -> IdeStatusLifecycleState.ACTIVE
     IdeStatusDurableWorkflowState.PAUSED -> IdeStatusLifecycleState.PAUSED
     IdeStatusDurableWorkflowState.BLOCKED -> IdeStatusLifecycleState.BLOCKED
@@ -114,11 +112,13 @@ object IdeStatusSelectionPolicy {
     IdeStatusDurableWorkflowState.COMPLETE,
     IdeStatusDurableWorkflowState.SKIPPED,
     -> IdeStatusLifecycleState.TERMINAL
-    null -> null
   }
+
+  fun lifecycleFromDurableStateWire(currentState: String): IdeStatusLifecycleState? =
+    IdeStatusDurableWorkflowState.fromWire(currentState)?.let(::lifecycleFromDurableState)
 }
 
-private enum class IdeStatusDurableWorkflowState(val wireValue: String) {
+internal enum class IdeStatusDurableWorkflowState(val wireValue: String) {
   PENDING("pending"),
   RUNNING("running"),
   PAUSED("paused"),

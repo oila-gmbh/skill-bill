@@ -103,7 +103,7 @@ object FeatureTaskRuntimeRunLoopCheckpointRemediation {
     outputMap
       .takeIf {
         run.phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT_FIX &&
-          it["status"].workflowStepStatus() == WorkflowStepStatus.COMPLETED
+          (it["status"] as? String)?.let(WorkflowStepStatus::fromWire) == WorkflowStepStatus.COMPLETED
       }
       ?.let { JsonCodec.anyToStringAnyMap(it["produced_outputs"]).orEmpty() }
 
