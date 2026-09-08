@@ -165,6 +165,21 @@ class FeatureTaskRuntimeRunState(
     fixLoopBudgetBaseByPhase[phaseId] = maxOf(nextIteration(phaseId) - 1, 0)
   }
 
+  fun reopenFromExplicitResume(phaseId: String) {
+    val start = transitions.forwardPhaseIds.indexOf(phaseId)
+    require(start >= 0) { "Unknown explicit resume phase '$phaseId'." }
+    transitions.forwardPhaseIds.drop(start).forEach { phase ->
+      completed.remove(phase)
+      outputs.removeAll { it.phaseId == phase }
+      blockedRecords.remove(phase)
+      branchSetupBlockedPhases.remove(phase)
+      fixLoopBudgetBaseByPhase[phase] = maxOf(nextIteration(phase) - 1, 0)
+    }
+    inFlightReentries.clear()
+    edgeIterationByLoop.clear()
+    liveClaimedLoops.clear()
+  }
+
   fun invalidateProducerOutput(phaseId: String) {
     completed.remove(phaseId)
     outputs.removeAll { it.phaseId == phaseId }
