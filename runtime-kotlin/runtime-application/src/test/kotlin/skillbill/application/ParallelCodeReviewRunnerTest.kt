@@ -477,7 +477,7 @@ class ParallelCodeReviewRunnerTest {
 
     assertTrue(result.lane1.success)
     val accounting = assertNotNull(result.lane1.accounting)
-    assertEquals("completed", accounting.terminalStatus)
+    assertEquals("completed", accounting.terminalStatus.wireValue)
     assertEquals(1, accounting.modelTurns, "An inline lane is exactly one parent turn, never a specialist child.")
     assertEquals(0L, accounting.evidenceBytes, "Inline mode never brokers evidence through a child worker.")
     assertTrue(accounting.launchBytes > 0, "The rendered parent prompt must be measured as launch bytes.")
@@ -504,7 +504,7 @@ class ParallelCodeReviewRunnerTest {
     assertFalse(result.lane1.success)
     assertContains(result.lane1.failureReason.orEmpty(), "unsupported agent")
     val accounting = assertNotNull(result.lane1.accounting)
-    assertEquals("unsupported_provider", accounting.terminalStatus)
+    assertEquals("unsupported_provider", accounting.terminalStatus.wireValue)
     assertEquals(0L, accounting.resultBytes, "No session ran, so there is no result to measure.")
   }
 
