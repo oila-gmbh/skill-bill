@@ -182,7 +182,7 @@ class FileSystemReviewEvidenceBrokerTest {
     )
     val result = broker.readBatch(ReviewEvidenceBatchRequest.of(request))
     assertEquals(REVIEW_CONTEXT_BUDGET_EXCEEDED, result.terminalOutcome?.type)
-    assertEquals("evidence_result_bytes", result.terminalOutcome?.budgetKind)
+    assertEquals("evidence_result_bytes", result.terminalOutcome?.budgetKind?.wireValue)
     assertTrue(result.results.all { it.content == null })
   }
 
@@ -195,10 +195,10 @@ class FileSystemReviewEvidenceBrokerTest {
         listOf(ReviewEvidenceRequest("security", "A.kt"), ReviewEvidenceRequest("security", "B.kt")),
       ),
     )
-    assertEquals("lane_evidence_bytes", result.terminalOutcome?.budgetKind)
+    assertEquals("lane_evidence_bytes", result.terminalOutcome?.budgetKind?.wireValue)
     assertEquals(10, result.terminalOutcome?.observedValue)
     assertEquals(1, broker.accounting().refusedOperationCount)
-    assertEquals("lane_evidence_bytes", broker.accounting().terminalOutcome?.budgetKind)
+    assertEquals("lane_evidence_bytes", broker.accounting().terminalOutcome?.budgetKind?.wireValue)
     assertEquals(listOf("head@B.kt"), broker.accounting().unreviewedUnits)
     assertEquals("lane_evidence_bytes", broker.accounting().budgetDimension)
     val followOn = broker.readBatch(
@@ -397,7 +397,7 @@ class FileSystemReviewEvidenceBrokerTest {
     val result = broker.readBatch(
       ReviewEvidenceBatchRequest.of(request),
     )
-    assertEquals("assignment_expansions", result.terminalOutcome?.budgetKind)
+    assertEquals("assignment_expansions", result.terminalOutcome?.budgetKind?.wireValue)
   }
 
   @Test fun `named dependency is still measured as an authorized expansion`() {
@@ -430,7 +430,7 @@ class FileSystemReviewEvidenceBrokerTest {
     val broker = broker(root, assignment(listOf("A.kt")), policy(toolCalls = 1))
     assertTrue(broker.recordToolCall(ReviewToolCall("security", ReviewOperationKind.FILE_READ, "A.kt")).admitted)
     val second = broker.recordToolCall(ReviewToolCall("security", ReviewOperationKind.FILE_READ, "A.kt"))
-    assertEquals("specialist_tool_calls", second.budgetExceeded?.budgetKind)
+    assertEquals("specialist_tool_calls", second.budgetExceeded?.budgetKind?.wireValue)
     assertEquals(REVIEW_CONTEXT_BUDGET_EXCEEDED, second.budgetExceeded?.type)
   }
 
@@ -438,16 +438,16 @@ class FileSystemReviewEvidenceBrokerTest {
     val root = repo("A.kt" to "assigned")
     val broker = broker(root, assignment(listOf("A.kt")), policy(modelTurns = 1))
     assertNull(broker.recordModelTurn())
-    assertEquals("specialist_model_turns", broker.recordModelTurn()?.budgetKind)
-    assertEquals("specialist_model_turns", broker.accounting().terminalOutcome?.budgetKind)
+    assertEquals("specialist_model_turns", broker.recordModelTurn()?.budgetKind?.wireValue)
+    assertEquals("specialist_model_turns", broker.accounting().terminalOutcome?.budgetKind?.wireValue)
   }
 
   @Test fun `lane result excess terminates subsequent evidence`() {
     val root = repo("A.kt" to "ok")
     val broker = broker(root, assignment(listOf("A.kt")))
-    assertEquals("lane_result_bytes", broker.validateLaneResult("x".repeat(101))?.budgetKind)
+    assertEquals("lane_result_bytes", broker.validateLaneResult("x".repeat(101))?.budgetKind?.wireValue)
     val followUp = broker.readBatch(ReviewEvidenceBatchRequest.of(ReviewEvidenceRequest("security", "A.kt")))
-    assertEquals("lane_result_bytes", followUp.terminalOutcome?.budgetKind)
+    assertEquals("lane_result_bytes", followUp.terminalOutcome?.budgetKind?.wireValue)
   }
 
   @Test fun `streamed lane result excess is typed before completion and stays terminal`() {
@@ -456,7 +456,7 @@ class FileSystemReviewEvidenceBrokerTest {
     assertNull(broker.observeLaneResultChunk("x".repeat(60)))
     val exceeded = broker.observeLaneResultChunk("y".repeat(41))
     assertEquals(REVIEW_CONTEXT_BUDGET_EXCEEDED, exceeded?.type)
-    assertEquals("lane_result_bytes", exceeded?.budgetKind)
+    assertEquals("lane_result_bytes", exceeded?.budgetKind?.wireValue)
     assertEquals(101, broker.accounting().resultBytes)
     assertEquals(exceeded, broker.terminalOutcome())
   }

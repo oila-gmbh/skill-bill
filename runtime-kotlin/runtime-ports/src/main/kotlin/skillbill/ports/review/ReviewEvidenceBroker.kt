@@ -184,7 +184,7 @@ internal object GovernedReviewEvidenceCodecWirePayloads {
     "refused" to true,
     "refusal_kind" to "budget_exceeded",
     "reason" to outcome.type,
-    "budget_kind" to outcome.budgetKind,
+    "budget_kind" to outcome.budgetKind.wireValue,
     "configured_limit" to outcome.configuredLimit,
     "observed_value" to outcome.observedValue,
   )

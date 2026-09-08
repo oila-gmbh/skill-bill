@@ -7,6 +7,8 @@ import skillbill.ports.telemetry.TelemetryOutboxRepository
 import skillbill.ports.telemetry.model.TelemetryOutboxRecord
 import skillbill.telemetry.model.SyncResult
 import skillbill.telemetry.model.TelemetrySettings
+import skillbill.telemetry.model.TelemetrySyncStatus
+import skillbill.telemetry.model.telemetrySyncStatus
 import java.io.IOException
 import java.nio.file.Path
 
@@ -66,7 +68,7 @@ object TelemetrySyncRuntime {
         }
         return null
       }
-    if (reportFailures && result.status == "failed" && result.message != null) {
+    if (reportFailures && result.status.telemetrySyncStatus() == TelemetrySyncStatus.FAILED && result.message != null) {
       stderr("Telemetry sync failed: ${result.message}")
     }
     return result

@@ -133,7 +133,7 @@ data class GovernedReviewLaunch(
     return if (overhead > budget.maxLaneLaunchBytes || renderedBytes > allowance) {
       ReviewContextBudgetExceeded(
         lane = assignment.lane,
-        budgetKind = "lane_launch_bytes",
+        budgetKind = ReviewBudgetKind.LANE_LAUNCH_BYTES,
         configuredLimit = budget.maxLaneLaunchBytes,
         observedValue = maxOf(overhead, renderedBytes),
         packetDigest = assignment.packetDigest,

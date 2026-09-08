@@ -2,11 +2,12 @@ package skillbill.infrastructure.fs
 
 import skillbill.ports.review.model.ReviewEvidenceResult
 import skillbill.review.context.model.ReviewBudgetEvaluator
+import skillbill.review.context.model.ReviewBudgetKind
 import skillbill.review.context.model.ReviewChangedHunk
 
 internal fun exceededEvidence(
   state: FileSystemReviewEvidenceBrokerReadState,
-  kind: String,
+  kind: ReviewBudgetKind,
   limit: Long,
   observed: Long,
 ): ReviewEvidenceResult {
@@ -25,7 +26,7 @@ internal fun assignedHunkBudgetOutcome(
   val observedCumulative = state.cumulativeBytes + bytes
   return if (observedCumulative > state.budget.maxLaneEvidenceBytes) {
     recordLaneEvidenceDenial(state, unit)
-    exceededEvidence(state, "lane_evidence_bytes", state.budget.maxLaneEvidenceBytes, observedCumulative)
+    exceededEvidence(state, ReviewBudgetKind.LANE_EVIDENCE_BYTES, state.budget.maxLaneEvidenceBytes, observedCumulative)
   } else {
     null
   }
@@ -37,12 +38,12 @@ internal fun evidenceBudgetOutcome(
   unit: String,
 ): ReviewEvidenceResult? {
   if (bytes > state.budget.maxEvidenceResultBytes) {
-    return exceededEvidence(state, "evidence_result_bytes", state.budget.maxEvidenceResultBytes, bytes)
+    return exceededEvidence(state, ReviewBudgetKind.EVIDENCE_RESULT_BYTES, state.budget.maxEvidenceResultBytes, bytes)
   }
   val observedCumulative = state.cumulativeBytes + bytes
   return if (observedCumulative > state.budget.maxLaneEvidenceBytes) {
     recordLaneEvidenceDenial(state, unit)
-    exceededEvidence(state, "lane_evidence_bytes", state.budget.maxLaneEvidenceBytes, observedCumulative)
+    exceededEvidence(state, ReviewBudgetKind.LANE_EVIDENCE_BYTES, state.budget.maxLaneEvidenceBytes, observedCumulative)
   } else {
     null
   }

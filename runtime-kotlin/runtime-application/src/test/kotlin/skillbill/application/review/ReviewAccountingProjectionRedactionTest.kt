@@ -8,6 +8,7 @@ import skillbill.review.context.ReviewTreeAccounting
 import skillbill.review.context.model.ReviewAccountingCounters
 import skillbill.review.context.model.ReviewAccountingInput
 import skillbill.review.context.model.ReviewAccountingSummary
+import skillbill.review.context.model.ReviewAccountingTerminalOutcome
 import skillbill.review.context.model.ReviewLaneSegmentAccounting
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -91,7 +92,7 @@ class ReviewAccountingProjectionRedactionTest {
           ReviewAccountingInput(
             lane = "architecture",
             assignmentDigest = "architecture-digest",
-            terminalOutcome = "incomplete",
+            terminalOutcome = ReviewAccountingTerminalOutcome.INCOMPLETE,
             bundleCompositionDigest = digest,
             segmentAccounting = listOf(ReviewLaneSegmentAccounting("seg-000", 128, 2, digest)),
             unreviewedSegmentIds = listOf("unreviewable"),
@@ -120,7 +121,7 @@ class ReviewAccountingProjectionRedactionTest {
           ReviewAccountingInput(
             lane = "architecture",
             assignmentDigest = "architecture-digest",
-            terminalOutcome = "incomplete",
+            terminalOutcome = ReviewAccountingTerminalOutcome.INCOMPLETE,
             bundleCompositionDigest = digest,
             segmentAccounting = listOf(ReviewLaneSegmentAccounting("seg-000", 128, 2, digest)),
             unreviewedSegmentIds = listOf("seg-evidence-refused"),

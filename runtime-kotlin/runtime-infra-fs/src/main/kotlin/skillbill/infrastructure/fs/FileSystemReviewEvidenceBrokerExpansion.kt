@@ -26,7 +26,7 @@ internal fun reviewEvidenceBatchResult(
 ): ReviewEvidenceBatchResult {
   results.forEach { result ->
     result.forbidden?.let { refusalLedger += ReviewRefusedOperationRecord(it.category, it.target) }
-    result.budgetExceeded?.let { refusalLedger += ReviewRefusedOperationRecord(it.type, it.budgetKind) }
+    result.budgetExceeded?.let { refusalLedger += ReviewRefusedOperationRecord(it.type, it.budgetKind.wireValue) }
   }
   return ReviewEvidenceBatchResult(results, cumulativeBytes, expansionLedger, outcome)
 }

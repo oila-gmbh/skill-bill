@@ -141,7 +141,7 @@ class AgentAddonSourceLoaderTest {
     assertEquals(2, inspection.invalidEntries.size)
     assertTrue(
       inspection.invalidEntries.all { entry ->
-        entry.validationStatus == "invalid" &&
+        entry.validationStatus.wireValue == "invalid" &&
           entry.diagnostics.any { it.contains("duplicate slug 'shared-slug'") } &&
           entry.diagnostics.any { it.contains("source directory") }
       },
