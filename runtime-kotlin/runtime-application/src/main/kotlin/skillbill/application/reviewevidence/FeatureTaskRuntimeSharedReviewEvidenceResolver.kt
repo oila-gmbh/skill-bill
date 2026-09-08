@@ -72,8 +72,14 @@ class FeatureTaskRuntimeSharedReviewEvidenceResolver(
   ): FeatureTaskRuntimeSharedEvidenceDerivation {
     val base = checkpoint.baseRef?.takeIf(String::isNotBlank)
     val head = checkpoint.headRef?.takeIf(String::isNotBlank) ?: "HEAD"
-    val args = if (base == null) listOf("git", "diff", head) else listOf("git", "diff", base, head)
-    val diff = diffResolver.runProcess(args, repoRoot).orEmpty()
+    val ownedPaths = checkpoint.workingTreeOwnedPaths.filter(String::isNotBlank)
+    val committedArgs = when {
+      base == null -> listOf("git", "diff", head)
+      ownedPaths.isEmpty() -> listOf("git", "diff", base, head)
+      else -> listOf("git", "diff", base)
+    }
+    val pathArgs = ownedPaths.flatMap { listOf("--", it) }
+    val diff = diffResolver.runProcess(committedArgs + pathArgs, repoRoot).orEmpty()
     val evidence = runCatching { ReviewDiffEvidence.parse(diff) }.getOrNull()
     return FeatureTaskRuntimeSharedEvidenceDerivation(
       baseRef = base,
