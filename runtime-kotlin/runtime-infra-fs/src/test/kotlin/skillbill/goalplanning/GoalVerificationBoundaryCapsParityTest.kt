@@ -1,9 +1,8 @@
 package skillbill.goalplanning
 
 import skillbill.contracts.goalplanning.GoalVerificationBoundaryCaps
+import skillbill.contracts.time.JvmSystemClock
 import skillbill.ports.goalrunner.planning.model.GoalPlanningContext
-import skillbill.ports.goalrunner.verification.model.GoalVerificationContext
-import skillbill.ports.time.JvmSystemClock
 import java.nio.file.Files
 import java.time.LocalDate
 import java.time.ZoneOffset
@@ -14,14 +13,6 @@ import kotlin.test.assertTrue
 class GoalVerificationBoundaryCapsParityTest {
   @Test
   fun `verification caps are contract-backed and stay tighter than planning except shared file bytes`() {
-    assertEquals(GoalVerificationBoundaryCaps.maxDiscoveryFileCount, GoalVerificationContext.MAX_DISCOVERY_FILE_COUNT)
-    assertEquals(GoalVerificationBoundaryCaps.maxHeadingsPerFile, GoalVerificationContext.MAX_HEADINGS_PER_FILE)
-    assertEquals(GoalVerificationBoundaryCaps.maxCatalogHeadings, GoalVerificationContext.MAX_CATALOG_HEADINGS)
-    assertEquals(GoalVerificationBoundaryCaps.historyRecencyDays, GoalVerificationContext.HISTORY_RECENCY_DAYS)
-    assertEquals(GoalVerificationBoundaryCaps.maxSelectedBodies, GoalVerificationContext.MAX_SELECTED_BODIES)
-    assertEquals(GoalVerificationBoundaryCaps.maxBodyBytes, GoalVerificationContext.MAX_BODY_BYTES)
-    assertEquals(GoalVerificationBoundaryCaps.maxTotalBodyBytes, GoalVerificationContext.MAX_TOTAL_BODY_BYTES)
-    assertEquals(GoalPlanningContext.MAX_BOUNDARY_FILE_BYTES, GoalVerificationContext.MAX_BOUNDARY_FILE_BYTES)
     assertEquals(GoalPlanningContext.MAX_BOUNDARY_FILE_BYTES, GoalVerificationBoundaryCaps.maxBoundaryFileBytes)
     assertTrue(GoalVerificationBoundaryCaps.maxDiscoveryFileCount < GoalPlanningContext.MAX_DISCOVERY_FILE_COUNT)
     assertTrue(GoalVerificationBoundaryCaps.maxHeadingsPerFile < GoalPlanningContext.MAX_HEADINGS_PER_FILE)

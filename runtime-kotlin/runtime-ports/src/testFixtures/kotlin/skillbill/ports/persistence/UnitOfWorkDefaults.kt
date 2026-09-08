@@ -1,0 +1,19 @@
+package skillbill.ports.persistence
+
+import skillbill.ports.diagnostics.RejectedOutputDiagnosticPermissions
+import skillbill.ports.diagnostics.RejectedOutputDiagnosticRepository
+import skillbill.ports.featuretask.FeatureTaskRuntimeAuditGenerationRepository
+import skillbill.ports.featuretask.UnavailableFeatureTaskRuntimeAuditGenerationRepository
+import skillbill.ports.goalrunner.UnaddressedFindingsRepository
+import skillbill.ports.goalrunner.UnavailableUnaddressedFindingsRepository
+import skillbill.ports.idestatus.AgentActivityStampRepository
+import skillbill.ports.idestatus.EmptyAgentActivityStampRepository
+
+abstract class UnitOfWorkDefaults : UnitOfWork {
+  open override val unaddressedFindings: UnaddressedFindingsRepository = UnavailableUnaddressedFindingsRepository
+  open override val featureTaskRuntimeAuditGenerations: FeatureTaskRuntimeAuditGenerationRepository =
+    UnavailableFeatureTaskRuntimeAuditGenerationRepository
+  open override val agentActivityStamps: AgentActivityStampRepository = EmptyAgentActivityStampRepository
+  open override val rejectedOutputDiagnostics: RejectedOutputDiagnosticRepository? = null
+  open override val rejectedOutputDiagnosticPermissions: RejectedOutputDiagnosticPermissions? = null
+}

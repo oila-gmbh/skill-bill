@@ -6,6 +6,7 @@ import skillbill.application.featuretask.model.FeatureTaskRuntimeRunReport
 import skillbill.application.featuretask.model.FeatureTaskRuntimeRunRequest
 import skillbill.application.featuretask.model.FeatureTaskRuntimeSubtaskOutcome
 import skillbill.goalrunner.model.GoalRunnerLaunchFacts
+import skillbill.goalrunner.model.GoalRunnerTerminalStatus
 import skillbill.ports.agentrun.model.AgentRunLaunchFacts
 import skillbill.ports.workflow.gitops.WorkflowGitOperations
 import skillbill.workflow.taskruntime.FeatureTaskRuntimeHandoffContract
@@ -20,13 +21,12 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseDeclaration
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutput
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeProviderLimitSignal
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeQualityGateSelection
-
-private const val PHASE_OUTPUT_STATUS_BLOCKED = "blocked"
-private const val PHASE_OUTPUT_STATUS_FAILED = "failed"
+import skillbill.workflow.model.WorkflowStepStatus
+import skillbill.workflow.model.workflowStepStatus
 
 fun terminalBlockedReasonFrom(phaseId: String, outputMap: Map<String, Any?>): String? {
   val status = outputMap["status"] as? String
-  if (status != PHASE_OUTPUT_STATUS_BLOCKED && status != PHASE_OUTPUT_STATUS_FAILED) {
+  if (status.workflowStepStatus() != WorkflowStepStatus.BLOCKED && status.workflowStepStatus() != WorkflowStepStatus.FAILED) {
     return null
   }
   val summary = (outputMap["summary"] as? String).orEmpty().trim()
@@ -90,9 +90,13 @@ fun persistGoalContinuationOutcome(
           participatingAgentIds = terminal.participatingAgentIds,
         ),
         workflowStatus = when (terminal.status) {
-          "complete" -> "completed"
-          FEATURE_TASK_RUNTIME_PHASE_STATUS_PAUSED -> FEATURE_TASK_RUNTIME_PHASE_STATUS_PAUSED
-          else -> "blocked"
+          GoalRunnerTerminalStatus.COMPLETE -> "completed"
+          GoalRunnerTerminalStatus.PAUSED -> FEATURE_TASK_RUNTIME_PHASE_STATUS_PAUSED
+          GoalRunnerTerminalStatus.FAILED,
+          GoalRunnerTerminalStatus.BLOCKED,
+          GoalRunnerTerminalStatus.TIMEOUT,
+          GoalRunnerTerminalStatus.NO_TERMINAL_STORE_OUTCOME,
+          GoalRunnerTerminalStatus.RECONCILABLE -> "blocked"
         },
       ),
       dbOverride = request.dbPathOverride,
@@ -118,7 +122,7 @@ private fun goalContinuationOutcomeFor(
   is FeatureTaskRuntimeRunReport.Blocked -> FeatureTaskRuntimeSubtaskOutcome(
     issueKey = context.parentIssueKey,
     subtaskId = context.subtaskId,
-    status = "blocked",
+    status = GoalRunnerTerminalStatus.BLOCKED,
     commitSha = null,
     workflowId = request.workflowId,
     blockedReason = report.blockedReason,
@@ -127,7 +131,7 @@ private fun goalContinuationOutcomeFor(
   is FeatureTaskRuntimeRunReport.Paused -> FeatureTaskRuntimeSubtaskOutcome(
     issueKey = context.parentIssueKey,
     subtaskId = context.subtaskId,
-    status = "paused",
+    status = GoalRunnerTerminalStatus.PAUSED,
     commitSha = null,
     workflowId = request.workflowId,
     blockedReason = report.pauseReason,

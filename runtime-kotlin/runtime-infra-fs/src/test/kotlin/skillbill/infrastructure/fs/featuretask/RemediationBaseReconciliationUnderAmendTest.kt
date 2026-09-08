@@ -4,12 +4,17 @@ import skillbill.application.featuretask.FeatureTaskRuntimeGoalContinuationRecor
 import skillbill.application.featuretask.model.RemediationBaseBlocked
 import skillbill.application.featuretask.model.RemediationBaseCoherent
 import skillbill.application.workflow.model.WorkflowFamily
-import skillbill.application.workflow.toRecord
-import skillbill.contracts.JsonSupport
+import skillbill.contracts.JsonCodec
 import skillbill.infrastructure.fs.GitWorkflowGitOperations
 import skillbill.ports.diagnostics.NoopRuntimeDiagnostics
+import skillbill.ports.workflow.gitops.GoalSubtaskReviewGitOperations
 import skillbill.ports.workflow.gitops.WorkflowGitOperations
+import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewBaseline
+import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewBaselineResult
+import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewInputResult
+import skillbill.ports.workflow.gitops.model.WorkflowGitOperationStatus
 import skillbill.ports.workflow.gitops.model.WorkflowGitOperationResult
+import skillbill.ports.workflow.toRecord
 import skillbill.review.context.model.CodeReviewExecutionMode
 import skillbill.workflow.engine.WorkflowEngine
 import skillbill.workflow.engine.model.WorkflowUpdateInput
@@ -61,7 +66,7 @@ class RemediationBaseReconciliationUnderAmendTest {
     val coherent = assertIs<RemediationBaseCoherent>(result)
     assertEquals(preFixSha, coherent.state?.remediationBaseSha)
     val ancestry = git.isCommitAncestor(fixture.repoRoot, preFixSha, fixture.postRemediationSha)
-    assertFalse(ancestry.ok && ancestry.value == "true")
+    assertFalse(ancestry is WorkflowGitOperationResult.Ok && ancestry.value == "true")
   }
 
   @Test
@@ -89,7 +94,7 @@ class RemediationBaseReconciliationUnderAmendTest {
     assertNotEquals(head, persisted)
     assertNotEquals(fixture.preRemediationSha, persisted)
     val evidence = requireNotNull(
-      JsonSupport.anyToStringAnyMapList(
+      JsonCodec.anyToStringAnyMapList(
         repository.taskRuntimeArtifacts(workflowId)[GOAL_REVIEW_BASE_RECOVERIES_ARTIFACT_KEY],
       ),
     )
@@ -130,7 +135,7 @@ class RemediationBaseReconciliationUnderAmendTest {
     assertEquals(fixture.preRemediationSha, recorder.reviewStateRecorder.reviewState(workflowId)?.remediationBaseSha)
     assertNotEquals(head, recorder.reviewStateRecorder.reviewState(workflowId)?.remediationBaseSha)
     val evidence = requireNotNull(
-      JsonSupport.anyToStringAnyMapList(
+      JsonCodec.anyToStringAnyMapList(
         repository.taskRuntimeArtifacts(workflowId)[GOAL_REVIEW_BASE_RECOVERIES_ARTIFACT_KEY],
       ),
     )
@@ -191,7 +196,7 @@ class RemediationBaseReconciliationUnderAmendTest {
     val recorder = recorderWith(state, emptyList())
     val git = object : WorkflowGitOperations by realGitOps() {
       override fun headCommitSha(repoRoot: Path): WorkflowGitOperationResult =
-        WorkflowGitOperationResult(status = "error", error = "HEAD read forbidden on cheap path")
+        WorkflowGitOperationResult.Failed(error = "HEAD read forbidden on cheap path")
     }
     val result = recorder.remediationReconciler.reconcileRemediationBaseCoherence(workflowId, git, repoRoot)
     assertIs<RemediationBaseCoherent>(result)
@@ -418,7 +423,7 @@ class RemediationBaseReconciliationUnderAmendTest {
     identities: List<FeatureTaskRuntimeCheckpointIdentity>,
   ) {
     val head = realGitOps().headCommitSha(repoRoot)
-    if (!head.ok || head.value.trim() != commitSha.trim()) return
+    if (head !is WorkflowGitOperationResult.Ok || head.value.trim() != commitSha.trim()) return
     val predecessor = when {
       identityRecorded -> {
         val current = identities.lastOrNull { it.commitSha == commitSha }
@@ -439,7 +444,7 @@ class RemediationBaseReconciliationUnderAmendTest {
           parentSha?.trim()?.takeIf(String::isNotBlank)
         } else {
           val resolved = realGitOps().resolveCommit(repoRoot, predecessorCommitSha)
-          resolved.value.orEmpty().trim().takeIf { resolved.ok && it.isNotBlank() } ?: parentSha?.trim()
+          resolved.value.orEmpty().trim().takeIf { resolved is WorkflowGitOperationResult.Ok && it.isNotBlank() } ?: parentSha?.trim()
         }
       }
     }
@@ -467,7 +472,20 @@ class RemediationBaseReconciliationUnderAmendTest {
     return output
   }
 
-  private fun gitOpsWithoutBaselineRecovery(): WorkflowGitOperations = object : WorkflowGitOperations by realGitOps() {}
+  private fun gitOpsWithoutBaselineRecovery(): WorkflowGitOperations = object : WorkflowGitOperations by realGitOps() {
+    override val goalSubtaskReviewOperations: GoalSubtaskReviewGitOperations =
+      object : GoalSubtaskReviewGitOperations {
+        override fun captureBaseline(repoRoot: Path, expectedBranch: String): GoalSubtaskReviewBaselineResult =
+          GoalSubtaskReviewBaselineResult(status = WorkflowGitOperationStatus.ERROR, error = "unsupported")
+
+        override fun buildInput(
+          repoRoot: Path,
+          baseline: GoalSubtaskReviewBaseline,
+          expectedBranch: String,
+        ): GoalSubtaskReviewInputResult =
+          GoalSubtaskReviewInputResult(status = WorkflowGitOperationStatus.ERROR, error = "unsupported")
+      }
+  }
 
   private fun realGitOps(): WorkflowGitOperations = GitWorkflowGitOperations()
 }

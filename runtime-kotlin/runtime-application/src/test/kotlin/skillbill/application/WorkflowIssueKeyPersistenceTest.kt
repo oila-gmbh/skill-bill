@@ -6,7 +6,6 @@ import skillbill.application.goalrunner.testPhaseRecorder
 import skillbill.application.workflow.WorkflowService
 import skillbill.application.workflow.model.WorkflowFamilyKind
 import skillbill.application.workflow.model.WorkflowOpenResult
-import skillbill.application.workflow.model.WorkflowServiceDeps
 import skillbill.application.workflow.model.WorkflowServiceOpenArgs
 import skillbill.application.workflow.model.WorkflowServiceOpenFeatureTaskArgs
 import skillbill.application.workflow.openFeatureTask
@@ -26,16 +25,14 @@ class WorkflowIssueKeyPersistenceTest {
   fun `opening every issue keyed workflow persists its normalized issue key in workflow metadata`() {
     val workflows = InMemoryWorkflowStates()
     val service = WorkflowService(
-      WorkflowServiceDeps(
-        database = FakeDatabaseSessionFactory(workflows),
-        gitOperations = NoopWorkflowGitOperations,
-        decompositionManifestStore = UnavailableDecompositionManifestStore,
-        workflowSnapshotValidator = testWorkflowSnapshotValidator,
-        decompositionManifestValidator = testDecompositionManifestValidator,
-        decompositionManifestWriter = testDecompositionManifestWriter,
-        repositoryRoot = testRepositoryRoot,
-        goalObservabilityEventValidator = NoopGoalObservabilityEventValidator,
-      ),
+      database = FakeDatabaseSessionFactory(workflows),
+      gitOperations = NoopWorkflowGitOperations,
+      decompositionManifestStore = UnavailableDecompositionManifestStore,
+      workflowSnapshotValidator = testWorkflowSnapshotValidator,
+      decompositionManifestValidator = testDecompositionManifestValidator,
+      decompositionManifestWriter = testDecompositionManifestWriter,
+      repositoryRoot = testRepositoryRoot,
+      goalObservabilityEventValidator = NoopGoalObservabilityEventValidator,
     )
 
     val firstRuntime = assertIs<WorkflowOpenResult.Ok>(
@@ -71,16 +68,14 @@ class WorkflowIssueKeyPersistenceTest {
   fun `opening a workflow rejects control-bearing and oversized issue keys`() {
     val workflows = InMemoryWorkflowStates()
     val service = WorkflowService(
-      WorkflowServiceDeps(
-        database = FakeDatabaseSessionFactory(workflows),
-        gitOperations = NoopWorkflowGitOperations,
-        decompositionManifestStore = UnavailableDecompositionManifestStore,
-        workflowSnapshotValidator = testWorkflowSnapshotValidator,
-        decompositionManifestValidator = testDecompositionManifestValidator,
-        decompositionManifestWriter = testDecompositionManifestWriter,
-        repositoryRoot = testRepositoryRoot,
-        goalObservabilityEventValidator = NoopGoalObservabilityEventValidator,
-      ),
+      database = FakeDatabaseSessionFactory(workflows),
+      gitOperations = NoopWorkflowGitOperations,
+      decompositionManifestStore = UnavailableDecompositionManifestStore,
+      workflowSnapshotValidator = testWorkflowSnapshotValidator,
+      decompositionManifestValidator = testDecompositionManifestValidator,
+      decompositionManifestWriter = testDecompositionManifestWriter,
+      repositoryRoot = testRepositoryRoot,
+      goalObservabilityEventValidator = NoopGoalObservabilityEventValidator,
     )
 
     assertFailsWith<InvalidFeatureTaskExecutionIdentitySchemaError> {

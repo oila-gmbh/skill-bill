@@ -1,5 +1,6 @@
 package skillbill.infrastructure.http
 
+import skillbill.ports.repository.toFileLocation
 import skillbill.ports.telemetry.model.TelemetryOutboxRecord
 import skillbill.telemetry.model.TelemetrySettings
 import java.nio.file.Files
@@ -51,7 +52,7 @@ class TelemetryProxyPayloadMappersTest {
   )
 
   private fun settings(): TelemetrySettings = TelemetrySettings(
-    configPath = Files.createTempFile("telemetry-mapper", ".json"),
+    configPath = Files.createTempFile("telemetry-mapper", ".json").toFileLocation(),
     level = "anonymous",
     enabled = true,
     installId = "test-install-id",

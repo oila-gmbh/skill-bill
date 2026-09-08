@@ -3,7 +3,7 @@ package skillbill.mcp.core
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import skillbill.SkillBillVersion
-import skillbill.contracts.JsonSupport
+import skillbill.contracts.JsonCodec
 import skillbill.error.ShellContentContractException
 import skillbill.mcp.shared.McpRuntimeContext
 import skillbill.mcp.shared.McpRuntimeLifecycle
@@ -19,9 +19,9 @@ object McpStdioServer {
   }
 
   fun handleLine(line: String, context: McpRuntimeContext = McpRuntimeContext()): String? {
-    val message = JsonSupport.parseObjectOrNull(line)
+    val message = JsonCodec.parseObjectOrNull(line)
     val id = message?.get("id")
-    val method = message?.get("method")?.let(JsonSupport::jsonElementToValue)?.toString().orEmpty()
+    val method = message?.get("method")?.let(JsonCodec::jsonElementToValue)?.toString().orEmpty()
     return when {
       message == null -> errorResponse(null, JSON_RPC_PARSE_ERROR, "Parse error")
       id == null -> null
@@ -52,7 +52,7 @@ object McpStdioServer {
 
   private fun callToolResult(params: Map<String, Any?>, context: McpRuntimeContext): Map<String, Any?> {
     val toolName = params["name"]?.toString().orEmpty()
-    val arguments = JsonSupport.anyToStringAnyMap(params["arguments"]).orEmpty()
+    val arguments = JsonCodec.anyToStringAnyMap(params["arguments"]).orEmpty()
     validateStrictArguments(params)?.let { strictError ->
       return mcpToolResult(
         mapOf("status" to "error", "tool" to toolName, "error" to strictError),
@@ -62,7 +62,7 @@ object McpStdioServer {
     return dispatchMcpToolCall(toolName, arguments, context)
   }
 
-  private fun successResponse(id: JsonElement, result: Map<String, Any?>): String = JsonSupport.mapToJsonString(
+  private fun successResponse(id: JsonElement, result: Map<String, Any?>): String = JsonCodec.mapToJsonString(
     linkedMapOf(
       "jsonrpc" to "2.0",
       "id" to id,
@@ -70,7 +70,7 @@ object McpStdioServer {
     ),
   )
 
-  private fun errorResponse(id: JsonElement?, code: Int, message: String): String = JsonSupport.mapToJsonString(
+  private fun errorResponse(id: JsonElement?, code: Int, message: String): String = JsonCodec.mapToJsonString(
     linkedMapOf(
       "jsonrpc" to "2.0",
       "id" to id,
@@ -79,7 +79,7 @@ object McpStdioServer {
   )
 
   private fun JsonObject.arguments(): Map<String, Any?> =
-    JsonSupport.anyToStringAnyMap(this["params"]?.let(JsonSupport::jsonElementToValue)).orEmpty()
+    JsonCodec.anyToStringAnyMap(this["params"]?.let(JsonCodec::jsonElementToValue)).orEmpty()
 }
 
 private fun dispatchMcpToolCall(
@@ -113,7 +113,7 @@ private fun mcpToolResult(payload: Map<String, Any?>, isError: Boolean): Map<Str
   "content" to listOf(
     mapOf(
       "type" to "text",
-      "text" to JsonSupport.mapToJsonString(payload),
+      "text" to JsonCodec.mapToJsonString(payload),
     ),
   ),
   "isError" to isError,
@@ -121,7 +121,7 @@ private fun mcpToolResult(payload: Map<String, Any?>, isError: Boolean): Map<Str
 
 private fun validateStrictArguments(params: Map<String, Any?>): String? {
   val toolName = params["name"]?.toString().orEmpty()
-  val arguments = JsonSupport.anyToStringAnyMap(params["arguments"]).orEmpty()
+  val arguments = JsonCodec.anyToStringAnyMap(params["arguments"]).orEmpty()
   val schema = McpToolRegistry.toolNamed(toolName)?.inputSchema
   val unknownArguments = schema?.let { unknownProperties(arguments, it, path = "") }.orEmpty()
   return unknownArguments.takeIf { it.isNotEmpty() }?.let {
@@ -130,7 +130,7 @@ private fun validateStrictArguments(params: Map<String, Any?>): String? {
 }
 
 private fun unknownProperties(value: Any?, schema: Map<String, Any?>, path: String): List<String> {
-  val objectValue = JsonSupport.anyToStringAnyMap(value)
+  val objectValue = JsonCodec.anyToStringAnyMap(value)
   val arrayValue = value as? List<*>
   return when {
     objectValue != null -> unknownObjectProperties(objectValue, schema, path)
@@ -140,7 +140,7 @@ private fun unknownProperties(value: Any?, schema: Map<String, Any?>, path: Stri
 }
 
 private fun unknownObjectProperties(value: Map<String, Any?>, schema: Map<String, Any?>, path: String): List<String> {
-  val properties = JsonSupport.anyToStringAnyMap(schema["properties"]).orEmpty()
+  val properties = JsonCodec.anyToStringAnyMap(schema["properties"]).orEmpty()
   val localUnknown = if (schema["additionalProperties"] == false) {
     value.keys.filterNot(properties::containsKey).sorted().map { propertyName ->
       if (path.isBlank()) propertyName else "$path.$propertyName"
@@ -149,7 +149,7 @@ private fun unknownObjectProperties(value: Map<String, Any?>, schema: Map<String
     emptyList()
   }
   val nestedUnknown = value.flatMap { (propertyName, propertyValue) ->
-    JsonSupport.anyToStringAnyMap(properties[propertyName])?.let { propertySchema ->
+    JsonCodec.anyToStringAnyMap(properties[propertyName])?.let { propertySchema ->
       unknownProperties(propertyValue, propertySchema, nestedPath(path, propertyName))
     }.orEmpty()
   }
@@ -157,7 +157,7 @@ private fun unknownObjectProperties(value: Map<String, Any?>, schema: Map<String
 }
 
 private fun unknownArrayProperties(value: List<*>, schema: Map<String, Any?>, path: String): List<String> {
-  val itemSchema = JsonSupport.anyToStringAnyMap(schema["items"]) ?: return emptyList()
+  val itemSchema = JsonCodec.anyToStringAnyMap(schema["items"]) ?: return emptyList()
   return value.flatMapIndexed { index, item ->
     unknownProperties(item, itemSchema, "$path[$index]")
   }

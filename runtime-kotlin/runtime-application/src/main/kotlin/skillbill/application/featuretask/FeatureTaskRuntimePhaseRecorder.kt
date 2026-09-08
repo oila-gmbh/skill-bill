@@ -1,47 +1,62 @@
 package skillbill.application.featuretask
 
 import me.tatarka.inject.annotations.Inject
-import skillbill.application.featuretask.model.FeatureTaskRuntimePhaseRecorderDeps
+import skillbill.ports.db.DatabaseSessionFactory
+import skillbill.ports.diagnostics.ProducerOutputEvidenceValidator
+import skillbill.ports.diagnostics.RejectedOutputDiagnosticMetadataValidator
+import skillbill.ports.diagnostics.RuntimeDiagnostics
+import skillbill.workflow.engine.WorkflowSnapshotValidator
+import skillbill.workflow.taskruntime.FeatureTaskRuntimeHandoffEnvelopeValidator
+import skillbill.workflow.taskruntime.FeatureTaskRuntimeHandoffFoundationValidator
+import skillbill.workflow.taskruntime.FeatureTaskRuntimeImplementationAttemptValidator
+import skillbill.workflow.taskruntime.FeatureTaskRuntimeQuarantineValidator
+import java.time.Clock
 
 private class FeatureTaskRuntimePhaseRecorderParts(
-  deps: FeatureTaskRuntimePhaseRecorderDeps,
+  database: DatabaseSessionFactory,
+  workflowSnapshotValidator: WorkflowSnapshotValidator,
+  handoffEnvelopeValidator: FeatureTaskRuntimeHandoffEnvelopeValidator,
+  handoffFoundationValidator: FeatureTaskRuntimeHandoffFoundationValidator,
+  quarantineValidator: FeatureTaskRuntimeQuarantineValidator,
+  implementationAttemptValidator: FeatureTaskRuntimeImplementationAttemptValidator,
+  rejectedOutputDiagnosticMetadataValidator: RejectedOutputDiagnosticMetadataValidator,
+  producerOutputEvidenceValidator: ProducerOutputEvidenceValidator,
+  diagnostics: RuntimeDiagnostics,
+  clock: Clock,
 ) {
-  private val clock = deps.clock
-  val workflowPersistence =
-    FeatureTaskRuntimeWorkflowPersistence(deps.database, deps.workflowSnapshotValidator)
-  val runtimeOwnedPersistence = RuntimeOwnedPersistenceBoundary(deps.database, deps.diagnostics)
+  val workflowPersistence = FeatureTaskRuntimeWorkflowPersistence(database, workflowSnapshotValidator)
+  val runtimeOwnedPersistence = RuntimeOwnedPersistenceBoundary(database, diagnostics)
   val rejectedOutput = FeatureTaskRuntimeRejectedOutputRecorder(
-    deps.database,
+    database,
     workflowPersistence,
-    deps.validators.rejectedOutputDiagnosticMetadataValidator,
-    deps.validators.producerOutputEvidenceValidator,
+    rejectedOutputDiagnosticMetadataValidator,
+    producerOutputEvidenceValidator,
     clock,
   )
   val phaseState = FeatureTaskRuntimePhaseStateRecorder(
-    deps.database,
+    database,
     workflowPersistence,
     runtimeOwnedPersistence,
-    deps.validators.implementationAttemptValidator,
+    implementationAttemptValidator,
     clock,
   )
   val reviewCheckpoint = FeatureTaskRuntimeReviewCheckpointRecorder(
-    deps.database,
+    database,
     workflowPersistence,
     runtimeOwnedPersistence,
   )
-  val goalReviewCompletion =
-    FeatureTaskRuntimeGoalReviewCompletionRecorder(deps.database, workflowPersistence, clock)
+  val goalReviewCompletion = FeatureTaskRuntimeGoalReviewCompletionRecorder(database, workflowPersistence, clock)
   val briefingRecorder = FeatureTaskRuntimePhaseBriefingRecorder(
-    deps.database,
+    database,
     workflowPersistence,
-    deps.validators.handoffEnvelopeValidator,
-    deps.validators.handoffFoundationValidator,
+    handoffEnvelopeValidator,
+    handoffFoundationValidator,
   )
-  val gateProgress = FeatureTaskRuntimeGateProgressRecorder(deps.database, workflowPersistence)
+  val gateProgress = FeatureTaskRuntimeGateProgressRecorder(database, workflowPersistence)
   val evidence = FeatureTaskRuntimePhaseEvidenceRecorder(
-    deps.database,
+    database,
     workflowPersistence,
-    deps.validators.quarantineValidator,
+    quarantineValidator,
     clock,
   )
 }
@@ -57,5 +72,29 @@ class FeatureTaskRuntimePhaseRecorder private constructor(
   FeatureTaskRuntimePhaseGateApi by parts.gateProgress,
   FeatureTaskRuntimePhaseEvidenceApi by parts.evidence {
   @Inject
-  constructor(deps: FeatureTaskRuntimePhaseRecorderDeps) : this(FeatureTaskRuntimePhaseRecorderParts(deps))
+  constructor(
+    database: DatabaseSessionFactory,
+    workflowSnapshotValidator: WorkflowSnapshotValidator,
+    handoffEnvelopeValidator: FeatureTaskRuntimeHandoffEnvelopeValidator,
+    handoffFoundationValidator: FeatureTaskRuntimeHandoffFoundationValidator,
+    quarantineValidator: FeatureTaskRuntimeQuarantineValidator,
+    implementationAttemptValidator: FeatureTaskRuntimeImplementationAttemptValidator,
+    rejectedOutputDiagnosticMetadataValidator: RejectedOutputDiagnosticMetadataValidator,
+    producerOutputEvidenceValidator: ProducerOutputEvidenceValidator,
+    diagnostics: RuntimeDiagnostics,
+    clock: Clock,
+  ) : this(
+    FeatureTaskRuntimePhaseRecorderParts(
+      database = database,
+      workflowSnapshotValidator = workflowSnapshotValidator,
+      handoffEnvelopeValidator = handoffEnvelopeValidator,
+      handoffFoundationValidator = handoffFoundationValidator,
+      quarantineValidator = quarantineValidator,
+      implementationAttemptValidator = implementationAttemptValidator,
+      rejectedOutputDiagnosticMetadataValidator = rejectedOutputDiagnosticMetadataValidator,
+      producerOutputEvidenceValidator = producerOutputEvidenceValidator,
+      diagnostics = diagnostics,
+      clock = clock,
+    ),
+  )
 }

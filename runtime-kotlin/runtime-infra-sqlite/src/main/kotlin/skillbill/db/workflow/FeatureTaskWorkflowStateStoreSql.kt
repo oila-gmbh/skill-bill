@@ -84,7 +84,7 @@ internal fun ResultSet.requiredWorkerOwnershipString(workflowId: String, column:
   )
 
 internal fun decodeWorkerLeaseState(workflowId: String, value: String): FeatureTaskRuntimeWorkerLeaseState =
-  FeatureTaskRuntimeWorkerLeaseState.entries.singleOrNull { it.wireValue == value }
+  FeatureTaskRuntimeWorkerLeaseState.fromWire(value)
     ?: throw InvalidFeatureTaskRuntimeWorkerOwnershipSchemaError(
       workflowId,
       "lease_state '$value' is not supported",

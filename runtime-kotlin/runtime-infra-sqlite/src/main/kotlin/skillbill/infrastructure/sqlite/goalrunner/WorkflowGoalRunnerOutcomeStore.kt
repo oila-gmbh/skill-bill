@@ -1,41 +1,32 @@
 package skillbill.infrastructure.sqlite.goalrunner
 
 import me.tatarka.inject.annotations.Inject
+import skillbill.ports.decomposition.DecompositionManifestProjectionWriter
+import skillbill.ports.goalrunner.persistence.GoalRunnerChildRepairRunnerPort
 import skillbill.ports.goalrunner.persistence.GoalRunnerChildRepairStore
-import skillbill.ports.goalrunner.persistence.model.WorkflowGoalRunnerOutcomeStoreDeps
 import skillbill.ports.goalrunner.runner.GoalRunnerAttemptLedgerStore
 import skillbill.ports.goalrunner.runner.GoalRunnerWorkflowOutcomeStore
+import skillbill.ports.workflow.decomposition.DecompositionManifestStore
+import skillbill.workflow.decomposition.DecompositionManifestValidator
 
 class WorkflowGoalRunnerOutcomeStore private constructor(
-  workflow: GoalRunnerWorkflowOutcomeStore,
-  ledger: GoalRunnerAttemptLedgerStore,
-  childRepair: GoalRunnerChildRepairStore,
-) : GoalRunnerWorkflowOutcomeStore by workflow,
-  GoalRunnerAttemptLedgerStore by ledger,
-  GoalRunnerChildRepairStore by childRepair {
+  bridges: WorkflowGoalRunnerOutcomeStoreBridges,
+) : GoalRunnerWorkflowOutcomeStore by bridges.workflow,
+  GoalRunnerAttemptLedgerStore by bridges.ledger,
+  GoalRunnerChildRepairStore by bridges.childRepair {
   @Inject
-  constructor(deps: WorkflowGoalRunnerOutcomeStoreDeps) : this(
-    createWorkflowGoalRunnerOutcomeStoreBridges(
-      CreateWorkflowGoalRunnerOutcomeStoreBridgesArgs(
-        database = deps.database,
-        workflowSnapshotValidator = deps.workflowSnapshotValidator,
-        goalObservabilityEventValidator = deps.goalObservabilityEventValidator,
-        goalProgressEventValidator = deps.goalProgressEventValidator,
-        gitOperations = deps.gitOperations,
-        phaseOutputValidator = deps.phaseOutputValidator,
-        workerSupervisor = deps.workerSupervisor,
-        decompositionManifestValidator = deps.decompositionManifestValidator,
-        decompositionManifestStore = deps.decompositionManifestStore,
-        clock = deps.clock,
-        decompositionManifestWriter = deps.decompositionManifestWriter,
-        childRepairExecutor = deps.childRepairExecutor,
-      ),
+  constructor(
+    bridgeBuilder: WorkflowGoalRunnerOutcomeStoreBridgeBuilder,
+    decompositionManifestValidator: DecompositionManifestValidator,
+    decompositionManifestStore: DecompositionManifestStore,
+    decompositionManifestWriter: DecompositionManifestProjectionWriter,
+    childRepairExecutor: GoalRunnerChildRepairRunnerPort,
+  ) : this(
+    bridgeBuilder.build(
+      decompositionManifestValidator = decompositionManifestValidator,
+      decompositionManifestStore = decompositionManifestStore,
+      decompositionManifestWriter = decompositionManifestWriter,
+      childRepairExecutor = childRepairExecutor,
     ),
-  )
-
-  private constructor(bridges: WorkflowGoalRunnerOutcomeStoreBridges) : this(
-    workflow = bridges.workflow,
-    ledger = bridges.ledger,
-    childRepair = bridges.childRepair,
   )
 }

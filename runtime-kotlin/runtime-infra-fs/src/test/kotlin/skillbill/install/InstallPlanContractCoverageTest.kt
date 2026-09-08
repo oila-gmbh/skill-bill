@@ -16,6 +16,8 @@ import skillbill.install.model.RuntimeDistributionInputs
 import skillbill.install.model.WindowsSymlinkDecision
 import skillbill.install.model.WindowsSymlinkPreflight
 import skillbill.install.model.WindowsSymlinkPreflightState
+import skillbill.model.toPath
+import skillbill.ports.repository.toFileLocation
 import skillbill.testing.seedConformingPlatformPack
 import java.io.File
 import java.nio.file.Files
@@ -69,9 +71,15 @@ class InstallPlanContractCoverageTest {
     )
     plan.staging.skillPaths.forEach { intent ->
       assertEquals(plan.staging.root, intent.stagingRoot)
-      assertTrue(intent.stagingDir.startsWith(fixture.home.resolve(".skill-bill/installed-skills")))
-      assertFalse(intent.stagingDir.startsWith(fixture.repoRoot), "${intent.skillName} staged inside source")
-      assertFalse(Files.exists(intent.sourceDir.resolve("SKILL.md")), "${intent.skillName} wrote SKILL.md into source")
+      assertTrue(intent.stagingDir.startsWith(fixture.home.resolve(".skill-bill/installed-skills").toFileLocation()))
+      assertFalse(
+        intent.stagingDir.startsWith(fixture.repoRoot.toFileLocation()),
+        "${intent.skillName} staged inside source",
+      )
+      assertFalse(
+        Files.exists(intent.sourceDir.resolve("SKILL.md").toPath()),
+        "${intent.skillName} wrote SKILL.md into source",
+      )
     }
     assertEquals(before, snapshotTree(fixture.repoRoot), "planning must not write generated governed artifacts")
   }
@@ -82,7 +90,7 @@ class InstallPlanContractCoverageTest {
     val explicitTargets = InstallAgent.entries.map { agent ->
       InstallAgentTarget(
         agent = agent,
-        path = fixture.home.resolve("manual-targets/${agent.id}"),
+        path = fixture.home.resolve("manual-targets/${agent.id}").toFileLocation(),
         source = InstallAgentTargetSource.MANUAL,
       )
     }
@@ -101,10 +109,10 @@ class InstallPlanContractCoverageTest {
     assertEquals(expectedAgents, plan.agents.map { target -> target.agent })
     assertEquals(expectedAgents, plan.mcpRegistrationIntent.agents)
     assertTrue(plan.mcpRegistrationIntent.register)
-    assertEquals(fixture.runtimeMcpBin, plan.mcpRegistrationIntent.runtimeMcpBin)
+    assertEquals(fixture.runtimeMcpBin, plan.mcpRegistrationIntent.runtimeMcpBin?.toPath())
     plan.agents.forEach { target ->
       assertEquals(InstallAgentTargetSource.MANUAL, target.source)
-      assertEquals(fixture.home.resolve("manual-targets/${target.agent.id}"), target.path)
+      assertEquals(fixture.home.resolve("manual-targets/${target.agent.id}"), target.path.toPath())
     }
   }
 
@@ -151,7 +159,7 @@ class InstallPlanContractCoverageTest {
         fixture.home.resolve(".junie/skills"),
         fixture.home.resolve(".cursor/skills"),
       ),
-      plan.agents.map { target -> target.path },
+      plan.agents.map { target -> target.path.toPath() },
     )
     assertTrue(plan.agents.all { target -> target.source == InstallAgentTargetSource.DETECTED })
     assertEquals(before, snapshotTree(fixture.repoRoot), "detected planning mutated source files")
@@ -169,8 +177,8 @@ class InstallPlanContractCoverageTest {
 
       assertEquals(level, plan.telemetryLevel)
       assertEquals(level, plan.request.telemetryLevel)
-      assertEquals(fixture.runtimeInstallRoot, plan.runtimeDistributionInputs.runtimeInstallRoot)
-      assertEquals(fixture.runtimeMcpBin, plan.mcpRegistrationIntent.runtimeMcpBin)
+      assertEquals(fixture.runtimeInstallRoot, plan.runtimeDistributionInputs.runtimeInstallRoot.toPath())
+      assertEquals(fixture.runtimeMcpBin, plan.mcpRegistrationIntent.runtimeMcpBin?.toPath())
       assertTrue(plan.mcpRegistrationIntent.register)
       assertEquals(beforeHome, snapshotTree(fixture.home), "planning telemetry '$level' mutated home")
     }
@@ -187,7 +195,7 @@ class InstallPlanContractCoverageTest {
 
       assertEquals(preflight, plan.windowsSymlinkPreflight)
       assertEquals(preflight, plan.request.windowsSymlinkPreflight)
-      assertEquals(fixture.home.resolve(".skill-bill/installed-skills"), plan.staging.root)
+      assertEquals(fixture.home.resolve(".skill-bill/installed-skills"), plan.staging.root.toPath())
     }
   }
 
@@ -278,8 +286,8 @@ class InstallPlanContractCoverageTest {
 
     fun targetPaths(agentTargets: List<InstallAgentTarget> = emptyList()): InstallationTargetPaths =
       InstallationTargetPaths(
-        skillsRoot = repoRoot.resolve("skills"),
-        platformPacksRoot = repoRoot.resolve("platform-packs"),
+        skillsRoot = repoRoot.resolve("skills").toFileLocation(),
+        platformPacksRoot = repoRoot.resolve("platform-packs").toFileLocation(),
         agentTargets = agentTargets,
       )
 
@@ -296,13 +304,13 @@ class InstallPlanContractCoverageTest {
         decision = WindowsSymlinkDecision.NOT_REQUIRED,
       ),
     ): InstallPlanRequest = InstallPlanRequest(
-      repoRoot = repoRoot,
-      home = home,
+      repoRoot = repoRoot.toFileLocation(),
+      home = home.toFileLocation(),
       agentSelection = agentSelection,
       platformPackSelection = platformPackSelection,
       telemetryLevel = telemetryLevel,
-      mcpRegistrationChoice = McpRegistrationChoice(register = true, runtimeMcpBin = runtimeMcpBin),
-      runtimeDistributionInputs = RuntimeDistributionInputs(runtimeInstallRoot = runtimeInstallRoot),
+      mcpRegistrationChoice = McpRegistrationChoice(register = true, runtimeMcpBin = runtimeMcpBin.toFileLocation()),
+      runtimeDistributionInputs = RuntimeDistributionInputs(runtimeInstallRoot = runtimeInstallRoot.toFileLocation()),
       targetPaths = targetPaths,
       windowsSymlinkPreflight = windowsSymlinkPreflight,
       environment = installTestEnvironment(home),

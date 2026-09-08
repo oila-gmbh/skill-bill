@@ -2,8 +2,7 @@ package skillbill.application.review
 
 import skillbill.ports.review.model.ParallelReviewLaneOutcome
 import skillbill.review.ReviewRunLaneResolver
-import skillbill.review.ReviewRunLaneResolver.COMPLETE_DISPOSITION
-import skillbill.review.ReviewRunLaneResolver.RESOLVED
+import skillbill.review.model.ReviewLaneResolutionState.RESOLVED
 import skillbill.review.context.model.GovernedReviewLaunch
 import skillbill.review.context.model.ReviewAssignment
 import skillbill.review.context.model.ReviewChangedHunk
@@ -177,13 +176,13 @@ class ParallelReviewLaneDispositionTest {
       orderIndex = 0,
       originLayerChain = listOf("kotlin"),
       resolutionState = RESOLVED,
-      reviewDisposition = COMPLETE_DISPOSITION,
+      reviewDisposition = ReviewLaneReviewDisposition.COMPLETE,
       bundleCompositionDigest = "a".repeat(64),
     )
     val incomplete = complete.copy(
       laneSkillName = "bill-kotlin-code-review-testing",
       area = "testing",
-      reviewDisposition = ReviewLaneReviewDisposition.INCOMPLETE.wireValue,
+      reviewDisposition = ReviewLaneReviewDisposition.INCOMPLETE,
       unreviewedSegmentIds = listOf(UNREVIEWABLE_SEGMENT_ID),
       budgetDimension = "lane_launch_bytes",
     )

@@ -318,16 +318,24 @@ class ImplementationOwnershipArchitectureTest {
   fun `runtime core binds install capability adapters directly`() {
     val compositionSources = listOf(
       "RuntimeComponent.kt",
-      "RuntimeTelemetryInstallProvides.kt",
-      "RuntimeInstallLauncherProvides.kt",
-      "RuntimeGoalRunnerPlanningProvides.kt",
-      "RuntimeDiagnosticsReviewProvides.kt",
-      "RuntimeGoalRunnerScaffoldProvides.kt",
-      "RuntimeScaffoldWorkflowProvides.kt",
-      "RuntimeReviewWorkflowProvides.kt",
+      "RuntimeInstallTargetProvides.kt",
+      "RuntimeInstallPlanProvides.kt",
+      "RuntimeTelemetryProvides.kt",
+      "RuntimeGoalPlanningProvides.kt",
+      "RuntimeGoalPlanningSweepProvides.kt",
+      "RuntimeGoalRunnerStoreProvides.kt",
+      "RuntimeGoalRunnerLaunchProvides.kt",
+      "RuntimeReviewLaunchProvides.kt",
+      "RuntimeReviewAddonCatalogProvides.kt",
+      "RuntimeReviewEvidenceProvides.kt",
+      "RuntimeFeatureTaskProvides.kt",
+      "RuntimeFeatureSpecProvides.kt",
+      "RuntimeWorkflowProvides.kt",
       "RuntimeWorkflowValidatorProvides.kt",
-      "RuntimeFeatureTaskGoalValidatorProvides.kt",
-      "RuntimeCompositionMiscProvides.kt",
+      "RuntimeFeatureTaskValidatorProvides.kt",
+      "RuntimeScaffoldProvides.kt",
+      "RuntimeScaffoldValidationProvides.kt",
+      "RuntimeDiagnosticsProvides.kt",
     ).joinToString("\n") { fileName ->
       runtimeRoot.resolve("runtime-core/src/main/kotlin/skillbill/di/$fileName").readText()
     }

@@ -9,6 +9,8 @@ import skillbill.error.InvalidDecompositionManifestSchemaError
 import skillbill.error.InvalidFeatureTaskExecutionIdentitySchemaError
 import skillbill.ports.goalrunner.runner.model.GoalRunnerManifestState
 import skillbill.workflow.decomposition.model.DecompositionManifest
+import skillbill.workflow.model.DecompositionStatus
+import skillbill.workflow.model.decompositionStatus
 import java.nio.file.Path
 
 class GoalPreflightLookupResolver(
@@ -42,7 +44,9 @@ class GoalPreflightLookupResolver(
     root: Path,
     manifestState: GoalRunnerManifestState?,
   ): GoalPreflightResult {
-    val activeManifest = manifest?.takeUnless { it.status in setOf("complete", "skipped") }
+    val activeManifest = manifest?.takeUnless {
+      it.status.decompositionStatus() in setOf(DecompositionStatus.COMPLETE, DecompositionStatus.SKIPPED)
+    }
     return GoalPreflightResult(
       verdict = "new_work",
       issueKey = issueKey,

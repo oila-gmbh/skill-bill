@@ -1,10 +1,10 @@
 package skillbill.install.model
 
-import java.nio.file.Path
+import skillbill.model.FileLocation
 
 data class AgentTarget(
   val name: String,
-  val path: Path,
+  val path: FileLocation,
 )
 
 enum class InstallAgent(
@@ -167,7 +167,7 @@ data class InstallAgentSelection(
 
 data class InstallAgentTarget(
   val agent: InstallAgent,
-  val path: Path,
+  val path: FileLocation,
   val source: InstallAgentTargetSource,
 )
 
@@ -191,22 +191,22 @@ enum class InstallTelemetryLevel(
 }
 
 data class RuntimeDistributionInputs(
-  val runtimeInstallRoot: Path,
-  val runtimeCliBuildDir: Path? = null,
-  val runtimeMcpBuildDir: Path? = null,
-  val runtimeCliInstallDir: Path? = null,
-  val runtimeMcpInstallDir: Path? = null,
-  val runtimeLauncherBinDir: Path? = null,
+  val runtimeInstallRoot: FileLocation,
+  val runtimeCliBuildDir: FileLocation? = null,
+  val runtimeMcpBuildDir: FileLocation? = null,
+  val runtimeCliInstallDir: FileLocation? = null,
+  val runtimeMcpInstallDir: FileLocation? = null,
+  val runtimeLauncherBinDir: FileLocation? = null,
 )
 
 data class McpRegistrationChoice(
   val register: Boolean,
-  val runtimeMcpBin: Path? = null,
+  val runtimeMcpBin: FileLocation? = null,
 )
 
 data class InstallationTargetPaths(
-  val skillsRoot: Path,
-  val platformPacksRoot: Path,
+  val skillsRoot: FileLocation,
+  val platformPacksRoot: FileLocation,
   val agentTargets: List<InstallAgentTarget> = emptyList(),
 )
 
@@ -230,8 +230,8 @@ data class WindowsSymlinkPreflight(
 )
 
 data class InstallPlanRequest(
-  val repoRoot: Path,
-  val home: Path,
+  val repoRoot: FileLocation,
+  val home: FileLocation,
   val agentSelection: InstallAgentSelection,
   val platformPackSelection: PlatformPackSelection,
   val telemetryLevel: InstallTelemetryLevel,

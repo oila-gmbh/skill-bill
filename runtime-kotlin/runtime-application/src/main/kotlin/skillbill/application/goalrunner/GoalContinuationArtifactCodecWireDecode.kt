@@ -4,13 +4,14 @@ import skillbill.boundary.OpenBoundaryMap
 import skillbill.goalrunner.model.GoalRunnerSupervisionEvent
 import skillbill.goalrunner.model.GoalRunnerWorkerSubtaskRequest
 import skillbill.goalrunner.model.GoalRunnerWorkerSubtaskRequestOutcome
+import skillbill.goalrunner.toArtifactMap
 
 @OpenBoundaryMap("Goal runner supervision event durable artifact map")
 fun GoalRunnerSupervisionEvent.toArtifactsMap(): Map<String, Any?> = linkedMapOf(
   "phase" to phase,
   "reason" to reason,
-  "continuation_mode" to continuationMode,
-  "process_state" to processState,
+  "continuation_mode" to continuationMode.wireValue,
+  "process_state" to processState.wireValue,
   "workflow_id" to workflowId,
   "step_id" to stepId,
   "last_durable_progress" to lastDurableProgress,

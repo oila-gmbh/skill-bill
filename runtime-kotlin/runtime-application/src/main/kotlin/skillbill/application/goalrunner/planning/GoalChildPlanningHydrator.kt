@@ -1,7 +1,7 @@
 package skillbill.application.goalrunner.planning
+
 import skillbill.application.decomposition.decodeArtifacts
 import skillbill.application.goalplanning.sha256HexUtf8
-import skillbill.application.goalrunner.decodeWorkflowSteps
 import skillbill.application.goalrunner.planning.model.GoalChildPlanningHydration
 import skillbill.application.planningprojection.requireValidPlanningProjection
 import skillbill.error.IncompatibleGoalPlanningPreparationRecoveryError
@@ -12,7 +12,10 @@ import skillbill.ports.goalrunner.model.GoalSubtaskPlanCheckpoint
 import skillbill.ports.goalrunner.model.SharedGoalPreplanCheckpoint
 import skillbill.ports.goalrunner.runner.model.GoalChildPlanningHydrationRequest
 import skillbill.ports.goalrunner.runner.model.GoalRunnerChildWorkflowSetup
+import skillbill.workflow.engine.decodeWorkflowSteps
 import skillbill.workflow.engine.model.WorkflowStateSnapshot
+import skillbill.workflow.model.WorkflowStepStatus
+import skillbill.workflow.model.workflowStepStatus
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseOutputValidator
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePlanningProjectionValidator
 import skillbill.workflow.taskruntime.model.AcceptedFeatureTaskRuntimePhaseOutput
@@ -239,7 +242,7 @@ private class PreparedPlanningPayloadValidator(
     val decoded = accepted.normalizedOutput.envelope
     // The projection gate is a no-op on a non-completed envelope, because a blocked or failed producer
     // makes no projection claim. An import, by contrast, only ever admits a settled completed payload.
-    if (decoded["phase_id"] != phaseId || decoded["status"] != "completed") {
+    if (decoded["phase_id"] != phaseId || decoded["status"].workflowStepStatus() != WorkflowStepStatus.COMPLETED) {
       invalidPlanningPreparation(
         workflowId,
         "$phaseId.payload",
@@ -391,12 +394,13 @@ private class GoalChildPlanningImportMatcher(
   // Expected step statuses mirror FeatureTaskRuntimePhaseRecorder.stepUpdatesFrom: a quarantined
   // producer lands running/running, and blocked is an interrupt that the quarantine produces and the
   // fix loop handles. Accepting a status the recorder cannot emit would admit forged state.
-  private fun settledStepStatus(record: Map<*, *>?, phaseId: String): String? {
+  private fun settledStepStatus(record: Map<*, *>?, phaseId: String): WorkflowStepStatus? {
     if (record == null || record["phase_id"] != phaseId) return null
-    return when (record["status"]) {
-      "completed" -> "completed".takeIf { (record["output_artifact"] as? String)?.isNotBlank() == true }
-      "running" -> "running"
-      "blocked" -> "blocked"
+    return when (record["status"].workflowStepStatus()) {
+      WorkflowStepStatus.COMPLETED -> WorkflowStepStatus.COMPLETED
+        .takeIf { (record["output_artifact"] as? String)?.isNotBlank() == true }
+      WorkflowStepStatus.RUNNING -> WorkflowStepStatus.RUNNING
+      WorkflowStepStatus.BLOCKED -> WorkflowStepStatus.BLOCKED
       else -> null
     }
   }
@@ -408,7 +412,8 @@ private class GoalChildPlanningImportMatcher(
     if (ledger.size < PLANNING_PHASE_IDS.size) return false
     return ledger.take(PLANNING_PHASE_IDS.size).withIndex().all { (index, entry) ->
       listOf(
-        entry["action"] == "complete",
+        (entry["action"] as? String)?.let(FeatureTaskRuntimePhaseLedgerAction::fromWire) ==
+          FeatureTaskRuntimePhaseLedgerAction.COMPLETE,
         (entry["sequence_number"] as? Number)?.toInt() == index,
         entry["phase_id"] == PLANNING_PHASE_IDS[index],
         (entry["attempt_count"] as? Number)?.toInt() == 1,
@@ -420,10 +425,10 @@ private class GoalChildPlanningImportMatcher(
   // Expected step statuses mirror FeatureTaskRuntimePhaseRecorder.stepUpdatesFrom, which writes both
   // the phase record and its step from one record set: a quarantined producer lands running/running,
   // never running/completed. Accepting a status the recorder cannot emit would admit forged state.
-  private fun stepsSettled(existing: WorkflowStateSnapshot, expected: Map<String, String>): Boolean {
+  private fun stepsSettled(existing: WorkflowStateSnapshot, expected: Map<String, WorkflowStepStatus>): Boolean {
     val planningSteps = decodeWorkflowSteps(existing.stepsJson).filter { it.stepId in PLANNING_PHASE_IDS }
     return planningSteps.size == PLANNING_PHASE_IDS.size &&
-      planningSteps.all { it.status == expected[it.stepId] }
+      planningSteps.all { it.status.workflowStepStatus() == expected[it.stepId] }
   }
 }
 

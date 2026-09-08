@@ -1,6 +1,6 @@
 package skillbill.workflow.taskruntime
 
-import skillbill.contracts.JsonSupport
+import skillbill.contracts.JsonCodec
 import skillbill.error.FeatureTaskRuntimeHandoffProjectionFailureKind
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeCompactReferenceKind
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFindingVerificationDisposition
@@ -43,15 +43,15 @@ internal object FeatureTaskRuntimeHandoffProjectionValueBuilder {
   ): List<FeatureTaskRuntimeHandoffProjectionField>? {
     if (declaration.projectionContractId !in phaseProjectionContractIds) return null
     val envelope = output.normalizedOutput?.envelope
-      ?: JsonSupport.parseObjectOrNull(output.payload)?.let { JsonSupport.jsonElementToValue(it) }
-        ?.let(JsonSupport::anyToStringAnyMap)
+      ?: JsonCodec.parseObjectOrNull(output.payload)?.let { JsonCodec.jsonElementToValue(it) }
+        ?.let(JsonCodec::anyToStringAnyMap)
       ?: rejectFeatureTaskRuntimeHandoffProjection(
         inputs,
         declaration,
         FeatureTaskRuntimeHandoffProjectionFailureKind.MALFORMED_FIELD,
         "validated producer output could not be decoded as an object.",
       )
-    val produced = JsonSupport.anyToStringAnyMap(envelope["produced_outputs"]).orEmpty()
+    val produced = JsonCodec.anyToStringAnyMap(envelope["produced_outputs"]).orEmpty()
     val runtimeOwned = runtimeOwnedPhaseProjectionValues(inputs, declaration, produced, envelope)
     return declaration.declaredFieldNames.mapNotNull { name ->
       val value = runtimeOwned[name] ?: when {
@@ -178,7 +178,7 @@ internal object FeatureTaskRuntimeHandoffProjectionValueBuilder {
 
   private fun reviewFindingsForVerificationProjection(produced: Map<String, Any?>): List<Map<String, Any?>> =
     (produced["findings"] as? List<*>).orEmpty()
-      .mapNotNull(JsonSupport::anyToStringAnyMap)
+      .mapNotNull(JsonCodec::anyToStringAnyMap)
       .map { finding ->
         val severity = (finding["severity"] as? String)?.takeIf(String::isNotBlank) ?: "blocker"
         mapOf(
@@ -213,7 +213,7 @@ internal object FeatureTaskRuntimeHandoffProjectionValueBuilder {
       "pr_result",
     )
     val nested = resultContainers.firstNotNullOfOrNull { container ->
-      JsonSupport.anyToStringAnyMap(produced[container])?.get(name)
+      JsonCodec.anyToStringAnyMap(produced[container])?.get(name)
     }
     if (nested != null) return nested
     return null
@@ -226,7 +226,7 @@ internal object FeatureTaskRuntimeHandoffProjectionValueBuilder {
     declaration: PhaseHandoffProjectionDeclaration,
   ): FeatureTaskRuntimeHandoffProjectionValue {
     if (name == FeatureTaskRuntimeHandoffProjectionEnvelopeWire.REPOSITORY_CHECKPOINT_FIELD) {
-      val checkpoint = JsonSupport.anyToStringAnyMap(value)
+      val checkpoint = JsonCodec.anyToStringAnyMap(value)
       val fingerprint = (checkpoint?.get("fingerprint") as? String)?.takeIf(String::isNotBlank)
         ?: rejectFeatureTaskRuntimeHandoffProjection(
           inputs,
@@ -244,7 +244,7 @@ internal object FeatureTaskRuntimeHandoffProjectionValueBuilder {
         value.map { item ->
           when (item) {
             is String -> item
-            is Map<*, *> -> JsonSupport.mapToJsonString(
+            is Map<*, *> -> JsonCodec.mapToJsonString(
               item.entries.associate { (key, entryValue) -> key.toString() to entryValue },
             )
             else -> item.toString()
@@ -252,7 +252,7 @@ internal object FeatureTaskRuntimeHandoffProjectionValueBuilder {
         },
       )
       is Map<*, *> -> FeatureTaskRuntimeHandoffProjectionValue.Text(
-        JsonSupport.mapToJsonString(value.entries.associate { (key, entryValue) -> key.toString() to entryValue }),
+        JsonCodec.mapToJsonString(value.entries.associate { (key, entryValue) -> key.toString() to entryValue }),
       )
       else -> FeatureTaskRuntimeHandoffProjectionValue.Text(value.toString())
     }

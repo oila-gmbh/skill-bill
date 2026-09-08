@@ -106,7 +106,7 @@ object RepoValidationRuntime {
     )
   }
 
-  internal fun extractH2(text: String, heading: String): String {
+  internal fun extractSecondLevelHeading(text: String, heading: String): String {
     val normalized = text.replace("\r\n", "\n")
     val startMarker = "## $heading"
     val start = normalized.indexOf(startMarker)

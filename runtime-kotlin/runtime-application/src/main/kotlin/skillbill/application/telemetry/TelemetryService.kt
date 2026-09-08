@@ -13,6 +13,7 @@ import skillbill.ports.telemetry.model.TelemetryReconciliationRequest
 import skillbill.telemetry.model.RemoteStatsRequest
 import skillbill.telemetry.model.TelemetryProxyCapabilities
 import skillbill.telemetry.model.TelemetryRemoteStatsResult
+import skillbill.telemetry.model.TelemetrySyncStatus
 import skillbill.telemetry.sync.TelemetrySyncRuntime
 import skillbill.telemetry.sync.syncResult
 import java.time.Clock
@@ -61,7 +62,7 @@ class TelemetryService(
         )
       }
     return TelemetrySyncPayload(
-      exitCode = if (result.status == "failed") 1 else 0,
+      exitCode = if (result.status == TelemetrySyncStatus.FAILED) 1 else 0,
       result = TelemetrySyncRuntime.syncResult(result),
     )
   }

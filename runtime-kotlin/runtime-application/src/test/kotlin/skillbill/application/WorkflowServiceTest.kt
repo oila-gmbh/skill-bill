@@ -1,6 +1,6 @@
 package skillbill.application
+
 import skillbill.application.decomposition.DECOMPOSITION_RUNTIME_ARTIFACT_KEY
-import skillbill.application.decomposition.DecompositionManifestWriter
 import skillbill.application.decomposition.encodeDecompositionManifestMap
 import skillbill.application.decomposition.encodeDecompositionManifestYaml
 import skillbill.application.decomposition.executionModel
@@ -9,11 +9,8 @@ import skillbill.application.featuretask.AcceptingFeatureTaskRuntimeHandoffEnvel
 import skillbill.application.featuretask.AcceptingFeatureTaskRuntimeHandoffFoundationValidator
 import skillbill.application.goalplanning.sha256HexUtf8
 import skillbill.application.goalrunner.GoalRunnerStatusService
-import skillbill.application.goalrunner.goalRunnerStatusServiceDeps
+import skillbill.application.goalrunner.OutcomeStoreTestArtifactPorts
 import skillbill.application.goalrunner.model.GoalRunnerStatusRequest
-import skillbill.application.goalrunner.model.WorkflowGoalRunnerManifestStoreDeps
-import skillbill.application.goalrunner.outcomeStoreDeps
-import skillbill.application.goalrunner.testGoalChildPlanningHydratorPort
 import skillbill.application.goalrunner.testGoalRunnerStatusService
 import skillbill.application.goalrunner.testPhaseRecorder
 import skillbill.application.goalrunner.testWorkflowGoalRunnerManifestStore
@@ -21,6 +18,7 @@ import skillbill.application.goalrunner.testWorkflowGoalRunnerOutcomeStore
 import skillbill.application.workflow.ContinuationStepResult
 import skillbill.application.workflow.DecompositionWorkflowContinuation
 import skillbill.application.workflow.WorkflowService
+import skillbill.application.workflow.WorkflowWireProjections
 import skillbill.application.workflow.alignSubtaskResumeStep
 import skillbill.application.workflow.decompositionRuntime
 import skillbill.application.workflow.findDecomposedParentWorkflow
@@ -31,16 +29,13 @@ import skillbill.application.workflow.model.WorkflowFamily
 import skillbill.application.workflow.model.WorkflowFamilyKind
 import skillbill.application.workflow.model.WorkflowGetResult
 import skillbill.application.workflow.model.WorkflowOpenResult
-import skillbill.application.workflow.model.WorkflowServiceDeps
 import skillbill.application.workflow.model.WorkflowServiceOpenFeatureTaskArgs
 import skillbill.application.workflow.model.WorkflowUpdateRequest
 import skillbill.application.workflow.model.WorkflowUpdateResult
 import skillbill.application.workflow.openFeatureTask
 import skillbill.application.workflow.persistParentDecompositionRuntime
-import skillbill.application.workflow.toRecord
-import skillbill.application.workflow.toSnapshot
 import skillbill.application.workflow.workflowFamily
-import skillbill.contracts.JsonSupport
+import skillbill.contracts.JsonCodec
 import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_CONTRACT_VERSION
 import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_PERSISTENCE_CONTRACT_VERSION
 import skillbill.error.IncompatibleGoalPlanningPreparationRecoveryError
@@ -57,7 +52,6 @@ import skillbill.goalrunner.model.GoalRunnerTerminalStatus
 import skillbill.goalrunner.model.GoalRunnerWorkerSubtaskRequest
 import skillbill.goalrunner.model.GoalRunnerWorkerSubtaskRequestOutcome
 import skillbill.goalrunner.model.GoalRunnerWorkerSubtaskRequestRejectionReason
-import skillbill.model.RepositoryRoot
 import skillbill.ports.db.DatabaseSessionFactory
 import skillbill.ports.featuretask.model.FeatureTaskRuntimeWorkerOwnership
 import skillbill.ports.goalrunner.EmptyGoalPlanningPreparationRepository
@@ -82,6 +76,7 @@ import skillbill.ports.goalrunner.runner.model.GoalRunnerReviewPolicy
 import skillbill.ports.goalrunner.runner.model.GoalRunnerScopedReplanOptions
 import skillbill.ports.learning.LearningRepository
 import skillbill.ports.persistence.UnitOfWork
+import skillbill.ports.persistence.UnitOfWorkDefaults
 import skillbill.ports.review.ReviewRepository
 import skillbill.ports.telemetry.LifecycleTelemetryRepository
 import skillbill.ports.telemetry.TelemetryOutboxRepository
@@ -102,6 +97,8 @@ import skillbill.ports.workflow.model.FeatureTaskWorkflowMode
 import skillbill.ports.workflow.model.FeatureVerifySessionSummary
 import skillbill.ports.workflow.model.GoalChildWorkflowDeletionScope
 import skillbill.ports.workflow.model.WorkflowStateRecord
+import skillbill.ports.workflow.model.toSnapshot
+import skillbill.ports.workflow.toRecord
 import skillbill.review.context.model.CodeReviewExecutionMode
 import skillbill.workflow.decomposition.DecompositionManifestValidator
 import skillbill.workflow.decomposition.model.CurrentSubtaskIntent
@@ -111,6 +108,7 @@ import skillbill.workflow.decomposition.model.DecompositionSubtask
 import skillbill.workflow.engine.WorkflowEngine
 import skillbill.workflow.engine.WorkflowSnapshotValidator
 import skillbill.workflow.engine.model.WorkflowDefinition
+import skillbill.workflow.engine.model.WorkflowStateSnapshot
 import skillbill.workflow.engine.model.WorkflowUpdateInput
 import skillbill.workflow.goal.GoalObservabilityEventValidator
 import skillbill.workflow.goal.GoalProgressEventValidator
@@ -163,16 +161,14 @@ class WorkflowServiceTest {
   fun `runtime opens mint workflow-scoped telemetry sessions`() {
     val workflows = InMemoryWorkflowStates()
     val service = WorkflowService(
-      WorkflowServiceDeps(
-        database = FakeDatabaseSessionFactory(workflows),
-        gitOperations = NoopWorkflowGitOperations,
-        decompositionManifestStore = UnavailableDecompositionManifestStore,
-        workflowSnapshotValidator = testWorkflowSnapshotValidator,
-        decompositionManifestValidator = testDecompositionManifestValidator,
-        decompositionManifestWriter = testDecompositionManifestWriter,
-        repositoryRoot = testRepositoryRoot,
-        goalObservabilityEventValidator = NoopGoalObservabilityEventValidator,
-      ),
+      database = FakeDatabaseSessionFactory(workflows),
+      gitOperations = NoopWorkflowGitOperations,
+      decompositionManifestStore = UnavailableDecompositionManifestStore,
+      workflowSnapshotValidator = testWorkflowSnapshotValidator,
+      decompositionManifestValidator = testDecompositionManifestValidator,
+      decompositionManifestWriter = testDecompositionManifestWriter,
+      repositoryRoot = testRepositoryRoot,
+      goalObservabilityEventValidator = NoopGoalObservabilityEventValidator,
     )
 
     val first = assertIs<WorkflowOpenResult.Ok>(
@@ -207,16 +203,14 @@ class WorkflowServiceTest {
   fun `runtime abandonment is explicit durable and terminal`() {
     val workflows = InMemoryWorkflowStates()
     val service = WorkflowService(
-      WorkflowServiceDeps(
-        database = FakeDatabaseSessionFactory(workflows),
-        gitOperations = NoopWorkflowGitOperations,
-        decompositionManifestStore = UnavailableDecompositionManifestStore,
-        workflowSnapshotValidator = testWorkflowSnapshotValidator,
-        decompositionManifestValidator = testDecompositionManifestValidator,
-        decompositionManifestWriter = testDecompositionManifestWriter,
-        repositoryRoot = testRepositoryRoot,
-        goalObservabilityEventValidator = NoopGoalObservabilityEventValidator,
-      ),
+      database = FakeDatabaseSessionFactory(workflows),
+      gitOperations = NoopWorkflowGitOperations,
+      decompositionManifestStore = UnavailableDecompositionManifestStore,
+      workflowSnapshotValidator = testWorkflowSnapshotValidator,
+      decompositionManifestValidator = testDecompositionManifestValidator,
+      decompositionManifestWriter = testDecompositionManifestWriter,
+      repositoryRoot = testRepositoryRoot,
+      goalObservabilityEventValidator = NoopGoalObservabilityEventValidator,
     )
     val opened = assertIs<WorkflowOpenResult.Ok>(
       service.openFeatureTask(
@@ -250,16 +244,14 @@ class WorkflowServiceTest {
     // preserved history, and mode left as prose.
     val workflows = InMemoryWorkflowStates()
     val service = WorkflowService(
-      WorkflowServiceDeps(
-        database = FakeDatabaseSessionFactory(workflows),
-        gitOperations = NoopWorkflowGitOperations,
-        decompositionManifestStore = UnavailableDecompositionManifestStore,
-        workflowSnapshotValidator = testWorkflowSnapshotValidator,
-        decompositionManifestValidator = testDecompositionManifestValidator,
-        decompositionManifestWriter = testDecompositionManifestWriter,
-        repositoryRoot = testRepositoryRoot,
-        goalObservabilityEventValidator = NoopGoalObservabilityEventValidator,
-      ),
+      database = FakeDatabaseSessionFactory(workflows),
+      gitOperations = NoopWorkflowGitOperations,
+      decompositionManifestStore = UnavailableDecompositionManifestStore,
+      workflowSnapshotValidator = testWorkflowSnapshotValidator,
+      decompositionManifestValidator = testDecompositionManifestValidator,
+      decompositionManifestWriter = testDecompositionManifestWriter,
+      repositoryRoot = testRepositoryRoot,
+      goalObservabilityEventValidator = NoopGoalObservabilityEventValidator,
     )
     val historyArtifact = """{"plan":{"mode":"decompose"},"history_note":"retain-me"}"""
     workflows.saveFeatureImplementWorkflow(
@@ -307,16 +299,14 @@ class WorkflowServiceTest {
   fun `explicit operator abandonment stays terminal and never resolves to the paused status`() {
     val workflows = InMemoryWorkflowStates()
     val service = WorkflowService(
-      WorkflowServiceDeps(
-        database = FakeDatabaseSessionFactory(workflows),
-        gitOperations = NoopWorkflowGitOperations,
-        decompositionManifestStore = UnavailableDecompositionManifestStore,
-        workflowSnapshotValidator = testWorkflowSnapshotValidator,
-        decompositionManifestValidator = testDecompositionManifestValidator,
-        decompositionManifestWriter = testDecompositionManifestWriter,
-        repositoryRoot = testRepositoryRoot,
-        goalObservabilityEventValidator = NoopGoalObservabilityEventValidator,
-      ),
+      database = FakeDatabaseSessionFactory(workflows),
+      gitOperations = NoopWorkflowGitOperations,
+      decompositionManifestStore = UnavailableDecompositionManifestStore,
+      workflowSnapshotValidator = testWorkflowSnapshotValidator,
+      decompositionManifestValidator = testDecompositionManifestValidator,
+      decompositionManifestWriter = testDecompositionManifestWriter,
+      repositoryRoot = testRepositoryRoot,
+      goalObservabilityEventValidator = NoopGoalObservabilityEventValidator,
     )
     val opened = assertIs<WorkflowOpenResult.Ok>(
       service.openFeatureTask(
@@ -346,16 +336,14 @@ class WorkflowServiceTest {
   fun `runtime identity repair requires matching explicit operator inputs`() {
     val workflows = InMemoryWorkflowStates()
     val service = WorkflowService(
-      WorkflowServiceDeps(
-        database = FakeDatabaseSessionFactory(workflows),
-        gitOperations = NoopWorkflowGitOperations,
-        decompositionManifestStore = UnavailableDecompositionManifestStore,
-        workflowSnapshotValidator = testWorkflowSnapshotValidator,
-        decompositionManifestValidator = testDecompositionManifestValidator,
-        decompositionManifestWriter = testDecompositionManifestWriter,
-        repositoryRoot = testRepositoryRoot,
-        goalObservabilityEventValidator = NoopGoalObservabilityEventValidator,
-      ),
+      database = FakeDatabaseSessionFactory(workflows),
+      gitOperations = NoopWorkflowGitOperations,
+      decompositionManifestStore = UnavailableDecompositionManifestStore,
+      workflowSnapshotValidator = testWorkflowSnapshotValidator,
+      decompositionManifestValidator = testDecompositionManifestValidator,
+      decompositionManifestWriter = testDecompositionManifestWriter,
+      repositoryRoot = testRepositoryRoot,
+      goalObservabilityEventValidator = NoopGoalObservabilityEventValidator,
     )
     val opened = assertIs<WorkflowOpenResult.Ok>(
       service.openFeatureTask(
@@ -403,16 +391,14 @@ class WorkflowServiceTest {
   fun `runtime identity repair rejects terminal workflows`() {
     val workflows = InMemoryWorkflowStates()
     val service = WorkflowService(
-      WorkflowServiceDeps(
-        database = FakeDatabaseSessionFactory(workflows),
-        gitOperations = NoopWorkflowGitOperations,
-        decompositionManifestStore = UnavailableDecompositionManifestStore,
-        workflowSnapshotValidator = testWorkflowSnapshotValidator,
-        decompositionManifestValidator = testDecompositionManifestValidator,
-        decompositionManifestWriter = testDecompositionManifestWriter,
-        repositoryRoot = testRepositoryRoot,
-        goalObservabilityEventValidator = NoopGoalObservabilityEventValidator,
-      ),
+      database = FakeDatabaseSessionFactory(workflows),
+      gitOperations = NoopWorkflowGitOperations,
+      decompositionManifestStore = UnavailableDecompositionManifestStore,
+      workflowSnapshotValidator = testWorkflowSnapshotValidator,
+      decompositionManifestValidator = testDecompositionManifestValidator,
+      decompositionManifestWriter = testDecompositionManifestWriter,
+      repositoryRoot = testRepositoryRoot,
+      goalObservabilityEventValidator = NoopGoalObservabilityEventValidator,
     )
     val opened = assertIs<WorkflowOpenResult.Ok>(
       service.openFeatureTask(
@@ -564,7 +550,7 @@ class WorkflowServiceTest {
     val standard = assertIs<WorkflowContinueResult.Standard>(
       service.continueWorkflow(WorkflowFamilyKind.TASK_RUNTIME, opened.workflowId),
     )
-    assertEquals("blocked", standard.view.continueStatus)
+    assertEquals("blocked", standard.view.continueStatus.wireValue)
     assertEquals(listOf("plan"), standard.view.resume.missingArtifacts)
     assertFalse(standard.view.resume.canResume)
   }
@@ -587,20 +573,18 @@ class WorkflowServiceTest {
     ).toRecord()
     workflows.saveFeatureTaskRuntimeWorkflow(record)
     val loudFailValidator = object : WorkflowSnapshotValidator {
-      override fun validate(snapshot: Map<String, Any?>, slug: String): Unit =
+      override fun validate(snapshot: WorkflowStateSnapshot, slug: String): Unit =
         throw InvalidWorkflowStateSchemaError("Workflow '$slug': snapshot fails schema validation at '<root>'.")
     }
     val service = WorkflowService(
-      WorkflowServiceDeps(
-        database = FakeDatabaseSessionFactory(workflows),
-        gitOperations = NoopWorkflowGitOperations,
-        decompositionManifestStore = UnavailableDecompositionManifestStore,
-        workflowSnapshotValidator = loudFailValidator,
-        goalObservabilityEventValidator = NoopGoalObservabilityEventValidator,
-        decompositionManifestValidator = testDecompositionManifestValidator,
-        decompositionManifestWriter = testDecompositionManifestWriter,
-        repositoryRoot = testRepositoryRoot,
-      ),
+      database = FakeDatabaseSessionFactory(workflows),
+      gitOperations = NoopWorkflowGitOperations,
+      decompositionManifestStore = UnavailableDecompositionManifestStore,
+      workflowSnapshotValidator = loudFailValidator,
+      goalObservabilityEventValidator = NoopGoalObservabilityEventValidator,
+      decompositionManifestValidator = testDecompositionManifestValidator,
+      decompositionManifestWriter = testDecompositionManifestWriter,
+      repositoryRoot = testRepositoryRoot,
     )
     assertFailsWith<InvalidWorkflowStateSchemaError> {
       service.get(WorkflowFamilyKind.TASK_RUNTIME, "wftr-loud")
@@ -621,20 +605,18 @@ class WorkflowServiceTest {
     ).toRecord()
     workflows.saveFeatureTaskRuntimeWorkflow(opened)
     val loudFailValidator = object : WorkflowSnapshotValidator {
-      override fun validate(snapshot: Map<String, Any?>, slug: String): Unit =
+      override fun validate(snapshot: WorkflowStateSnapshot, slug: String): Unit =
         throw InvalidWorkflowStateSchemaError("Workflow '$slug': snapshot fails schema validation at '<root>'.")
     }
     val service = WorkflowService(
-      WorkflowServiceDeps(
-        database = FakeDatabaseSessionFactory(workflows),
-        gitOperations = NoopWorkflowGitOperations,
-        decompositionManifestStore = UnavailableDecompositionManifestStore,
-        workflowSnapshotValidator = loudFailValidator,
-        goalObservabilityEventValidator = NoopGoalObservabilityEventValidator,
-        decompositionManifestValidator = testDecompositionManifestValidator,
-        decompositionManifestWriter = testDecompositionManifestWriter,
-        repositoryRoot = testRepositoryRoot,
-      ),
+      database = FakeDatabaseSessionFactory(workflows),
+      gitOperations = NoopWorkflowGitOperations,
+      decompositionManifestStore = UnavailableDecompositionManifestStore,
+      workflowSnapshotValidator = loudFailValidator,
+      goalObservabilityEventValidator = NoopGoalObservabilityEventValidator,
+      decompositionManifestValidator = testDecompositionManifestValidator,
+      decompositionManifestWriter = testDecompositionManifestWriter,
+      repositoryRoot = testRepositoryRoot,
     )
 
     assertFailsWith<InvalidWorkflowStateSchemaError> {
@@ -656,16 +638,14 @@ class WorkflowServiceTest {
   fun `progress event update persists goal observability latest and bounded history artifacts`() {
     val workflows = InMemoryWorkflowStates()
     val service = WorkflowService(
-      WorkflowServiceDeps(
-        database = FakeDatabaseSessionFactory(workflows),
-        gitOperations = NoopWorkflowGitOperations,
-        decompositionManifestStore = UnavailableDecompositionManifestStore,
-        workflowSnapshotValidator = testWorkflowSnapshotValidator,
-        decompositionManifestValidator = testDecompositionManifestValidator,
-        decompositionManifestWriter = testDecompositionManifestWriter,
-        repositoryRoot = testRepositoryRoot,
-        goalObservabilityEventValidator = testGoalObservabilityEventValidator,
-      ),
+      database = FakeDatabaseSessionFactory(workflows),
+      gitOperations = NoopWorkflowGitOperations,
+      decompositionManifestStore = UnavailableDecompositionManifestStore,
+      workflowSnapshotValidator = testWorkflowSnapshotValidator,
+      decompositionManifestValidator = testDecompositionManifestValidator,
+      decompositionManifestWriter = testDecompositionManifestWriter,
+      repositoryRoot = testRepositoryRoot,
+      goalObservabilityEventValidator = testGoalObservabilityEventValidator,
     )
     val opened = assertIs<WorkflowOpenResult.Ok>(service.openTestRuntime("ftr-001"))
 
@@ -707,16 +687,14 @@ class WorkflowServiceTest {
   private fun newService(): WorkflowService {
     val workflows = InMemoryWorkflowStates()
     return WorkflowService(
-      WorkflowServiceDeps(
-        database = FakeDatabaseSessionFactory(workflows),
-        gitOperations = NoopWorkflowGitOperations,
-        decompositionManifestStore = UnavailableDecompositionManifestStore,
-        workflowSnapshotValidator = testWorkflowSnapshotValidator,
-        decompositionManifestValidator = testDecompositionManifestValidator,
-        decompositionManifestWriter = testDecompositionManifestWriter,
-        repositoryRoot = testRepositoryRoot,
-        goalObservabilityEventValidator = NoopGoalObservabilityEventValidator,
-      ),
+      database = FakeDatabaseSessionFactory(workflows),
+      gitOperations = NoopWorkflowGitOperations,
+      decompositionManifestStore = UnavailableDecompositionManifestStore,
+      workflowSnapshotValidator = testWorkflowSnapshotValidator,
+      decompositionManifestValidator = testDecompositionManifestValidator,
+      decompositionManifestWriter = testDecompositionManifestWriter,
+      repositoryRoot = testRepositoryRoot,
+      goalObservabilityEventValidator = NoopGoalObservabilityEventValidator,
     )
   }
 }
@@ -1044,19 +1022,9 @@ class WorkflowServiceGoalManifestStoreTest {
       """.trimIndent(),
     )
     val store = testWorkflowGoalRunnerManifestStore(
-      WorkflowGoalRunnerManifestStoreDeps(
-        database = FakeDatabaseSessionFactory(InMemoryWorkflowStates()),
-        workflowSnapshotValidator = testWorkflowSnapshotValidator,
-        decompositionManifestValidator = testDecompositionManifestValidator,
-        decompositionManifestStore = TestDecompositionManifestStore,
-        phaseOutputValidator = AlwaysValidValidator,
-        planningProjectionValidator = realPlanningProjectionValidator,
-
-        clock = Clock.systemUTC(),
-        decompositionManifestWriter = DecompositionManifestWriter(),
-        repositoryRoot = RepositoryRoot(Path.of("").toAbsolutePath().normalize()),
-        planningHydrator = testGoalChildPlanningHydratorPort,
-      ),
+      database = FakeDatabaseSessionFactory(InMemoryWorkflowStates()),
+      decompositionManifestStore = TestDecompositionManifestStore,
+      clock = Clock.systemUTC(),
     )
 
     val state = store.loadByIssueKey("SKILL-52.1", repoRoot = repoRoot)
@@ -1121,19 +1089,9 @@ class WorkflowServiceGoalManifestStoreTest {
     )
     val workflows = InMemoryWorkflowStates()
     val store = testWorkflowGoalRunnerManifestStore(
-      WorkflowGoalRunnerManifestStoreDeps(
-        database = FakeDatabaseSessionFactory(workflows),
-        workflowSnapshotValidator = testWorkflowSnapshotValidator,
-        decompositionManifestValidator = testDecompositionManifestValidator,
-        decompositionManifestStore = TestDecompositionManifestStore,
-        phaseOutputValidator = AlwaysValidValidator,
-        planningProjectionValidator = realPlanningProjectionValidator,
-
-        clock = Clock.systemUTC(),
-        decompositionManifestWriter = DecompositionManifestWriter(),
-        repositoryRoot = RepositoryRoot(Path.of("").toAbsolutePath().normalize()),
-        planningHydrator = testGoalChildPlanningHydratorPort,
-      ),
+      database = FakeDatabaseSessionFactory(workflows),
+      decompositionManifestStore = TestDecompositionManifestStore,
+      clock = Clock.systemUTC(),
     )
 
     val imported = assertNotNull(store.loadByIssueKey("SKILL-52.1", repoRoot = repoRoot))
@@ -1151,9 +1109,9 @@ class WorkflowServiceGoalManifestStoreTest {
       GoalPlanningIdentity(imported.parentWorkflowId, "SKILL-52.1", "repo-root-realpath-v1:/test/repository"),
       GoalPlanningIdentity(resumed.parentWorkflowId, "SKILL-52.1", "repo-root-realpath-v1:/test/repository"),
     )
-    val importedArtifacts = JsonSupport.parseObjectOrNull(parentRow.artifactsJson)
-      ?.let(JsonSupport::jsonElementToValue)
-      ?.let(JsonSupport::anyToStringAnyMap)
+    val importedArtifacts = JsonCodec.parseObjectOrNull(parentRow.artifactsJson)
+      ?.let(JsonCodec::jsonElementToValue)
+      ?.let(JsonCodec::anyToStringAnyMap)
     assertEquals(setOf(DECOMPOSITION_RUNTIME_ARTIFACT_KEY), importedArtifacts?.keys)
   }
 
@@ -1185,19 +1143,9 @@ class WorkflowServiceGoalManifestStoreTest {
       ),
     )
     val store = testWorkflowGoalRunnerManifestStore(
-      WorkflowGoalRunnerManifestStoreDeps(
-        database = FakeDatabaseSessionFactory(workflows),
-        workflowSnapshotValidator = testWorkflowSnapshotValidator,
-        decompositionManifestValidator = testDecompositionManifestValidator,
-        decompositionManifestStore = TestDecompositionManifestStore,
-        phaseOutputValidator = AlwaysValidValidator,
-        planningProjectionValidator = realPlanningProjectionValidator,
-
-        clock = Clock.systemUTC(),
-        decompositionManifestWriter = DecompositionManifestWriter(),
-        repositoryRoot = RepositoryRoot(Path.of("").toAbsolutePath().normalize()),
-        planningHydrator = testGoalChildPlanningHydratorPort,
-      ),
+      database = FakeDatabaseSessionFactory(workflows),
+      decompositionManifestStore = TestDecompositionManifestStore,
+      clock = Clock.systemUTC(),
     )
 
     val refreshed = store.loadByIssueKey("SKILL-52.1", repoRoot = repoRoot)
@@ -1226,19 +1174,9 @@ class WorkflowServiceGoalManifestStoreTest {
       ),
     )
     val store = testWorkflowGoalRunnerManifestStore(
-      WorkflowGoalRunnerManifestStoreDeps(
-        database = FakeDatabaseSessionFactory(InMemoryWorkflowStates()),
-        workflowSnapshotValidator = testWorkflowSnapshotValidator,
-        decompositionManifestValidator = testDecompositionManifestValidator,
-        decompositionManifestStore = TestDecompositionManifestStore,
-        phaseOutputValidator = AlwaysValidValidator,
-        planningProjectionValidator = realPlanningProjectionValidator,
-
-        clock = Clock.systemUTC(),
-        decompositionManifestWriter = DecompositionManifestWriter(),
-        repositoryRoot = RepositoryRoot(Path.of("").toAbsolutePath().normalize()),
-        planningHydrator = testGoalChildPlanningHydratorPort,
-      ),
+      database = FakeDatabaseSessionFactory(InMemoryWorkflowStates()),
+      decompositionManifestStore = TestDecompositionManifestStore,
+      clock = Clock.systemUTC(),
     )
     val loaded = assertNotNull(store.loadByIssueKey("SKILL-52.1", repoRoot = repoRoot))
     assertEquals(repoRoot, loaded.repoRoot)
@@ -1361,19 +1299,9 @@ class WorkflowServiceGoalManifestStoreTest {
       ),
     )
     val store = testWorkflowGoalRunnerManifestStore(
-      WorkflowGoalRunnerManifestStoreDeps(
-        database = FakeDatabaseSessionFactory(workflows),
-        workflowSnapshotValidator = testWorkflowSnapshotValidator,
-        decompositionManifestValidator = testDecompositionManifestValidator,
-        decompositionManifestStore = TestDecompositionManifestStore,
-        phaseOutputValidator = AlwaysValidValidator,
-        planningProjectionValidator = realPlanningProjectionValidator,
-
-        clock = Clock.systemUTC(),
-        decompositionManifestWriter = DecompositionManifestWriter(),
-        repositoryRoot = RepositoryRoot(Path.of("").toAbsolutePath().normalize()),
-        planningHydrator = testGoalChildPlanningHydratorPort,
-      ),
+      database = FakeDatabaseSessionFactory(workflows),
+      decompositionManifestStore = TestDecompositionManifestStore,
+      clock = Clock.systemUTC(),
     )
     val completed = pending.copy(
       status = "complete",
@@ -1415,19 +1343,9 @@ class WorkflowServiceGoalManifestStoreTest {
       )
     }
     val store = testWorkflowGoalRunnerManifestStore(
-      WorkflowGoalRunnerManifestStoreDeps(
-        database = FakeDatabaseSessionFactory(InMemoryWorkflowStates()),
-        workflowSnapshotValidator = testWorkflowSnapshotValidator,
-        decompositionManifestValidator = testDecompositionManifestValidator,
-        decompositionManifestStore = TestDecompositionManifestStore,
-        phaseOutputValidator = AlwaysValidValidator,
-        planningProjectionValidator = realPlanningProjectionValidator,
-
-        clock = Clock.systemUTC(),
-        decompositionManifestWriter = DecompositionManifestWriter(),
-        repositoryRoot = RepositoryRoot(Path.of("").toAbsolutePath().normalize()),
-        planningHydrator = testGoalChildPlanningHydratorPort,
-      ),
+      database = FakeDatabaseSessionFactory(InMemoryWorkflowStates()),
+      decompositionManifestStore = TestDecompositionManifestStore,
+      clock = Clock.systemUTC(),
     )
 
     val error = assertFailsWith<InvalidDecompositionManifestSchemaError> {
@@ -1484,7 +1402,7 @@ class WorkflowGoalStatusProjectionTest {
         workflowStatus = "paused",
         currentStepId = "assess",
         stepsJson = """[{"step_id":"assess","status":"completed"},{"step_id":"create_branch","status":"pending"}]""",
-        artifactsJson = JsonSupport.mapToJsonString(
+        artifactsJson = JsonCodec.mapToJsonString(
           mapOf(
             "plan" to mapOf("mode" to "decompose"),
             DECOMPOSITION_RUNTIME_ARTIFACT_KEY to
@@ -1633,33 +1551,23 @@ class WorkflowGoalStatusProjectionTest {
   ): GoalRunnerStatusService {
     val database = FakeDatabaseSessionFactory(workflows, goalRunnerControls = controls)
     return testGoalRunnerStatusService(
-      goalRunnerStatusServiceDeps(
-        manifestStore = testWorkflowGoalRunnerManifestStore(
-          WorkflowGoalRunnerManifestStoreDeps(
-            database = database,
-            workflowSnapshotValidator = testWorkflowSnapshotValidator,
-            decompositionManifestValidator = testDecompositionManifestValidator,
-            decompositionManifestStore = TestDecompositionManifestStore,
-            phaseOutputValidator = AlwaysValidValidator,
-            planningProjectionValidator = realPlanningProjectionValidator,
-
-            clock = Clock.systemUTC(),
-            decompositionManifestWriter = DecompositionManifestWriter(),
-            repositoryRoot = RepositoryRoot(Path.of("").toAbsolutePath().normalize()),
-            planningHydrator = testGoalChildPlanningHydratorPort,
-          ),
+      manifestStore = testWorkflowGoalRunnerManifestStore(
+        database = database,
+        decompositionManifestStore = TestDecompositionManifestStore,
+        clock = Clock.systemUTC(),
+      ),
+      outcomeStore = testWorkflowGoalRunnerOutcomeStore(
+        database,
+        testWorkflowSnapshotValidator,
+        artifactPorts = OutcomeStoreTestArtifactPorts(
+          goalObservabilityEventValidator = testGoalObservabilityEventValidator,
         ),
-        outcomeStore = testWorkflowGoalRunnerOutcomeStore(
-          outcomeStoreDeps(database, testWorkflowSnapshotValidator).copy(
-            goalObservabilityEventValidator = testGoalObservabilityEventValidator,
-          ),
-        ),
-        phaseRecorder = testPhaseRecorder(
-          database,
-          testWorkflowSnapshotValidator,
-          AcceptingFeatureTaskRuntimeHandoffEnvelopeValidator,
-          AcceptingFeatureTaskRuntimeHandoffFoundationValidator,
-        ),
+      ),
+      phaseRecorder = testPhaseRecorder(
+        database,
+        testWorkflowSnapshotValidator,
+        AcceptingFeatureTaskRuntimeHandoffEnvelopeValidator,
+        AcceptingFeatureTaskRuntimeHandoffFoundationValidator,
       ),
     )
   }
@@ -1667,7 +1575,7 @@ class WorkflowGoalStatusProjectionTest {
 
 private object HeadShaGitOperations : WorkflowGitOperations by NoopWorkflowGitOperations {
   override fun headCommitSha(repoRoot: Path): WorkflowGitOperationResult =
-    WorkflowGitOperationResult(status = "ok", value = "measured-head-sha")
+    WorkflowGitOperationResult.Ok(value = "measured-head-sha")
 }
 
 private object PushedHeadGitOperations : WorkflowGitOperations by HeadShaGitOperations {
@@ -1676,9 +1584,9 @@ private object PushedHeadGitOperations : WorkflowGitOperations by HeadShaGitOper
     branch: String,
     expectedBaseBranch: String,
   ): WorkflowGitOperationResult = if (branch == "origin/feat/SKILL-52" && expectedBaseBranch == "HEAD") {
-    WorkflowGitOperationResult(status = "ok", value = expectedBaseBranch)
+    WorkflowGitOperationResult.Ok(value = expectedBaseBranch)
   } else {
-    WorkflowGitOperationResult(status = "error", error = "unexpected branch check")
+    WorkflowGitOperationResult.Failed(error = "unexpected branch check")
   }
 }
 
@@ -1687,7 +1595,7 @@ private object DivergedHeadGitOperations : WorkflowGitOperations by HeadShaGitOp
     repoRoot: Path,
     branch: String,
     expectedBaseBranch: String,
-  ): WorkflowGitOperationResult = WorkflowGitOperationResult(status = "error", error = "remote does not contain HEAD")
+  ): WorkflowGitOperationResult = WorkflowGitOperationResult.Failed(error = "remote does not contain HEAD")
 }
 
 /** Kept separate from [WorkflowGoalRunnerOutcomeStoreTest] to stay under the detekt LargeClass threshold. */
@@ -1697,12 +1605,9 @@ class GoalRunnerCommitShaRecoveryTest {
     val workflows = InMemoryWorkflowStates()
     workflows.saveFeatureImplementWorkflow(blockedCommitPush("wfl-child"))
     val store = testWorkflowGoalRunnerOutcomeStore(
-      outcomeStoreDeps(
-        database = FakeDatabaseSessionFactory(workflows),
-        workflowSnapshotValidator = testWorkflowSnapshotValidator,
-      ).copy(
-        gitOperations = PushedHeadGitOperations,
-      ),
+      database = FakeDatabaseSessionFactory(workflows),
+      workflowSnapshotValidator = testWorkflowSnapshotValidator,
+      gitOperations = PushedHeadGitOperations,
     )
 
     val outcome = store.recoverAndPersistTerminalOutcome("wfl-child", "SKILL-52.1", 1, repoRoot = Path.of("."))
@@ -1721,12 +1626,9 @@ class GoalRunnerCommitShaRecoveryTest {
     val workflows = InMemoryWorkflowStates()
     workflows.saveFeatureImplementWorkflow(blockedCommitPush("wfl-child"))
     val store = testWorkflowGoalRunnerOutcomeStore(
-      outcomeStoreDeps(
-        database = FakeDatabaseSessionFactory(workflows),
-        workflowSnapshotValidator = testWorkflowSnapshotValidator,
-      ).copy(
-        gitOperations = DivergedHeadGitOperations,
-      ),
+      database = FakeDatabaseSessionFactory(workflows),
+      workflowSnapshotValidator = testWorkflowSnapshotValidator,
+      gitOperations = DivergedHeadGitOperations,
     )
 
     val outcome = store.recoverAndPersistTerminalOutcome("wfl-child", "SKILL-52.1", 1, repoRoot = Path.of("."))
@@ -1741,12 +1643,9 @@ class GoalRunnerCommitShaRecoveryTest {
     val workflows = InMemoryWorkflowStates()
     workflows.saveFeatureImplementWorkflow(commitPushCompletedWithoutCommitSha("wfl-child"))
     val store = testWorkflowGoalRunnerOutcomeStore(
-      outcomeStoreDeps(
-        database = FakeDatabaseSessionFactory(workflows),
-        workflowSnapshotValidator = testWorkflowSnapshotValidator,
-      ).copy(
-        gitOperations = HeadShaGitOperations,
-      ),
+      database = FakeDatabaseSessionFactory(workflows),
+      workflowSnapshotValidator = testWorkflowSnapshotValidator,
+      gitOperations = HeadShaGitOperations,
     )
 
     val outcome = store.recoverAndPersistTerminalOutcome("wfl-child", "SKILL-52.1", 1, repoRoot = Path.of("."))
@@ -1761,12 +1660,9 @@ class GoalRunnerCommitShaRecoveryTest {
     val workflows = InMemoryWorkflowStates()
     workflows.saveFeatureImplementWorkflow(commitPushCompletedWithoutCommitSha("wfl-child"))
     val store = testWorkflowGoalRunnerOutcomeStore(
-      outcomeStoreDeps(
-        database = FakeDatabaseSessionFactory(workflows),
-        workflowSnapshotValidator = testWorkflowSnapshotValidator,
-      ).copy(
-        gitOperations = HeadShaGitOperations,
-      ),
+      database = FakeDatabaseSessionFactory(workflows),
+      workflowSnapshotValidator = testWorkflowSnapshotValidator,
+      gitOperations = HeadShaGitOperations,
     )
 
     store.recoverAndPersistTerminalOutcome("wfl-child", "SKILL-52.1", 1, repoRoot = Path.of("."))
@@ -1782,12 +1678,9 @@ class GoalRunnerCommitShaRecoveryTest {
     val workflows = InMemoryWorkflowStates()
     workflows.saveFeatureImplementWorkflow(commitPushCompletedWithoutCommitSha("wfl-child"))
     val store = testWorkflowGoalRunnerOutcomeStore(
-      outcomeStoreDeps(
-        database = FakeDatabaseSessionFactory(workflows),
-        workflowSnapshotValidator = testWorkflowSnapshotValidator,
-      ).copy(
-        gitOperations = NoopWorkflowGitOperations,
-      ),
+      database = FakeDatabaseSessionFactory(workflows),
+      workflowSnapshotValidator = testWorkflowSnapshotValidator,
+      gitOperations = NoopWorkflowGitOperations,
     )
 
     val outcome = store.recoverAndPersistTerminalOutcome("wfl-child", "SKILL-52.1", 1, repoRoot = Path.of("."))
@@ -1801,12 +1694,9 @@ class GoalRunnerCommitShaRecoveryTest {
     val workflows = InMemoryWorkflowStates()
     workflows.saveFeatureImplementWorkflow(commitPushCompletedWithoutCommitSha("wfl-child"))
     val store = testWorkflowGoalRunnerOutcomeStore(
-      outcomeStoreDeps(
-        database = FakeDatabaseSessionFactory(workflows),
-        workflowSnapshotValidator = testWorkflowSnapshotValidator,
-      ).copy(
-        gitOperations = HeadShaGitOperations,
-      ),
+      database = FakeDatabaseSessionFactory(workflows),
+      workflowSnapshotValidator = testWorkflowSnapshotValidator,
+      gitOperations = HeadShaGitOperations,
     )
 
     val outcome = store.terminalOutcome("wfl-child", "SKILL-52.1", 1)
@@ -1831,10 +1721,8 @@ class GoalRunnerCommitShaRecoveryTest {
       ),
     )
     val store = testWorkflowGoalRunnerOutcomeStore(
-      outcomeStoreDeps(
-        FakeDatabaseSessionFactory(workflows),
-        testWorkflowSnapshotValidator,
-      ),
+      FakeDatabaseSessionFactory(workflows),
+      testWorkflowSnapshotValidator,
     )
 
     val outcome = store.recoverMissingResultPrefixOutput(
@@ -1866,12 +1754,9 @@ class GoalRunnerCommitShaRecoveryTest {
     val workflows = InMemoryWorkflowStates()
     workflows.saveFeatureImplementWorkflow(completeWithoutShaOutcome("wfl-child"))
     val store = testWorkflowGoalRunnerOutcomeStore(
-      outcomeStoreDeps(
-        database = FakeDatabaseSessionFactory(workflows),
-        workflowSnapshotValidator = testWorkflowSnapshotValidator,
-      ).copy(
-        gitOperations = HeadShaGitOperations,
-      ),
+      database = FakeDatabaseSessionFactory(workflows),
+      workflowSnapshotValidator = testWorkflowSnapshotValidator,
+      gitOperations = HeadShaGitOperations,
     )
 
     val reconciled = store.reconcileAuthoritativeOutcomes(issueKey = "SKILL-52.1", repoRoot = Path.of("."))
@@ -1891,12 +1776,9 @@ class GoalRunnerCommitShaRecoveryTest {
     val workflows = InMemoryWorkflowStates()
     workflows.saveFeatureImplementWorkflow(completeWithoutShaOutcome("wfl-child"))
     val store = testWorkflowGoalRunnerOutcomeStore(
-      outcomeStoreDeps(
-        database = FakeDatabaseSessionFactory(workflows),
-        workflowSnapshotValidator = testWorkflowSnapshotValidator,
-      ).copy(
-        gitOperations = HeadShaGitOperations,
-      ),
+      database = FakeDatabaseSessionFactory(workflows),
+      workflowSnapshotValidator = testWorkflowSnapshotValidator,
+      gitOperations = HeadShaGitOperations,
     )
 
     store.reconcileAuthoritativeOutcomes(issueKey = "SKILL-52.1")
@@ -2047,8 +1929,8 @@ class WorkflowUpdateAcknowledgementBudgetTest {
     // Build the compact ack wire shape (typed ack map + result-level db_path) and
     // assert it stays under the ceiling. A regression that echoes the full
     // durable artifacts map back in the ack would blow past it.
-    val ackMap = WorkflowEngine.updateAcknowledgementMap(ack) + mapOf("db_path" to ok.dbPath)
-    val serialized = JsonSupport.mapToJsonString(ackMap)
+    val ackMap = WorkflowWireProjections.updateAcknowledgementMap(ack) + mapOf("db_path" to ok.dbPath)
+    val serialized = JsonCodec.mapToJsonString(ackMap)
     val byteSize = serialized.toByteArray(Charsets.UTF_8).size
     assertTrue(
       byteSize < COMPACT_UPDATE_ACK_PAYLOAD_BYTE_CEILING,
@@ -2079,16 +1961,14 @@ class WorkflowUpdateAcknowledgementBudgetTest {
   }
 
   private fun newAckBudgetService(): WorkflowService = WorkflowService(
-    WorkflowServiceDeps(
-      database = FakeDatabaseSessionFactory(InMemoryWorkflowStates()),
-      gitOperations = NoopWorkflowGitOperations,
-      decompositionManifestStore = UnavailableDecompositionManifestStore,
-      workflowSnapshotValidator = testWorkflowSnapshotValidator,
-      goalObservabilityEventValidator = NoopGoalObservabilityEventValidator,
-      decompositionManifestValidator = testDecompositionManifestValidator,
-      decompositionManifestWriter = testDecompositionManifestWriter,
-      repositoryRoot = testRepositoryRoot,
-    ),
+    database = FakeDatabaseSessionFactory(InMemoryWorkflowStates()),
+    gitOperations = NoopWorkflowGitOperations,
+    decompositionManifestStore = UnavailableDecompositionManifestStore,
+    workflowSnapshotValidator = testWorkflowSnapshotValidator,
+    goalObservabilityEventValidator = NoopGoalObservabilityEventValidator,
+    decompositionManifestValidator = testDecompositionManifestValidator,
+    decompositionManifestWriter = testDecompositionManifestWriter,
+    repositoryRoot = testRepositoryRoot,
   )
 }
 
@@ -2120,10 +2000,8 @@ class WorkflowGoalRunnerOutcomeStoreTest {
       ),
     )
     val store = testWorkflowGoalRunnerOutcomeStore(
-      outcomeStoreDeps(
-        FakeDatabaseSessionFactory(workflows),
-        testWorkflowSnapshotValidator,
-      ),
+      FakeDatabaseSessionFactory(workflows),
+      testWorkflowSnapshotValidator,
     )
 
     val outcome = store.terminalOutcome("wfl-child", "SKILL-52.1", 1)
@@ -2143,7 +2021,8 @@ class WorkflowGoalRunnerReconciliationTest {
     workflows.saveFeatureImplementWorkflow(staleRunningChildRecord(definition).toRecord())
     workflows.saveFeatureImplementWorkflow(authoritativeCompleteChildRecord(definition).toRecord())
     val store = testWorkflowGoalRunnerOutcomeStore(
-      outcomeStoreDeps(FakeDatabaseSessionFactory(workflows), testWorkflowSnapshotValidator),
+      FakeDatabaseSessionFactory(workflows),
+      testWorkflowSnapshotValidator,
     )
 
     val outcomes = store.reconcileAuthoritativeOutcomes("SKILL-52.1", setOf("wfl-stale", "wfl-authoritative"))
@@ -2183,10 +2062,8 @@ class WorkflowGoalRunnerReconciliationTest {
     )
     workflows.saveFeatureImplementWorkflow(running.toRecord())
     val store = testWorkflowGoalRunnerOutcomeStore(
-      outcomeStoreDeps(
-        FakeDatabaseSessionFactory(workflows),
-        testWorkflowSnapshotValidator,
-      ),
+      FakeDatabaseSessionFactory(workflows),
+      testWorkflowSnapshotValidator,
     )
 
     val outcomes = store.reconcileAuthoritativeOutcomes("SKILL-52.1", emptySet())
@@ -2225,10 +2102,8 @@ class WorkflowGoalRunnerReconciliationTest {
     )
     workflows.saveFeatureImplementWorkflow(running.toRecord())
     val store = testWorkflowGoalRunnerOutcomeStore(
-      outcomeStoreDeps(
-        FakeDatabaseSessionFactory(workflows),
-        testWorkflowSnapshotValidator,
-      ),
+      FakeDatabaseSessionFactory(workflows),
+      testWorkflowSnapshotValidator,
     )
 
     val outcomes = store.reconcileAuthoritativeOutcomes("SKILL-52.1", setOf("wfl-active"))
@@ -2246,10 +2121,8 @@ class WorkflowGoalRunnerReconciliationTest {
     workflows.saveFeatureImplementWorkflow(blockedSiblingChildRecord(definition).toRecord())
     workflows.saveFeatureImplementWorkflow(activeRetryChildRecord(definition).toRecord())
     val store = testWorkflowGoalRunnerOutcomeStore(
-      outcomeStoreDeps(
-        FakeDatabaseSessionFactory(workflows),
-        testWorkflowSnapshotValidator,
-      ),
+      FakeDatabaseSessionFactory(workflows),
+      testWorkflowSnapshotValidator,
     )
 
     val outcomes = store.reconcileAuthoritativeOutcomes("SKILL-52.1", setOf("wfl-active"))
@@ -2292,10 +2165,8 @@ class WorkflowGoalRunnerReconciliationTest {
     )
     workflows.saveFeatureImplementWorkflow(running.toRecord())
     val store = testWorkflowGoalRunnerOutcomeStore(
-      outcomeStoreDeps(
-        FakeDatabaseSessionFactory(workflows),
-        testWorkflowSnapshotValidator,
-      ),
+      FakeDatabaseSessionFactory(workflows),
+      testWorkflowSnapshotValidator,
     )
 
     val blockedStep = store.markBlocked("wfl-child", "timeout", "preplan")
@@ -2351,10 +2222,8 @@ class WorkflowGoalRunnerReconciliationTest {
     )
     workflows.saveFeatureTaskRuntimeWorkflow(crashed.toRecord())
     val store = testWorkflowGoalRunnerOutcomeStore(
-      outcomeStoreDeps(
-        FakeDatabaseSessionFactory(workflows),
-        testWorkflowSnapshotValidator,
-      ),
+      FakeDatabaseSessionFactory(workflows),
+      testWorkflowSnapshotValidator,
     )
 
     val blockedStep = store.markBlocked("wftr-child", "no terminal outcome", "preplan")
@@ -2403,10 +2272,8 @@ class WorkflowGoalRunnerReconciliationTest {
     )
     workflows.saveFeatureTaskRuntimeWorkflow(crashed.toRecord())
     val store = testWorkflowGoalRunnerOutcomeStore(
-      outcomeStoreDeps(
-        FakeDatabaseSessionFactory(workflows),
-        testWorkflowSnapshotValidator,
-      ),
+      FakeDatabaseSessionFactory(workflows),
+      testWorkflowSnapshotValidator,
     )
 
     val blockedStep = store.markBlocked("wftr-clean-review", "no terminal outcome", "preplan")
@@ -2455,10 +2322,8 @@ class WorkflowGoalRunnerReconciliationTest {
     )
     workflows.saveFeatureTaskRuntimeWorkflow(crashed.toRecord())
     val store = testWorkflowGoalRunnerOutcomeStore(
-      outcomeStoreDeps(
-        FakeDatabaseSessionFactory(workflows),
-        testWorkflowSnapshotValidator,
-      ),
+      FakeDatabaseSessionFactory(workflows),
+      testWorkflowSnapshotValidator,
     )
 
     val blockedStep = store.markBlocked("wftr-mid-fix", "no terminal outcome", "preplan")
@@ -2623,10 +2488,9 @@ class WorkflowGoalRunnerProgressStoreTest {
       ),
     )
     val store = testWorkflowGoalRunnerOutcomeStore(
-      outcomeStoreDeps(
-        database = FakeDatabaseSessionFactory(workflows),
-        workflowSnapshotValidator = testWorkflowSnapshotValidator,
-      ).copy(
+      database = FakeDatabaseSessionFactory(workflows),
+      workflowSnapshotValidator = testWorkflowSnapshotValidator,
+      artifactPorts = OutcomeStoreTestArtifactPorts(
         goalObservabilityEventValidator = object : GoalObservabilityEventValidator {
           override fun validate(event: Map<String, Any?>, sourceLabel: String) {
             throw InvalidGoalObservabilityEventSchemaError(sourceLabel, "subtask_id", "subtask_id is required.")
@@ -2669,10 +2533,8 @@ class WorkflowGoalRunnerProgressStoreTest {
       ),
     )
     val store = testWorkflowGoalRunnerOutcomeStore(
-      outcomeStoreDeps(
-        database = FakeDatabaseSessionFactory(workflows),
-        workflowSnapshotValidator = testWorkflowSnapshotValidator,
-      ),
+      database = FakeDatabaseSessionFactory(workflows),
+      workflowSnapshotValidator = testWorkflowSnapshotValidator,
     )
 
     val progress = requireNotNull(store.progress("wfl-child"))
@@ -2689,10 +2551,8 @@ class WorkflowGoalRunnerProgressStoreTest {
     val workflows = InMemoryWorkflowStates()
     workflows.saveFeatureImplementWorkflow(workflowRecord("wfl-child", emptyMap()))
     val store = testWorkflowGoalRunnerOutcomeStore(
-      outcomeStoreDeps(
-        FakeDatabaseSessionFactory(workflows),
-        testWorkflowSnapshotValidator,
-      ),
+      FakeDatabaseSessionFactory(workflows),
+      testWorkflowSnapshotValidator,
     )
     val acceptedRequest = GoalRunnerWorkerSubtaskRequest(
       name = "Accepted follow up",
@@ -2753,10 +2613,8 @@ class WorkflowGoalRunnerProgressStoreTest {
     val workflows = InMemoryWorkflowStates()
     workflows.saveFeatureImplementWorkflow(workflowRecord("wfl-child", emptyMap()))
     val store = testWorkflowGoalRunnerOutcomeStore(
-      outcomeStoreDeps(
-        FakeDatabaseSessionFactory(workflows),
-        testWorkflowSnapshotValidator,
-      ),
+      FakeDatabaseSessionFactory(workflows),
+      testWorkflowSnapshotValidator,
     )
 
     assertTrue(store.recordProgressEvent(progressEventRequest("wfl-child", sequenceNumber = 0)))
@@ -2778,10 +2636,8 @@ class WorkflowGoalRunnerProgressStoreTest {
     val workflows = InMemoryWorkflowStates()
     workflows.saveFeatureImplementWorkflow(workflowRecord("wfl-child", emptyMap()))
     val store = testWorkflowGoalRunnerOutcomeStore(
-      outcomeStoreDeps(
-        FakeDatabaseSessionFactory(workflows),
-        testWorkflowSnapshotValidator,
-      ),
+      FakeDatabaseSessionFactory(workflows),
+      testWorkflowSnapshotValidator,
     )
 
     // Append more than the bounded history limit, deliberately out of order, to
@@ -2806,10 +2662,8 @@ class WorkflowGoalRunnerProgressStoreTest {
   fun `record progress event returns false when workflow is missing`() {
     val workflows = InMemoryWorkflowStates()
     val store = testWorkflowGoalRunnerOutcomeStore(
-      outcomeStoreDeps(
-        FakeDatabaseSessionFactory(workflows),
-        testWorkflowSnapshotValidator,
-      ),
+      FakeDatabaseSessionFactory(workflows),
+      testWorkflowSnapshotValidator,
     )
 
     assertFalse(store.recordProgressEvent(progressEventRequest("wfl-missing", sequenceNumber = 0)))
@@ -2823,13 +2677,16 @@ class WorkflowGoalRunnerProgressStoreTest {
     val workflows = InMemoryWorkflowStates()
     workflows.saveFeatureImplementWorkflow(workflowRecord("wfl-child", emptyMap()))
     val store = testWorkflowGoalRunnerOutcomeStore(
-      outcomeStoreDeps(
-        database = FakeDatabaseSessionFactory(workflows),
-        workflowSnapshotValidator = testWorkflowSnapshotValidator,
-      ).copy(
+      database = FakeDatabaseSessionFactory(workflows),
+      workflowSnapshotValidator = testWorkflowSnapshotValidator,
+      artifactPorts = OutcomeStoreTestArtifactPorts(
         goalProgressEventValidator = object : GoalProgressEventValidator {
           override fun validate(event: Map<String, Any?>, sourceLabel: String) {
-            throw InvalidGoalProgressEventSchemaError(sourceLabel, "operation_name", "operation_name is required.")
+            throw InvalidGoalProgressEventSchemaError(
+              sourceLabel,
+              "operation_name",
+              "operation_name is required.",
+            )
           }
         },
       ),
@@ -2850,10 +2707,8 @@ class WorkflowGoalRunnerProgressStoreTest {
     val workflows = InMemoryWorkflowStates()
     workflows.saveFeatureImplementWorkflow(workflowRecord("wfl-child", emptyMap()))
     val store = testWorkflowGoalRunnerOutcomeStore(
-      outcomeStoreDeps(
-        FakeDatabaseSessionFactory(workflows),
-        testWorkflowSnapshotValidator,
-      ),
+      FakeDatabaseSessionFactory(workflows),
+      testWorkflowSnapshotValidator,
     )
 
     val total = GOAL_ATTEMPT_LEDGER_LIMIT + 3
@@ -2885,10 +2740,8 @@ class WorkflowGoalRunnerProgressStoreTest {
       ),
     )
     val store = testWorkflowGoalRunnerOutcomeStore(
-      outcomeStoreDeps(
-        FakeDatabaseSessionFactory(workflows),
-        testWorkflowSnapshotValidator,
-      ),
+      FakeDatabaseSessionFactory(workflows),
+      testWorkflowSnapshotValidator,
     )
     store.recordAttemptLedgerEntry(attemptLedgerRequest("wfl-child", sequenceNumber = 0))
     store.recordAttemptLedgerEntry(attemptLedgerRequest("wfl-child", sequenceNumber = 1))
@@ -3004,8 +2857,8 @@ class WorkflowGoalRunnerProgressStoreTest {
 private const val COMPACT_UPDATE_ACK_PAYLOAD_BYTE_CEILING = 1024
 
 private fun decodeWorkflowStepsForTest(stepsJson: String): Map<String, String> {
-  val element = JsonSupport.json.parseToJsonElement(stepsJson)
-  val value = JsonSupport.jsonElementToValue(element) as List<*>
+  val element = JsonCodec.json.parseToJsonElement(stepsJson)
+  val value = JsonCodec.jsonElementToValue(element) as List<*>
   return value.associate { raw ->
     val item = raw as Map<*, *>
     item["step_id"].toString() to item["status"].toString()
@@ -3013,10 +2866,10 @@ private fun decodeWorkflowStepsForTest(stepsJson: String): Map<String, String> {
 }
 
 private fun decodeWorkflowArtifactsForTest(artifactsJson: String): Map<String, Any?> {
-  val element = JsonSupport.json.parseToJsonElement(artifactsJson)
+  val element = JsonCodec.json.parseToJsonElement(artifactsJson)
   return requireNotNull(
-    JsonSupport.anyToStringAnyMap(
-      JsonSupport.jsonElementToValue(element),
+    JsonCodec.anyToStringAnyMap(
+      JsonCodec.jsonElementToValue(element),
     ),
   )
 }
@@ -3116,18 +2969,10 @@ subtasks:
 """
 
 private fun manifestStore(rejecting: Set<String>) = testWorkflowGoalRunnerManifestStore(
-  WorkflowGoalRunnerManifestStoreDeps(
-    database = FakeDatabaseSessionFactory(InMemoryWorkflowStates()),
-    workflowSnapshotValidator = testWorkflowSnapshotValidator,
-    decompositionManifestValidator = rejectingDecompositionManifestValidator(rejecting),
-    decompositionManifestStore = TestDecompositionManifestStore,
-    phaseOutputValidator = AlwaysValidValidator,
-    planningProjectionValidator = realPlanningProjectionValidator,
-    clock = Clock.systemUTC(),
-    decompositionManifestWriter = DecompositionManifestWriter(),
-    repositoryRoot = RepositoryRoot(Path.of("").toAbsolutePath().normalize()),
-    planningHydrator = testGoalChildPlanningHydratorPort,
-  ),
+  database = FakeDatabaseSessionFactory(InMemoryWorkflowStates()),
+  decompositionManifestValidator = rejectingDecompositionManifestValidator(rejecting),
+  decompositionManifestStore = TestDecompositionManifestStore,
+  clock = Clock.systemUTC(),
 )
 
 private fun rejectingDecompositionManifestValidator(rejectedSources: Set<String>): DecompositionManifestValidator =
@@ -3155,19 +3000,9 @@ private fun scopedReplanStore(
     ),
   )
   return testWorkflowGoalRunnerManifestStore(
-    WorkflowGoalRunnerManifestStoreDeps(
-      database = FakeDatabaseSessionFactory(workflows),
-      workflowSnapshotValidator = testWorkflowSnapshotValidator,
-      decompositionManifestValidator = testDecompositionManifestValidator,
-      decompositionManifestStore = TestDecompositionManifestStore,
-      phaseOutputValidator = AlwaysValidValidator,
-      planningProjectionValidator = realPlanningProjectionValidator,
-
-      clock = Clock.systemUTC(),
-      decompositionManifestWriter = DecompositionManifestWriter(),
-      repositoryRoot = RepositoryRoot(Path.of("").toAbsolutePath().normalize()),
-      planningHydrator = testGoalChildPlanningHydratorPort,
-    ),
+    database = FakeDatabaseSessionFactory(workflows),
+    decompositionManifestStore = TestDecompositionManifestStore,
+    clock = Clock.systemUTC(),
   )
 }
 
@@ -3335,9 +3170,9 @@ class GoalChildPlanningHydrationTransactionIntegrationTest {
     val harness = hydrationHarness()
     harness.store.saveNewChildWorkflow(harness.state, harness.setup)
     val child = requireNotNull(harness.workflows.getFeatureTaskRuntimeWorkflow(CHILD_ID))
-    val artifacts = JsonSupport.parseObjectOrNull(child.artifactsJson)
-      ?.let(JsonSupport::jsonElementToValue)
-      ?.let(JsonSupport::anyToStringAnyMap)
+    val artifacts = JsonCodec.parseObjectOrNull(child.artifactsJson)
+      ?.let(JsonCodec::jsonElementToValue)
+      ?.let(JsonCodec::anyToStringAnyMap)
       .orEmpty()
       .toMutableMap()
     val importArtifact = (artifacts["goal_planning_import"] as Map<*, *>)
@@ -3347,7 +3182,7 @@ class GoalChildPlanningHydrationTransactionIntegrationTest {
     importArtifact["parent_goal_workflow_id"] = "wfl-some-other-parent"
     artifacts["goal_planning_import"] = importArtifact
     harness.workflows.saveFeatureTaskRuntimeWorkflow(
-      child.copy(artifactsJson = JsonSupport.mapToJsonString(artifacts)),
+      child.copy(artifactsJson = JsonCodec.mapToJsonString(artifacts)),
     )
 
     val error = assertFailsWith<IncompatibleGoalPlanningPreparationRecoveryError> {
@@ -3370,7 +3205,7 @@ class GoalChildPlanningHydrationTransactionIntegrationTest {
     val artifacts = parseChildArtifacts(child)
     artifacts.remove("goal_planning_import")
     harness.workflows.saveFeatureTaskRuntimeWorkflow(
-      child.copy(artifactsJson = JsonSupport.mapToJsonString(artifacts)),
+      child.copy(artifactsJson = JsonCodec.mapToJsonString(artifacts)),
     )
 
     val error = assertFailsWith<IncompatibleGoalPlanningPreparationRecoveryError> {
@@ -3417,7 +3252,7 @@ class GoalChildPlanningHydrationTransactionIntegrationTest {
     ledger[0] = firstEntry
     artifacts["feature_task_runtime_phase_ledger"] = ledger
     harness.workflows.saveFeatureTaskRuntimeWorkflow(
-      child.copy(artifactsJson = JsonSupport.mapToJsonString(artifacts)),
+      child.copy(artifactsJson = JsonCodec.mapToJsonString(artifacts)),
     )
 
     val error = assertFailsWith<IncompatibleGoalPlanningPreparationRecoveryError> {
@@ -3438,7 +3273,7 @@ class GoalChildPlanningHydrationTransactionIntegrationTest {
     val child = requireNotNull(harness.workflows.getFeatureTaskRuntimeWorkflow(CHILD_ID))
     val artifacts = mutatePhaseRecord(child, "plan") { it.also { m -> m.remove("output_artifact") } }
     harness.workflows.saveFeatureTaskRuntimeWorkflow(
-      child.copy(artifactsJson = JsonSupport.mapToJsonString(artifacts)),
+      child.copy(artifactsJson = JsonCodec.mapToJsonString(artifacts)),
     )
 
     val error = assertFailsWith<IncompatibleGoalPlanningPreparationRecoveryError> {
@@ -3474,7 +3309,7 @@ class GoalChildPlanningHydrationTransactionIntegrationTest {
     assertNotEquals(child.stepsJson, quarantinedStepsJson)
     harness.workflows.saveFeatureTaskRuntimeWorkflow(
       child.copy(
-        artifactsJson = JsonSupport.mapToJsonString(artifacts),
+        artifactsJson = JsonCodec.mapToJsonString(artifacts),
         stepsJson = quarantinedStepsJson,
       ),
     )
@@ -3487,9 +3322,9 @@ class GoalChildPlanningHydrationTransactionIntegrationTest {
   }
 
   private fun parseChildArtifacts(child: WorkflowStateRecord): MutableMap<String, Any?> =
-    JsonSupport.parseObjectOrNull(child.artifactsJson)
-      ?.let(JsonSupport::jsonElementToValue)
-      ?.let(JsonSupport::anyToStringAnyMap)
+    JsonCodec.parseObjectOrNull(child.artifactsJson)
+      ?.let(JsonCodec::jsonElementToValue)
+      ?.let(JsonCodec::anyToStringAnyMap)
       .orEmpty()
       .toMutableMap()
 
@@ -3510,9 +3345,9 @@ class GoalChildPlanningHydrationTransactionIntegrationTest {
 
   private fun repairedPlanPhase(harness: HydrationHarness): WorkflowStateRecord {
     val child = requireNotNull(harness.workflows.getFeatureTaskRuntimeWorkflow(CHILD_ID))
-    val artifacts = JsonSupport.parseObjectOrNull(child.artifactsJson)
-      ?.let(JsonSupport::jsonElementToValue)
-      ?.let(JsonSupport::anyToStringAnyMap)
+    val artifacts = JsonCodec.parseObjectOrNull(child.artifactsJson)
+      ?.let(JsonCodec::jsonElementToValue)
+      ?.let(JsonCodec::anyToStringAnyMap)
       .orEmpty()
       .toMutableMap()
     val records = (artifacts["feature_task_runtime_phase_records"] as Map<*, *>)
@@ -3530,7 +3365,7 @@ class GoalChildPlanningHydrationTransactionIntegrationTest {
     records["plan"] = planRecord
     artifacts["feature_task_runtime_phase_records"] = records
     return child.copy(
-      artifactsJson = JsonSupport.mapToJsonString(artifacts),
+      artifactsJson = JsonCodec.mapToJsonString(artifacts),
       stepsJson = child.stepsJson.replace(
         "\"step_id\":\"plan\",\"status\":\"completed\",\"attempt_count\":1",
         "\"step_id\":\"plan\",\"status\":\"completed\",\"attempt_count\":3",
@@ -3543,16 +3378,14 @@ class GoalChildPlanningHydrationTransactionIntegrationTest {
     val preparations = RecordingPlanningPreparations(errorOnRead = true)
     val workflows = InMemoryWorkflowStates()
     val service = WorkflowService(
-      WorkflowServiceDeps(
-        database = FakeDatabaseSessionFactory(workflows, planningPreparations = preparations),
-        gitOperations = NoopWorkflowGitOperations,
-        decompositionManifestStore = UnavailableDecompositionManifestStore,
-        workflowSnapshotValidator = testWorkflowSnapshotValidator,
-        decompositionManifestValidator = testDecompositionManifestValidator,
-        decompositionManifestWriter = testDecompositionManifestWriter,
-        repositoryRoot = testRepositoryRoot,
-        goalObservabilityEventValidator = NoopGoalObservabilityEventValidator,
-      ),
+      database = FakeDatabaseSessionFactory(workflows, planningPreparations = preparations),
+      gitOperations = NoopWorkflowGitOperations,
+      decompositionManifestStore = UnavailableDecompositionManifestStore,
+      workflowSnapshotValidator = testWorkflowSnapshotValidator,
+      decompositionManifestValidator = testDecompositionManifestValidator,
+      decompositionManifestWriter = testDecompositionManifestWriter,
+      repositoryRoot = testRepositoryRoot,
+      goalObservabilityEventValidator = NoopGoalObservabilityEventValidator,
     )
 
     val opened = service.openFeatureTask(
@@ -3707,42 +3540,23 @@ class GoalChildPlanningHydrationTransactionIntegrationTest {
 
     /** Same store, but with a fixed clock so every paused=true write has an assertable timestamp. */
     fun newClockedStore(instant: String = PAUSE_CLOCK_INSTANT) = testWorkflowGoalRunnerManifestStore(
-      WorkflowGoalRunnerManifestStoreDeps(
-        database = FakeDatabaseSessionFactory(
-          workflows,
-          planningPreparations = preparations,
-          goalRunnerControls = controls,
-        ),
-        workflowSnapshotValidator = testWorkflowSnapshotValidator,
-        decompositionManifestValidator = testDecompositionManifestValidator,
-        decompositionManifestStore = NoWriteDecompositionManifestStore,
-        phaseOutputValidator = phaseOutputValidator,
-        planningProjectionValidator = realPlanningProjectionValidator,
-        clock = Clock.fixed(Instant.parse(instant), UTC),
-        decompositionManifestWriter = DecompositionManifestWriter(),
-        repositoryRoot = RepositoryRoot(Path.of("").toAbsolutePath().normalize()),
-        planningHydrator = testGoalChildPlanningHydratorPort,
+      database = FakeDatabaseSessionFactory(
+        workflows,
+        planningPreparations = preparations,
+        goalRunnerControls = controls,
       ),
+      decompositionManifestStore = NoWriteDecompositionManifestStore,
+      clock = Clock.fixed(Instant.parse(instant), UTC),
     )
 
     fun newStore() = testWorkflowGoalRunnerManifestStore(
-      WorkflowGoalRunnerManifestStoreDeps(
-        database = FakeDatabaseSessionFactory(
-          workflows,
-          planningPreparations = preparations,
-          goalRunnerControls = controls,
-        ),
-        workflowSnapshotValidator = testWorkflowSnapshotValidator,
-        decompositionManifestValidator = testDecompositionManifestValidator,
-        decompositionManifestStore = NoWriteDecompositionManifestStore,
-        phaseOutputValidator = phaseOutputValidator,
-        planningProjectionValidator = realPlanningProjectionValidator,
-
-        clock = Clock.systemUTC(),
-        decompositionManifestWriter = DecompositionManifestWriter(),
-        repositoryRoot = RepositoryRoot(Path.of("").toAbsolutePath().normalize()),
-        planningHydrator = testGoalChildPlanningHydratorPort,
+      database = FakeDatabaseSessionFactory(
+        workflows,
+        planningPreparations = preparations,
+        goalRunnerControls = controls,
       ),
+      decompositionManifestStore = NoWriteDecompositionManifestStore,
+      clock = Clock.systemUTC(),
     )
 
     fun setupFor(id: Int): GoalRunnerChildWorkflowSetup {
@@ -3893,7 +3707,7 @@ internal class FakeDatabaseSessionFactory(
 
   override fun <T> transaction(dbOverride: String?, block: (UnitOfWork) -> T): T = block(unit())
 
-  private fun unit(): UnitOfWork = object : UnitOfWork {
+  private fun unit(): UnitOfWork = object : UnitOfWorkDefaults() {
     override val dbPath: Path = fakeDbPath
     override val workflowStates: WorkflowStateRepository = this@FakeDatabaseSessionFactory.workflowStates
     override val learnings: LearningRepository
@@ -4257,6 +4071,51 @@ class DecompositionDiskBootstrapTest {
       workflows.listFeatureTaskRuntimeWorkflows(Int.MAX_VALUE).size >= 2,
       "Expected parent bootstrap row and child subtask row in DB",
     )
+  }
+
+  @Test
+  fun `continueDecomposedParentByIssueKey without a manifest file store reports an unknown workflow`() {
+    val repoRoot = Files.createTempDirectory("skillbill-disk-bootstrap-no-store")
+    val manifestPath = repoRoot.resolve(".feature-specs/SKILL-TEST-feature/decomposition-manifest.yaml")
+    Files.createDirectories(manifestPath.parent)
+    val manifest = DecompositionManifest(
+      issueKey = "SKILL-TEST",
+      featureName = "test-feature",
+      parentSpecPath = ".feature-specs/SKILL-TEST-feature/spec.md",
+      status = "in_progress",
+      executionModel = DecompositionExecutionModel.SAME_BRANCH_COMMIT_PER_SUBTASK,
+      baseBranch = "main",
+      featureBranch = "",
+      currentSubtaskIntent = CurrentSubtaskIntent(subtaskId = 1, action = "implement"),
+      subtasks = listOf(
+        DecompositionSubtask(
+          id = 1,
+          name = "first-subtask",
+          specPath = ".feature-specs/SKILL-TEST-feature/spec_subtask_1.md",
+          status = "pending",
+        ),
+      ),
+    )
+    Files.writeString(
+      manifestPath,
+      encodeDecompositionManifestYaml(manifest, testDecompositionManifestValidator, TestDecompositionManifestStore),
+    )
+    val workflows = InMemoryWorkflowStates()
+    val db = FakeDatabaseSessionFactory(workflows)
+    val continuation = DecompositionWorkflowContinuation(
+      engine = testWorkflowEngine,
+      gitOperations = NoopWorkflowGitOperations,
+      validator = testDecompositionManifestValidator,
+      repoRoot = repoRoot,
+      manifestWriter = testDecompositionManifestWriter,
+    )
+
+    val result = db.transaction<ContinuationStepResult>(null) { unitOfWork ->
+      continuation.continueDecomposedParentByIssueKey("SKILL-TEST", unitOfWork)
+    }
+
+    assertTrue(result.result is WorkflowContinueResult.UnknownWorkflow)
+    assertTrue(workflows.listFeatureTaskRuntimeWorkflows(Int.MAX_VALUE).isEmpty())
   }
 
   /**

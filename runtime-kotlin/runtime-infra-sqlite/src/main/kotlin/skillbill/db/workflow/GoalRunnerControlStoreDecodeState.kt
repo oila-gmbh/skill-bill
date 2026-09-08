@@ -1,12 +1,12 @@
 package skillbill.db.workflow
 
-import skillbill.contracts.JsonSupport
+import skillbill.contracts.JsonCodec
 import skillbill.goalrunner.model.GoalRunnerControlState
 
 internal fun decodeControlState(raw: String): GoalRunnerControlState {
-  val state = JsonSupport.parseObjectOrNull(raw)
-    ?.let(JsonSupport::jsonElementToValue)
-    ?.let(JsonSupport::anyToStringAnyMap)
+  val state = JsonCodec.parseObjectOrNull(raw)
+    ?.let(JsonCodec::jsonElementToValue)
+    ?.let(JsonCodec::anyToStringAnyMap)
     ?: goalRunnerControlSchemaError("durable record must be an object.")
   val allowedKeys = setOf(
     "stop_after_subtask_id",

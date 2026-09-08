@@ -1,6 +1,6 @@
 package skillbill.db
 
-import skillbill.contracts.JsonSupport
+import skillbill.contracts.JsonCodec
 import skillbill.db.core.DatabaseRuntime
 import skillbill.db.telemetry.LifecycleTelemetryStore
 import skillbill.db.telemetry.TelemetryOutboxStore
@@ -559,8 +559,8 @@ class GoalTelemetryStoreTest {
   )
 
   private fun parsePayload(payloadJson: String): Map<String, Any?> {
-    val element = requireNotNull(JsonSupport.parseObjectOrNull(payloadJson))
-    return requireNotNull(JsonSupport.anyToStringAnyMap(JsonSupport.jsonElementToValue(element)))
+    val element = requireNotNull(JsonCodec.parseObjectOrNull(payloadJson))
+    return requireNotNull(JsonCodec.anyToStringAnyMap(JsonCodec.jsonElementToValue(element)))
   }
 
   private fun pendingOutbox(connection: Connection): List<TelemetryOutboxRecord> =

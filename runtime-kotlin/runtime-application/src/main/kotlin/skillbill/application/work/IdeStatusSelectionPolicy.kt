@@ -102,12 +102,35 @@ object IdeStatusSelectionPolicy {
     IdeStatusLifecycleState.IDLE -> IdeStatusSelectionTier.IDLE
   }
 
-  fun lifecycleFromDurableState(currentState: String): IdeStatusLifecycleState? = when (currentState) {
-    "running", "pending" -> IdeStatusLifecycleState.ACTIVE
-    "paused" -> IdeStatusLifecycleState.PAUSED
-    "blocked" -> IdeStatusLifecycleState.BLOCKED
-    "failed" -> IdeStatusLifecycleState.FAILED
-    "completed", "abandoned", "complete", "skipped" -> IdeStatusLifecycleState.TERMINAL
-    else -> null // untrusted durable workflow status wire value
+  internal fun lifecycleFromDurableState(currentState: IdeStatusDurableWorkflowState): IdeStatusLifecycleState = when (currentState) {
+    IdeStatusDurableWorkflowState.RUNNING, IdeStatusDurableWorkflowState.PENDING -> IdeStatusLifecycleState.ACTIVE
+    IdeStatusDurableWorkflowState.PAUSED -> IdeStatusLifecycleState.PAUSED
+    IdeStatusDurableWorkflowState.BLOCKED -> IdeStatusLifecycleState.BLOCKED
+    IdeStatusDurableWorkflowState.FAILED -> IdeStatusLifecycleState.FAILED
+    IdeStatusDurableWorkflowState.COMPLETED,
+    IdeStatusDurableWorkflowState.ABANDONED,
+    IdeStatusDurableWorkflowState.COMPLETE,
+    IdeStatusDurableWorkflowState.SKIPPED,
+    -> IdeStatusLifecycleState.TERMINAL
+  }
+
+  fun lifecycleFromDurableStateWire(currentState: String): IdeStatusLifecycleState? =
+    IdeStatusDurableWorkflowState.fromWire(currentState)?.let(::lifecycleFromDurableState)
+}
+
+internal enum class IdeStatusDurableWorkflowState(val wireValue: String) {
+  PENDING("pending"),
+  RUNNING("running"),
+  PAUSED("paused"),
+  BLOCKED("blocked"),
+  FAILED("failed"),
+  COMPLETED("completed"),
+  ABANDONED("abandoned"),
+  COMPLETE("complete"),
+  SKIPPED("skipped"),
+  ;
+
+  companion object {
+    fun fromWire(value: String): IdeStatusDurableWorkflowState? = entries.firstOrNull { it.wireValue == value }
   }
 }

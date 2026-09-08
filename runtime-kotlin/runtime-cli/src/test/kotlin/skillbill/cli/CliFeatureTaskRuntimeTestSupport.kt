@@ -1,9 +1,10 @@
 package skillbill.cli
 
+import skillbill.ports.workflow.gitops.model.WorkflowGitOperationStatus
 import skillbill.application.review.simulateGovernedEvidenceReads
 import skillbill.cli.core.CliRuntime
 import skillbill.cli.model.CliRuntimeContext
-import skillbill.contracts.JsonSupport
+import skillbill.contracts.JsonCodec
 import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_CONTRACT_VERSION
 import skillbill.install.model.InstallAgent
 import skillbill.ports.agentrun.AgentRunLauncher
@@ -13,16 +14,12 @@ import skillbill.ports.agentrun.model.AgentRunLaunchOutcome
 import skillbill.ports.agentrun.model.AgentRunLaunchRequest
 import skillbill.ports.review.ReviewNativeAgentPreflightPort
 import skillbill.ports.telemetry.RemoteTransportPort
-import skillbill.ports.telemetry.UnconfiguredRemoteTransportPort
 import skillbill.ports.workflow.gitops.GoalSubtaskReviewGitOperations
-import skillbill.ports.workflow.gitops.GoalSubtaskReviewGitOperationsProvider
 import skillbill.ports.workflow.gitops.RepositoryFingerprintGitOperations
-import skillbill.ports.workflow.gitops.RepositoryFingerprintGitOperationsProvider
 import skillbill.ports.workflow.gitops.RepositoryOwnedPathsGitOperations
-import skillbill.ports.workflow.gitops.RepositoryOwnedPathsGitOperationsProvider
 import skillbill.ports.workflow.gitops.ScopedStagingGitOperations
-import skillbill.ports.workflow.gitops.ScopedStagingGitOperationsProvider
 import skillbill.ports.workflow.gitops.WorkflowGitOperations
+import skillbill.ports.workflow.gitops.WorkflowGitOperationsTestBase
 import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewBaseline
 import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewBaselineRecoveryRequest
 import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewBaselineResult
@@ -46,7 +43,7 @@ internal data class FeatureTaskRuntimeCliContextOptions(
   var liveStdout: (String) -> Unit = {},
   var liveStderr: (String) -> Unit = {},
   var workflowGitOperations: WorkflowGitOperations = FakeRuntimeGitOperations(),
-  var requester: RemoteTransportPort = UnconfiguredRemoteTransportPort,
+  var requester: RemoteTransportPort? = null,
 )
 
 internal data class FeatureTaskRuntimeCliFixture(
@@ -132,7 +129,7 @@ internal fun goalContinuationValidationDepth(dbPath: Path, workflowId: String): 
   }
 internal fun goalContinuationArtifact(dbPath: Path, workflowId: String): Map<String, Any?>? {
   val artifacts = featureTaskWorkflowArtifacts(dbPath, workflowId)
-  return JsonSupport.anyToStringAnyMap(artifacts["goal_continuation"])
+  return JsonCodec.anyToStringAnyMap(artifacts["goal_continuation"])
 }
 internal fun runInvariantsCodeReviewMode(dbPath: Path, workflowId: String): String {
   val invariants = requireNotNull(
@@ -157,8 +154,8 @@ internal fun featureTaskWorkflowArtifacts(dbPath: Path, workflowId: String): Map
     }
   }
   return requireNotNull(
-    JsonSupport.anyToStringAnyMap(
-      JsonSupport.jsonElementToValue(requireNotNull(JsonSupport.parseObjectOrNull(artifactsJson))),
+    JsonCodec.anyToStringAnyMap(
+      JsonCodec.jsonElementToValue(requireNotNull(JsonCodec.parseObjectOrNull(artifactsJson))),
     ),
   ) { "artifacts_json for $workflowId is not an object map" }
 }
@@ -474,31 +471,26 @@ internal class FakeRuntimeGitOperations(
   internal var currentBranchValue: String = "feat/pre-created-runtime-branch",
   internal val checkoutResult: WorkflowGitOperationResult? = null,
   internal val trackedDelta: String = "",
-) : WorkflowGitOperations,
-  GoalSubtaskReviewGitOperationsProvider,
-  RepositoryFingerprintGitOperationsProvider,
-  RepositoryOwnedPathsGitOperationsProvider,
-  ScopedStagingGitOperationsProvider {
+) : WorkflowGitOperationsTestBase() {
   override val repositoryOwnedPathsOperations: RepositoryOwnedPathsGitOperations = TestRepositoryOwnedPathsOperations
 
   override val repositoryFingerprintOperations: RepositoryFingerprintGitOperations = TestRepositoryFingerprintOperations
 
   override val scopedStagingOperations: ScopedStagingGitOperations = object : ScopedStagingGitOperations {
     override fun stagePaths(repoRoot: Path, paths: List<String>): WorkflowGitOperationResult =
-      WorkflowGitOperationResult(status = "ok", value = "")
+      WorkflowGitOperationResult.Ok(value = "")
 
     override fun captureIndexState(repoRoot: Path, paths: List<String>): WorkflowGitOperationResult =
-      WorkflowGitOperationResult(status = "ok", value = "")
+      WorkflowGitOperationResult.Ok(value = "")
 
     override fun restoreIndexState(repoRoot: Path, paths: List<String>, snapshot: String): WorkflowGitOperationResult =
-      WorkflowGitOperationResult(status = "ok", value = "")
+      WorkflowGitOperationResult.Ok(value = "")
 
     override fun stagedPaths(repoRoot: Path): WorkflowGitOperationResult =
-      WorkflowGitOperationResult(status = "ok", value = "")
+      WorkflowGitOperationResult.Ok(value = "")
 
     override fun pathContentIdentities(repoRoot: Path, paths: List<String>): WorkflowGitOperationResult =
-      WorkflowGitOperationResult(
-        status = "ok",
+      WorkflowGitOperationResult.Ok(
         value = paths.joinToString(separator = "\u0000") { path -> "identity\t$path" },
       )
   }
@@ -507,33 +499,32 @@ internal class FakeRuntimeGitOperations(
 
   override fun checkoutBranch(repoRoot: Path, branch: String, baseBranch: String?): WorkflowGitOperationResult {
     checkoutBranches += branch
-    val result = checkoutResult ?: WorkflowGitOperationResult(status = "ok", value = branch)
-    if (result.ok) {
+    val result = checkoutResult ?: WorkflowGitOperationResult.Ok(value = branch)
+    if (result is WorkflowGitOperationResult.Ok) {
       currentBranchValue = branch
     }
     return result
   }
 
   override fun branchExists(repoRoot: Path, branch: String): WorkflowGitOperationResult =
-    WorkflowGitOperationResult(status = "ok", value = "true")
+    WorkflowGitOperationResult.Ok(value = "true")
 
   override fun currentBranch(repoRoot: Path): WorkflowGitOperationResult =
-    WorkflowGitOperationResult(status = "ok", value = currentBranchValue)
+    WorkflowGitOperationResult.Ok(value = currentBranchValue)
 
   override fun createCommit(repoRoot: Path, message: String): WorkflowGitOperationResult =
-    WorkflowGitOperationResult(status = "ok", value = "2".repeat(40))
+    WorkflowGitOperationResult.Ok(value = "2".repeat(40))
 
   override fun pushBranch(repoRoot: Path, branch: String): WorkflowGitOperationResult =
-    WorkflowGitOperationResult(status = "ok", value = branch)
+    WorkflowGitOperationResult.Ok(value = branch)
 
   override fun pushBranchWithLease(repoRoot: Path, branch: String): WorkflowGitOperationResult =
-    WorkflowGitOperationResult(status = "ok", value = branch)
+    WorkflowGitOperationResult.Ok(value = branch)
 
   override fun headCommitSha(repoRoot: Path): WorkflowGitOperationResult =
-    WorkflowGitOperationResult(status = "ok", value = "")
+    WorkflowGitOperationResult.Ok(value = "")
 
-  override fun resolveCommit(repoRoot: Path, revision: String): WorkflowGitOperationResult = WorkflowGitOperationResult(
-    status = "ok",
+  override fun resolveCommit(repoRoot: Path, revision: String): WorkflowGitOperationResult = WorkflowGitOperationResult.Ok(
     value = revision.takeIf { it.matches(Regex("^[0-9a-fA-F]{40,64}$")) } ?: "1".repeat(40),
   )
 
@@ -541,13 +532,13 @@ internal class FakeRuntimeGitOperations(
     repoRoot: Path,
     branch: String,
     expectedBaseBranch: String,
-  ): WorkflowGitOperationResult = WorkflowGitOperationResult(status = "ok", value = expectedBaseBranch)
+  ): WorkflowGitOperationResult = WorkflowGitOperationResult.Ok(value = expectedBaseBranch)
 
   override fun worktreeStatus(repoRoot: Path): WorkflowGitOperationResult =
-    WorkflowGitOperationResult(status = "ok", value = " M src/Foo.kt")
+    WorkflowGitOperationResult.Ok(value = " M src/Foo.kt")
 
   override fun worktreeActivity(repoRoot: Path): WorkflowWorktreeActivityResult = WorkflowWorktreeActivityResult(
-    status = "ok",
+    status = WorkflowGitOperationStatus.OK,
     changedFileSummary = GoalObservabilityChangedFileSummary(
       total = 0,
       added = 0,
@@ -563,14 +554,14 @@ internal class FakeRuntimeGitOperations(
     repoRoot: Path,
     request: WorkflowSelectedDiffHunksRequest,
   ): WorkflowSelectedDiffHunksResult = WorkflowSelectedDiffHunksResult(
-    status = "ok",
+    status = WorkflowGitOperationStatus.OK,
     selectedDiffHunks = GoalObservabilitySelectedDiffHunks(),
   )
 
   override val goalSubtaskReviewOperations: GoalSubtaskReviewGitOperations =
     object : GoalSubtaskReviewGitOperations {
       override fun captureBaseline(repoRoot: Path, expectedBranch: String) = GoalSubtaskReviewBaselineResult(
-        status = "ok",
+        status = WorkflowGitOperationStatus.OK,
         baseline = GoalSubtaskReviewBaseline("0".repeat(40), emptyList()),
       )
 
@@ -579,7 +570,7 @@ internal class FakeRuntimeGitOperations(
         baseline: GoalSubtaskReviewBaseline,
         expectedBranch: String,
       ): GoalSubtaskReviewInputResult = GoalSubtaskReviewInputResult(
-        status = "ok",
+        status = WorkflowGitOperationStatus.OK,
         input = GoalSubtaskReviewInput(
           reviewBaseSha = baseline.reviewBaseSha,
           currentHeadSha = baseline.reviewBaseSha,
@@ -593,7 +584,7 @@ internal class FakeRuntimeGitOperations(
         request: GoalSubtaskReviewBaselineRecoveryRequest,
         expectedBranch: String,
       ): GoalSubtaskReviewBaselineResult = GoalSubtaskReviewBaselineResult(
-        status = "error",
+        status = WorkflowGitOperationStatus.ERROR,
         error = "Goal review baseline recovery is not used by this runtime CLI fixture.",
       )
     }

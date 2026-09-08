@@ -26,6 +26,7 @@ import skillbill.ports.diff.DiffResolverPort
 import skillbill.ports.goalrunner.runner.GoalRunnerSubtaskLauncher
 import skillbill.ports.goalrunner.runner.model.GoalRunnerSubtaskLaunchRequest
 import skillbill.ports.persistence.UnitOfWork
+import skillbill.ports.repository.toFileLocation
 import skillbill.ports.review.GovernedReviewEvidenceEndpointBinder
 import skillbill.ports.review.ReviewEvidenceBroker
 import skillbill.ports.review.ReviewEvidenceBrokerFactory
@@ -444,7 +445,7 @@ fun reviewPack(
   fallback: Boolean = false,
 ) = PlatformManifest(
   slug = slug,
-  packRoot = Path.of("platform-packs", slug),
+  packRoot = Path.of("platform-packs", slug).toFileLocation(),
   contractVersion = "1.3",
   routingSignals = RoutingSignals(
     strong = routingSignals,
@@ -454,9 +455,10 @@ fun reviewPack(
   ),
   declaredCodeReviewAreas = areas,
   declaredFiles = DeclaredFiles(
-    baseline = Path.of("platform-packs", slug, "code-review", "bill-$slug-code-review", "content.md"),
+    baseline = Path.of("platform-packs", slug, "code-review", "bill-$slug-code-review", "content.md").toFileLocation(),
     areas = areas.associateWith {
       Path.of("platform-packs", slug, "code-review", "bill-$slug-code-review-$it", "content.md")
+        .toFileLocation()
     },
   ),
   areaMetadata = emptyMap(),

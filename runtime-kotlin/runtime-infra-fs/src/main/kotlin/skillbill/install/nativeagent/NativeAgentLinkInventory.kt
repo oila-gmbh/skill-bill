@@ -33,7 +33,7 @@ internal object NativeAgentLinkInventory {
   }
 
   fun reconcile(request: NativeAgentLinkInventoryReconcileRequest) {
-    val path = NativeAgentLinkInventorySupport.inventoryPath(request.home)
+    val path = NativeAgentLinkInventoryPaths.inventoryPath(request.home)
     Files.createDirectories(requireNotNull(path.parent))
     FileChannel.open(
       lockPath(path),
@@ -60,7 +60,7 @@ internal object NativeAgentLinkInventory {
   }
 
   fun read(home: Path, managedRoots: List<Path>, sourceRoot: Path? = null): List<NativeAgentLinkInventoryEntry> {
-    val path = NativeAgentLinkInventorySupport.inventoryPath(home)
+    val path = NativeAgentLinkInventoryPaths.inventoryPath(home)
     if (!Files.exists(path, LinkOption.NOFOLLOW_LINKS)) {
       return sourceRoot?.let {
         NativeAgentLinkInventoryBootstrap.bootstrap(home, managedRoots, it).retain

@@ -3,8 +3,9 @@ package skillbill.application.featuretask
 import skillbill.application.decomposition.decodeArtifacts
 import skillbill.application.featuretask.model.FeatureTaskRuntimePhaseStateRequest
 import skillbill.application.workflow.model.WorkflowFamily
-import skillbill.contracts.JsonSupport
+import skillbill.contracts.JsonCodec
 import skillbill.ports.db.DatabaseSessionFactory
+import skillbill.ports.workflow.get
 import skillbill.workflow.goal.model.appendBoundedHistoryBySequence
 import skillbill.workflow.taskruntime.FeatureTaskRuntimeImplementationAttemptValidator
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
@@ -25,6 +26,8 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseRecord
 import skillbill.workflow.taskruntime.model.featureTaskRuntimeAppendImplementationAttempt
 import skillbill.workflow.taskruntime.model.featureTaskRuntimeImplementationAttemptRecordToWire
 import skillbill.workflow.taskruntime.model.featureTaskRuntimeImplementationAttemptsFromWire
+import skillbill.workflow.model.WorkflowStepStatus
+import skillbill.workflow.model.workflowStepStatus
 import java.time.Clock
 
 class FeatureTaskRuntimePhaseStateRecorder(
@@ -63,7 +66,7 @@ class FeatureTaskRuntimePhaseStateRecorder(
     }
 
   override fun recordCompletedPhase(request: FeatureTaskRuntimePhaseStateRequest, dbOverride: String?): Boolean {
-    require(request.status == "completed" && request.finished)
+    require(request.status.workflowStepStatus() == WorkflowStepStatus.COMPLETED && request.finished)
     return recordCompletedPhaseWrite(request, dbOverride)
   }
 
@@ -159,7 +162,11 @@ fun featureTaskRuntimePhaseRecordFor(
   now: String,
 ): FeatureTaskRuntimePhaseRecord {
   val firstStartedAt = previous?.firstStartedAt ?: now
-  val startedAt = if (request.status == PHASE_RECORDER_STATUS_RUNNING || previous == null) now else previous.startedAt
+  val startedAt = if (request.status.workflowStepStatus() == WorkflowStepStatus.RUNNING || previous == null) {
+    now
+  } else {
+    previous.startedAt
+  }
   val carryForward = previous != null &&
     previous.attemptCount == request.attemptCount &&
     previous.resolvedAgentId == request.resolvedAgentId
@@ -170,7 +177,9 @@ fun featureTaskRuntimePhaseRecordFor(
   }
   return FeatureTaskRuntimePhaseRecord(
     phaseId = request.phaseId,
-    status = request.status,
+    status = requireNotNull(request.status.workflowStepStatus()) {
+      "Unknown feature-task-runtime phase status '${request.status}'."
+    },
     attemptCount = request.attemptCount,
     startedAt = startedAt,
     firstStartedAt = firstStartedAt,
@@ -209,7 +218,7 @@ fun FeatureTaskRuntimePhaseStateRecorder.implementationAttemptPatch(
 ): Map<String, Any?> {
   if (!FeatureTaskRuntimePhaseWorkflowDefinition.isMutatingPhase(request.phaseId)) return emptyMap()
   val produced = request.normalizedOutput?.envelope
-    ?.let { JsonSupport.anyToStringAnyMap(it["produced_outputs"]) }
+    ?.let { JsonCodec.anyToStringAnyMap(it["produced_outputs"]) }
   val value = produced?.get("value")?.toString()?.trim().orEmpty()
   if (produced == null || value.isBlank()) return emptyMap()
   val prompt = produced["prompt"]?.toString()?.trim()?.takeIf(String::isNotBlank)
@@ -242,7 +251,7 @@ fun FeatureTaskRuntimePhaseStateRecorder.findingVerificationCheckpointPatch(
   request: FeatureTaskRuntimePhaseStateRequest,
 ): Map<String, Any?> {
   if (request.phaseId != FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VERIFY_FINDINGS) return emptyMap()
-  if (request.finished && request.status == "completed") {
+  if (request.finished && request.status.workflowStepStatus() == WorkflowStepStatus.COMPLETED) {
     val dispositions = request.normalizedOutput?.envelope
       ?.let(FeatureTaskRuntimeOutputVerification::dispositionsFrom)
       .orEmpty()

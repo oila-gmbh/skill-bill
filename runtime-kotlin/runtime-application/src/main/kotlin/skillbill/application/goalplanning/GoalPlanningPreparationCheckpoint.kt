@@ -3,7 +3,7 @@ package skillbill.application.goalplanning
 import me.tatarka.inject.annotations.Inject
 import skillbill.application.planningprojection.producerProjectionGateReason
 import skillbill.application.planningprojection.requireValidPlanningProjection
-import skillbill.contracts.JsonSupport
+import skillbill.contracts.JsonCodec
 import skillbill.error.IncompatibleGoalPlanningPreparationRecoveryError
 import skillbill.error.InvalidFeatureTaskRuntimePhaseOutputSchemaError
 import skillbill.error.InvalidGoalPlanningPreparationSchemaError
@@ -20,6 +20,8 @@ import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseOutputValidator
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePlanningProjectionValidator
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutputRepairEvidence
 import skillbill.workflow.taskruntime.model.requireAcceptedOutput
+import skillbill.workflow.model.WorkflowStepStatus
+import skillbill.workflow.model.workflowStepStatus
 
 @Inject
 class GoalPlanningPreparationCheckpoint(
@@ -178,12 +180,12 @@ class GoalPlanningPreparationCheckpoint(
             "stored plan provenance differs from the governing shared preplan",
           )
         }
-        val parsed = JsonSupport.parseObjectOrNull(plan.planPayload)
-          ?.let(JsonSupport::jsonElementToValue)
-          ?.let(JsonSupport::anyToStringAnyMap)
+        val parsed = JsonCodec.parseObjectOrNull(plan.planPayload)
+          ?.let(JsonCodec::jsonElementToValue)
+          ?.let(JsonCodec::anyToStringAnyMap)
         val status = parsed?.get("status")?.toString()
         val produced = parsed?.get("produced_outputs") as? Map<*, *>
-        if (status != "completed" || produced?.isEmpty() != false) {
+        if (status.workflowStepStatus() != WorkflowStepStatus.COMPLETED || produced?.isEmpty() != false) {
           throw IncompatibleGoalPlanningPreparationRecoveryError(
             identity.parentGoalWorkflowId,
             descriptor.subtaskId,
@@ -389,7 +391,9 @@ private fun planningRecordRejection(compute: () -> String?): String? = try {
 }
 
 private fun Map<String, Any?>.requirePrepared(label: String) {
-  if (get("status") != "completed" || (get("produced_outputs") as? Map<*, *>)?.isEmpty() != false) {
+  if (get("status").workflowStepStatus() != WorkflowStepStatus.COMPLETED ||
+    (get("produced_outputs") as? Map<*, *>)?.isEmpty() != false
+  ) {
     throw InvalidGoalPlanningPreparationSchemaError(
       label,
       "payload",

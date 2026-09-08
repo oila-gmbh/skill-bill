@@ -4,6 +4,7 @@ import me.tatarka.inject.annotations.Inject
 import skillbill.application.diagnostics.RejectedOutputDiagnosticService
 import skillbill.application.goalrunner.planning.model.GoalPlanningLog
 import skillbill.application.goalrunner.planning.model.GoalPlanningLogAttempt
+import skillbill.application.goalrunner.planning.model.GoalPlanningAttemptOutcome
 import skillbill.application.goalrunner.planning.model.GoalPlanningLogRequest
 import skillbill.ports.db.DatabaseSessionFactory
 import skillbill.ports.diagnostics.RejectedOutputDiagnosticMetadataValidator
@@ -11,12 +12,11 @@ import skillbill.ports.diagnostics.model.RejectedOutputDiagnostic
 import skillbill.ports.diagnostics.model.RejectedOutputDiagnosticSelector
 import skillbill.ports.goalrunner.runner.GoalRunnerManifestStore
 import skillbill.ports.goalrunner.runner.GoalRunnerWorkflowOutcomeStore
+import skillbill.workflow.goal.model.GoalProgressEventKind
 import java.time.Clock
 import java.time.Instant
 
 private const val GOAL_PLANNING_WORKFLOW_PHASE = "goal_planning"
-private const val OPERATION_STARTED = "operation_started"
-private const val OPERATION_COMPLETED = "operation_completed"
 private const val OPERATION_NAME_SEGMENTS = 4
 private const val OPERATION_PHASE_INDEX = 0
 private const val OPERATION_SUBTASK_INDEX = 1
@@ -44,7 +44,7 @@ class GoalPlanningLogService(
 
     val attempts = assembleAttempts(events, rejections)
       .filter { attempt -> request.subtaskId == null || attempt.subtaskId == request.subtaskId }
-      .filter { attempt -> !request.failuresOnly || attempt.outcome == "failed" }
+      .filter { attempt -> !request.failuresOnly || attempt.outcome == GoalPlanningAttemptOutcome.FAILED }
 
     return GoalPlanningLog(
       issueKey = request.issueKey,
@@ -93,20 +93,35 @@ class GoalPlanningLogService(
 
     events.forEach { event ->
       val operation = event["operation_name"] as? String ?: return@forEach
-      when (event["event_kind"]) {
-        OPERATION_STARTED -> {
+      val eventKind = (event["event_kind"] as? String)
+        ?.trim()
+        ?.takeIf(String::isNotBlank)
+        ?.let { raw ->
+          try {
+            GoalProgressEventKind.fromWire(raw)
+          } catch (_: IllegalArgumentException) {
+            null
+          }
+        }
+        ?: return@forEach
+      when (eventKind) {
+        GoalProgressEventKind.OPERATION_STARTED -> {
           val occurrence = AttemptOccurrence(operation, timestamp(event))
           occurrences += occurrence
           open.getOrPut(operation) { mutableListOf() } += occurrence
         }
 
-        OPERATION_COMPLETED -> {
+        GoalProgressEventKind.OPERATION_COMPLETED -> {
           val pending = open[operation]?.removeLastOrNull()
             // A completion whose start fell outside the retained events is still a real attempt; it
             // just has no measurable interval.
             ?: AttemptOccurrence(operation, startedAt = null).also { occurrences += it }
           pending.settle(timestamp(event), event["outcome"] as? String)
         }
+
+        GoalProgressEventKind.PHASE_STARTED,
+        GoalProgressEventKind.PHASE_COMPLETED,
+        GoalProgressEventKind.OPERATION_HEARTBEAT -> Unit
       }
     }
 
@@ -141,13 +156,13 @@ class GoalPlanningLogService(
   private class AttemptOccurrence(val operation: String, val startedAt: Instant?) {
     var finishedAt: Instant? = null
       private set
-    var outcome: String = OUTCOME_IN_FLIGHT
+    var outcome: GoalPlanningAttemptOutcome = GoalPlanningAttemptOutcome.IN_FLIGHT
       private set
 
     fun settle(finishedAt: Instant?, outcome: String?) {
       this.finishedAt = finishedAt
       // A completion that names no outcome is no more settled than an absent one.
-      this.outcome = outcome ?: OUTCOME_IN_FLIGHT
+      this.outcome = outcome?.let(GoalPlanningAttemptOutcome::fromWire) ?: GoalPlanningAttemptOutcome.IN_FLIGHT
     }
   }
 

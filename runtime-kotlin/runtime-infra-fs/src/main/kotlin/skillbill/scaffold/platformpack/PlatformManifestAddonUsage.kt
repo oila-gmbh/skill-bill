@@ -1,5 +1,6 @@
 package skillbill.scaffold.platformpack
 
+import skillbill.model.toPath
 import skillbill.review.plan.ReviewAddonSelectionPolicy
 import skillbill.scaffold.model.DeclaredFiles
 import skillbill.scaffold.model.GovernedAddonSelection
@@ -16,19 +17,21 @@ internal fun PlatformManifest.addonUsageFor(contentFile: Path): List<GovernedAdd
 }
 
 internal fun PlatformManifest.declaredSkillRelativeDirs(): Set<String> =
-  declaredSkillRelativeDirs(packRoot, declaredFiles, declaredQualityCheckFile)
+  declaredSkillRelativeDirs(packRoot.toPath(), declaredFiles, declaredQualityCheckFile?.toPath())
 
 internal fun declaredSkillRelativeDirs(
   packRoot: Path,
   declaredFiles: DeclaredFiles,
   declaredQualityCheckFile: Path?,
 ): Set<String> = buildSet {
-  declaredFiles.baseline?.let { add(packRelativeSkillDir(packRoot, it)) }
-  declaredFiles.areas.values.forEach { add(packRelativeSkillDir(packRoot, it)) }
+  declaredFiles.baseline?.let { add(packRelativeSkillDir(packRoot, it.toPath())) }
+  declaredFiles.areas.values.forEach { add(packRelativeSkillDir(packRoot, it.toPath())) }
   declaredQualityCheckFile?.let { add(packRelativeSkillDir(packRoot, it)) }
 }
 
-private fun PlatformManifest.packRelativeSkillDir(contentFile: Path): String = packRoot.toAbsolutePath().normalize()
+private fun PlatformManifest.packRelativeSkillDir(contentFile: Path): String = packRoot.toPath()
+  .toAbsolutePath()
+  .normalize()
   .relativize(contentFile.parent.toAbsolutePath().normalize())
   .toString()
   .replace('\\', '/')

@@ -3,12 +3,12 @@ package skillbill.infrastructure.fs.validation
 import org.w3c.dom.Element
 import skillbill.ports.validation.model.ValidationGateFinding
 import skillbill.ports.validation.model.ValidationGateFindingParseMode
-import skillbill.ports.validation.model.ValidationGateRunOutcome
+import skillbill.workflow.taskruntime.model.ValidationGateRunOutcome
 import skillbill.ports.validation.model.ValidationGateRunRequest
-import skillbill.ports.validation.model.unparseableGateFailureMessage
 import skillbill.scaffold.model.ValidationGateCompilerDiagnosticsFormat
 import skillbill.scaffold.model.ValidationGateExecutedWorkFormat
 import skillbill.scaffold.model.ValidationGateFindingsFormat
+import skillbill.workflow.taskruntime.unparseableGateFailureMessage
 import java.nio.file.Path
 import java.time.Instant
 import kotlin.coroutines.cancellation.CancellationException
@@ -136,7 +136,7 @@ internal fun FileSystemValidationGateRunner.parseDetektXmlFile(
       val rawFileName = fileElement.getAttribute("name").trim()
       if (rawFileName.isEmpty()) continue
       val relativeFile =
-        FileSystemValidationGateGradlePathSupport.repoRelativeQualityPath(repo, rawFileName)
+        FileSystemValidationGateGradlePaths.repoRelativeQualityPath(repo, rawFileName)
       val module = relativeFile.substringBefore('/').ifBlank { "<detekt>" }
       val errors = fileElement.getElementsByTagName("error")
       for (errorIndex in 0 until errors.length) {

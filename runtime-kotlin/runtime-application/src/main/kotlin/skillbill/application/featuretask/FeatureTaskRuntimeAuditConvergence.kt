@@ -1,14 +1,13 @@
 package skillbill.application.featuretask
 
-import skillbill.contracts.JsonSupport
+import skillbill.contracts.JsonCodec
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditProgress
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerAction
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerEntry
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseRecord
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeVerdict
-
-private const val AUDIT_RECORD_STATUS_COMPLETED = "completed"
+import skillbill.workflow.model.WorkflowStepStatus
 
 /**
  * The one derivation of audit-loop progress, shared by finished telemetry and the operator status
@@ -45,12 +44,12 @@ object FeatureTaskRuntimeAuditConvergence {
 
   private fun auditSettledSatisfied(record: FeatureTaskRuntimePhaseRecord?): Boolean {
     val artifact = record
-      ?.takeIf { it.status == AUDIT_RECORD_STATUS_COMPLETED }
+      ?.takeIf { it.status == WorkflowStepStatus.COMPLETED }
       ?.outputArtifact
       ?: return false
-    val envelope = JsonSupport.parseObjectOrNull(artifact)
-      ?.let(JsonSupport::jsonElementToValue)
-      ?.let(JsonSupport::anyToStringAnyMap)
+    val envelope = JsonCodec.parseObjectOrNull(artifact)
+      ?.let(JsonCodec::jsonElementToValue)
+      ?.let(JsonCodec::anyToStringAnyMap)
       ?: return false
     val verdict = FeatureTaskRuntimeOutputVerification.verdictFor(
       FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT,

@@ -1,7 +1,0 @@
-package skillbill.application.goalrunner.model
-
-import skillbill.ports.goalrunner.persistence.model.WorkflowGoalRunnerManifestStoreDeps as PManifestStoreDeps
-import skillbill.ports.goalrunner.persistence.model.WorkflowGoalRunnerOutcomeStoreDeps as POutcomeStoreDeps
-
-typealias WorkflowGoalRunnerManifestStoreDeps = PManifestStoreDeps
-typealias WorkflowGoalRunnerOutcomeStoreDeps = POutcomeStoreDeps

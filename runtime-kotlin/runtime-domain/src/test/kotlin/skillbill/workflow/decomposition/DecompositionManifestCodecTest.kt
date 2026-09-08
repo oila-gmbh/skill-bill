@@ -1,6 +1,6 @@
 package skillbill.workflow.decomposition
 
-import skillbill.contracts.JsonSupport
+import skillbill.contracts.JsonCodec
 import skillbill.error.InvalidDecompositionManifestSchemaError
 import skillbill.workflow.decomposition.model.CurrentSubtaskIntent
 import skillbill.workflow.decomposition.model.DecompositionManifest
@@ -115,7 +115,7 @@ class DecompositionManifestCodecTest {
   fun `codec loads a legacy manifest without agent attribution fields, defaulting to null and empty`() {
     // A decomposition-manifest.yaml written before SKILL-89 omits both agent keys entirely.
     val wireMap = validManifest().toWireMap().toMutableMap()
-    val subtasks = requireNotNull(JsonSupport.anyToStringAnyMapList((wireMap["subtasks"]))).map { subtask ->
+    val subtasks = requireNotNull(JsonCodec.anyToStringAnyMapList((wireMap["subtasks"]))).map { subtask ->
       subtask.toMutableMap().apply {
         remove("finalizing_agent_id")
         remove("participating_agent_ids")
@@ -135,7 +135,7 @@ class DecompositionManifestCodecTest {
   @Test
   fun `codec rejects a non-string participating agent element`() {
     val wireMap = validManifest().toWireMap().toMutableMap()
-    val subtasks = requireNotNull(JsonSupport.anyToStringAnyMapList((wireMap["subtasks"]))).map { subtask ->
+    val subtasks = requireNotNull(JsonCodec.anyToStringAnyMapList((wireMap["subtasks"]))).map { subtask ->
       subtask.toMutableMap().apply { put("participating_agent_ids", listOf("codex", 7)) }
     }
     wireMap["subtasks"] = subtasks
@@ -149,7 +149,7 @@ class DecompositionManifestCodecTest {
   @Test
   fun `codec rejects a blank-string element in participating_agent_ids`() {
     val wireMap = validManifest().toWireMap().toMutableMap()
-    val subtasks = requireNotNull(JsonSupport.anyToStringAnyMapList((wireMap["subtasks"]))).map { subtask ->
+    val subtasks = requireNotNull(JsonCodec.anyToStringAnyMapList((wireMap["subtasks"]))).map { subtask ->
       subtask.toMutableMap().apply { put("participating_agent_ids", listOf("codex", "")) }
     }
     wireMap["subtasks"] = subtasks

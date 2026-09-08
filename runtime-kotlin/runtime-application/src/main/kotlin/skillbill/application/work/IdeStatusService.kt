@@ -136,7 +136,7 @@ class IdeStatusService(
       if (repositoryCorrelation.matches(item, candidateFamily) != true) {
         null
       } else {
-        IdeStatusSelectionPolicy.lifecycleFromDurableState(item.currentState)
+        IdeStatusSelectionPolicy.lifecycleFromDurableStateWire(item.currentState)
       }
     }
     if (family == null || lifecycle == null) return null

@@ -1,6 +1,6 @@
 package skillbill.application.goalrunner.planning
 import skillbill.application.goalplanning.sha256HexUtf8
-import skillbill.contracts.JsonSupport
+import skillbill.contracts.JsonCodec
 import skillbill.workflow.decomposition.model.DecompositionManifest
 
 fun goalPlanningImmutableDecompositionHash(manifest: DecompositionManifest): String {
@@ -32,5 +32,5 @@ fun goalPlanningImmutableDecompositionHash(manifest: DecompositionManifest): Str
       )
     },
   )
-  return sha256HexUtf8(JsonSupport.mapToJsonString(immutable))
+  return sha256HexUtf8(JsonCodec.mapToJsonString(immutable))
 }

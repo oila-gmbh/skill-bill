@@ -3,13 +3,9 @@ package skillbill.application
 import skillbill.application.diagnostics.RejectedOutputDiagnosticService
 import skillbill.application.featuretask.FeatureTaskRuntimeRunState
 import skillbill.application.featuretask.REVIEW_INVALIDATION_AGENT_ID
-import skillbill.application.featuretask.discardStaleReentry
-import skillbill.application.featuretask.edgeIterationCount
-import skillbill.application.featuretask.isLoopLiveClaimed
 import skillbill.application.featuretask.model.FeatureTaskRuntimeGoalContinuationContext
 import skillbill.application.featuretask.model.FeatureTaskRuntimePhaseStateRequest
 import skillbill.application.featuretask.model.FeatureTaskRuntimeRunReport
-import skillbill.application.featuretask.spanBlockedByEntryGate
 import skillbill.application.featuretask.transitionsFor
 import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_CONTRACT_VERSION
 import skillbill.ports.diagnostics.model.ProducerOutputEvidence
@@ -140,7 +136,7 @@ class FeatureTaskRuntimeAuditEntryGateTest {
 
     assertIs<FeatureTaskRuntimeRunReport.Blocked>(harness.runner.run(harness.request()))
     val tombstone = requireNotNull(harness.recorder.loadPhaseRecords(WORKFLOW_ID).orEmpty()["review"])
-    assertEquals("running", tombstone.status)
+    assertEquals("running", tombstone.status.wireValue)
     assertEquals("audit-gate-migration", tombstone.resolvedAgentId)
     assertEquals(null, tombstone.outputArtifact)
     assertEquals(null, tombstone.reviewPassNumber)

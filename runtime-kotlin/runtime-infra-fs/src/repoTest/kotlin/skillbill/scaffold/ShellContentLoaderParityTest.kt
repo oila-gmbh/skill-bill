@@ -7,6 +7,7 @@ import skillbill.error.InvalidSkillMdShapeError
 import skillbill.error.MissingContentFileError
 import skillbill.error.MissingManifestError
 import skillbill.error.MissingRequiredSectionError
+import skillbill.model.toPath
 import skillbill.scaffold.platformpack.loadPlatformManifest
 import skillbill.scaffold.platformpack.loadPlatformPack
 import skillbill.scaffold.platformpack.loadQualityCheckContent
@@ -34,7 +35,7 @@ class ShellContentLoaderParityTest {
     assertEquals(SHELL_CONTRACT_VERSION, pack.contractVersion)
     assertEquals(listOf("architecture"), pack.declaredCodeReviewAreas)
     assertEquals(listOf(".valid-pack", "*.valid-pack"), pack.routingSignals.strong)
-    assertEquals("bill-valid-pack-code-review", pack.declaredFiles.baseline?.parent?.name)
+    assertEquals("bill-valid-pack-code-review", pack.declaredFiles.baseline?.toPath()?.parent?.name)
   }
 
   @Test
@@ -44,7 +45,7 @@ class ShellContentLoaderParityTest {
     val pack = loadPlatformPack(repo.resolve("platform-packs/code-review-and-quality-check"))
     val contentPath = loadQualityCheckContent(pack)
 
-    assertEquals(pack.declaredQualityCheckFile, contentPath)
+    assertEquals(pack.declaredQualityCheckFile?.toPath(), contentPath)
     assertTrue(Files.isRegularFile(contentPath))
   }
 

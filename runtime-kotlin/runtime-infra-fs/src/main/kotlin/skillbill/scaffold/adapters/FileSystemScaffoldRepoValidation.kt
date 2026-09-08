@@ -114,7 +114,7 @@ class FileSystemScaffoldRepoValidation : ScaffoldRepoValidationPort {
       if (layer.skill !in targetPack.declaredCodeReviewSkillNames()) {
         failBaselineMissingSkill(index, layer.platform, layer.skill)
       }
-      validateBaselineLayerModeSupport(index, layer)
+      validateBaselineLayerModeSupported(index, layer)
     }
   }
 
@@ -157,7 +157,7 @@ class FileSystemScaffoldRepoValidation : ScaffoldRepoValidationPort {
     contentFile = plan.contentFile ?: plan.skillPath.resolve(CONTENT_BODY_FILENAME),
   )
 
-  private fun validateBaselineLayerModeSupport(index: Int, layer: CodeReviewBaselineLayer) {
+  private fun validateBaselineLayerModeSupported(index: Int, layer: CodeReviewBaselineLayer) {
     val unsupportedReason = unsupportedCompositionModeReason(layer)
     if (unsupportedReason != null) {
       failBaselineUnsupportedMode(index, layer, unsupportedReason)

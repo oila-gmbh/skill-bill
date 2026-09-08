@@ -1,6 +1,6 @@
 package skillbill.mcp
 
-import skillbill.contracts.JsonSupport
+import skillbill.contracts.JsonCodec
 import skillbill.db.core.DatabaseRuntime
 import skillbill.db.telemetry.LifecycleTelemetryStore
 import skillbill.mcp.core.McpStdioServer
@@ -221,21 +221,21 @@ internal fun toolsList(): List<*> {
 }
 
 internal fun List<*>.schemaFor(toolName: String): Map<String, Any?> {
-  val tool = first { item -> JsonSupport.anyToStringAnyMap(item)?.get("name") == toolName }
-  return requireNotNull(JsonSupport.anyToStringAnyMap(tool)?.get("inputSchema")).let { schema ->
-    requireNotNull(JsonSupport.anyToStringAnyMap(schema))
+  val tool = first { item -> JsonCodec.anyToStringAnyMap(item)?.get("name") == toolName }
+  return requireNotNull(JsonCodec.anyToStringAnyMap(tool)?.get("inputSchema")).let { schema ->
+    requireNotNull(JsonCodec.anyToStringAnyMap(schema))
   }
 }
 
 internal fun List<*>.toolNamedOrNull(toolName: String): Map<String, Any?>? =
-  firstOrNull { item -> JsonSupport.anyToStringAnyMap(item)?.get("name") == toolName }
-    ?.let { JsonSupport.anyToStringAnyMap(it) }
+  firstOrNull { item -> JsonCodec.anyToStringAnyMap(item)?.get("name") == toolName }
+    ?.let { JsonCodec.anyToStringAnyMap(it) }
 
 internal fun List<*>.descriptionFor(toolName: String): String =
   requireNotNull(toolNamedOrNull(toolName))["description"].toString()
 
 internal fun Map<String, Any?>.properties(): Map<String, Any?> =
-  requireNotNull(JsonSupport.anyToStringAnyMap(this["properties"]))
+  requireNotNull(JsonCodec.anyToStringAnyMap(this["properties"]))
 
 internal fun Map<String, Any?>.assertRequired(vararg names: String) {
   val required = this["required"] as List<*>
@@ -243,7 +243,7 @@ internal fun Map<String, Any?>.assertRequired(vararg names: String) {
 }
 
 internal fun Map<String, Any?>.enumFor(propertyName: String): List<*> {
-  val property = requireNotNull(JsonSupport.anyToStringAnyMap(this[propertyName]))
+  val property = requireNotNull(JsonCodec.anyToStringAnyMap(this[propertyName]))
   return requireNotNull(property["enum"] as? List<*>)
 }
 
@@ -274,7 +274,7 @@ internal const val TEST_TELEMETRY_PROXY_URL = "http://127.0.0.1:9/skill-bill-tes
 internal fun Map<String, String>.withTestTelemetryProxy(): Map<String, String> =
   this + (TELEMETRY_PROXY_URL_ENVIRONMENT_KEY to TEST_TELEMETRY_PROXY_URL)
 
-internal fun toolCallRequest(id: Int, name: String, arguments: Map<String, Any?>): String = JsonSupport.mapToJsonString(
+internal fun toolCallRequest(id: Int, name: String, arguments: Map<String, Any?>): String = JsonCodec.mapToJsonString(
   mapOf(
     "jsonrpc" to "2.0",
     "id" to id,
@@ -288,14 +288,14 @@ internal fun toolCallRequest(id: Int, name: String, arguments: Map<String, Any?>
 
 internal fun toolPayload(result: Map<String, Any?>): Map<String, Any?> {
   val content = result["content"] as List<*>
-  val textContent = requireNotNull(JsonSupport.anyToStringAnyMap(content.first()))
+  val textContent = requireNotNull(JsonCodec.anyToStringAnyMap(content.first()))
   return decodeStdioJsonObject(textContent["text"].toString())
 }
 
 internal fun decodeToolArguments(rawJson: String): Map<String, Any?> {
   val request = decodeStdioJsonObject(rawJson)
-  val params = requireNotNull(JsonSupport.anyToStringAnyMap(request["params"]))
-  return requireNotNull(JsonSupport.anyToStringAnyMap(params["arguments"]))
+  val params = requireNotNull(JsonCodec.anyToStringAnyMap(request["params"]))
+  return requireNotNull(JsonCodec.anyToStringAnyMap(params["arguments"]))
 }
 
 internal fun decodeResponse(rawJson: String?): Map<String, Any?> {
@@ -304,9 +304,9 @@ internal fun decodeResponse(rawJson: String?): Map<String, Any?> {
 }
 
 internal fun decodeStdioJsonObject(rawJson: String): Map<String, Any?> {
-  val parsed = JsonSupport.parseObjectOrNull(rawJson)
+  val parsed = JsonCodec.parseObjectOrNull(rawJson)
   require(parsed != null) { "Expected JSON object but got: $rawJson" }
-  val decoded = JsonSupport.anyToStringAnyMap(JsonSupport.jsonElementToValue(parsed))
+  val decoded = JsonCodec.anyToStringAnyMap(JsonCodec.jsonElementToValue(parsed))
   require(decoded != null) { "Expected decoded JSON object but got: $rawJson" }
   return decoded
 }
@@ -360,4 +360,4 @@ internal fun seedGoalBlockedRun(dbPath: Path, workflowId: String) {
 }
 
 internal fun Map<String, Any?>.fieldMap(name: String): Map<String, Any?> =
-  JsonSupport.anyToStringAnyMap(this[name]).orEmpty()
+  JsonCodec.anyToStringAnyMap(this[name]).orEmpty()

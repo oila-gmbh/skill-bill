@@ -8,6 +8,7 @@ import skillbill.ports.review.model.ReviewLaneAccounting
 import skillbill.review.ParallelReviewFindingParser
 import skillbill.review.context.model.ReviewLaneAssembledBundle
 import skillbill.review.context.model.ReviewLaneReviewDisposition
+import skillbill.review.context.model.ReviewAccountingTerminalOutcome
 import skillbill.review.context.model.ReviewRegisterParseSeamException
 import skillbill.review.model.ParallelReviewParseResult
 import skillbill.review.model.ParallelReviewRawFinding
@@ -145,13 +146,13 @@ internal fun parallelCodeReviewNoOpResumeOutcome(agentId: String) = ParallelRevi
 internal fun parallelCodeReviewInlineTerminalStatus(
   facts: AgentRunLaunchFacts,
   disposition: ReviewLaneReviewDisposition,
-): String = when {
-  disposition == ReviewLaneReviewDisposition.INCOMPLETE -> "incomplete"
-  facts.timedOut -> "timeout"
-  facts.interrupted -> "interrupted"
-  facts.spawnFailed -> "spawn_failure"
-  facts.exitStatus != 0 -> "process_failure"
-  else -> "completed"
+): ReviewAccountingTerminalOutcome = when {
+  disposition == ReviewLaneReviewDisposition.INCOMPLETE -> ReviewAccountingTerminalOutcome.INCOMPLETE
+  facts.timedOut -> ReviewAccountingTerminalOutcome.TIMEOUT
+  facts.interrupted -> ReviewAccountingTerminalOutcome.INTERRUPTED
+  facts.spawnFailed -> ReviewAccountingTerminalOutcome.SPAWN_FAILURE
+  facts.exitStatus != 0 -> ReviewAccountingTerminalOutcome.PROCESS_FAILURE
+  else -> ReviewAccountingTerminalOutcome.COMPLETED
 }
 
 internal fun parallelCodeReviewCaptureLane(lane: () -> ParallelReviewLaneOutcome): ParallelReviewLaneOutcome {

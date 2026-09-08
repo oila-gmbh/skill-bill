@@ -3,6 +3,8 @@ package skillbill.install.plan
 import skillbill.install.identity.suppliedSkillContentIdentity
 import skillbill.install.model.InstallPlanSkill
 import skillbill.install.model.InstallPlanSkillKind
+import skillbill.model.toPath
+import skillbill.ports.repository.toFileLocation
 import skillbill.scaffold.authoring.InternalSkillDeclaration
 import skillbill.scaffold.authoring.parseInternalForFrontmatter
 import skillbill.scaffold.authoring.requireValidInternalSkillClassification
@@ -50,7 +52,7 @@ internal fun discoverBaseSkills(skillsRoot: Path): List<InstallPlanSkill> {
       suppliedSkillContentIdentity(skillDir)
       InstallPlanSkill(
         name = skillDir.fileName.toString(),
-        sourceDir = skillDir.toAbsolutePath().normalize(),
+        sourceDir = skillDir.toAbsolutePath().normalize().toFileLocation(),
         kind = InstallPlanSkillKind.BASE,
         internalFor = parseInternalForFrontmatter(skillDir.resolve("content.md")),
       )
@@ -71,7 +73,7 @@ internal fun validateInstallPlanInternalSkills(skills: List<InstallPlanSkill>) {
     skills.map { skill ->
       InternalSkillDeclaration(
         skillName = skill.name,
-        contentFile = skill.sourceDir.resolve("content.md"),
+        contentFile = skill.sourceDir.resolve("content.md").toPath(),
         declaredParent = skill.internalFor,
         isBaseSkill = skill.kind == InstallPlanSkillKind.BASE,
       )
@@ -87,14 +89,14 @@ internal fun platformSkills(
     manifest.declaredFiles.baseline,
     manifest.declaredQualityCheckFile,
   ) + manifest.declaredFiles.areas.values
-  val skillDirs = contentFiles.map { contentFile -> platformSkillDir(manifest, contentFile) }
+  val skillDirs = contentFiles.map { contentFile -> platformSkillDir(manifest, contentFile.toPath()) }
   val duplicateSkillDir = skillDirs.groupingBy { it }.eachCount().entries.firstOrNull { it.value > 1 }?.key
   require(duplicateSkillDir == null) {
     "Platform pack '${manifest.slug}' produces duplicate skill name '${duplicateSkillDir?.fileName}'."
   }
   validatePlatformPack(manifest, SHELL_CONTRACT_VERSION, enforceContractVersion)
   manifest.declaredQualityCheckFile?.let { loadQualityCheckContent(manifest) }
-  ReviewSkillStructureValidator.validate(manifest.packRoot)
+  ReviewSkillStructureValidator.validate(manifest.packRoot.toPath())
   return skillDirs
     .sortedBy { skillDir -> skillDir.fileName.toString() }
     .map { skillDir ->
@@ -103,7 +105,7 @@ internal fun platformSkills(
       suppliedSkillContentIdentity(skillDir)
       InstallPlanSkill(
         name = skillDir.fileName.toString(),
-        sourceDir = skillDir,
+        sourceDir = skillDir.toFileLocation(),
         kind = InstallPlanSkillKind.PLATFORM_PACK,
         platformSlug = manifest.slug,
         internalFor = parseInternalForFrontmatter(skillDir.resolve("content.md")),
@@ -112,7 +114,7 @@ internal fun platformSkills(
 }
 
 private fun platformSkillDir(manifest: PlatformManifest, contentFile: Path): Path {
-  val resolvedPackRoot = manifest.packRoot.toAbsolutePath().normalize()
+  val resolvedPackRoot = manifest.packRoot.toPath().toAbsolutePath().normalize()
   val resolvedContentFile = contentFile.toAbsolutePath().normalize()
   require(resolvedContentFile.startsWith(resolvedPackRoot)) {
     "Platform pack '${manifest.slug}' declared content file '$resolvedContentFile' escapes packRoot " +
@@ -121,7 +123,7 @@ private fun platformSkillDir(manifest: PlatformManifest, contentFile: Path): Pat
   if (!Files.exists(resolvedContentFile, LinkOption.NOFOLLOW_LINKS)) {
     return resolvedContentFile.parent
   }
-  val realPackRoot = manifest.packRoot.toRealPath()
+  val realPackRoot = manifest.packRoot.toPath().toRealPath()
   val realContentFile = contentFile.toRealPath()
   require(realContentFile.startsWith(realPackRoot)) {
     "Platform pack '${manifest.slug}' declared content file '$resolvedContentFile' escapes packRoot " +

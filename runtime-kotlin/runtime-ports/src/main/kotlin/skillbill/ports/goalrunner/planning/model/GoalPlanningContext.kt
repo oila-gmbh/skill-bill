@@ -7,9 +7,19 @@ package skillbill.ports.goalrunner.planning.model
 data class GoalPlanningBoundaryHeading(
   val headingId: String,
   val sourcePath: String,
-  val kind: String,
+  val kind: GoalPlanningBoundaryHeadingKind,
   val heading: String,
 )
+
+enum class GoalPlanningBoundaryHeadingKind(val wireValue: String) {
+  HISTORY("history"),
+  DECISIONS("decisions"),
+  ;
+
+  companion object {
+    fun fromWire(value: String): GoalPlanningBoundaryHeadingKind? = entries.firstOrNull { it.wireValue == value }
+  }
+}
 
 /**
  * Child-only repository context. The parent goal projection does not retain this payload; it keeps
@@ -21,8 +31,8 @@ data class GoalPlanningContext(
   val validationGuidance: String,
 ) {
   companion object {
-    const val KIND_HISTORY = "history"
-    const val KIND_DECISIONS = "decisions"
+    val KIND_HISTORY: GoalPlanningBoundaryHeadingKind = GoalPlanningBoundaryHeadingKind.HISTORY
+    val KIND_DECISIONS: GoalPlanningBoundaryHeadingKind = GoalPlanningBoundaryHeadingKind.DECISIONS
 
     /** Catalog caps: one governed source of truth for discovery, the packet validator, and the schema. */
     const val MAX_DISCOVERY_FILE_COUNT = 32

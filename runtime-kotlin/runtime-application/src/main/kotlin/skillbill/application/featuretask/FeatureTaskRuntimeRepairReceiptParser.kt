@@ -1,6 +1,6 @@
 package skillbill.application.featuretask
 
-import skillbill.contracts.JsonSupport
+import skillbill.contracts.JsonCodec
 import skillbill.error.InvalidFeatureTaskRuntimeRepairReceiptError
 import skillbill.error.InvalidGoalSubtaskReviewStateSchemaError
 import skillbill.workflow.goal.model.GoalSubtaskReviewCompactFinding
@@ -37,7 +37,7 @@ fun featureTaskRuntimeParseRepairReceiptOrNull(
   }
 }
 
-private fun requireRepairReceiptMap(raw: Any): Map<String, Any?> = JsonSupport.anyToStringAnyMap(raw)
+private fun requireRepairReceiptMap(raw: Any): Map<String, Any?> = JsonCodec.anyToStringAnyMap(raw)
   ?: throw InvalidFeatureTaskRuntimeRepairReceiptError(
     fieldPath = "repair_receipt",
     reason = "must be an object.",

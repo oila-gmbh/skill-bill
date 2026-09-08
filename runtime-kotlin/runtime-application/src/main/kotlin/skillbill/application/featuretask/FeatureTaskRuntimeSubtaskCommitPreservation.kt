@@ -58,7 +58,7 @@ private fun preservePreAmendCheckpoint(
     FEATURE_TASK_RUNTIME_CHECKPOINT_REF_NAMESPACE,
     refName,
   )
-  if (!existing.ok) {
+  if (existing !is WorkflowGitOperationResult.Ok) {
     return preAmendPreservationFailure(
       refName,
       "whether that ref already preserves another commit could not be determined (${existing.error})",
@@ -73,7 +73,7 @@ private fun preservePreAmendCheckpoint(
     refName,
     ownedHeadSha,
   )
-  if (!written.ok) return preAmendPreservationFailure(refName, written.error)
+  if (written !is WorkflowGitOperationResult.Ok) return preAmendPreservationFailure(refName, written.error)
   return verifyPreservedCheckpoint(gitOperations, request.repoRoot, refName, ownedHeadSha)
 }
 
@@ -99,7 +99,7 @@ private fun sweepForeignOccupant(
     FEATURE_TASK_RUNTIME_CHECKPOINT_REF_NAMESPACE,
     prefix,
   )
-  if (!swept.ok) {
+  if (swept !is WorkflowGitOperationResult.Ok) {
     return preAmendPreservationFailure(
       refName,
       "stale checkpoint refs under '$prefix' could not be swept before reclaiming the ref (${swept.error})",
@@ -122,7 +122,7 @@ private fun verifyPreservedCheckpoint(
 ): WorkflowGitOperationResult? {
   val resolved = gitOperations.resolveCheckpointRef(repoRoot, FEATURE_TASK_RUNTIME_CHECKPOINT_REF_NAMESPACE, refName)
   val preserved = resolved.value.orEmpty().trim()
-  if (!resolved.ok || preserved != ownedHeadSha) {
+  if (resolved !is WorkflowGitOperationResult.Ok || preserved != ownedHeadSha) {
     return preAmendPreservationFailure(
       refName,
       resolved.error.takeIf { it.isNotBlank() }
@@ -132,8 +132,7 @@ private fun verifyPreservedCheckpoint(
   return null
 }
 
-private fun preAmendPreservationFailure(refName: String, error: String) = WorkflowGitOperationResult(
-  status = "error",
+private fun preAmendPreservationFailure(refName: String, error: String) = WorkflowGitOperationResult.Failed(
   error = "the pre-amend checkpoint commit could not be preserved at '$refName' ($error); the amend " +
     "did not run and HEAD is unchanged",
 )

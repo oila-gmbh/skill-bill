@@ -5,21 +5,23 @@ import skillbill.application.featuretask.model.FeatureTaskContinuationCandidate
 import skillbill.application.featuretask.model.FeatureTaskContinuationLiveness
 import skillbill.application.featuretask.model.FeatureTaskContinuationLookupQuery
 import skillbill.application.featuretask.model.FeatureTaskContinuationLookupResult
-import skillbill.application.workflow.toSnapshot
 import skillbill.error.InvalidFeatureTaskExecutionIdentitySchemaError
 import skillbill.error.LegacyProseWorkflowError
-import skillbill.ports.continuation.FeatureTaskExecutionIdentityPolicy
 import skillbill.ports.db.DatabaseSessionFactory
 import skillbill.ports.featuretask.model.FeatureTaskRuntimeWorkerOwnership
 import skillbill.ports.persistence.UnitOfWork
+import skillbill.ports.workflow.FeatureTaskExecutionIdentityPolicy
 import skillbill.ports.workflow.model.FeatureTaskExecutionIdentity
 import skillbill.ports.workflow.model.FeatureTaskRouteScope
 import skillbill.ports.workflow.model.FeatureTaskWorkflowCandidate
 import skillbill.ports.workflow.model.FeatureTaskWorkflowMode
+import skillbill.ports.workflow.model.toSnapshot
 import skillbill.workflow.decomposition.DecompositionManifestValidator
 import skillbill.workflow.engine.WorkflowEngine
 import skillbill.workflow.engine.WorkflowSnapshotValidator
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
+import skillbill.workflow.model.WorkflowStatus
+import skillbill.workflow.model.workflowStatus
 
 @Inject
 class FeatureTaskContinuationLookupService(
@@ -124,6 +126,7 @@ class FeatureTaskContinuationLookupService(
     val definition = FeatureTaskRuntimePhaseWorkflowDefinition.definition
     engine.snapshotView(definition, candidate.workflow.toSnapshot())
     val status = candidate.workflow.workflowStatus
+    val typedStatus = status.workflowStatus()
     return FeatureTaskContinuationCandidate(
       workflowId = candidate.workflow.workflowId,
       mode = identity.mode,
@@ -131,7 +134,7 @@ class FeatureTaskContinuationLookupService(
       currentStep = candidate.workflow.currentStepId,
       governedSpecPath = identity.governedSpecPath,
       updatedAt = candidate.workflow.updatedAt,
-      liveness = if (status == "running") {
+      liveness = if (typedStatus == WorkflowStatus.RUNNING) {
         ownership?.let {
           FeatureTaskContinuationLiveness(
             classification = "worker_ownership_recorded",
@@ -147,9 +150,9 @@ class FeatureTaskContinuationLookupService(
       } else {
         null
       },
-      summary = when (status) {
-        "running" -> "Workflow is already running; inspect liveness before recovery."
-        in TERMINAL_STATUSES -> "Workflow is terminal with status '$status'."
+      summary = when {
+        typedStatus == WorkflowStatus.RUNNING -> "Workflow is already running; inspect liveness before recovery."
+        typedStatus in TERMINAL_STATUSES -> "Workflow is terminal with status '$status'."
         else -> "Resume from '${candidate.workflow.currentStepId}' using durable workflow artifacts."
       },
     )
@@ -171,11 +174,11 @@ class FeatureTaskContinuationLookupService(
 
   private fun classify(candidates: List<FeatureTaskContinuationCandidate>): FeatureTaskContinuationLookupResult {
     if (candidates.isEmpty()) return FeatureTaskContinuationLookupResult.NoMatch
-    val eligible = candidates.filterNot { it.status in TERMINAL_STATUSES }
+    val eligible = candidates.filterNot { it.status.workflowStatus() in TERMINAL_STATUSES }
     if (eligible.size > 1) return FeatureTaskContinuationLookupResult.Ambiguous(candidates)
     if (eligible.size == 1) {
       val candidate = eligible.single()
-      return if (candidate.status == "running") {
+      return if (candidate.status.workflowStatus() == WorkflowStatus.RUNNING) {
         FeatureTaskContinuationLookupResult.AlreadyRunning(candidate)
       } else {
         FeatureTaskContinuationLookupResult.Resumable(candidate)
@@ -185,6 +188,6 @@ class FeatureTaskContinuationLookupService(
   }
 
   private companion object {
-    val TERMINAL_STATUSES = setOf("completed", "failed", "abandoned")
+    val TERMINAL_STATUSES = setOf(WorkflowStatus.COMPLETED, WorkflowStatus.FAILED, WorkflowStatus.ABANDONED)
   }
 }

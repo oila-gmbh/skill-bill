@@ -16,11 +16,15 @@ import skillbill.goalrunner.model.GoalRunnerWorkerSubtaskSchedulingResult
 import skillbill.workflow.decomposition.model.DecompositionDependency
 import skillbill.workflow.decomposition.model.DecompositionManifest
 import skillbill.workflow.decomposition.model.DecompositionSubtask
+import skillbill.workflow.model.DecompositionStatus
+import skillbill.workflow.model.decompositionStatus
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeQualityGateSelection
 
 object GoalRunnerQualityGateSelectionResolver {
   fun resolve(manifest: DecompositionManifest, subtaskId: Int): FeatureTaskRuntimeQualityGateSelection {
-    val lastNonSkippedId = manifest.subtasks.lastOrNull { it.status != "skipped" }?.id
+    val lastNonSkippedId = manifest.subtasks.lastOrNull {
+      it.status.decompositionStatus() != DecompositionStatus.SKIPPED
+    }?.id
     return if (lastNonSkippedId == subtaskId) {
       FeatureTaskRuntimeQualityGateSelection.VALIDATE
     } else {
@@ -34,13 +38,21 @@ object GoalRunnerPlanner {
     val intended = manifest.currentSubtaskIntent.subtaskId
       .takeIf { it > 0 }
       ?.let { id -> manifest.subtasks.firstOrNull { it.id == id } }
-    val candidate = intended?.takeUnless { it.status in setOf("complete", "skipped") }
-      ?: manifest.subtasks.firstOrNull { it.status == "in_progress" }
-      ?: manifest.subtasks.firstOrNull { it.status == "blocked" }
-      ?: manifest.subtasks.firstOrNull { it.status == "pending" && dependenciesComplete(manifest, it) }
+    val candidate = intended?.takeUnless {
+      it.status.decompositionStatus() in setOf(DecompositionStatus.COMPLETE, DecompositionStatus.SKIPPED)
+    }
+      ?: manifest.subtasks.firstOrNull {
+        it.status.decompositionStatus() == DecompositionStatus.IN_PROGRESS
+      }
+      ?: manifest.subtasks.firstOrNull { it.status.decompositionStatus() == DecompositionStatus.BLOCKED }
+      ?: manifest.subtasks.firstOrNull {
+        it.status.decompositionStatus() == DecompositionStatus.PENDING && dependenciesComplete(manifest, it)
+      }
     return when {
       candidate == null -> {
-        val blockedByDependency = manifest.subtasks.firstOrNull { it.status == "pending" }
+        val blockedByDependency = manifest.subtasks.firstOrNull {
+          it.status.decompositionStatus() == DecompositionStatus.PENDING
+        }
         if (blockedByDependency == null) {
           GoalRunnerSelection.Done
         } else {
@@ -50,7 +62,8 @@ object GoalRunnerPlanner {
           )
         }
       }
-      candidate.status == "pending" && !dependenciesComplete(manifest, candidate) ->
+      candidate.status.decompositionStatus() == DecompositionStatus.PENDING &&
+        !dependenciesComplete(manifest, candidate) ->
         GoalRunnerSelection.Blocked(
           subtask = candidate,
           reason = "Subtask ${candidate.id} is waiting for incomplete dependencies.",
@@ -58,7 +71,11 @@ object GoalRunnerPlanner {
       else -> GoalRunnerSelection.Run(
         GoalRunnerSubtaskDecision(
           subtask = candidate,
-          action = if (candidate.status == "pending") GoalRunnerSubtaskAction.START else GoalRunnerSubtaskAction.RESUME,
+          action = if (candidate.status.decompositionStatus() == DecompositionStatus.PENDING) {
+            GoalRunnerSubtaskAction.START
+          } else {
+            GoalRunnerSubtaskAction.RESUME
+          },
         ),
       )
     }
@@ -68,8 +85,8 @@ object GoalRunnerPlanner {
     val subtasksById = manifest.subtasks.associateBy(DecompositionSubtask::id)
     return subtask.dependencies.all { dependency ->
       val dependencySubtask = subtasksById[dependency.subtaskId] ?: return@all false
-      dependencySubtask.status == "complete" ||
-        dependencySubtask.status == "skipped" ||
+      dependencySubtask.status.decompositionStatus() == DecompositionStatus.COMPLETE ||
+        dependencySubtask.status.decompositionStatus() == DecompositionStatus.SKIPPED ||
         dependency.optional && dependency.skipped
     }
   }
@@ -131,8 +148,8 @@ object GoalRunnerWorkerSubtaskScheduler {
   }
 
   private fun DecompositionManifest.withParentStatusForWorkerRequests(): DecompositionManifest =
-    if (status == "complete") {
-      copy(status = "in_progress")
+    if (status.decompositionStatus() == DecompositionStatus.COMPLETE) {
+      copy(status = DecompositionStatus.IN_PROGRESS.wireValue)
     } else {
       this
     }

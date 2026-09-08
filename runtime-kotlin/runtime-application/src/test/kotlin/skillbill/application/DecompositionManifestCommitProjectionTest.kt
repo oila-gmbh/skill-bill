@@ -5,7 +5,8 @@ import skillbill.application.decomposition.loadDecompositionManifest
 import skillbill.application.decomposition.model.DecompositionManifestRuntimeUpdate
 import skillbill.application.decomposition.model.DecompositionManifestWriteRequest
 import skillbill.application.decomposition.parentSpecPath
-import skillbill.contracts.JsonSupport
+import skillbill.contracts.JsonCodec
+import skillbill.model.toPath
 import skillbill.workflow.decomposition.model.DecompositionManifest
 import skillbill.workflow.decomposition.toWireMap
 import java.nio.file.Files
@@ -52,7 +53,7 @@ class DecompositionManifestCommitProjectionTest {
     assertEquals("complete", projectedBeforeCommit.status)
     assertEquals(null, projectedBeforeCommit.commitSha)
     assertContains(Files.readString(subtaskSpec), "status: In Progress")
-    val manifestTextBeforeSha = Files.readString(preCommit.manifestPath)
+    val manifestTextBeforeSha = Files.readString(preCommit.manifestPath.toPath())
 
     val final = writeFromWorkflowUpdate(
       repoRoot = repoRoot,
@@ -67,7 +68,7 @@ class DecompositionManifestCommitProjectionTest {
     )
 
     assertNotNull(final)
-    assertEquals(manifestTextBeforeSha, Files.readString(final.manifestPath))
+    assertEquals(manifestTextBeforeSha, Files.readString(final.manifestPath.toPath()))
     val projectedAfterSha = final.manifest.subtasks.single { it.id == 1 }
     assertEquals("complete", projectedAfterSha.status)
     assertEquals(null, projectedAfterSha.commitSha)
@@ -141,7 +142,7 @@ class DecompositionManifestCommitProjectionTest {
     val projected = result.manifest.subtasks.single { it.id == 1 }
     assertEquals("complete", projected.status)
     assertEquals(null, projected.commitSha)
-    val loaded = loadDecompositionManifest(result.manifestPath)
+    val loaded = loadDecompositionManifest(result.manifestPath.toPath())
     assertEquals(null, loaded.subtasks.single { it.id == 1 }.commitSha)
   }
 
@@ -162,7 +163,7 @@ class DecompositionManifestCommitProjectionTest {
   )
 
   private fun durableRuntimeArtifactsJson(manifest: DecompositionManifest, subtaskSpec: Path): String =
-    JsonSupport.mapToJsonString(
+    JsonCodec.mapToJsonString(
       mapOf(
         DECOMPOSITION_RUNTIME_ARTIFACT_KEY to manifest.toWireMap(),
         "assessment" to mapOf("spec_path" to subtaskSpec.toString()),

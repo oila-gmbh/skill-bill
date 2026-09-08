@@ -8,11 +8,16 @@ import skillbill.application.featuretask.model.GoalSubtaskReviewPassInFlight
 import skillbill.application.featuretask.model.RemediationBaseBlocked
 import skillbill.application.featuretask.model.RemediationBaseCoherent
 import skillbill.application.workflow.model.WorkflowFamily
-import skillbill.application.workflow.toRecord
-import skillbill.contracts.JsonSupport
+import skillbill.contracts.JsonCodec
 import skillbill.infrastructure.fs.GitWorkflowGitOperations
 import skillbill.ports.diagnostics.NoopRuntimeDiagnostics
+import skillbill.ports.workflow.gitops.GoalSubtaskReviewGitOperations
 import skillbill.ports.workflow.gitops.WorkflowGitOperations
+import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewBaseline
+import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewBaselineResult
+import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewInputResult
+import skillbill.ports.workflow.gitops.model.WorkflowGitOperationStatus
+import skillbill.ports.workflow.toRecord
 import skillbill.review.context.model.CodeReviewExecutionMode
 import skillbill.workflow.engine.WorkflowEngine
 import skillbill.workflow.engine.model.WorkflowUpdateInput
@@ -250,7 +255,20 @@ class GoalSubtaskReviewStateDurablePersistenceTest {
     return output
   }
 
-  private fun gitOpsWithoutBaselineRecovery(): WorkflowGitOperations = object : WorkflowGitOperations by realGitOps() {}
+  private fun gitOpsWithoutBaselineRecovery(): WorkflowGitOperations = object : WorkflowGitOperations by realGitOps() {
+    override val goalSubtaskReviewOperations: GoalSubtaskReviewGitOperations =
+      object : GoalSubtaskReviewGitOperations {
+        override fun captureBaseline(repoRoot: Path, expectedBranch: String): GoalSubtaskReviewBaselineResult =
+          GoalSubtaskReviewBaselineResult(status = WorkflowGitOperationStatus.ERROR, error = "unsupported")
+
+        override fun buildInput(
+          repoRoot: Path,
+          baseline: GoalSubtaskReviewBaseline,
+          expectedBranch: String,
+        ): GoalSubtaskReviewInputResult =
+          GoalSubtaskReviewInputResult(status = WorkflowGitOperationStatus.ERROR, error = "unsupported")
+      }
+  }
 
   private fun realGitOps(): WorkflowGitOperations = GitWorkflowGitOperations()
 
@@ -324,7 +342,7 @@ class GoalSubtaskReviewStateDurablePersistenceTest {
     assertEquals("a".repeat(40), reloaded.reviewBaseSha, "immutable review base must stay untouched")
     val artifacts = repository.taskRuntimeArtifacts(workflowId)
     val evidence = requireNotNull(
-      JsonSupport.anyToStringAnyMapList(artifacts[GOAL_REVIEW_BASE_RECOVERIES_ARTIFACT_KEY]),
+      JsonCodec.anyToStringAnyMapList(artifacts[GOAL_REVIEW_BASE_RECOVERIES_ARTIFACT_KEY]),
     )
     val entry = evidence.single()
     assertEquals(orphaned, entry["original_sha"])
@@ -438,7 +456,7 @@ class GoalSubtaskReviewStateDurablePersistenceTest {
     assertEquals(fixture.parent, persisted)
     assertNotEquals(head, persisted)
     val evidence = requireNotNull(
-      JsonSupport.anyToStringAnyMapList(
+      JsonCodec.anyToStringAnyMapList(
         repository.taskRuntimeArtifacts(workflowId)[GOAL_REVIEW_BASE_RECOVERIES_ARTIFACT_KEY],
       ),
     )
@@ -468,7 +486,7 @@ class GoalSubtaskReviewStateDurablePersistenceTest {
     assertEquals(fixture.orphanedBase, recorder.reviewStateRecorder.reviewState(workflowId)?.remediationBaseSha)
     assertNotEquals(head, recorder.reviewStateRecorder.reviewState(workflowId)?.remediationBaseSha)
     val evidence = requireNotNull(
-      JsonSupport.anyToStringAnyMapList(
+      JsonCodec.anyToStringAnyMapList(
         repository.taskRuntimeArtifacts(workflowId)[GOAL_REVIEW_BASE_RECOVERIES_ARTIFACT_KEY],
       ),
     )
@@ -514,7 +532,7 @@ class GoalSubtaskReviewStateDurablePersistenceTest {
     assertEquals(fixture.checkpointSha, healed.state?.remediationBaseSha)
     assertEquals(fixture.checkpointSha, git(fixture.repoRoot, "rev-parse", "HEAD"))
     val evidence = requireNotNull(
-      JsonSupport.anyToStringAnyMapList(
+      JsonCodec.anyToStringAnyMapList(
         repository.taskRuntimeArtifacts(workflowId)[GOAL_REVIEW_BASE_RECOVERIES_ARTIFACT_KEY],
       ),
     )

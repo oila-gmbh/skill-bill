@@ -1,6 +1,6 @@
 package skillbill.launcher.review
 
-import skillbill.contracts.JsonSupport
+import skillbill.contracts.JsonCodec
 import skillbill.error.GovernedReviewEvidenceTransportError
 import skillbill.launcher.mcp.GovernedReviewMcpConfigWriter
 import skillbill.ports.review.NativeReviewOperationProtocol
@@ -61,7 +61,7 @@ class GovernedReviewEvidenceEndpointTest {
       connect(endpoint, endpoint.descriptor.token).use { connection ->
         val reply = requireNotNull(connection.call(readFrame("src/Elsewhere.kt")))
         val payload = toolPayload(reply)
-        val result = requireNotNull(JsonSupport.anyToStringAnyMapList((payload["results"]))).single()
+        val result = requireNotNull(JsonCodec.anyToStringAnyMapList((payload["results"]))).single()
         assertEquals(true, result["refused"])
         assertFalse(result.containsKey("content"))
       }
@@ -157,7 +157,7 @@ class GovernedReviewEvidenceEndpointTest {
 
     fun handshake(token: String): String? {
       send(
-        JsonSupport.mapToJsonString(
+        JsonCodec.mapToJsonString(
           linkedMapOf("jsonrpc" to "2.0", "method" to "handshake", "params" to mapOf("token" to token)),
         ),
       )
@@ -183,7 +183,7 @@ class GovernedReviewEvidenceEndpointTest {
     Client(SocketChannel.open(UnixDomainSocketAddress.of(endpoint.descriptor.socketPath)))
       .also { it.handshake(token) }
 
-  private fun readFrame(path: String): String = JsonSupport.mapToJsonString(
+  private fun readFrame(path: String): String = JsonCodec.mapToJsonString(
     linkedMapOf(
       "jsonrpc" to "2.0",
       "id" to 1,
@@ -196,12 +196,12 @@ class GovernedReviewEvidenceEndpointTest {
   )
 
   private fun toolPayload(reply: String): Map<String, Any?> {
-    val message = requireNotNull(JsonSupport.parseObjectOrNull(reply))
-    val result = JsonSupport.anyToStringAnyMap(message["result"]?.let(JsonSupport::jsonElementToValue)).orEmpty()
-    val content = requireNotNull(JsonSupport.anyToStringAnyMapList((result["content"]))).single()
+    val message = requireNotNull(JsonCodec.parseObjectOrNull(reply))
+    val result = JsonCodec.anyToStringAnyMap(message["result"]?.let(JsonCodec::jsonElementToValue)).orEmpty()
+    val content = requireNotNull(JsonCodec.anyToStringAnyMapList((result["content"]))).single()
     return requireNotNull(
-      JsonSupport.anyToStringAnyMap(
-        JsonSupport.parseObjectOrNull(content["text"].toString())?.let(JsonSupport::jsonElementToValue),
+      JsonCodec.anyToStringAnyMap(
+        JsonCodec.parseObjectOrNull(content["text"].toString())?.let(JsonCodec::jsonElementToValue),
       ),
     )
   }

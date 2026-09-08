@@ -1,6 +1,6 @@
 package skillbill.db.workflow
 
-import skillbill.contracts.JsonSupport
+import skillbill.contracts.JsonCodec
 import skillbill.goalrunner.model.GoalRunnerExecutionLease
 import java.math.BigDecimal
 import java.math.BigInteger
@@ -18,12 +18,12 @@ internal const val LEGACY_UNKNOWN_PAUSED_AT: String = "1970-01-01T00:00:00Z"
 
 internal fun legacyPausedAt(state: Map<String, Any?>): String? {
   if (!state.booleanOrDefault("paused", false)) return null
-  val lease = state["execution_lease"]?.let(JsonSupport::anyToStringAnyMap)
+  val lease = state["execution_lease"]?.let(JsonCodec::anyToStringAnyMap)
   return lease?.nullableString("heartbeat_at") ?: LEGACY_UNKNOWN_PAUSED_AT
 }
 
 internal fun decodeExecutionLease(raw: Any?): GoalRunnerExecutionLease {
-  val lease = JsonSupport.anyToStringAnyMap(raw)
+  val lease = JsonCodec.anyToStringAnyMap(raw)
     ?: goalRunnerControlSchemaError("execution lease must be an object or null.")
   val allowedKeys = setOf(
     "generation",
@@ -106,7 +106,7 @@ internal fun Any?.toPositiveIntOrNull(key: String): Int? = when (this) {
 
 internal fun Map<String, Any?>.intIntMap(key: String): Map<Int, Int> {
   val raw = this[key] ?: return emptyMap()
-  val map = JsonSupport.anyToStringAnyMap(raw)
+  val map = JsonCodec.anyToStringAnyMap(raw)
     ?: goalRunnerControlSchemaError("field '$key' must be an object.")
   return map.entries.associate { (entryKey, value) ->
     val subtaskId = entryKey.toIntOrNull()
@@ -121,7 +121,7 @@ internal fun Map<String, Any?>.intIntMap(key: String): Map<Int, Int> {
 
 internal fun Map<String, Any?>.intStringMap(key: String): Map<Int, String> {
   val raw = this[key] ?: return emptyMap()
-  val map = JsonSupport.anyToStringAnyMap(raw)
+  val map = JsonCodec.anyToStringAnyMap(raw)
     ?: goalRunnerControlSchemaError("field '$key' must be an object.")
   return map.entries.associate { (entryKey, value) ->
     val subtaskId = entryKey.toIntOrNull()

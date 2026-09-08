@@ -40,34 +40,29 @@ class ParallelCodeReviewRunner(
   private val clock = planningPort.clock
   private val repositoryEnclosingRootPort = planningPort.repositoryEnclosingRootPort
   private val runtimeOwnedPersistence = RuntimeOwnedPersistenceBoundary(database, diagnostics)
-  private val failureHelpers = ParallelCodeReviewRunnerFailureAdmission(registerParse)
+  private val failureAdmission = ParallelCodeReviewRunnerFailureAdmission(registerParse)
   private val rubricPlanning = ParallelCodeReviewRunnerRubricPlanning(reviewRubricResolver, installedPackCatalog)
   private val planning = ParallelCodeReviewRunnerPlanning(
-    ParallelCodeReviewRunnerPlanningDeps(
-      diffResolver = diffResolver,
-      repoLocalConfig = repoLocalConfig,
-      reviewContextEnvelopeValidator = reviewContextEnvelopeValidator,
-      reviewSpecialistContractProvider = reviewSpecialistContractProvider,
-      installedPackCatalog = installedPackCatalog,
-      sharedEvidenceResolver = sharedEvidenceResolver,
-      sharedEvidenceLocatorReader = sharedEvidenceLocatorReader,
-      specIntentProjectionResolver = specIntentProjectionResolver,
-      runtimeOwnedPersistence = runtimeOwnedPersistence,
-      rubricPlanning = rubricPlanning,
-      clock = clock,
-      repositoryEnclosingRootPort = repositoryEnclosingRootPort,
-    ),
+    diffResolver = diffResolver,
+    repoLocalConfig = repoLocalConfig,
+    reviewContextEnvelopeValidator = reviewContextEnvelopeValidator,
+    reviewSpecialistContractProvider = reviewSpecialistContractProvider,
+    installedPackCatalog = installedPackCatalog,
+    sharedEvidenceResolver = sharedEvidenceResolver,
+    sharedEvidenceLocatorReader = sharedEvidenceLocatorReader,
+    specIntentProjectionResolver = specIntentProjectionResolver,
+    rubricPlanning = rubricPlanning,
+    lanePlanRecording = ParallelCodeReviewRunnerLanePlanRecording(runtimeOwnedPersistence, clock),
+    repositoryEnclosingRootPort = repositoryEnclosingRootPort,
   )
   private val laneLaunch = ParallelCodeReviewRunnerLaneLaunch(
-    ParallelCodeReviewRunnerLaneLaunchDeps(
-      parentReviewLauncher = laneLaunchPort.parentReviewLauncher,
-      reviewEvidenceBrokerFactory = laneLaunchPort.reviewEvidenceBrokerFactory,
-      governedEvidenceEndpointBinder = laneLaunchPort.governedEvidenceEndpointBinder,
-      reviewLaunchAgentStaging = laneLaunchPort.reviewLaunchAgentStaging,
-      sharedEvidenceLocatorReader = laneLaunchPort.sharedEvidenceLocatorReader,
-      failureHelpers = failureHelpers,
-      activityStampWriter = activityStampWriter,
-    ),
+    parentReviewLauncher = laneLaunchPort.parentReviewLauncher,
+    reviewEvidenceBrokerFactory = laneLaunchPort.reviewEvidenceBrokerFactory,
+    governedEvidenceEndpointBinder = laneLaunchPort.governedEvidenceEndpointBinder,
+    reviewLaunchAgentStaging = laneLaunchPort.reviewLaunchAgentStaging,
+    sharedEvidenceLocatorReader = laneLaunchPort.sharedEvidenceLocatorReader,
+    failureAdmission = failureAdmission,
+    activityStampWriter = activityStampWriter,
   )
   private val resultAssembly = ParallelCodeReviewRunnerResultAssembly(
     parentReviewLauncher,

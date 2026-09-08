@@ -12,6 +12,7 @@ import skillbill.model.EnvironmentContext
 import skillbill.ports.diagnostics.NoopRuntimeDiagnostics
 import skillbill.ports.review.EmptyReviewAttributionPort
 import skillbill.ports.telemetry.model.TelemetryOutboxRecord
+import skillbill.review.model.ReviewExecutionMode
 import java.nio.file.Files
 import java.time.Clock
 import kotlin.test.Test
@@ -143,8 +144,8 @@ class ApplicationPersistencePortTest {
     )
     assertEquals("kmp", lanes.first().packSlug)
     assertEquals("architecture", lanes.first().area)
-    assertEquals("resolved", lanes.first().resolutionState)
-    assertEquals("unresolved", lanes.last().resolutionState)
+    assertEquals("resolved", lanes.first().resolutionState.wireValue)
+    assertEquals("unresolved", lanes.last().resolutionState.wireValue)
   }
 
   // AC-002/AC-005/AC-006: a run that produced no findings still records its lanes and its terminal
@@ -159,7 +160,10 @@ class ApplicationPersistencePortTest {
     val saved = reviewRepository.savedReviews.single()
     assertEquals(emptyList(), saved.findings)
     assertEquals(listOf("bill-kmp-code-review-architecture", "narrated-only"), saved.planLanes.map { it.laneSkillName })
-    assertEquals(listOf<Pair<String, String?>>("rvw-lane-app-001" to "inline"), reviewRepository.terminalStateWrites)
+    assertEquals(
+      listOf<Pair<String, ReviewExecutionMode?>>("rvw-lane-app-001" to ReviewExecutionMode.INLINE),
+      reviewRepository.terminalStateWrites,
+    )
   }
 
   @Test
@@ -183,8 +187,11 @@ class ApplicationPersistencePortTest {
 
     val lanes = reviewRepository.savedReviews.single().planLanes
     assertEquals(listOf("architecture", "narrated-only"), lanes.map { it.laneSkillName })
-    assertTrue(lanes.all { it.resolutionState == "unresolved" })
-    assertEquals(listOf<Pair<String, String?>>("rvw-lane-app-001" to "inline"), reviewRepository.terminalStateWrites)
+    assertTrue(lanes.all { it.resolutionState.wireValue == "unresolved" })
+    assertEquals(
+      listOf<Pair<String, ReviewExecutionMode?>>("rvw-lane-app-001" to ReviewExecutionMode.INLINE),
+      reviewRepository.terminalStateWrites,
+    )
   }
 
   // A partially staged catalog — the routed pack composes a baseline layer that is not installed —
@@ -210,8 +217,11 @@ class ApplicationPersistencePortTest {
 
     val lanes = reviewRepository.savedReviews.single().planLanes
     assertEquals(listOf("architecture", "narrated-only"), lanes.map { it.laneSkillName })
-    assertTrue(lanes.all { it.resolutionState == "unresolved" })
-    assertEquals(listOf<Pair<String, String?>>("rvw-lane-app-001" to "inline"), reviewRepository.terminalStateWrites)
+    assertTrue(lanes.all { it.resolutionState.wireValue == "unresolved" })
+    assertEquals(
+      listOf<Pair<String, ReviewExecutionMode?>>("rvw-lane-app-001" to ReviewExecutionMode.INLINE),
+      reviewRepository.terminalStateWrites,
+    )
   }
 
   @Test

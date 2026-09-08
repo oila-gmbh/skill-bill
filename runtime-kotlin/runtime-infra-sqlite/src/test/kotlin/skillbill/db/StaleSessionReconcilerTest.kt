@@ -1,6 +1,6 @@
 package skillbill.db
 
-import skillbill.contracts.JsonSupport
+import skillbill.contracts.JsonCodec
 import skillbill.db.core.DatabaseRuntime
 import skillbill.db.core.reconcileStaleFeatureTaskRuntimeSessions
 import skillbill.db.core.reconcileStaleTelemetrySessions
@@ -472,8 +472,8 @@ class StaleSessionReconcilerTest {
       issueKey?.let { statement.setString(2, it) }
       statement.executeQuery().use { resultSet ->
         resultSet.next()
-        val element = requireNotNull(JsonSupport.parseObjectOrNull(resultSet.getString("payload_json")))
-        requireNotNull(JsonSupport.anyToStringAnyMap(JsonSupport.jsonElementToValue(element)))
+        val element = requireNotNull(JsonCodec.parseObjectOrNull(resultSet.getString("payload_json")))
+        requireNotNull(JsonCodec.anyToStringAnyMap(JsonCodec.jsonElementToValue(element)))
       }
     }
   }

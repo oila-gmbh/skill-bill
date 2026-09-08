@@ -1,6 +1,7 @@
 package skillbill.infrastructure.fs
 
 import skillbill.ports.workflow.gitops.scopedPathContentsAgainstBase
+import skillbill.ports.workflow.gitops.model.WorkflowGitOperationStatus
 import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.io.path.writeText
@@ -21,7 +22,7 @@ class GitSuppressionEvidenceOperationsTest {
       val baseSha = git(repo, "rev-parse", "HEAD").trim()
       repo.resolve(path).writeText("@Suppress(\"X\")\nfun head() = 2\n")
       val evidence = GitWorkflowGitOperations().scopedPathContentsAgainstBase(repo, baseSha, listOf(path))
-      assertTrue(evidence.ok, evidence.error)
+      assertEquals(WorkflowGitOperationStatus.OK, evidence.status, evidence.error)
       val pair = evidence.pairs.single()
       assertEquals(path, pair.headPath)
       assertEquals(path, pair.basePath)
@@ -43,7 +44,7 @@ class GitSuppressionEvidenceOperationsTest {
       git(repo, "mv", oldPath, newPath)
       git(repo, "commit", "-m", "rename")
       val evidence = GitWorkflowGitOperations().scopedPathContentsAgainstBase(repo, baseSha, listOf(newPath))
-      assertTrue(evidence.ok, evidence.error)
+      assertEquals(WorkflowGitOperationStatus.OK, evidence.status, evidence.error)
       val pair = evidence.pairs.single()
       assertEquals(newPath, pair.headPath)
       assertEquals(oldPath, pair.basePath)

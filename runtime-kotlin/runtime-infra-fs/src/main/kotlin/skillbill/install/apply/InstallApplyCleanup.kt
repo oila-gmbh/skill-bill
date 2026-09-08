@@ -9,6 +9,8 @@ import skillbill.install.plan.platformSkills
 import skillbill.install.staging.installedSkillsCacheRoot
 import skillbill.install.support.InstallCleanupOperations
 import skillbill.install.support.legacySkillBillCleanupNames
+import skillbill.model.toPath
+import skillbill.ports.repository.toFileLocation
 import skillbill.scaffold.model.PlatformManifest
 import java.nio.file.Path
 
@@ -28,14 +30,14 @@ internal fun cleanupExistingSkillBillLinks(
   val cleanupContext = InstallCleanupContext(
     skillNames = cleanupSkillNames,
     legacyNames = legacyNames,
-    installedSkillsRoot = installedSkillsCacheRoot(plan.request.home),
+    installedSkillsRoot = installedSkillsCacheRoot(plan.request.home.toPath()),
   )
   plan.agents.forEach { agentTarget ->
-    cleanupOneTarget(agentTarget.agent, agentTarget.path, cleanupContext, failures)
+    cleanupOneTarget(agentTarget.agent, agentTarget.path.toPath(), cleanupContext, failures)
     // Migration: before SKILL-bill installed Claude skills into `<root>/skills`, it linked them into
     // the sibling `<root>/commands` slash-command dir. Sweep that legacy location so upgrading users
     // don't keep orphaned command symlinks pointing into the installed-skills cache.
-    legacyClaudeCommandsDir(agentTarget.agent, agentTarget.path)?.let { legacyDir ->
+    legacyClaudeCommandsDir(agentTarget.agent, agentTarget.path.toPath())?.let { legacyDir ->
       cleanupOneTarget(agentTarget.agent, legacyDir, cleanupContext, failures)
     }
   }
@@ -67,7 +69,7 @@ private fun cleanupOneTarget(
         kind = InstallApplyIssueKind.SKILL_LINK_FAILED,
         message = error.message.orEmpty(),
         agent = agent,
-        path = targetDir,
+        path = targetDir.toFileLocation(),
         causeClass = error::class.qualifiedName,
       ),
     )

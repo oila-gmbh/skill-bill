@@ -174,7 +174,7 @@ class ParallelCodeReviewIntegrationPassTest {
 
     assertEquals(1, recorder.specialistLaunches.size)
     assertEquals(
-      ReviewIntegrationTerminalOutcome.SPAWN_FAILURE.wireValue,
+      ReviewIntegrationTerminalOutcome.SPAWN_FAILURE,
       assertNotNull(recorder.durableIntegrationPass).terminalOutcome,
     )
 

@@ -3,6 +3,7 @@ package skillbill.application.review
 import me.tatarka.inject.annotations.Inject
 import skillbill.application.decomposition.repoRelativePath
 import skillbill.contracts.issuekey.issueKeyFromBranch
+import skillbill.model.toPath
 import skillbill.ports.workflow.decomposition.DecompositionManifestStore
 import skillbill.review.context.model.SpecIntentAbsenceReason
 import skillbill.review.context.model.SpecIntentDegradationRecord
@@ -27,7 +28,13 @@ class SpecIntentProjectionResolver(
     val explicit = request.explicitSpecPath
     if (explicit != null) {
       return SpecIntentResolution.Resolved(
-        extractor.extract(request.repoRoot, explicit, request.budget, surrounding = null, explicit = true),
+        extractor.extract(
+          request.repoRoot.toPath(),
+          explicit.toPath(),
+          request.budget,
+          surrounding = null,
+          explicit = true,
+        ),
       )
     }
     val issueKey = issueKeyFromBranch(request.branchName)
@@ -44,7 +51,7 @@ class SpecIntentProjectionResolver(
     issueKey: String?,
     degradations: MutableList<SpecIntentDegradationRecord>,
   ): SpecIntentResolution? {
-    val candidates = fileStore.findDecompositionManifestFiles(request.repoRoot)
+    val candidates = fileStore.findDecompositionManifestFiles(request.repoRoot.toPath())
     if (candidates.isEmpty()) return null
     val loaded = mutableListOf<Pair<Path, DecompositionManifest>>()
     candidates.forEach { path ->
@@ -53,7 +60,7 @@ class SpecIntentProjectionResolver(
           seam = MANIFEST_UNREADABLE_SEAM,
           reason = MANIFEST_UNREADABLE_REASON,
           rung = SpecIntentResolutionRung.GLOB.wireValue,
-          resolvedPath = repoRelativePath(request.repoRoot, path),
+          resolvedPath = repoRelativePath(request.repoRoot.toPath(), path),
         )
         else -> loaded += path to manifest
       }
@@ -70,7 +77,7 @@ class SpecIntentProjectionResolver(
     val surrounding = owner?.let { loadSurroundingContext(request, manifest.parentSpecPath, degradations) }
     return try {
       SpecIntentResolution.Resolved(
-        extractor.extract(request.repoRoot, primary, request.budget, surrounding, explicit = false),
+        extractor.extract(request.repoRoot.toPath(), primary, request.budget, surrounding, explicit = false),
       )
     } catch (error: SpecIntentSourceUnavailable) {
       degradations += SpecIntentDegradationRecord(
@@ -88,7 +95,7 @@ class SpecIntentProjectionResolver(
     issueKey: String,
     degradations: MutableList<SpecIntentDegradationRecord>,
   ): SpecIntentResolution {
-    val matches = fileStore.listDirectChildDirectories(request.repoRoot.resolve(".feature-specs"))
+    val matches = fileStore.listDirectChildDirectories(request.repoRoot.resolve(".feature-specs").toPath())
       .filter { it.fileName.toString().startsWith("$issueKey-") }
       .map { it.resolve("spec.md") }
       .filter { fileStore.isRegularFile(it) }
@@ -97,7 +104,13 @@ class SpecIntentProjectionResolver(
       0 -> none(SpecIntentAbsenceReason.NO_SPEC_FOUND, SpecIntentResolutionRung.GLOB, degradations)
       1 -> try {
         SpecIntentResolution.Resolved(
-          extractor.extract(request.repoRoot, matches.single(), request.budget, surrounding = null, explicit = false),
+          extractor.extract(
+            request.repoRoot.toPath(),
+            matches.single(),
+            request.budget,
+            surrounding = null,
+            explicit = false,
+          ),
         )
       } catch (_: SpecIntentSourceUnavailable) {
         none(SpecIntentAbsenceReason.NO_SPEC_FOUND, SpecIntentResolutionRung.GLOB, degradations)
@@ -125,7 +138,7 @@ class SpecIntentProjectionResolver(
     degradations: MutableList<SpecIntentDegradationRecord>,
   ): SpecIntentSurroundingContext? {
     return try {
-      extractor.surroundingContext(request.repoRoot, Path.of(parentSpecPath), explicit = false)
+      extractor.surroundingContext(request.repoRoot.toPath(), Path.of(parentSpecPath), explicit = false)
     } catch (error: SpecIntentSourceUnavailable) {
       degradations += SpecIntentDegradationRecord(
         seam = PARENT_SPEC_UNAVAILABLE_SEAM,

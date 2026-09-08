@@ -1,6 +1,6 @@
 package skillbill.db.workflow
 
-import skillbill.contracts.JsonSupport
+import skillbill.contracts.JsonCodec
 
 internal fun decodeWorkflowStringList(rawValue: String?): List<String> =
-  JsonSupport.parseArrayOrEmpty(rawValue.orEmpty()).mapNotNull { element -> element as? String }
+  JsonCodec.parseArrayOrEmpty(rawValue.orEmpty()).mapNotNull { element -> element as? String }

@@ -8,6 +8,8 @@ import skillbill.application.featuretask.AcceptingFeatureTaskRuntimeHandoffFound
 import skillbill.application.featuretask.InMemoryFeatureTaskPhaseSettlementRepository
 import skillbill.application.featuretask.featureTaskRuntimePhaseRecorder
 import skillbill.application.goalrunner.GOAL_CHILD_REPAIR_EVIDENCE_ARTIFACT_KEY
+import skillbill.application.goalrunner.GoalRunnerStatusTestPorts
+import skillbill.application.goalrunner.OutcomeStoreTestArtifactPorts
 import skillbill.application.goalrunner.PASSED_CONTINUATION_OUTCOME
 import skillbill.application.goalrunner.PASSED_PHASE_OUTPUT_CONTRACT
 import skillbill.application.goalrunner.PASSED_QUALITY_GATE_SELECTION
@@ -15,20 +17,15 @@ import skillbill.application.goalrunner.PASSED_REMEDIATION_BASE
 import skillbill.application.goalrunner.PASSED_REVIEW_BASE
 import skillbill.application.goalrunner.PASSED_UPSTREAM_OUTPUT
 import skillbill.application.goalrunner.PASSED_VALIDATION_DEPTH
-import skillbill.application.goalrunner.goalRunnerStatusServiceDeps
 import skillbill.application.goalrunner.model.GoalRunnerChildWedgeDiagnosisRequest
 import skillbill.application.goalrunner.model.GoalRunnerChildWedgeRepairRequest
 import skillbill.application.goalrunner.model.GoalRunnerRepairRequest
 import skillbill.application.goalrunner.model.GoalRunnerRepairStatus
 import skillbill.application.goalrunner.model.GoalRunnerWedgeClass
-import skillbill.application.goalrunner.outcomeStoreDeps
-import skillbill.application.goalrunner.testGoalRunnerChildRepairExecutor
 import skillbill.application.goalrunner.testGoalRunnerStatusService
 import skillbill.application.goalrunner.testWorkflowGoalRunnerOutcomeStore
-import skillbill.application.phaseartifacts.phaseRecordsFrom
 import skillbill.application.workflow.model.WorkflowFamily
-import skillbill.application.workflow.toRecord
-import skillbill.contracts.JsonSupport
+import skillbill.contracts.JsonCodec
 import skillbill.goalrunner.model.GoalRunnerControlState
 import skillbill.goalrunner.model.GoalRunnerExecutionLease
 import skillbill.ports.diagnostics.NoopRuntimeDiagnostics
@@ -36,7 +33,7 @@ import skillbill.ports.featuretask.FeatureTaskPhaseSettlementRepository
 import skillbill.ports.featuretask.model.FeatureTaskPhaseSettlement
 import skillbill.ports.featuretask.model.FeatureTaskRuntimeWorkerLeaseState
 import skillbill.ports.featuretask.model.FeatureTaskRuntimeWorkerOwnership
-import skillbill.ports.goalrunner.runner.GoalRunnerManifestStore
+import skillbill.ports.goalrunner.runner.GoalRunnerManifestStoreDefaults
 import skillbill.ports.goalrunner.runner.model.GoalRunnerManifestState
 import skillbill.ports.taskruntime.FeatureTaskRuntimeWorkerSupervisor
 import skillbill.ports.taskruntime.NoopFeatureTaskRuntimeHeartbeat
@@ -46,7 +43,6 @@ import skillbill.ports.taskruntime.model.FeatureTaskRuntimeProcessIdentity
 import skillbill.ports.taskruntime.model.FeatureTaskRuntimeProcessInspection
 import skillbill.ports.workflow.decomposition.DecompositionManifestStore
 import skillbill.ports.workflow.gitops.GoalSubtaskReviewGitOperations
-import skillbill.ports.workflow.gitops.GoalSubtaskReviewGitOperationsProvider
 import skillbill.ports.workflow.gitops.NoopWorkflowGitOperations
 import skillbill.ports.workflow.gitops.WorkflowGitOperations
 import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewBaseline
@@ -54,8 +50,10 @@ import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewBaselineRecoveryRe
 import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewBaselineResult
 import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewInput
 import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewInputResult
+import skillbill.ports.workflow.gitops.model.WorkflowGitOperationStatus
 import skillbill.ports.workflow.gitops.model.WorkflowGitOperationResult
 import skillbill.ports.workflow.model.WorkflowStateRecord
+import skillbill.ports.workflow.toRecord
 import skillbill.review.context.model.CodeReviewExecutionMode
 import skillbill.workflow.decomposition.model.CurrentSubtaskIntent
 import skillbill.workflow.decomposition.model.DecompositionManifest
@@ -71,6 +69,7 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeGoalContinuationAr
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseRecord
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeQualityGateSelection
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeVerdict
+import skillbill.workflow.taskruntime.phaseartifacts.phaseRecordsFrom
 import java.nio.file.Path
 import java.time.Duration
 import kotlin.test.Test
@@ -232,11 +231,10 @@ internal class GoalRunnerRepairTest : GoalRunnerRepairFixtures() {
     assertEquals("0.3", diagnosis.wedges.single().currentValue)
 
     val service = testGoalRunnerStatusService(
-      goalRunnerStatusServiceDeps(
-        manifestStore = RepairManifestStore(workflowId),
-        outcomeStore = store,
-        phaseRecorder = goalTestPhaseRecorder(),
-      ).copy(
+      manifestStore = RepairManifestStore(workflowId),
+      outcomeStore = store,
+      phaseRecorder = goalTestPhaseRecorder(),
+      ports = GoalRunnerStatusTestPorts(
         childRepairStore = store,
       ),
     )
@@ -526,8 +524,8 @@ internal class GoalRunnerRepairTest : GoalRunnerRepairFixtures() {
     assertEquals("running", updated.workflowStatus)
     assertEquals("build", updated.currentStepId)
     val records = phaseRecordsFrom(decodeArtifacts(updated.artifactsJson))
-    assertEquals("pending", records.getValue("build").status)
-    assertEquals("pending", records.getValue("write_history").status)
+    assertEquals("pending", records.getValue("build").status.wireValue)
+    assertEquals("pending", records.getValue("write_history").status.wireValue)
   }
 
   @Test
@@ -582,8 +580,8 @@ internal class GoalRunnerRepairTest : GoalRunnerRepairFixtures() {
     assertEquals("running", updated.workflowStatus)
     assertEquals("verify_findings", updated.currentStepId)
     val records = phaseRecordsFrom(decodeArtifacts(updated.artifactsJson))
-    assertEquals("pending", records.getValue("verify_findings").status)
-    assertEquals("pending", records.getValue("implement_fix").status)
+    assertEquals("pending", records.getValue("verify_findings").status.wireValue)
+    assertEquals("pending", records.getValue("implement_fix").status.wireValue)
     val evidence = (decodeArtifacts(updated.artifactsJson)[GOAL_CHILD_REPAIR_EVIDENCE_ARTIFACT_KEY] as List<*>)
       .single() as Map<*, *>
     assertEquals("completed_upstream_missing_output", evidence["wedge_class"])
@@ -641,8 +639,8 @@ internal class GoalRunnerRepairTest : GoalRunnerRepairFixtures() {
       records.getValue("verify_findings").outputArtifact,
       "the settlement store still held the output, so repair must restore it rather than lose it",
     )
-    assertEquals("completed", records.getValue("verify_findings").status)
-    assertEquals("pending", records.getValue("implement_fix").status)
+    assertEquals("completed", records.getValue("verify_findings").status.wireValue)
+    assertEquals("pending", records.getValue("implement_fix").status.wireValue)
   }
 
   private fun seedBlockedImplementFixWorkflow(
@@ -703,8 +701,8 @@ internal class GoalRunnerRepairContinuationTest : GoalRunnerRepairFixtures() {
     val after = decodeArtifacts(updated.artifactsJson)
     assertEquals("full", (after["goal_continuation"] as Map<*, *>)["validation_depth"])
     val records = phaseRecordsFrom(after)
-    assertEquals("pending", records.getValue("verify_findings").status)
-    assertEquals("pending", records.getValue("implement_fix").status)
+    assertEquals("pending", records.getValue("verify_findings").status.wireValue)
+    assertEquals("pending", records.getValue("implement_fix").status.wireValue)
     assertEquals(2, (after[GOAL_CHILD_REPAIR_EVIDENCE_ARTIFACT_KEY] as List<*>).size)
   }
 
@@ -937,7 +935,7 @@ internal class GoalRunnerRepairContinuationTest : GoalRunnerRepairFixtures() {
       requireNotNull(workflows.getFeatureTaskRuntimeWorkflow(workflowId)).artifactsJson,
     )
     val state = GoalSubtaskReviewState.fromArtifactMap(
-      requireNotNull(JsonSupport.anyToStringAnyMap(after[GOAL_SUBTASK_REVIEW_STATE_ARTIFACT_KEY])),
+      requireNotNull(JsonCodec.anyToStringAnyMap(after[GOAL_SUBTASK_REVIEW_STATE_ARTIFACT_KEY])),
     )
     assertEquals(recovered, state.remediationBaseSha)
     assertEquals(1, state.completedPassCount)
@@ -1020,11 +1018,10 @@ internal class GoalRunnerRepairContinuationTest : GoalRunnerRepairFixtures() {
       NoopRuntimeDiagnostics,
     )
     val service = testGoalRunnerStatusService(
-      goalRunnerStatusServiceDeps(
-        manifestStore = RepairManifestStore(workflowId),
-        outcomeStore = store,
-        phaseRecorder = phaseRecorder,
-      ).copy(
+      manifestStore = RepairManifestStore(workflowId),
+      outcomeStore = store,
+      phaseRecorder = phaseRecorder,
+      ports = GoalRunnerStatusTestPorts(
         workerSupervisor = LiveProcessSupervisor,
         childRepairStore = store,
       ),
@@ -1055,11 +1052,10 @@ internal class GoalRunnerRepairContinuationTest : GoalRunnerRepairFixtures() {
     val beforeJson = requireNotNull(workflows.getFeatureTaskRuntimeWorkflow(workflowId)).artifactsJson
     val store = repairStore(workflows, git = ReachableGit())
     val service = testGoalRunnerStatusService(
-      goalRunnerStatusServiceDeps(
-        manifestStore = RepairManifestStore(workflowId),
-        outcomeStore = store,
-        phaseRecorder = goalTestPhaseRecorder(),
-      ).copy(
+      manifestStore = RepairManifestStore(workflowId),
+      outcomeStore = store,
+      phaseRecorder = goalTestPhaseRecorder(),
+      ports = GoalRunnerStatusTestPorts(
         childRepairStore = store,
       ),
     )
@@ -1087,11 +1083,10 @@ internal class GoalRunnerRepairContinuationTest : GoalRunnerRepairFixtures() {
     )
     val store = repairStore(workflows, git = ReachableGit())
     val service = testGoalRunnerStatusService(
-      goalRunnerStatusServiceDeps(
-        manifestStore = RepairManifestStore(workflowId),
-        outcomeStore = store,
-        phaseRecorder = goalTestPhaseRecorder(),
-      ).copy(
+      manifestStore = RepairManifestStore(workflowId),
+      outcomeStore = store,
+      phaseRecorder = goalTestPhaseRecorder(),
+      ports = GoalRunnerStatusTestPorts(
         childRepairStore = store,
       ),
     )
@@ -1153,13 +1148,12 @@ internal abstract class GoalRunnerRepairFixtures {
     git: WorkflowGitOperations = NoopWorkflowGitOperations,
     phaseSettlements: FeatureTaskPhaseSettlementRepository = InMemoryFeatureTaskPhaseSettlementRepository(),
   ) = testWorkflowGoalRunnerOutcomeStore(
-    outcomeStoreDeps(
-      FakeDatabaseSessionFactory(workflows),
-      testWorkflowSnapshotValidator,
-      gitOperations = git,
-    ).copy(
+    FakeDatabaseSessionFactory(workflows),
+    testWorkflowSnapshotValidator,
+    gitOperations = git,
+    phaseSettlements = phaseSettlements,
+    artifactPorts = OutcomeStoreTestArtifactPorts(
       decompositionManifestStore = InMemoryRepairManifestFileStore(),
-      childRepairExecutor = testGoalRunnerChildRepairExecutor(git, phaseSettlements),
     ),
   )
 
@@ -1308,7 +1302,7 @@ internal abstract class GoalRunnerRepairFixtures {
 
   protected class RepairManifestStore(
     private val childWorkflowId: String,
-  ) : GoalRunnerManifestStore {
+  ) : GoalRunnerManifestStoreDefaults() {
     override fun loadByIssueKey(issueKey: String, dbPathOverride: String?, repoRoot: Path?): GoalRunnerManifestState =
       GoalRunnerManifestState(
         parentWorkflowId = "wfl-parent",
@@ -1362,16 +1356,15 @@ internal abstract class GoalRunnerRepairFixtures {
   protected class ReachableGit(
     private val unreachableShas: Set<String> = emptySet(),
     private val recoveredSha: String = "b".repeat(40),
-  ) : WorkflowGitOperations by NoopWorkflowGitOperations, GoalSubtaskReviewGitOperationsProvider {
+  ) : WorkflowGitOperations by NoopWorkflowGitOperations {
     override fun headCommitSha(repoRoot: Path): WorkflowGitOperationResult =
-      WorkflowGitOperationResult(status = "ok", value = HEAD_SHA)
+      WorkflowGitOperationResult.Ok(value = HEAD_SHA)
 
     override fun isCommitAncestor(
       repoRoot: Path,
       ancestorSha: String,
       descendantSha: String,
-    ): WorkflowGitOperationResult = WorkflowGitOperationResult(
-      status = "ok",
+    ): WorkflowGitOperationResult = WorkflowGitOperationResult.Ok(
       value = if (ancestorSha in unreachableShas) "false" else "true",
     )
 
@@ -1379,7 +1372,7 @@ internal abstract class GoalRunnerRepairFixtures {
       object : GoalSubtaskReviewGitOperations {
         override fun captureBaseline(repoRoot: Path, expectedBranch: String): GoalSubtaskReviewBaselineResult =
           GoalSubtaskReviewBaselineResult(
-            status = "ok",
+            status = WorkflowGitOperationStatus.OK,
             baseline = GoalSubtaskReviewBaseline(REACHABLE_SHA, emptyList()),
           )
 
@@ -1388,7 +1381,7 @@ internal abstract class GoalRunnerRepairFixtures {
           baseline: GoalSubtaskReviewBaseline,
           expectedBranch: String,
         ): GoalSubtaskReviewInputResult = GoalSubtaskReviewInputResult(
-          status = "ok",
+          status = WorkflowGitOperationStatus.OK,
           input = GoalSubtaskReviewInput(
             reviewBaseSha = baseline.reviewBaseSha,
             currentHeadSha = HEAD_SHA,
@@ -1402,7 +1395,7 @@ internal abstract class GoalRunnerRepairFixtures {
           request: GoalSubtaskReviewBaselineRecoveryRequest,
           expectedBranch: String,
         ): GoalSubtaskReviewBaselineResult = GoalSubtaskReviewBaselineResult(
-          status = "ok",
+          status = WorkflowGitOperationStatus.OK,
           baseline = request.toRecoveredBaseline(recoveredSha),
         )
       }

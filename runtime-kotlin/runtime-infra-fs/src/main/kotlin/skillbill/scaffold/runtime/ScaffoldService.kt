@@ -1,6 +1,7 @@
 
 package skillbill.scaffold.runtime
 
+import skillbill.ports.repository.toFileLocation
 import skillbill.scaffold.model.CodeReviewBaselineLayer
 import skillbill.scaffold.model.PlatformManifest
 import skillbill.scaffold.model.ScaffoldResult
@@ -117,10 +118,10 @@ internal data class ScaffoldAdapterSeams(
 internal fun renderDryRunResult(plan: ScaffoldPlan, repoRoot: Path): ScaffoldResult = ScaffoldResult(
   kind = plan.kind,
   skillName = plan.skillName,
-  skillPath = plan.skillPath,
-  createdFiles = previewCreatedFiles(plan),
-  manifestEdits = previewManifestEdits(plan, repoRoot),
-  manifestPreviews = previewManifestPreviews(plan, repoRoot),
+  skillPath = plan.skillPath.toFileLocation(),
+  createdFiles = previewCreatedFiles(plan).map { entry -> entry.toFileLocation() },
+  manifestEdits = previewManifestEdits(plan, repoRoot).map { entry -> entry.toFileLocation() },
+  manifestPreviews = previewManifestPreviews(plan, repoRoot).mapKeys { (path, _) -> path.toFileLocation() },
   symlinks = emptyList(),
   installTargets = emptyList(),
   notes = plan.notes + listOf("Dry run - no filesystem changes applied."),
@@ -135,11 +136,11 @@ internal fun runScaffold(plan: ScaffoldPlan, repoRoot: Path, adapters: ScaffoldA
     return ScaffoldResult(
       kind = plan.kind,
       skillName = plan.skillName,
-      skillPath = plan.skillPath,
-      createdFiles = execution.createdFiles,
-      manifestEdits = execution.manifestEdits,
-      symlinks = execution.symlinks,
-      installTargets = execution.installTargets,
+      skillPath = plan.skillPath.toFileLocation(),
+      createdFiles = execution.createdFiles.map { entry -> entry.toFileLocation() },
+      manifestEdits = execution.manifestEdits.map { entry -> entry.toFileLocation() },
+      symlinks = execution.symlinks.map { entry -> entry.toFileLocation() },
+      installTargets = execution.installTargets.map { entry -> entry.toFileLocation() },
       notes = plan.notes + execution.notes,
     )
   } finally {

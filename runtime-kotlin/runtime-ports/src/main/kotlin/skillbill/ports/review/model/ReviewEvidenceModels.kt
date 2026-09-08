@@ -6,6 +6,7 @@ import skillbill.review.context.model.ReviewExpansionRecord
 import skillbill.review.context.model.ReviewLaneReviewDisposition
 import skillbill.review.context.model.ReviewLaneSegmentAccounting
 import skillbill.review.context.model.ReviewOperationKind
+import skillbill.review.context.model.ReviewAccountingTerminalOutcome
 
 enum class ReviewProcessOutcome {
   NOT_STARTED,
@@ -110,7 +111,7 @@ data class ReviewLaneAccounting(
   val toolCalls: Int,
   val modelTurns: Int,
   val resultBytes: Long,
-  val terminalStatus: String = "completed",
+  val terminalStatus: ReviewAccountingTerminalOutcome = ReviewAccountingTerminalOutcome.COMPLETED,
   val terminalOutcome: ReviewBudgetOutcome? = null,
   val reviewDisposition: ReviewLaneReviewDisposition? = null,
   val bundleCompositionDigest: String? = null,

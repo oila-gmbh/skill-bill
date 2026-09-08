@@ -25,7 +25,7 @@ import skillbill.ports.scaffold.source.model.ScaffoldSaveExactContentResult
  * (field-by-field + key-order assertions) and `AuthoringOperationsTest.kt`.
  *
  * Both success and error envelope paths flow through `authoringResult { ... }` /
- * `errorResult(...)` in `ScaffoldCliPayloadHelpers.kt`; errors are surfaced by the catch
+ * `errorResult(...)` in `ScaffoldCliPayloadRuns.kt`; errors are surfaced by the catch
  * blocks in `authoringResult` and do not pass through these mappers.
  */
 internal fun ScaffoldListResult.toCliMap(): Map<String, Any?> = linkedMapOf(

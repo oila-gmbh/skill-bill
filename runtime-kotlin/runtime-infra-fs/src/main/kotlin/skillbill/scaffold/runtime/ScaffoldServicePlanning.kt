@@ -150,10 +150,6 @@ internal fun rejectPlatformPackSubagentOverrides(payload: Map<String, Any?>) {
 internal fun specialistFocus(displayName: String, area: String, routingSignals: List<String>): String =
   "$displayName ${defaultAreaFocus(area)} across ${routingSignals.joinToString(", ")} signals"
 
-// SKILL-52.1 subtask 3 (AC1): `optionalBaselineLayers`, `validateBaselineLayerPayloadReferences`,
-// and `validateBaselineLayerModeSupport` now live on `FileSystemScaffoldRepoValidation`.
-// Callsites below delegate to `scaffoldRepoValidation.optionalBaselineLayers(...)`.
-
 internal fun planCodeReviewArea(payload: Map<String, Any?>, repoRoot: Path): ScaffoldPlan {
   policyRejectLeafSubagentSpecialists(payload, SKILL_KIND_CODE_REVIEW_AREA)
   val platform = requireString(payload, "platform")

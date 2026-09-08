@@ -9,7 +9,7 @@ import skillbill.application.featuretask.validation.model.ValidationGateCycleTer
 import skillbill.application.featuretask.validation.model.ValidationGateTriageResult
 import skillbill.application.featuretask.validation.model.ValidationGateTriageResult.Captured
 import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_PERSISTENCE_CONTRACT_VERSION
-import skillbill.ports.validation.model.ValidationGateCacheMode
+import skillbill.workflow.taskruntime.model.ValidationGateCacheMode
 import skillbill.ports.validation.model.ValidationGateFinding
 import skillbill.workflow.goal.model.ValidationDepth
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeValidationGateProgress

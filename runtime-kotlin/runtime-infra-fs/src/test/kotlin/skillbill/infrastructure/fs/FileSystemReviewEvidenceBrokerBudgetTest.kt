@@ -75,9 +75,9 @@ class FileSystemReviewEvidenceBrokerBudgetTest {
 
     assertEquals("aa", first.content)
     assertEquals(null, second.content)
-    assertEquals("lane_evidence_bytes", second.budgetExceeded?.budgetKind)
+    assertEquals("lane_evidence_bytes", second.budgetExceeded?.budgetKind?.wireValue)
     assertTrue(second.bytes == 0L)
-    assertEquals("lane_evidence_bytes", broker.accounting().terminalOutcome?.budgetKind)
+    assertEquals("lane_evidence_bytes", broker.accounting().terminalOutcome?.budgetKind?.wireValue)
     assertEquals(listOf("head@B.kt"), broker.accounting().unreviewedUnits)
     assertEquals(1, broker.accounting().refusedOperationCount)
   }
@@ -103,7 +103,7 @@ class FileSystemReviewEvidenceBrokerBudgetTest {
     broker.readBatch(batch("B.kt"))
     val accounting = broker.accounting()
     assertEquals(listOf("head@B.kt"), accounting.unreviewedUnits)
-    assertEquals("lane_evidence_bytes", accounting.terminalOutcome?.budgetKind)
+    assertEquals("lane_evidence_bytes", accounting.terminalOutcome?.budgetKind?.wireValue)
     assertTrue(accounting.unreviewedUnits.none { it.endsWith("@C.kt") })
   }
 

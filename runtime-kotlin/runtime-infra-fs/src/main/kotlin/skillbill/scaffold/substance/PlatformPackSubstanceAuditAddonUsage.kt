@@ -1,5 +1,6 @@
 package skillbill.scaffold.substance
 
+import skillbill.model.toPath
 import skillbill.scaffold.model.PlatformManifest
 import java.nio.file.Path
 import java.util.Locale
@@ -10,7 +11,7 @@ internal fun qualitySections(text: String): List<String> = REQUIRED_QUALITY_SECT
 }
 
 internal fun resolveQualityCheck(slug: String, packs: Map<String, PlatformManifest>): Path? =
-  packs[slug]?.declaredQualityCheckFile
+  packs[slug]?.declaredQualityCheckFile?.toPath()
 
 internal fun correspondingPairs(files: List<AuthoredFile>): List<SimilarityPair> = files.groupBy {
   roleKey(it)

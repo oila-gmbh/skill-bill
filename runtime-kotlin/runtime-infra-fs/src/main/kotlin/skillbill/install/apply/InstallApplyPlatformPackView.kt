@@ -8,6 +8,7 @@ import skillbill.install.model.InstallPlanSkillKind
 import skillbill.install.model.InstallSkillStagingStatus
 import skillbill.install.support.createNewSymlinkWithGuidance
 import skillbill.install.support.createReplacementSymlinkWithGuidance
+import skillbill.model.toPath
 import skillbill.scaffold.model.PlatformManifest
 import java.nio.file.Files
 import java.nio.file.LinkOption
@@ -33,14 +34,14 @@ internal fun materializeAgentPlatformPackViews(
   val stagedPlatformSkills = appliedSkills
     .filter { skill -> skill.kind == InstallPlanSkillKind.PLATFORM_PACK }
     .filter { skill -> skill.staging.status == InstallSkillStagingStatus.STAGED }
-    .associateBy { skill -> skill.sourceDir.toAbsolutePath().normalize() }
+    .associateBy { skill -> skill.sourceDir.toPath().toAbsolutePath().normalize() }
   val internalPlatformSkillDirs = plan.skills
     .filter { skill -> skill.kind == InstallPlanSkillKind.PLATFORM_PACK && skill.internalFor != null }
-    .map { skill -> skill.sourceDir.toAbsolutePath().normalize() }
+    .map { skill -> skill.sourceDir.toPath().toAbsolutePath().normalize() }
     .toSet()
   plan.agents.forEach { agentTarget ->
     runCatching {
-      val root = agentTarget.path.toAbsolutePath().normalize().resolve(PLATFORM_PACKS_DIR)
+      val root = agentTarget.path.toPath().toAbsolutePath().normalize().resolve(PLATFORM_PACKS_DIR)
       replaceManagedPlatformPackView(root)
       selectedManifests.forEach { manifest ->
         materializeOnePack(root, manifest, stagedPlatformSkills, internalPlatformSkillDirs)
@@ -62,7 +63,7 @@ internal fun materializeAgentPlatformPackViews(
 internal fun cleanupManagedPlatformPackViews(plan: InstallPlan, failures: MutableList<InstallApplyIssue>) {
   plan.agents.forEach { agentTarget ->
     runCatching {
-      val root = agentTarget.path.toAbsolutePath().normalize().resolve(PLATFORM_PACKS_DIR)
+      val root = agentTarget.path.toPath().toAbsolutePath().normalize().resolve(PLATFORM_PACKS_DIR)
       if (Files.isDirectory(root, LinkOption.NOFOLLOW_LINKS) && Files.exists(root.resolve(MANAGED_INSTALL_MARKER))) {
         deleteTree(root)
       }
@@ -100,7 +101,7 @@ private fun materializeOnePack(
   stagedPlatformSkills: Map<Path, InstallAppliedSkill>,
   internalPlatformSkillDirs: Set<Path>,
 ) {
-  val packRoot = manifest.packRoot.toAbsolutePath().normalize()
+  val packRoot = manifest.packRoot.toPath().toAbsolutePath().normalize()
   val destinationPackRoot = agentPacksRoot.resolve(manifest.slug).normalize()
   require(destinationPackRoot.startsWith(agentPacksRoot)) {
     "Platform pack '${manifest.slug}' escapes agent platform-packs root '$agentPacksRoot'."
@@ -120,7 +121,7 @@ private fun materializeOnePack(
       "Platform pack '${manifest.slug}' skill link '$linkPath' escapes pack root '$destinationPackRoot'."
     }
     linkPath.parent?.let(Files::createDirectories)
-    createOrReplaceManagedSkillSymlink(linkPath, staged)
+    createOrReplaceManagedSkillSymlink(linkPath, staged.toPath())
   }
 }
 
@@ -131,25 +132,27 @@ private fun copyInternalQualityCheckSource(
   internalPlatformSkillDirs: Set<Path>,
 ) {
   val sourceContent = manifest.declaredQualityCheckFile ?: return
-  val qualityCheckDir = sourceContent.toAbsolutePath().normalize().parent
+  val qualityCheckDir = sourceContent.toPath().toAbsolutePath().normalize().parent
   if (qualityCheckDir !in internalPlatformSkillDirs) {
     return
   }
-  require(Files.isRegularFile(sourceContent, LinkOption.NOFOLLOW_LINKS)) {
+  require(Files.isRegularFile(sourceContent.toPath(), LinkOption.NOFOLLOW_LINKS)) {
     "Platform pack '${manifest.slug}' internal quality-check content '$sourceContent' is not a regular file."
   }
   val realPackRoot = packRoot.toRealPath()
-  val realSourceContent = sourceContent.toRealPath()
+  val realSourceContent = sourceContent.toPath().toRealPath()
   require(realSourceContent.startsWith(realPackRoot)) {
     "Platform pack '${manifest.slug}' internal quality-check content '$sourceContent' escapes pack root '$packRoot'."
   }
-  val destinationContent = destinationPackRoot.resolve(packRoot.relativize(sourceContent).toString()).normalize()
+  val destinationContent = destinationPackRoot
+    .resolve(packRoot.relativize(sourceContent.toPath()).toString())
+    .normalize()
   require(destinationContent.startsWith(destinationPackRoot)) {
     "Platform pack file '$sourceContent' escapes destination pack root '$destinationPackRoot'."
   }
   destinationContent.parent?.let(Files::createDirectories)
   Files.copy(
-    sourceContent,
+    sourceContent.toPath(),
     destinationContent,
     StandardCopyOption.REPLACE_EXISTING,
     StandardCopyOption.COPY_ATTRIBUTES,
@@ -160,7 +163,7 @@ private fun platformSkillDirs(manifest: PlatformManifest): Set<Path> = (
   listOfNotNull(manifest.declaredFiles.baseline, manifest.declaredQualityCheckFile) +
     manifest.declaredFiles.areas.values
   )
-  .map { contentFile -> contentFile.toAbsolutePath().normalize().parent }
+  .map { contentFile -> contentFile.toPath().toAbsolutePath().normalize().parent }
   .toSet()
 
 private fun copyPackNonSkillFiles(packRoot: Path, destinationPackRoot: Path, skillDirs: Set<Path>) {

@@ -1,11 +1,12 @@
 package skillbill.application.featuretask
 
 import skillbill.application.decomposition.decodeArtifacts
-import skillbill.application.subtaskreview.GoalSubtaskReviewSummaryReducer
-import skillbill.application.subtaskreview.reviewRunIdOf
 import skillbill.application.workflow.model.WorkflowFamily
 import skillbill.goalrunner.model.UnaddressedFinding
+import skillbill.goalrunner.subtaskreview.GoalSubtaskReviewSummaryReducer
+import skillbill.goalrunner.subtaskreview.reviewRunIdOf
 import skillbill.ports.db.DatabaseSessionFactory
+import skillbill.ports.workflow.get
 import skillbill.review.model.ReviewFindingVerdict
 import skillbill.workflow.goal.model.GOAL_SUBTASK_REVIEW_RESULTS_ARTIFACT_KEY
 import skillbill.workflow.goal.model.GOAL_SUBTASK_REVIEW_STATE_ARTIFACT_KEY
@@ -15,6 +16,8 @@ import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_RECORDS_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_REVIEW_GENERATION_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseRecord
+import skillbill.workflow.model.WorkflowStepStatus
+import skillbill.workflow.model.workflowStepStatus
 
 class FeatureTaskRuntimeReviewGenerationRecorder(
   private val database: DatabaseSessionFactory,
@@ -32,7 +35,7 @@ class FeatureTaskRuntimeReviewGenerationRecorder(
         ?: return@transaction storedGeneration
       val tombstone = FeatureTaskRuntimePhaseRecord(
         phaseId = FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW,
-        status = STATUS_RUNNING,
+        status = WorkflowStepStatus.RUNNING,
         attemptCount = previousReview.attemptCount,
         startedAt = previousReview.startedAt,
         firstStartedAt = previousReview.firstStartedAt,
@@ -96,11 +99,11 @@ class FeatureTaskRuntimeReviewGenerationRecorder(
     val artifacts = decodeArtifacts(record.artifactsJson)
     val existingRecords = phaseRecordsFrom(artifacts)
     val previous = existingRecords[producerPhaseId] ?: return@transaction true
-    if (previous.status != STATUS_COMPLETED) {
+    if (previous.status.workflowStepStatus() != WorkflowStepStatus.COMPLETED) {
       return@transaction true
     }
     val invalidated = previous.copy(
-      status = STATUS_RUNNING,
+      status = WorkflowStepStatus.RUNNING,
       finishedAt = null,
       outputArtifact = null,
       rejectedOutput = previous.outputArtifact ?: previous.rejectedOutput,

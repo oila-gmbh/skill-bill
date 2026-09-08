@@ -1,6 +1,6 @@
 package skillbill.db.workflow
 
-import skillbill.contracts.JsonSupport
+import skillbill.contracts.JsonCodec
 import skillbill.error.InvalidGoalPlanningPreparationSchemaError
 import skillbill.ports.goalrunner.model.GoalPlanningPreparationProvenance
 import skillbill.ports.goalrunner.model.GoalPlanningPreparationRecord
@@ -37,8 +37,8 @@ internal fun Connection.upsertPreparedRow(record: GoalPlanningPreparationRecord)
   statement.setString(index++, record.provenance.phaseOutputContractVersion)
   statement.setString(index++, record.preplanPayload)
   statement.setString(index++, record.planPayload)
-  statement.setString(index++, record.preplanRepairEvidence?.let { JsonSupport.mapToJsonString(it.toArtifactMap()) })
-  statement.setString(index++, record.planRepairEvidence?.let { JsonSupport.mapToJsonString(it.toArtifactMap()) })
+  statement.setString(index++, record.preplanRepairEvidence?.let { JsonCodec.mapToJsonString(it.toArtifactMap()) })
+  statement.setString(index++, record.planRepairEvidence?.let { JsonCodec.mapToJsonString(it.toArtifactMap()) })
   statement.executeUpdate() > 0
 }
 

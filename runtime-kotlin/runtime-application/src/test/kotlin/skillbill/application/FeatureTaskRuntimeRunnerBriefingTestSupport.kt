@@ -5,11 +5,12 @@ import skillbill.application.featuretask.GoalContinuationStateRecordRequest
 import skillbill.application.featuretask.model.FeatureTaskRuntimePhaseLaunchBriefing
 import skillbill.application.featuretask.model.FeatureTaskRuntimeRunEvent
 import skillbill.application.featuretask.model.FeatureTaskRuntimeRunReport
-import skillbill.contracts.JsonSupport
+import skillbill.contracts.JsonCodec
 import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewBaseline
 import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewInput
 import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewInputFailureReason
 import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewInputResult
+import skillbill.ports.workflow.gitops.model.WorkflowGitOperationStatus
 import skillbill.review.context.model.CodeReviewExecutionMode
 import skillbill.workflow.goal.model.GoalSubtaskReviewCompactFinding
 import skillbill.workflow.goal.model.GoalSubtaskReviewDisposition
@@ -67,7 +68,10 @@ private fun briefingsForCompletedPhases(
       repositoryCheckpoint = FeatureTaskRuntimeRepositoryCheckpoint(fingerprint = "fixture-checkpoint-1"),
     ),
   )
-  FeatureTaskRuntimePhaseBriefingAssembler.assemble(handoff)
+  FeatureTaskRuntimePhaseBriefingAssembler.assemble(
+    handoff,
+    planningProjectionValidator = realPlanningProjectionValidator,
+  )
 }
 
 private fun assertBriefingRunInvariants(briefings: Map<String, FeatureTaskRuntimePhaseLaunchBriefing>) {
@@ -166,12 +170,12 @@ private fun seedStaleReviewHarness(
   val git = RecordingWorkflowGitOperations(currentBranchValue = "feat/existing-runtime-branch")
     .also { it.headCommitShaValue = COMMITTED_HEAD_SHA }
   git.goalReviewBuildResults += GoalSubtaskReviewInputResult(
-    status = "error",
+    status = WorkflowGitOperationStatus.ERROR,
     error = "Persisted review base '${"9".repeat(40)}' is not an ancestor of current HEAD.",
     failureReason = GoalSubtaskReviewInputFailureReason.BASE_NOT_ANCESTOR,
   )
   git.goalReviewBuildResults += GoalSubtaskReviewInputResult(
-    status = "ok",
+    status = WorkflowGitOperationStatus.OK,
     input = GoalSubtaskReviewInput(
       reviewBaseSha = "0".repeat(40),
       currentHeadSha = COMMITTED_HEAD_SHA,
@@ -194,9 +198,9 @@ internal fun assertNonScopeReviewPrepFailureSurfacesEvidenceStoreCause() {
   val harness = inlineGoalContinuationHarness(repoRoot, git, validJsonOutput("commit_push"))
   seedPreReviewPhases(harness)
   harness.repository.failSaveWhen = { row ->
-    val artifacts = JsonSupport.parseObjectOrNull(row.artifactsJson)
-      ?.let(JsonSupport::jsonElementToValue)
-      ?.let(JsonSupport::anyToStringAnyMap)
+    val artifacts = JsonCodec.parseObjectOrNull(row.artifactsJson)
+      ?.let(JsonCodec::jsonElementToValue)
+      ?.let(JsonCodec::anyToStringAnyMap)
       .orEmpty()
     val reserved = (artifacts["goal_subtask_review_state"] as? Map<*, *>)?.get("reserved_pass_number")
     if (reserved != null) {

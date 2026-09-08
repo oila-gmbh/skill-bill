@@ -3,7 +3,7 @@ package skillbill.application.featuretask
 import skillbill.application.featuretask.model.FeatureTaskPhaseSettlementBlockRequest
 import skillbill.application.featuretask.model.FeatureTaskPhaseSettlementCompleteRequest
 import skillbill.application.testHarnessClock
-import skillbill.contracts.JsonSupport
+import skillbill.contracts.JsonCodec
 import skillbill.ports.featuretask.model.FeatureTaskPhaseSettlement
 import java.time.Instant
 import kotlin.test.Test
@@ -26,7 +26,7 @@ class FeatureTaskPhaseSettlementServiceTest {
     )
     val envelope = assertNotNull(service.findEnvelope("wftr-test", "implement", 1))
     assertEquals("completed", envelope["status"])
-    val produced = assertNotNull(JsonSupport.anyToStringAnyMap(envelope["produced_outputs"]))
+    val produced = assertNotNull(JsonCodec.anyToStringAnyMap(envelope["produced_outputs"]))
     assertTrue((produced["value"] as String).contains("implementation_receipt"))
   }
 
@@ -50,7 +50,7 @@ class FeatureTaskPhaseSettlementServiceTest {
       ),
     )
     val envelope = assertNotNull(service.findEnvelope("wftr-test", "plan", 1))
-    val produced = assertNotNull(JsonSupport.anyToStringAnyMap(envelope["produced_outputs"]))
+    val produced = assertNotNull(JsonCodec.anyToStringAnyMap(envelope["produced_outputs"]))
     assertEquals("second", produced["value"])
   }
 

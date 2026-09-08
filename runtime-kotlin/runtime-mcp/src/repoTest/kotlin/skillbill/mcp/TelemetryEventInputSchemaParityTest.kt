@@ -2,7 +2,7 @@ package skillbill.mcp
 
 import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.dataformat.yaml.YAMLMapper
-import skillbill.contracts.JsonSupport
+import skillbill.contracts.JsonCodec
 import skillbill.mcp.core.McpToolRegistry
 import skillbill.mcp.telemetry.TelemetryEventSchemaPaths
 import skillbill.testing.repoRootFromTest
@@ -173,7 +173,7 @@ class TelemetryEventInputSchemaParityTest {
     }
   }
   private fun inputSchemaPropertyKeys(inputSchema: Map<String, Any?>): Set<String> {
-    val properties = JsonSupport.anyToStringAnyMap(inputSchema["properties"]) ?: return emptySet()
+    val properties = JsonCodec.anyToStringAnyMap(inputSchema["properties"]) ?: return emptySet()
     return properties.keys.toSet()
   }
   private fun inputSchemaRequiredKeys(inputSchema: Map<String, Any?>): Set<String> {

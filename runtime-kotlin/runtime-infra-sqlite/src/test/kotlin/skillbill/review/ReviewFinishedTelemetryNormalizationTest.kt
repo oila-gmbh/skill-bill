@@ -4,7 +4,7 @@ import skillbill.SAMPLE_REVIEW
 import skillbill.infrastructure.sqlite.review.ReviewFinishedPayloadBuildRequest
 import skillbill.infrastructure.sqlite.review.ReviewRuntime
 import skillbill.infrastructure.sqlite.review.ReviewStatsRuntime
-import skillbill.ports.telemetry.model.toReviewFinishedTelemetryPayload
+import skillbill.ports.review.toReviewFinishedTelemetryPayload
 import skillbill.review.model.ImportedReview
 import skillbill.tempDbConnection
 import java.sql.Connection

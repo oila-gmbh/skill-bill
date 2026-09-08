@@ -1,7 +1,7 @@
 package skillbill.application.goalplanning
 
 import skillbill.application.planningprojection.requireValidPlanningProjection
-import skillbill.contracts.JsonSupport
+import skillbill.contracts.JsonCodec
 import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_CONTRACT_VERSION
 import skillbill.contracts.workflow.FeatureTaskRuntimePhaseOutputSchemaPaths
 import skillbill.error.InvalidGoalPlanningPreparationSchemaError
@@ -10,6 +10,8 @@ import skillbill.ports.goalrunner.model.GoalPlanningPreparationState
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseOutputValidator
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePlanningProjectionValidator
 import skillbill.workflow.taskruntime.model.requireAcceptedOutput
+import skillbill.workflow.model.WorkflowStepStatus
+import skillbill.workflow.model.workflowStepStatus
 import java.security.MessageDigest
 
 class GoalPlanningPreparationValidator(
@@ -34,8 +36,8 @@ class GoalPlanningPreparationValidator(
     requireCompleted(plan, PLAN_PHASE_ID, label)
     requireValidProjection(plan, PLAN_PHASE_ID, label)
     return record.copy(
-      preplanPayload = JsonSupport.mapToJsonString(preplan),
-      planPayload = JsonSupport.mapToJsonString(plan),
+      preplanPayload = JsonCodec.mapToJsonString(preplan),
+      planPayload = JsonCodec.mapToJsonString(plan),
       preplanRepairEvidence = acceptedPreplan.repairEvidence ?: record.preplanRepairEvidence,
       planRepairEvidence = acceptedPlan.repairEvidence ?: record.planRepairEvidence,
     )
@@ -47,7 +49,7 @@ class GoalPlanningPreparationValidator(
 
   private fun requireCompleted(payload: Map<String, Any?>, phaseId: String, label: String) {
     val status = payload["status"]?.toString()
-    if (status != "completed") {
+    if (status.workflowStepStatus() != WorkflowStepStatus.COMPLETED) {
       throw InvalidGoalPlanningPreparationSchemaError(
         sourceLabel = label,
         fieldPath = "${phaseId}_payload.status",

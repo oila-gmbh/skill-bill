@@ -38,7 +38,7 @@ private fun ReviewAccountingNode.toPayload(): Map<String, Any?> = linkedMapOf(
   "tool_calls" to counters.toolCalls.toLong(),
   "model_turns" to counters.modelTurns.toLong(),
   "inclusive_counters" to inclusiveCounters.toPayload(),
-  "terminal_outcome" to terminalOutcome,
+  "terminal_outcome" to terminalOutcome.wireValue,
 ).apply {
   // Bundle keys are present-or-absent, never null: a lane with no bundle stays byte-identical.
   bundleCompositionDigest?.let { put("bundle_composition_digest", it) }
@@ -70,7 +70,7 @@ private fun ReviewParentAnalysisConsumption.toPayload(): Map<String, Any?> = lin
 
 private fun ReviewIntegrationAccounting.toPayload(): Map<String, Any?> = linkedMapOf(
   "commit_sequence_digest" to commitSequenceDigest,
-  "terminal_outcome" to terminalOutcome,
+  "terminal_outcome" to terminalOutcome.wireValue,
   "summarized_lane_count" to summarizedLaneCount,
   "finding_count" to findingCount,
   "counters" to counters.toPayload(),

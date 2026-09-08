@@ -1,7 +1,7 @@
 package skillbill.launcher.mcp
 
 import skillbill.error.GovernedReviewEvidenceTransportError
-import skillbill.ports.review.model.GovernedReviewEvidenceCodec
+import skillbill.ports.review.GovernedReviewEvidenceCodec
 import java.io.IOException
 import java.nio.file.Files
 import java.nio.file.Path

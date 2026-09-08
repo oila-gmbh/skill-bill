@@ -1,6 +1,6 @@
 package skillbill.mcp
 
-import skillbill.contracts.JsonSupport
+import skillbill.contracts.JsonCodec
 import skillbill.mcp.core.McpStdioServer
 import skillbill.mcp.core.McpToolSpec
 import kotlin.test.Test
@@ -38,7 +38,7 @@ class McpStdioServerTest {
         ),
       )
     val tools = response.fieldMap("result")["tools"] as List<*>
-    val names = tools.map { tool -> requireNotNull(JsonSupport.anyToStringAnyMap(tool))["name"] }
+    val names = tools.map { tool -> requireNotNull(JsonCodec.anyToStringAnyMap(tool))["name"] }
 
     assertEquals(expectedToolInventory, names)
   }

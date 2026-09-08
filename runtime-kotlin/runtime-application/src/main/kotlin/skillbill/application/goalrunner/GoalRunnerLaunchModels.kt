@@ -1,12 +1,13 @@
 package skillbill.application.goalrunner
 
-import skillbill.contracts.JsonSupport
+import skillbill.contracts.JsonCodec
 import skillbill.goalrunner.model.GoalRunnerReconciledOutcome
 import skillbill.goalrunner.model.GoalRunnerStopReason
 import skillbill.goalrunner.model.GoalRunnerStoredOutcome
 import skillbill.ports.agentrun.model.AgentRunLaunchFacts
 import skillbill.ports.agentrun.model.AgentRunLaunchOutcome
 import skillbill.ports.goalrunner.runner.model.GoalRunnerManifestState
+import skillbill.goalrunner.goalContinuationTerminalStatus
 
 internal data class GoalRunnerLaunchReconciliation(
   val refreshed: GoalRunnerManifestState,
@@ -84,9 +85,9 @@ fun terminalJsonObjectWithoutResultPrefix(stdout: String, stderr: String): Map<S
     ?.let(::topLevelJsonObjectCandidates)
     ?.singleOrNull()
   return candidate
-    ?.let(JsonSupport::parseObjectOrNull)
-    ?.let(JsonSupport::jsonElementToValue)
-    ?.let(JsonSupport::anyToStringAnyMap)
+    ?.let(JsonCodec::parseObjectOrNull)
+    ?.let(JsonCodec::jsonElementToValue)
+    ?.let(JsonCodec::anyToStringAnyMap)
     ?.takeIf { it.isImplementationReturnContract() || it.isRuntimeTerminalEnvelope() }
 }
 
@@ -105,7 +106,7 @@ fun Map<String, Any?>.isImplementationReturnContract(): Boolean = keys.containsA
 )
 
 fun Map<String, Any?>.isRuntimeTerminalEnvelope(): Boolean =
-  this["status"]?.toString() in setOf("complete", "completed", "blocked", "failed", "timeout", "timed_out") &&
+  goalContinuationTerminalStatus(this["status"]?.toString()) != null &&
     this["workflow_id"]?.toString().orEmpty().isNotBlank()
 
 fun topLevelJsonObjectCandidates(text: String): List<String> {

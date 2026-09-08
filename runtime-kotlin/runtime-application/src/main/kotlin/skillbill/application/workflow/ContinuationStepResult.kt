@@ -5,7 +5,7 @@ import skillbill.application.decomposition.DECOMPOSITION_RUNTIME_ARTIFACT_KEY
 import skillbill.application.decomposition.encodeDecompositionManifestMap
 import skillbill.application.workflow.model.GoalContinuationOutcome
 import skillbill.application.workflow.model.WorkflowContinueResult
-import skillbill.contracts.JsonSupport
+import skillbill.contracts.JsonCodec
 import skillbill.ports.persistence.UnitOfWork
 import skillbill.workflow.decomposition.DecompositionManifestValidator
 import skillbill.workflow.decomposition.model.DecompositionContinuationSelection
@@ -133,7 +133,7 @@ fun decompositionRuntimeArtifactsJson(
   ),
 )
 
-private fun jsonString(value: Any?): String = JsonSupport.json.encodeToString(
+private fun jsonString(value: Any?): String = JsonCodec.json.encodeToString(
   JsonElement.serializer(),
-  JsonSupport.valueToJsonElement(value),
+  JsonCodec.valueToJsonElement(value),
 )

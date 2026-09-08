@@ -1,10 +1,11 @@
 package skillbill.goalrunner
 
-import skillbill.goalrunner.model.GoalRunnerStatusProjectionExtras
+import skillbill.goalrunner.model.GoalRunnerStatusProjectionRuntimeInputs
 import skillbill.goalrunner.model.GoalRunnerStatusProjector
 import skillbill.workflow.decomposition.model.CurrentSubtaskIntent
 import skillbill.workflow.decomposition.model.DecompositionManifest
 import skillbill.workflow.decomposition.model.DecompositionSubtask
+import skillbill.workflow.model.WorkflowStatus
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
@@ -14,7 +15,7 @@ class GoalRunnerStatusProjectorTest {
   fun `a relaunched subtask is not counted as blocked while its child workflow runs`() {
     val projection = GoalRunnerStatusProjector.project(
       manifest = manifest(currentSubtaskStatus = "blocked"),
-      extras = GoalRunnerStatusProjectionExtras(currentWorkflowStatus = "running"),
+      extras = GoalRunnerStatusProjectionRuntimeInputs(currentWorkflowStatus = WorkflowStatus.RUNNING),
     )
 
     assertEquals(0, projection.blockedCount)
@@ -25,7 +26,7 @@ class GoalRunnerStatusProjectorTest {
   fun `a subtask with no live child keeps its durable blocked status`() {
     val projection = GoalRunnerStatusProjector.project(
       manifest = manifest(currentSubtaskStatus = "blocked"),
-      extras = GoalRunnerStatusProjectionExtras(currentWorkflowStatus = "blocked"),
+      extras = GoalRunnerStatusProjectionRuntimeInputs(currentWorkflowStatus = WorkflowStatus.BLOCKED),
     )
 
     assertEquals(1, projection.blockedCount)
@@ -36,7 +37,7 @@ class GoalRunnerStatusProjectorTest {
   fun `a blocked child workflow is reflected when the manifest still says in progress`() {
     val projection = GoalRunnerStatusProjector.project(
       manifest = manifest(currentSubtaskStatus = "in_progress"),
-      extras = GoalRunnerStatusProjectionExtras(currentWorkflowStatus = "blocked"),
+      extras = GoalRunnerStatusProjectionRuntimeInputs(currentWorkflowStatus = WorkflowStatus.BLOCKED),
     )
 
     assertEquals(1, projection.blockedCount)
@@ -49,8 +50,8 @@ class GoalRunnerStatusProjectorTest {
   fun `a block liveness signal is withheld while the child workflow runs`() {
     val projection = GoalRunnerStatusProjector.project(
       manifest = manifest(currentSubtaskStatus = "blocked"),
-      extras = GoalRunnerStatusProjectionExtras(
-        currentWorkflowStatus = "running",
+      extras = GoalRunnerStatusProjectionRuntimeInputs(
+        currentWorkflowStatus = WorkflowStatus.RUNNING,
         latestLivenessSignal = "liveness=block phase=review role=goal_runner_supervisor",
         latestObservabilityEvent = mapOf("liveness_class" to "block"),
       ),
@@ -64,8 +65,8 @@ class GoalRunnerStatusProjectorTest {
   fun `a non-block liveness signal is preserved while the child workflow runs`() {
     val projection = GoalRunnerStatusProjector.project(
       manifest = manifest(currentSubtaskStatus = "in_progress"),
-      extras = GoalRunnerStatusProjectionExtras(
-        currentWorkflowStatus = "running",
+      extras = GoalRunnerStatusProjectionRuntimeInputs(
+        currentWorkflowStatus = WorkflowStatus.RUNNING,
         latestLivenessSignal = "liveness=durable_progress phase=implement",
         latestObservabilityEvent = mapOf("liveness_class" to "durable_progress"),
       ),
@@ -79,8 +80,8 @@ class GoalRunnerStatusProjectorTest {
   fun `a worker output summary from a superseded phase is withheld while the child workflow runs`() {
     val projection = GoalRunnerStatusProjector.project(
       manifest = manifest(currentSubtaskStatus = "in_progress"),
-      extras = GoalRunnerStatusProjectionExtras(
-        currentWorkflowStatus = "running",
+      extras = GoalRunnerStatusProjectionRuntimeInputs(
+        currentWorkflowStatus = WorkflowStatus.RUNNING,
         currentStepOverride = "implement_fix",
         latestLivenessSignal = "liveness=worker_output_summary phase=audit activity=exit_status=1",
         latestObservabilityEvent = mapOf(
@@ -101,8 +102,8 @@ class GoalRunnerStatusProjectorTest {
     val signal = "liveness=worker_output_summary phase=implement activity=exit_status=0"
     val projection = GoalRunnerStatusProjector.project(
       manifest = manifest(currentSubtaskStatus = "in_progress"),
-      extras = GoalRunnerStatusProjectionExtras(
-        currentWorkflowStatus = "running",
+      extras = GoalRunnerStatusProjectionRuntimeInputs(
+        currentWorkflowStatus = WorkflowStatus.RUNNING,
         currentStepOverride = "implement",
         latestLivenessSignal = signal,
         latestObservabilityEvent = event,
@@ -117,8 +118,8 @@ class GoalRunnerStatusProjectorTest {
   fun `a stored block signal is reported once the child workflow is no longer running`() {
     val projection = GoalRunnerStatusProjector.project(
       manifest = manifest(currentSubtaskStatus = "blocked"),
-      extras = GoalRunnerStatusProjectionExtras(
-        currentWorkflowStatus = "blocked",
+      extras = GoalRunnerStatusProjectionRuntimeInputs(
+        currentWorkflowStatus = WorkflowStatus.BLOCKED,
         latestLivenessSignal = "liveness=block phase=review role=goal_runner_supervisor",
         latestObservabilityEvent = mapOf("liveness_class" to "block"),
       ),

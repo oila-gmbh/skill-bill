@@ -1,6 +1,7 @@
 package skillbill.scaffold.pointer
 
 import skillbill.error.ContractVersionMismatchError
+import skillbill.model.toPath
 import skillbill.scaffold.model.PlatformManifest
 import skillbill.scaffold.model.PointerSpec
 import skillbill.scaffold.platformpack.discoverPlatformPackManifests
@@ -58,7 +59,7 @@ private fun regeneratePackPointers(context: PointerRegenerationContext, pack: Pl
     compareBy({ it.skillRelativeDir }, { it.name }),
   )
   sortedPointers.forEach { spec ->
-    writePointerIfChanged(context, pack.packRoot, spec)
+    writePointerIfChanged(context, pack.packRoot.toPath(), spec)
   }
 }
 

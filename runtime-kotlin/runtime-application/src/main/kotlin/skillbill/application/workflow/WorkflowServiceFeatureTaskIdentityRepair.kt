@@ -3,12 +3,16 @@ package skillbill.application.workflow
 import skillbill.application.workflow.model.FeatureTaskIdentityRepairArgs
 import skillbill.application.workflow.model.WorkflowUpdateResult
 import skillbill.contracts.issuekey.normalizeIssueKey
-import skillbill.ports.continuation.FeatureTaskExecutionIdentityPolicy
+import skillbill.ports.workflow.FeatureTaskExecutionIdentityPolicy
+import skillbill.ports.workflow.get
 import skillbill.ports.workflow.model.FeatureTaskExecutionIdentity
 import skillbill.ports.workflow.model.FeatureTaskRouteScope
 import skillbill.ports.workflow.model.FeatureTaskWorkflowMode
+import skillbill.ports.workflow.save
 import skillbill.workflow.engine.WorkflowEngine
 import skillbill.workflow.engine.model.WorkflowUpdateInput
+import skillbill.workflow.model.workflowStatus
+import skillbill.workflow.engine.model.isTerminalStatus
 import java.time.OffsetDateTime
 import java.time.ZoneOffset
 
@@ -30,7 +34,7 @@ class WorkflowServiceFeatureTaskIdentityRepair(
         unitOfWork.dbPath.toString(),
       )
     val existing = requireNotNull(family.get(unitOfWork.workflowStates, workflowId))
-    if (existing.workflowStatus in family.definition.terminalStatuses) {
+    if (family.definition.isTerminalStatus(existing.workflowStatus)) {
       return WorkflowUpdateResult.Error(
         workflowId,
         "Runtime workflow '$workflowId' is already terminal with status '${existing.workflowStatus}'; " +

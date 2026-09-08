@@ -1,7 +1,7 @@
 package skillbill.application.goalrunner.planning
 
 object GoalPlanningSharedContextPacketLegacy {
-  fun migrateFromV01(packet: Map<String, Any?>): Map<String, Any?> {
+  fun migrateFromPacketVersion1(packet: Map<String, Any?>): Map<String, Any?> {
     require(packet.keys == GoalPlanningSharedContextPacket.LEGACY_V01_FIELDS) {
       "shared context packet fields are invalid for version '${GoalPlanningSharedContextPacket.LEGACY_VERSION_0_1}'"
     }
@@ -23,7 +23,7 @@ object GoalPlanningSharedContextPacketLegacy {
     return withoutLegacy + ("integrity_sha256" to GoalPlanningSharedContextPacketValidation.digest(withoutLegacy))
   }
 
-  fun migrateFromV02(packet: Map<String, Any?>): Map<String, Any?> {
+  fun migrateFromPacketVersion2(packet: Map<String, Any?>): Map<String, Any?> {
     require(packet.keys == GoalPlanningSharedContextPacket.PACKET_FIELDS) {
       "shared context packet fields are invalid for version '${GoalPlanningSharedContextPacket.LEGACY_VERSION_0_2}'"
     }
@@ -45,7 +45,7 @@ object GoalPlanningSharedContextPacketLegacy {
     return migrated + ("integrity_sha256" to GoalPlanningSharedContextPacketValidation.digest(migrated))
   }
 
-  fun migrateFromV03(packet: Map<String, Any?>): Map<String, Any?> {
+  fun migrateFromPacketVersion3(packet: Map<String, Any?>): Map<String, Any?> {
     require(packet.keys == GoalPlanningSharedContextPacket.PACKET_FIELDS) {
       "shared context packet fields are invalid for version '${GoalPlanningSharedContextPacket.LEGACY_VERSION_0_3}'"
     }

@@ -24,11 +24,12 @@ import skillbill.application.featuretask.model.GoalSubtaskReviewInputReady
 import skillbill.application.featuretask.model.RemediationBaseCoherent
 import skillbill.application.featuretask.reconcileCheckpointPathInventory
 import skillbill.application.telemetry.LifecycleTelemetryService
-import skillbill.contracts.JsonSupport
+import skillbill.contracts.JsonCodec
 import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_CONTRACT_VERSION
 import skillbill.error.InvalidFeatureTaskRuntimePhaseOutputSchemaError
 import skillbill.error.InvalidWorkflowStateSchemaError
 import skillbill.error.WorkflowIssueKeyConflictError
+import skillbill.goalrunner.model.GoalRunnerTerminalStatus
 import skillbill.install.model.InstallAgent
 import skillbill.ports.agentrun.model.AgentRunLaunchFacts
 import skillbill.ports.diagnostics.NoopRuntimeDiagnostics
@@ -37,13 +38,14 @@ import skillbill.ports.diagnostics.model.ProducerOutputEvidence
 import skillbill.ports.diagnostics.model.RejectedOutputDiagnosticError.Conflict
 import skillbill.ports.validation.ValidationGateRunner
 import skillbill.ports.validation.model.ValidationGateFinding
-import skillbill.ports.validation.model.ValidationGateRunOutcome
+import skillbill.workflow.taskruntime.model.ValidationGateRunOutcome
 import skillbill.ports.validation.model.ValidationGateRunRequest
 import skillbill.ports.validation.model.ValidationGateRunResult
 import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewBaseline
 import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewInputFailureReason
 import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewInputResult
 import skillbill.ports.workflow.gitops.model.WorkflowGitOperationResult
+import skillbill.ports.workflow.gitops.model.WorkflowGitOperationStatus
 import skillbill.review.context.model.CodeReviewExecutionMode
 import skillbill.review.model.ParallelReviewMergeResult
 import skillbill.review.model.ParallelReviewMergedFinding
@@ -322,7 +324,7 @@ class FeatureTaskRuntimeRunnerTest {
       },
     )
     val validateRecord = requireNotNull(harness.recorder.loadPhaseRecords(WORKFLOW_ID).orEmpty()["validate"])
-    assertEquals("completed", validateRecord.status)
+    assertEquals("completed", validateRecord.status.wireValue)
     assertEquals(3, validateRecord.attemptCount)
   }
 
@@ -396,7 +398,7 @@ class FeatureTaskRuntimeRunnerTest {
     assertEquals(1, harness.launchOrder().count { it == "review" })
     assertEquals(1, harness.launchOrder().count { it == "implement_fix" })
     val reviewRecord = requireNotNull(harness.recorder.loadPhaseRecords(WORKFLOW_ID).orEmpty()["review"])
-    assertEquals("completed", reviewRecord.status)
+    assertEquals("completed", reviewRecord.status.wireValue)
     assertTrue(harness.launchedPromptPhaseOrder().none { it == "review" })
   }
 
@@ -629,7 +631,7 @@ class FeatureTaskRuntimeRunnerAgentResumeTest {
     assertIs<FeatureTaskRuntimeRunReport.Completed>(report)
     assertTrue(harness.launchedPhaseOrder().contains("implement"))
     val implementRecord = requireNotNull(harness.recorder.loadPhaseRecords(WORKFLOW_ID).orEmpty()["implement"])
-    assertEquals("completed", implementRecord.status)
+    assertEquals("completed", implementRecord.status.wireValue)
   }
 
   @Test
@@ -647,7 +649,7 @@ class FeatureTaskRuntimeRunnerAgentResumeTest {
     val reviewRecord = requireNotNull(harness.recorder.loadPhaseRecords(WORKFLOW_ID).orEmpty()["review"])
     // Completed on the resumed attempt; attempt count is 2 (resumed from durable attempt 1).
     assertEquals(2, reviewRecord.attemptCount)
-    assertEquals("completed", reviewRecord.status)
+    assertEquals("completed", reviewRecord.status.wireValue)
   }
 
   @Test
@@ -686,7 +688,7 @@ class FeatureTaskRuntimeRunnerAgentResumeTest {
     assertIs<FeatureTaskRuntimeRunReport.Completed>(report)
     assertTrue(harness.launchedPhaseOrder().contains("validate"))
     val validateRecord = requireNotNull(harness.recorder.loadPhaseRecords(WORKFLOW_ID).orEmpty()["validate"])
-    assertEquals("completed", validateRecord.status)
+    assertEquals("completed", validateRecord.status.wireValue)
     assertEquals(2, validateRecord.attemptCount)
   }
 
@@ -863,7 +865,7 @@ class FeatureTaskRuntimeRunnerAgentResumeTest {
     assertContains(blocked.blockedReason, PLAN_FIX_CAP.toString())
     // A durable terminal blocked record carries the loop context.
     val planRecord = requireNotNull(harness.recorder.loadPhaseRecords(WORKFLOW_ID).orEmpty()["plan"])
-    assertEquals("blocked", planRecord.status)
+    assertEquals("blocked", planRecord.status.wireValue)
     assertEquals("plan-fix", planRecord.loopId)
     assertEquals(PLAN_FIX_CAP, planRecord.edgeIteration)
     assertContains(requireNotNull(planRecord.outputArtifact), "\"verdict\":\"needs_fix\"")
@@ -935,7 +937,7 @@ class FeatureTaskRuntimeRunnerAgentResumeTest {
       .mapNotNull { it.edgeIteration }
     assertEquals(listOf(PLAN_FIX_CAP), resumeEdgeIterations)
     val planRecord = requireNotNull(harness.recorder.loadPhaseRecords(WORKFLOW_ID).orEmpty()["plan"])
-    assertEquals("blocked", planRecord.status)
+    assertEquals("blocked", planRecord.status.wireValue)
     assertEquals(PLAN_FIX_CAP, planRecord.edgeIteration)
   }
 
@@ -1011,7 +1013,7 @@ class FeatureTaskRuntimeRunnerBlockedAndLedgerTest {
     harness.runner.run(harness.request())
 
     val implementRecord = requireNotNull(harness.recorder.loadPhaseRecords(WORKFLOW_ID).orEmpty()["write_history"])
-    assertEquals("blocked", implementRecord.status)
+    assertEquals("blocked", implementRecord.status.wireValue)
     assertTrue(requireNotNull(implementRecord.blockedReason).isNotBlank())
     assertNull(implementRecord.finishedAt)
   }
@@ -1127,7 +1129,7 @@ class FeatureTaskRuntimeRunnerBlockedAndLedgerTest {
 
     val artifacts = harness.repository.taskRuntimeArtifacts(WORKFLOW_ID)
     val ledger = requireNotNull(
-      JsonSupport.anyToStringAnyMapList(artifacts[FEATURE_TASK_RUNTIME_PHASE_LEDGER_ARTIFACT_KEY]),
+      JsonCodec.anyToStringAnyMapList(artifacts[FEATURE_TASK_RUNTIME_PHASE_LEDGER_ARTIFACT_KEY]),
     )
     val actions = ledger.map { it["action"] as String }
     assertContains(actions, "start")
@@ -1135,9 +1137,9 @@ class FeatureTaskRuntimeRunnerBlockedAndLedgerTest {
     val sequences = ledger.map { (it["sequence_number"] as Number).toInt() }
     assertEquals(sequences.sorted(), sequences)
     val records = requireNotNull(
-      JsonSupport.anyToStringAnyMap(artifacts[FEATURE_TASK_RUNTIME_PHASE_RECORDS_ARTIFACT_KEY]),
+      JsonCodec.anyToStringAnyMap(artifacts[FEATURE_TASK_RUNTIME_PHASE_RECORDS_ARTIFACT_KEY]),
     )
-    val planRecord = requireNotNull(JsonSupport.anyToStringAnyMap(records["plan"]))
+    val planRecord = requireNotNull(JsonCodec.anyToStringAnyMap(records["plan"]))
     assertEquals("completed", planRecord["status"])
     assertTrue((planRecord["started_at"] as String).isNotBlank())
     assertTrue((planRecord["finished_at"] as String).isNotBlank())
@@ -1153,7 +1155,7 @@ class FeatureTaskRuntimeRunnerBlockedAndLedgerTest {
 
     val artifacts = harness.repository.taskRuntimeArtifacts(WORKFLOW_ID)
     val ledger = requireNotNull(
-      JsonSupport.anyToStringAnyMapList(artifacts[FEATURE_TASK_RUNTIME_PHASE_LEDGER_ARTIFACT_KEY]),
+      JsonCodec.anyToStringAnyMapList(artifacts[FEATURE_TASK_RUNTIME_PHASE_LEDGER_ARTIFACT_KEY]),
     )
     val blockedEntry = ledger.single { it["action"] == "blocked" }
     assertEquals("write_history", blockedEntry["phase_id"])
@@ -1471,7 +1473,7 @@ class FeatureTaskRuntimeRemediationGenerationTest {
     assertNotEquals(siblingTip, reconciledBase)
     assertEquals("false", git.isCommitAncestor(repoRoot, recordedBase, siblingTip).value)
     val recoveries = requireNotNull(
-      JsonSupport.anyToStringAnyMapList(
+      JsonCodec.anyToStringAnyMapList(
         harness.repository.taskRuntimeArtifacts(WORKFLOW_ID)["goal_review_base_recoveries"],
       ),
     )
@@ -1736,7 +1738,7 @@ class FeatureTaskRuntimeRunnerPersistenceTest {
     assertEquals(COMPLETED_PHASES_CLEAN_RUN.toSet(), records.keys)
     COMPLETED_PHASES_CLEAN_RUN.forEach { phaseId ->
       val record = records.getValue(phaseId)
-      assertEquals("completed", record.status, "status for $phaseId")
+      assertEquals("completed", record.status.wireValue, "status for $phaseId")
       assertTrue(record.attemptCount >= 1, "attempt count for $phaseId")
       assertTrue(record.startedAt.isNotBlank(), "startedAt for $phaseId")
       assertTrue(requireNotNull(record.finishedAt).isNotBlank(), "finishedAt for $phaseId")
@@ -1934,7 +1936,7 @@ class FeatureTaskRuntimeGoalContinuationPersistenceTest {
     @Suppress("UNCHECKED_CAST")
     val participants = outcome["participating_agent_ids"] as List<String>
     assertTrue(participants.isNotEmpty(), "goal-continuation outcome must carry a non-empty participating_agent_ids")
-    val installSync = requireNotNull(JsonSupport.anyToStringAnyMap(artifacts["install_sync_result"]))
+    val installSync = requireNotNull(JsonCodec.anyToStringAnyMap(artifacts["install_sync_result"]))
     assertEquals("deferred", installSync["status"])
     assertContains(installSync["reason"].toString(), "must not block subtask completion")
   }
@@ -1951,7 +1953,7 @@ class FeatureTaskRuntimeGoalContinuationPersistenceTest {
     val report = harness.runner.run(harness.request())
 
     val completed = assertIs<FeatureTaskRuntimeRunReport.Completed>(report)
-    assertEquals("complete", completed.subtaskOutcome?.status)
+    assertEquals(GoalRunnerTerminalStatus.COMPLETE, completed.subtaskOutcome?.status)
     assertEquals(git.headCommitShaValue, completed.subtaskOutcome?.commitSha)
     assertEquals(listOf("feat/existing-runtime-branch"), git.pushedBranches, "finalisation pushes exactly once")
     val outcome = harness.repository.taskRuntimeArtifacts(WORKFLOW_ID)["goal_continuation_outcome"] as Map<*, *>
@@ -1978,9 +1980,9 @@ class FeatureTaskRuntimeGoalContinuationPersistenceTest {
 
     assertIs<FeatureTaskRuntimeRunReport.Completed>(harness.runner.run(harness.request()))
     val state = requireNotNull(
-      JsonSupport.anyToStringAnyMap(harness.repository.taskRuntimeArtifacts(WORKFLOW_ID)["goal_subtask_review_state"]),
+      JsonCodec.anyToStringAnyMap(harness.repository.taskRuntimeArtifacts(WORKFLOW_ID)["goal_subtask_review_state"]),
     )
-    val firstPass = requireNotNull(JsonSupport.anyToStringAnyMapList((state["pass_results"]))).first()
+    val firstPass = requireNotNull(JsonCodec.anyToStringAnyMapList((state["pass_results"]))).first()
     assertEquals("changes_requested", firstPass["verdict"])
     assertEquals(1, firstPass["unresolved_finding_count"])
   }
@@ -2076,7 +2078,7 @@ class FeatureTaskRuntimeGoalContinuationPersistenceTest {
       .also { it.headCommitShaValue = COMMITTED_HEAD_SHA }
     val recoveredBaseline = GoalSubtaskReviewBaseline("1".repeat(40), listOf("preexisting.tmp"))
     git.goalReviewBuildResults += GoalSubtaskReviewInputResult(
-      status = "error",
+      status = WorkflowGitOperationStatus.ERROR,
       error = "Persisted review base '${"0".repeat(40)}' is not an ancestor of current HEAD.",
       failureReason = GoalSubtaskReviewInputFailureReason.BASE_NOT_ANCESTOR,
     )
@@ -2161,7 +2163,7 @@ class FeatureTaskRuntimeGoalContinuationReviewPrepTest {
     val unreachableRemediation = "7".repeat(40)
     val recoveredRemediation = "8".repeat(40)
     git.goalReviewBuildResults += GoalSubtaskReviewInputResult(
-      status = "error",
+      status = WorkflowGitOperationStatus.ERROR,
       error = "Persisted review base '$unreachableRemediation' is not an ancestor of current HEAD.",
       failureReason = GoalSubtaskReviewInputFailureReason.BASE_NOT_ANCESTOR,
     )
@@ -2204,7 +2206,7 @@ class FeatureTaskRuntimeGoalContinuationReviewPrepTest {
     )
     assertEquals(1, git.goalReviewRecoverCalls)
     assertEquals(unreachableRemediation, git.goalReviewRecoverRequests.single().unreachableSha)
-    val evidence = JsonSupport.anyToStringAnyMapList(
+    val evidence = JsonCodec.anyToStringAnyMapList(
       harness.repository.taskRuntimeArtifacts(WORKFLOW_ID)["goal_review_base_recoveries"],
     ).orEmpty()
     val entry = evidence.single() as Map<*, *>
@@ -2219,7 +2221,7 @@ class FeatureTaskRuntimeGoalContinuationReviewPrepTest {
     val git = RecordingWorkflowGitOperations(currentBranchValue = "feat/existing-runtime-branch")
       .also { it.headCommitShaValue = COMMITTED_HEAD_SHA }
     git.goalReviewBuildResults += GoalSubtaskReviewInputResult(
-      status = "error",
+      status = WorkflowGitOperationStatus.ERROR,
       error = "Goal-subtask review must run on durable child branch 'feat/existing-runtime-branch'.",
       failureReason = null,
     )
@@ -2514,7 +2516,7 @@ class FeatureTaskRuntimeCheckpointScopeTest {
     // it drops the checkpoint, and the refresh_from_repository receipt edge then rejects the launch.
     val git = RecordingWorkflowGitOperations(currentBranchValue = "feat/existing-runtime-branch")
     git.repositoryFingerprintValue = "child-fingerprint-1"
-    git.ownedPathsResult = WorkflowGitOperationResult(status = "error", value = "")
+    git.ownedPathsResult = WorkflowGitOperationResult.Failed(value = "")
     val harness = runnerHarness(
       RuntimeHarnessConfig(
         branchSetup = BranchSetupTestConfig(gitOperations = git),
@@ -2751,7 +2753,7 @@ class FeatureTaskRuntimeRunnerSpecLifecycleTest {
     assertTrue(harness.launchedPhaseOrder().none { it == "implement" })
     // The block is durable and visible to status: the plan phase carries a terminal blocked record.
     val planRecord = requireNotNull(harness.recorder.loadPhaseRecords(WORKFLOW_ID).orEmpty()["plan"])
-    assertEquals("blocked", planRecord.status)
+    assertEquals("blocked", planRecord.status.wireValue)
     assertTrue(requireNotNull(planRecord.blockedReason).isNotBlank())
     assertNull(harness.decomposeTerminalRecorder.loadDecomposeTerminal(WORKFLOW_ID))
   }
@@ -2782,7 +2784,7 @@ class FeatureTaskRuntimeRunnerSpecLifecycleTest {
     assertContains(blocked.blockedReason, "malformed decomposition package")
     assertTrue(harness.launchedPhaseOrder().none { it == "implement" })
     val planRecord = requireNotNull(harness.recorder.loadPhaseRecords(WORKFLOW_ID).orEmpty()["plan"])
-    assertEquals("blocked", planRecord.status)
+    assertEquals("blocked", planRecord.status.wireValue)
     assertTrue(requireNotNull(planRecord.blockedReason).isNotBlank())
     assertNull(harness.decomposeTerminalRecorder.loadDecomposeTerminal(WORKFLOW_ID))
   }
@@ -2809,7 +2811,7 @@ class FeatureTaskRuntimeRunnerSpecLifecycleTest {
     assertTrue(harness.launchedPhaseOrder().isEmpty(), "no phase agent relaunches on a complete-plan resume")
     assertTrue(harness.launchedPhaseOrder().none { it == "implement" })
     val planRecord = requireNotNull(harness.recorder.loadPhaseRecords(WORKFLOW_ID).orEmpty()["plan"])
-    assertEquals("blocked", planRecord.status)
+    assertEquals("blocked", planRecord.status.wireValue)
     assertTrue(requireNotNull(planRecord.blockedReason).isNotBlank())
     assertNull(harness.decomposeTerminalRecorder.loadDecomposeTerminal(WORKFLOW_ID))
   }
@@ -2844,7 +2846,7 @@ class FeatureTaskRuntimeRunnerSpecLifecycleTest {
     assertEquals("preplan", firstBlocked.lastIncompletePhase)
     // The terminal blocked record retained the loop context — the watermark the bug dropped.
     val blockedPreplan = requireNotNull(harness.recorder.loadPhaseRecords(WORKFLOW_ID).orEmpty()["preplan"])
-    assertEquals("blocked", blockedPreplan.status)
+    assertEquals("blocked", blockedPreplan.status.wireValue)
     assertEquals("plan-fix", blockedPreplan.loopId)
     assertEquals(1, blockedPreplan.edgeIteration)
 
@@ -2881,7 +2883,7 @@ class FeatureTaskRuntimeReviewFixLoopTest {
     assertIs<FeatureTaskRuntimeRunReport.Blocked>(harness.runner.run(harness.request()))
 
     val writeHistoryRecord = requireNotNull(harness.recorder.loadPhaseRecords(WORKFLOW_ID).orEmpty()["write_history"])
-    assertEquals("blocked", writeHistoryRecord.status)
+    assertEquals("blocked", writeHistoryRecord.status.wireValue)
     assertNull(writeHistoryRecord.rejectedOutput)
     assertNull(
       writeHistoryRecord.outputArtifact,
@@ -2920,7 +2922,7 @@ class FeatureTaskRuntimeReviewFixLoopTest {
 
     assertIs<FeatureTaskRuntimeRunReport.Completed>(report)
     val reviewRecord = requireNotNull(harness.recorder.loadPhaseRecords(WORKFLOW_ID).orEmpty()["review"])
-    assertEquals("completed", reviewRecord.status)
+    assertEquals("completed", reviewRecord.status.wireValue)
   }
 
   @Test
@@ -2944,7 +2946,7 @@ class FeatureTaskRuntimeReviewFixLoopTest {
     assertIs<FeatureTaskRuntimeRunReport.Completed>(report)
     assertTrue(harness.launchOrder().contains("review"))
     val reviewRecord = requireNotNull(harness.recorder.loadPhaseRecords(WORKFLOW_ID).orEmpty()["review"])
-    assertEquals("completed", reviewRecord.status)
+    assertEquals("completed", reviewRecord.status.wireValue)
     assertEquals(3, reviewRecord.attemptCount)
   }
 
@@ -3171,13 +3173,13 @@ class FeatureTaskRuntimeReviewFixLoopTest {
 
     assertIs<FeatureTaskRuntimeRunReport.Blocked>(first)
     val blockedReview = requireNotNull(harness.recorder.loadPhaseRecords(WORKFLOW_ID).orEmpty()["review"])
-    assertEquals("blocked", blockedReview.status)
+    assertEquals("blocked", blockedReview.status.wireValue)
     assertEquals(1, blockedReview.reviewPassNumber)
     assertIs<FeatureTaskRuntimeRunReport.Completed>(harness.runner.run(harness.request()))
     assertEquals(2, harness.launchOrder().count { it == "review" })
     assertTrue(harness.launchedPromptPhaseOrder().none { it == "review" })
     val completedReview = requireNotNull(harness.recorder.loadPhaseRecords(WORKFLOW_ID).orEmpty()["review"])
-    assertEquals("completed", completedReview.status)
+    assertEquals("completed", completedReview.status.wireValue)
     assertEquals(1, completedReview.reviewPassNumber)
   }
 
@@ -3448,7 +3450,7 @@ class FeatureTaskRuntimeReviewFixLoopTest {
     assertTrue(launched.contains("review"), "the resumed review relaunched rather than pre-blocking")
     assertTrue(launched.contains("validate"), "the run advances to validate after the single fix round")
     val reviewRecord = requireNotNull(harness.recorder.loadPhaseRecords(WORKFLOW_ID).orEmpty()["review"])
-    assertEquals("completed", reviewRecord.status)
+    assertEquals("completed", reviewRecord.status.wireValue)
   }
 
   // (j) AC1/SKILL-85-F-003: a review output carrying NEITHER a structured verdict NOR a findings array
@@ -3463,7 +3465,7 @@ class FeatureTaskRuntimeReviewFixLoopTest {
     assertIs<FeatureTaskRuntimeRunReport.Completed>(report)
     assertEquals(1, harness.launchOrder().count { it == "review" })
     val reviewRecord = requireNotNull(harness.recorder.loadPhaseRecords(WORKFLOW_ID).orEmpty()["review"])
-    assertEquals("completed", reviewRecord.status)
+    assertEquals("completed", reviewRecord.status.wireValue)
     val artifact = requireNotNull(reviewRecord.outputArtifact)
     assertTrue(artifact.contains("\"findings\""), artifact)
     assertTrue(artifact.contains("\"review_run_id\""), artifact)
@@ -3519,7 +3521,7 @@ class FeatureTaskRuntimeBranchSetupRunnerTest {
   fun `cannot establish a feature branch blocks loudly and launches no file-mutating phase`() {
     val git = RecordingWorkflowGitOperations(
       currentBranchValue = "main",
-      checkoutResult = WorkflowGitOperationResult(status = "error", error = "checkout exploded"),
+      checkoutResult = WorkflowGitOperationResult.Failed(error = "checkout exploded"),
     )
     val harness = runnerHarness(conventionRuntimeConfig(git))
 
@@ -3538,7 +3540,7 @@ class FeatureTaskRuntimeBranchSetupRunnerTest {
   @Test
   fun `unreadable current branch blocks loudly and launches no file-mutating phase`() {
     val git = RecordingWorkflowGitOperations(
-      currentBranchResult = WorkflowGitOperationResult(status = "error", error = "git HEAD unreadable"),
+      currentBranchResult = WorkflowGitOperationResult.Failed(error = "git HEAD unreadable"),
     )
     val harness = runnerHarness(conventionRuntimeConfig(git))
 
@@ -3645,7 +3647,7 @@ class FeatureTaskRuntimeBranchSetupRunnerTest {
     val persistedBranch = "feat/existence-unreadable"
     val git = RecordingWorkflowGitOperations(
       currentBranchValue = "main",
-      branchExistsResult = WorkflowGitOperationResult(status = "error", error = "rev-parse exploded"),
+      branchExistsResult = WorkflowGitOperationResult.Failed(error = "rev-parse exploded"),
     )
     val harness = runnerHarness(conventionRuntimeConfig(git))
     harness.seedResolvedBranch(persistedBranch, baseBranch = "main", created = true)
@@ -3734,7 +3736,7 @@ class FeatureTaskRuntimeBranchSetupRunnerTest {
   fun `no file-mutating phase launches while on the default branch`() {
     val git = RecordingWorkflowGitOperations(
       currentBranchValue = "main",
-      checkoutResult = WorkflowGitOperationResult(status = "error", error = "denied"),
+      checkoutResult = WorkflowGitOperationResult.Failed(error = "denied"),
     )
     val harness = runnerHarness(conventionRuntimeConfig(git))
 
@@ -3751,7 +3753,7 @@ class FeatureTaskRuntimeBranchSetupRunnerTest {
   fun `branch-setup block is durably visible to status, observability, and the ledger`() {
     val git = RecordingWorkflowGitOperations(
       currentBranchValue = "main",
-      checkoutResult = WorkflowGitOperationResult(status = "error", error = "checkout exploded"),
+      checkoutResult = WorkflowGitOperationResult.Failed(error = "checkout exploded"),
     )
     val harness = runnerHarness(conventionRuntimeConfig(git))
 
@@ -3775,7 +3777,7 @@ class FeatureTaskRuntimeBranchSetupRunnerTest {
     assertEquals("blocked", implementStatus.status)
 
     val implementRecord = requireNotNull(harness.recorder.loadPhaseRecords(WORKFLOW_ID).orEmpty()["implement"])
-    assertEquals("blocked", implementRecord.status)
+    assertEquals("blocked", implementRecord.status.wireValue)
     assertContains(requireNotNull(implementRecord.blockedReason), "checkout exploded")
 
     // Typed observability event mirrors the per-phase block path.
@@ -3808,7 +3810,7 @@ class FeatureTaskRuntimeBranchSetupRunnerTest {
           if (event is FeatureTaskRuntimeRunEvent.PhaseStarted && event.phaseId == "implement") {
             val preLaunchRecord =
               requireNotNull(harness.recorder.loadPhaseRecords(WORKFLOW_ID).orEmpty()["implement"])
-            assertEquals("blocked", preLaunchRecord.status)
+            assertEquals("blocked", preLaunchRecord.status.wireValue)
             assertEquals(BRANCH_SETUP_AGENT_ID, preLaunchRecord.resolvedAgentId)
             observedPreLaunchRecord = true
           }
@@ -3827,7 +3829,7 @@ class FeatureTaskRuntimeBranchSetupRunnerTest {
     assertEquals(AGENT_LAUNCHED_PHASES.filterNot(NON_FILE_MUTATING_PHASES::contains), harness.launchedPhaseOrder())
     // The durable record is superseded back to a completed implement-agent record, not left blocked.
     val implementRecord = requireNotNull(harness.recorder.loadPhaseRecords(WORKFLOW_ID).orEmpty()["implement"])
-    assertEquals("completed", implementRecord.status)
+    assertEquals("completed", implementRecord.status.wireValue)
     assertEquals(phaseAgent("implement"), implementRecord.resolvedAgentId)
     assertEquals(1, implementRecord.attemptCount)
     assertTrue(observedPreLaunchRecord, "the stale branch-setup block must remain durable until real phase launch")
@@ -4000,7 +4002,7 @@ class FeatureTaskRuntimeReconcileOnResumeTest {
   @Test
   fun `dirty tree checkpoint that fails to stage blocks loudly and never commits`() {
     val git = RecordingWorkflowGitOperations(currentBranchValue = "feat/existing-runtime-branch")
-    git.stagePathsResult = WorkflowGitOperationResult(status = "error", error = "stage failed")
+    git.stagePathsResult = WorkflowGitOperationResult.Failed(error = "stage failed")
     val harness = runnerHarness(
       RuntimeHarnessConfig(
         branchSetup = BranchSetupTestConfig(gitOperations = git),
@@ -4084,7 +4086,7 @@ class FeatureTaskRuntimeReconcileOnResumeTest {
   fun `a failed checkpoint commit restores the pre-checkpoint index and reports the restore outcome`() {
     val git = checkpointGit(ownedPaths = listOf("src/Owned.kt"))
     git.indexSnapshotValue = "100644 ${"a".repeat(40)} 0\tsrc/Owned.kt"
-    git.createCommitResult = WorkflowGitOperationResult(status = "error", error = "commit failed")
+    git.createCommitResult = WorkflowGitOperationResult.Failed(error = "commit failed")
     val harness = checkpointRunHarness(git)
 
     val report = harness.runner.run(harness.request(IMPLEMENT_FIX_CYCLE))
@@ -4099,8 +4101,8 @@ class FeatureTaskRuntimeReconcileOnResumeTest {
   @Test
   fun `a restore failure is reported in the checkpoint block reason rather than swallowed`() {
     val git = checkpointGit(ownedPaths = listOf("src/Owned.kt"))
-    git.createCommitResult = WorkflowGitOperationResult(status = "error", error = "commit failed")
-    git.restoreIndexStateResult = WorkflowGitOperationResult(status = "error", error = "restore failed")
+    git.createCommitResult = WorkflowGitOperationResult.Failed(error = "commit failed")
+    git.restoreIndexStateResult = WorkflowGitOperationResult.Failed(error = "restore failed")
     val harness = checkpointRunHarness(git)
 
     val report = harness.runner.run(harness.request(IMPLEMENT_FIX_CYCLE))
@@ -4182,7 +4184,7 @@ class FeatureTaskRuntimeReconcileOnResumeTest {
   @Test
   fun `a failed pre-amend ref write blocks the checkpoint and leaves HEAD unchanged`() {
     val git = checkpointGit(ownedPaths = listOf("src/Owned.kt"))
-    git.updateCheckpointRefResult = WorkflowGitOperationResult(status = "error", error = "ref write refused")
+    git.updateCheckpointRefResult = WorkflowGitOperationResult.Failed(error = "ref write refused")
     val harness = checkpointRunHarness(git)
 
     val report = harness.runner.run(harness.request(IMPLEMENT_FIX_CYCLE))
@@ -4274,7 +4276,7 @@ class FeatureTaskRuntimeReconcileOnResumeTest {
   @Test
   fun `an amend whose checkpoint ref occupancy cannot be determined is refused before HEAD is rewritten`() {
     val git = checkpointGit(ownedPaths = listOf("src/Owned.kt"))
-    git.resolveCheckpointRefResult = WorkflowGitOperationResult(status = "error", error = "ref lookup failed")
+    git.resolveCheckpointRefResult = WorkflowGitOperationResult.Failed(error = "ref lookup failed")
     val harness = checkpointRunHarness(git)
 
     val report = harness.runner.run(harness.request(IMPLEMENT_FIX_CYCLE))
@@ -4458,7 +4460,7 @@ class FeatureTaskRuntimeCheckpointHistoryOnResumeTest {
             it.createCommitMessages.any { message -> message.contains("remediation checkpoint") } &&
             revision.trim() != parentSha.trim()
           ) {
-            WorkflowGitOperationResult(status = "ok", value = "")
+            WorkflowGitOperationResult.Ok(value = "")
           } else {
             null
           }
@@ -4484,7 +4486,7 @@ class FeatureTaskRuntimeCheckpointHistoryOnResumeTest {
 
     assertIs<FeatureTaskRuntimeRunReport.Blocked>(report)
     val evidence = requireNotNull(
-      JsonSupport.anyToStringAnyMapList(
+      JsonCodec.anyToStringAnyMapList(
         harness.repository.taskRuntimeArtifacts(WORKFLOW_ID)[GOAL_REVIEW_BASE_RECOVERIES_ARTIFACT_KEY],
       ),
     )
@@ -4768,7 +4770,7 @@ class FeatureTaskRuntimeCheckpointHistoryOnResumeTest {
     assertEquals("implement", firstBlocked.lastIncompletePhase)
     // The terminal blocked record retained the loop context — the watermark a reset would drop.
     val blockedImplement = requireNotNull(harness.recorder.loadPhaseRecords(WORKFLOW_ID).orEmpty()["implement"])
-    assertEquals("blocked", blockedImplement.status)
+    assertEquals("blocked", blockedImplement.status.wireValue)
     assertEquals("implement-fix", blockedImplement.loopId)
     assertEquals(1, blockedImplement.edgeIteration)
 
@@ -5110,7 +5112,7 @@ class ProviderLimitAndProcessFailureBudgetTest {
     repeat(4) { assertIs<FeatureTaskRuntimeRunReport.Paused>(harness.runner.run(harness.request())) }
 
     val record = requireNotNull(harness.recorder.loadPhaseRecords(WORKFLOW_ID).orEmpty()["preplan"])
-    assertEquals("paused", record.status)
+    assertEquals("paused", record.status.wireValue)
     assertEquals(FeatureTaskRuntimeFailureDisposition.RETRYABLE, record.failureDisposition)
     assertEquals(4, harness.launcher.requests.size, "every resume must relaunch, not re-surface a block")
   }
@@ -5192,18 +5194,18 @@ class ProviderLimitAndProcessFailureBudgetTest {
       "the reopened phase must actually relaunch instead of re-surfacing the block the operator acted on",
     )
     val record = requireNotNull(harness.recorder.loadPhaseRecords(WORKFLOW_ID).orEmpty()[stuckPhase])
-    assertEquals("completed", record.status)
+    assertEquals("completed", record.status.wireValue)
   }
 
   // Mirrors what `feature-task-runtime retry-blocked` persists: the phase record reopens to pending
   // with its attempt count intact, alongside the operator's reason.
   private fun reopenPhaseAsOperator(harness: RunnerHarness, phaseId: String) {
     val artifacts = harness.repository.taskRuntimeArtifacts(WORKFLOW_ID).toMutableMap()
-    val records = JsonSupport
+    val records = JsonCodec
       .anyToStringAnyMap(artifacts["feature_task_runtime_phase_records"])
       .orEmpty()
       .toMutableMap()
-    val record = requireNotNull(JsonSupport.anyToStringAnyMap(records[phaseId]))
+    val record = requireNotNull(JsonCodec.anyToStringAnyMap(records[phaseId]))
       .toMutableMap()
     record["status"] = "pending"
     record["blocked_reason"] = null
@@ -5218,7 +5220,7 @@ class ProviderLimitAndProcessFailureBudgetTest {
     // same entry the retry-blocked command writes.
     val ledger = (artifacts["feature_task_runtime_phase_ledger"] as? List<*>).orEmpty()
     val nextSequence = ledger
-      .mapNotNull { JsonSupport.anyToStringAnyMap(it)?.get("sequence_number") as? Number }
+      .mapNotNull { JsonCodec.anyToStringAnyMap(it)?.get("sequence_number") as? Number }
       .maxOfOrNull { it.toInt() + 1 } ?: 0
     artifacts["feature_task_runtime_phase_ledger"] = ledger + mapOf<String, Any?>(
       "action" to "retry",
@@ -5321,7 +5323,7 @@ class FeatureTaskRuntimeOperatorBlockSettlementTest {
     assertContains(blocked.blockedReason, "Cannot connect to docker.sock.")
     assertFalse(blocked.blockedReason.contains("retrying so the agent can fix failures"))
     val validateRecord = requireNotNull(harness.recorder.loadPhaseRecords(WORKFLOW_ID).orEmpty()["validate"])
-    assertEquals("blocked", validateRecord.status)
+    assertEquals("blocked", validateRecord.status.wireValue)
     assertEquals(FeatureTaskRuntimeFailureDisposition.NEEDS_USER_ACTION, validateRecord.failureDisposition)
     assertEquals(1, validateRecord.attemptCount)
     val ledger = requireNotNull(harness.recorder.loadPhaseLedger(WORKFLOW_ID).orEmpty())
@@ -5379,7 +5381,7 @@ class FeatureTaskRuntimeOperatorBlockSettlementTest {
     assertEquals(1, buildRepairLaunches)
     assertContains(blocked.blockedReason, "Cannot connect to Gradle daemon.")
     val buildRecord = requireNotNull(harness.recorder.loadPhaseRecords(WORKFLOW_ID).orEmpty()["build"])
-    assertEquals("blocked", buildRecord.status)
+    assertEquals("blocked", buildRecord.status.wireValue)
     assertEquals(FeatureTaskRuntimeFailureDisposition.NEEDS_USER_ACTION, buildRecord.failureDisposition)
     val ledger = requireNotNull(harness.recorder.loadPhaseLedger(WORKFLOW_ID).orEmpty())
     assertTrue(ledger.any { it.action == FeatureTaskRuntimePhaseLedgerAction.BLOCKED && it.phaseId == "build" })
@@ -5415,7 +5417,7 @@ class FeatureTaskRuntimeOperatorBlockSettlementTest {
     assertTrue(blocked.blockedReason.isNotBlank())
     assertContains(blocked.blockedReason, "Cannot connect to docker.sock.")
     val subtaskOutcome = requireNotNull(blocked.subtaskOutcome)
-    assertEquals("blocked", subtaskOutcome.status)
+    assertEquals(GoalRunnerTerminalStatus.BLOCKED, subtaskOutcome.status)
     assertEquals(blocked.blockedReason, subtaskOutcome.blockedReason)
     assertTrue(subtaskOutcome.blockedReason.orEmpty().isNotBlank())
   }

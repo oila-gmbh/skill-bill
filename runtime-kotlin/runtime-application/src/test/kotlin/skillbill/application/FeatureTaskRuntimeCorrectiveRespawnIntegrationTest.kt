@@ -189,7 +189,7 @@ class FeatureTaskRuntimeCorrectiveRespawnIntegrationTest {
     assertEquals("satisfied", repaired.normalizedOutput.envelope["verdict"])
     assertEquals(1, auditAttempts, "shape restore must not relaunch audit")
     val auditRecord = requireNotNull(harness.recorder.loadPhaseRecords(WORKFLOW_ID).orEmpty()["audit"])
-    assertEquals("completed", auditRecord.status)
+    assertEquals("completed", auditRecord.status.wireValue)
     assertContains(requireNotNull(auditRecord.outputArtifact), "\"verdict\"")
   }
 

@@ -24,8 +24,11 @@ import skillbill.goalrunner.model.GoalPlanningStatusState
 import skillbill.goalrunner.model.GoalRunnerStatusProjection
 import skillbill.ports.diagnostics.RuntimeDiagnostics
 import skillbill.ports.persistence.UnitOfWork
+import skillbill.ports.workflow.get
 import skillbill.workflow.engine.WorkflowEngine
 import skillbill.workflow.engine.WorkflowSnapshotValidator
+import skillbill.workflow.model.WorkflowStepStatus
+import skillbill.workflow.model.workflowStepStatus
 import java.io.IOException
 import java.nio.file.Path
 import java.time.Instant
@@ -281,7 +284,9 @@ class IdeStatusProjector(
     val stepId = view.currentStepId.takeIf(String::isNotBlank) ?: "unknown"
     val stepLabel = family.definition.stepLabels[stepId]
       ?: stepId.replace('_', ' ').replaceFirstChar { it.titlecase() }
-    val completed = view.steps.count { it.status == "completed" || it.status == "skipped" }
+    val completed = view.steps.count {
+      it.status.workflowStepStatus() in setOf(WorkflowStepStatus.COMPLETED, WorkflowStepStatus.SKIPPED)
+    }
     val total = family.definition.stepIds.size
     val progress = IdeStatusProgress(completed = completed, total = total).takeIf { total > 0 }
     val startedAt = parseInstantOrNull(snapshot.startedAt) ?: candidate.startedAt

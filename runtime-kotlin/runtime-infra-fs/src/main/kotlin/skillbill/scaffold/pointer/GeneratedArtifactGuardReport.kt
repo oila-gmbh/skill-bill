@@ -1,6 +1,7 @@
 package skillbill.scaffold.pointer
 
 import skillbill.error.ShellContentContractException
+import skillbill.model.toPath
 import skillbill.nativeagent.validation.discoverNativeAgentGeneratedArtifactFiles
 import skillbill.scaffold.platformpack.loadPlatformManifest
 import skillbill.scaffold.runtime.requiredSupportingFilesForSkill
@@ -165,7 +166,7 @@ private fun discoverDeclaredPointerFiles(root: Path): List<Path> {
           return@flatMap emptyList<Path>().stream()
         }
         pack.pointers
-          .map { spec -> pack.packRoot.resolve(spec.skillRelativeDir).resolve(spec.name).normalize() }
+          .map { spec -> pack.packRoot.resolve(spec.skillRelativeDir).resolve(spec.name).toPath().normalize() }
           .filter { pointerFile ->
             Files.isSymbolicLink(pointerFile) ||
               Files.isRegularFile(pointerFile, LinkOption.NOFOLLOW_LINKS)

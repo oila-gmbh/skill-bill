@@ -1,8 +1,8 @@
 package skillbill.mcp.workflow
 
+import skillbill.application.workflow.WorkflowWireProjections
 import skillbill.goalrunner.model.GOAL_ATTEMPT_LEDGER_ARTIFACT_KEY
 import skillbill.goalrunner.model.GoalPlanningStatusSnapshot
-import skillbill.workflow.engine.WorkflowEngine
 import skillbill.workflow.engine.model.WorkflowSnapshotView
 import skillbill.workflow.goal.GoalObservabilityEventValidator
 import skillbill.workflow.goal.model.GOAL_PROGRESS_LATEST_EVENT_ARTIFACT_KEY
@@ -11,7 +11,7 @@ import skillbill.workflow.goal.model.goalObservabilityLatestEventFromArtifacts
 internal fun workflowSnapshotMcpMap(
   snapshot: WorkflowSnapshotView,
   goalObservabilityEventValidator: GoalObservabilityEventValidator,
-): LinkedHashMap<String, Any?> = LinkedHashMap(WorkflowEngine.snapshotMap(snapshot)).apply {
+): LinkedHashMap<String, Any?> = LinkedHashMap(WorkflowWireProjections.snapshotMap(snapshot)).apply {
   goalObservabilitySummaryFromArtifacts(snapshot.artifacts, goalObservabilityEventValidator)?.let { summary ->
     put("goal_observability", summary)
   }

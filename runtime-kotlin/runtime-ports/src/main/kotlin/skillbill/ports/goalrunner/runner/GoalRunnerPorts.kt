@@ -1,8 +1,8 @@
 package skillbill.ports.goalrunner.runner
 
 import skillbill.boundary.OpenBoundaryMap
-import skillbill.contracts.diagnostics.RecordingNullObjectDiagnostics
 import skillbill.goalrunner.model.GoalPlanningStatusSnapshot
+import skillbill.goalrunner.model.GoalRunnerAttemptLedgerSummary
 import skillbill.goalrunner.model.GoalRunnerControlState
 import skillbill.goalrunner.model.GoalRunnerExecutionLease
 import skillbill.goalrunner.model.GoalRunnerStoredOutcome
@@ -10,7 +10,6 @@ import skillbill.ports.agentrun.model.AgentRunLaunchOutcome
 import skillbill.ports.agentrun.model.AgentRunSpawnAuthorization
 import skillbill.ports.goalrunner.runner.model.GoalPullRequestRequest
 import skillbill.ports.goalrunner.runner.model.GoalPullRequestResult
-import skillbill.ports.goalrunner.runner.model.GoalRunnerAttemptLedgerSummary
 import skillbill.ports.goalrunner.runner.model.GoalRunnerChildWorkflowSetup
 import skillbill.ports.goalrunner.runner.model.GoalRunnerCompletionPersistenceResult
 import skillbill.ports.goalrunner.runner.model.GoalRunnerLaunchAuthorization
@@ -26,7 +25,7 @@ import skillbill.workflow.goal.model.GoalSubtaskReviewPassResult
 import skillbill.workflow.goal.model.GoalSubtaskReviewState
 import java.nio.file.Path
 
-interface GoalRunnerManifestLookup {
+interface GoalRunnerManifestQueries {
   fun loadByIssueKey(
     issueKey: String,
     dbPathOverride: String? = null,
@@ -37,20 +36,34 @@ interface GoalRunnerManifestLookup {
     issueKey: String,
     dbPathOverride: String? = null,
     repoRoot: Path? = null,
-  ): GoalRunnerManifestState? = loadByIssueKey(issueKey, dbPathOverride, repoRoot)
+  ): GoalRunnerManifestState?
 
   fun readByIssueKeyIfPresent(
     issueKey: String,
     dbPathOverride: String? = null,
     repoRoot: Path? = null,
-  ): GoalRunnerManifestState? = readByIssueKey(issueKey, dbPathOverride, repoRoot)
+  ): GoalRunnerManifestState?
 
-  fun loadDurableByIssueKey(issueKey: String, dbPathOverride: String? = null): GoalRunnerManifestState? =
-    loadByIssueKey(issueKey, dbPathOverride, null)
+  fun loadDurableByIssueKey(issueKey: String, dbPathOverride: String? = null): GoalRunnerManifestState?
+
+  fun controlState(parentWorkflowId: String, dbPathOverride: String? = null): GoalRunnerControlState
+
+  fun executionLease(parentWorkflowId: String, dbPathOverride: String? = null): GoalRunnerExecutionLease?
+
+  fun reviewMode(parentWorkflowId: String, dbPathOverride: String? = null): CodeReviewExecutionMode?
+
+  fun reviewPolicy(parentWorkflowId: String, dbPathOverride: String? = null): GoalRunnerReviewPolicy?
+
+  fun outOfBandAcceptances(
+    parentWorkflowId: String,
+    dbPathOverride: String? = null,
+  ): Map<Int, GoalRunnerOutOfBandAcceptance>
+
+  fun sharedPreplanPayloadSha256(parentWorkflowId: String, dbPathOverride: String? = null): String?
 }
 
-interface GoalRunnerManifestPauseOps {
-  fun requestPause(parentWorkflowId: String, dbPathOverride: String? = null): GoalRunnerControlState? = null
+interface GoalRunnerManifestExecutionCommands {
+  fun requestPause(parentWorkflowId: String, dbPathOverride: String? = null): GoalRunnerControlState?
 
   fun pauseNow(
     parentWorkflowId: String,
@@ -58,21 +71,17 @@ interface GoalRunnerManifestPauseOps {
     pausedAt: String,
     overwriteExistingReason: Boolean = false,
     dbPathOverride: String? = null,
-  ): GoalRunnerControlState? = null
+  ): GoalRunnerControlState?
 
   fun requestPauseByIssueKey(
     issueKey: String,
     dbPathOverride: String? = null,
     repoRoot: Path? = null,
-  ): GoalRunnerPausePersistenceResult? = null
+  ): GoalRunnerPausePersistenceResult?
 
-  fun resume(parentWorkflowId: String, dbPathOverride: String? = null): GoalRunnerManifestState? = null
+  fun resume(parentWorkflowId: String, dbPathOverride: String? = null): GoalRunnerManifestState?
 
-  fun pauseAtBoundary(state: GoalRunnerManifestState, dbPathOverride: String? = null): GoalRunnerManifestState = state
-}
-
-interface GoalRunnerManifestExecutionLease {
-  fun executionLease(parentWorkflowId: String, dbPathOverride: String? = null): GoalRunnerExecutionLease? = null
+  fun pauseAtBoundary(state: GoalRunnerManifestState, dbPathOverride: String? = null): GoalRunnerManifestState
 
   fun acquireExecutionLease(
     parentWorkflowId: String,
@@ -95,143 +104,103 @@ interface GoalRunnerManifestExecutionLease {
   ): Boolean
 }
 
-interface GoalRunnerManifestControlCommands {
-  fun controlState(parentWorkflowId: String, dbPathOverride: String? = null): GoalRunnerControlState =
-    GoalRunnerControlState()
-
+interface GoalRunnerManifestControlWrites {
   fun bindRepositoryIdentity(
     parentWorkflowId: String,
     repositoryIdentity: String,
     dbPathOverride: String? = null,
-  ): GoalRunnerControlState {
-    require(repositoryIdentity.isNotBlank()) { "repositoryIdentity is required." }
-    return controlState(parentWorkflowId, dbPathOverride)
-  }
+  ): GoalRunnerControlState
 
   fun persistStopAfterSubtask(
     parentWorkflowId: String,
     subtaskId: Int,
     dbPathOverride: String? = null,
-  ): GoalRunnerControlState = GoalRunnerControlState(stopAfterSubtaskId = subtaskId)
+  ): GoalRunnerControlState
 
   fun authorizeSubtaskLaunch(
     state: GoalRunnerManifestState,
     subtaskId: Int,
     dbPathOverride: String? = null,
-  ): GoalRunnerLaunchAuthorization {
-    require(subtaskId > 0) { "subtaskId must be positive." }
-    val controls = controlState(state.parentWorkflowId, dbPathOverride)
-    return GoalRunnerLaunchAuthorization(
-      authorized = !controls.requiresPauseBoundary(state.manifest),
-      controlState = controls,
-    )
-  }
+  ): GoalRunnerLaunchAuthorization
 
-  fun authorizePlanningLaunch(parentWorkflowId: String, dbPathOverride: String? = null): AgentRunSpawnAuthorization? =
-    null
+  fun authorizePlanningLaunch(parentWorkflowId: String, dbPathOverride: String? = null): AgentRunSpawnAuthorization?
 
   fun persistControlState(
     parentWorkflowId: String,
     state: GoalRunnerControlState,
     dbPathOverride: String? = null,
-  ): GoalRunnerControlState = state
+  ): GoalRunnerControlState
+
+  fun persistReviewMode(
+    parentWorkflowId: String,
+    mode: CodeReviewExecutionMode,
+    dbPathOverride: String? = null,
+  ): CodeReviewExecutionMode
+
+  fun persistReviewPolicy(
+    parentWorkflowId: String,
+    policy: GoalRunnerReviewPolicy,
+    dbPathOverride: String? = null,
+  ): GoalRunnerReviewPolicy
+
+  fun persistOutOfBandAcceptance(
+    parentWorkflowId: String,
+    acceptance: GoalRunnerOutOfBandAcceptance,
+    dbPathOverride: String? = null,
+  ): GoalRunnerOutOfBandAcceptance
 }
 
-interface GoalRunnerManifestPersistenceCommands {
+interface GoalRunnerManifestStateWrites {
   fun planningStatus(
     parentWorkflowId: String,
     orderedSubtaskIds: List<Int>,
     blockedSubtaskId: Int? = null,
     blockedReason: String? = null,
     dbPathOverride: String? = null,
-  ): GoalPlanningStatusSnapshot? = null
+  ): GoalPlanningStatusSnapshot?
 
   fun save(state: GoalRunnerManifestState, dbPathOverride: String? = null): GoalRunnerManifestState
 
-  fun saveRuntimeState(state: GoalRunnerManifestState, dbPathOverride: String? = null): GoalRunnerManifestState =
-    save(state, dbPathOverride)
+  fun saveRuntimeState(state: GoalRunnerManifestState, dbPathOverride: String? = null): GoalRunnerManifestState
 
   fun saveCompletedSubtaskAtBoundary(
     state: GoalRunnerManifestState,
     subtaskId: Int,
     dbPathOverride: String? = null,
-  ): GoalRunnerCompletionPersistenceResult = GoalRunnerCompletionPersistenceResult(
-    state = saveRuntimeState(state, dbPathOverride),
-    paused = false,
-  )
+  ): GoalRunnerCompletionPersistenceResult
 
   fun saveHardReset(
     state: GoalRunnerManifestState,
     dbPathOverride: String? = null,
     preservePlanning: Boolean = false,
-  ): GoalRunnerManifestState = error("Goal runner manifest store must atomically persist hard reset state.")
+  ): GoalRunnerManifestState
 
   fun deleteIncompatibleChildWorkflow(
     state: GoalRunnerManifestState,
     subtaskId: Int,
     workflowId: String,
     dbPathOverride: String? = null,
-  ): GoalRunnerManifestState =
-    error("Goal runner manifest store must atomically delete a selected incompatible child workflow.")
+  ): GoalRunnerManifestState
 
   fun saveScopedReplan(
     state: GoalRunnerManifestState,
     subtaskId: Int,
     dbPathOverride: String? = null,
     options: GoalRunnerScopedReplanOptions = GoalRunnerScopedReplanOptions(),
-  ): GoalRunnerScopedReplanWriteResult =
-    error("Goal runner manifest store must atomically persist a scoped subtask replan.")
-
-  fun sharedPreplanPayloadSha256(parentWorkflowId: String, dbPathOverride: String? = null): String? = null
+  ): GoalRunnerScopedReplanWriteResult
 
   fun saveNewChildWorkflow(
     state: GoalRunnerManifestState,
     setup: GoalRunnerChildWorkflowSetup,
     dbPathOverride: String? = null,
-  ): GoalRunnerManifestState = error("Goal runner manifest store must atomically persist new child workflow state.")
-}
-
-interface GoalRunnerManifestReviewCommands {
-  fun reviewMode(parentWorkflowId: String, dbPathOverride: String? = null): CodeReviewExecutionMode? = null
-
-  fun persistReviewMode(
-    parentWorkflowId: String,
-    mode: CodeReviewExecutionMode,
-    dbPathOverride: String? = null,
-  ): CodeReviewExecutionMode = mode
-
-  fun reviewPolicy(parentWorkflowId: String, dbPathOverride: String? = null): GoalRunnerReviewPolicy? =
-    reviewMode(parentWorkflowId, dbPathOverride)?.let(::GoalRunnerReviewPolicy)
-
-  fun persistReviewPolicy(
-    parentWorkflowId: String,
-    policy: GoalRunnerReviewPolicy,
-    dbPathOverride: String? = null,
-  ): GoalRunnerReviewPolicy = GoalRunnerReviewPolicy(
-    codeReviewMode = persistReviewMode(parentWorkflowId, policy.codeReviewMode, dbPathOverride),
-    agentAddonSelection = policy.agentAddonSelection,
-  )
-
-  fun outOfBandAcceptances(
-    parentWorkflowId: String,
-    dbPathOverride: String? = null,
-  ): Map<Int, GoalRunnerOutOfBandAcceptance> = emptyMap()
-
-  fun persistOutOfBandAcceptance(
-    parentWorkflowId: String,
-    acceptance: GoalRunnerOutOfBandAcceptance,
-    dbPathOverride: String? = null,
-  ): GoalRunnerOutOfBandAcceptance =
-    error("Goal runner manifest store must durably persist out-of-band subtask acceptance.")
+  ): GoalRunnerManifestState
 }
 
 interface GoalRunnerManifestStore :
-  GoalRunnerManifestLookup,
-  GoalRunnerManifestPauseOps,
-  GoalRunnerManifestExecutionLease,
-  GoalRunnerManifestControlCommands,
-  GoalRunnerManifestPersistenceCommands,
-  GoalRunnerManifestReviewCommands
+  GoalRunnerManifestQueries,
+  GoalRunnerManifestExecutionCommands,
+  GoalRunnerManifestControlWrites,
+  GoalRunnerManifestStateWrites
 
 interface GoalRunnerTerminalOutcomeStore {
   fun terminalOutcome(
@@ -276,16 +245,6 @@ interface GoalRunnerWorkflowOutcomeStore :
 
 interface GoalRunnerAttemptLedgerStore {
   fun readAttemptLedgerSummary(issueKey: String, dbPathOverride: String? = null): GoalRunnerAttemptLedgerSummary
-}
-
-object NoopGoalRunnerAttemptLedgerStore : GoalRunnerAttemptLedgerStore {
-  override fun readAttemptLedgerSummary(issueKey: String, dbPathOverride: String?): GoalRunnerAttemptLedgerSummary {
-    RecordingNullObjectDiagnostics.recordSwallow(
-      "NoopGoalRunnerAttemptLedgerStore",
-      "readAttemptLedgerSummary(issueKey=$issueKey)",
-    )
-    return GoalRunnerAttemptLedgerSummary()
-  }
 }
 
 fun interface GoalRunnerSubtaskLauncher {

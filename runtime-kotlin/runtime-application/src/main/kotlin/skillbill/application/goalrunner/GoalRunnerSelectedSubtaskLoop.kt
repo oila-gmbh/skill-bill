@@ -6,21 +6,25 @@ import skillbill.application.goalrunner.planning.model.GoalPlanningSweepOutcome
 import skillbill.goalrunner.model.GoalRunnerControlState
 import skillbill.goalrunner.model.GoalRunnerReconciledOutcome
 import skillbill.goalrunner.model.GoalRunnerSelection
+import skillbill.ports.goalrunner.runner.GoalRunnerManifestStore
+import skillbill.ports.goalrunner.runner.GoalRunnerSubtaskLauncher
 import skillbill.ports.goalrunner.runner.model.GoalRunnerLaunchAuthorizationDeniedException
 import skillbill.ports.goalrunner.runner.model.GoalRunnerManifestState
+import skillbill.ports.workflow.gitops.model.WorkflowGitOperationStatus
+import java.time.Clock
 
 internal class GoalRunnerSelectedSubtaskLoop(
-  private val deps: GoalRunnerSelectedSubtaskLoopDeps,
+  private val manifestStore: GoalRunnerManifestStore,
+  private val subtaskLauncher: GoalRunnerSubtaskLauncher,
+  private val reconciler: GoalRunnerLaunchReconciler,
+  private val workerRequestHandler: GoalRunnerWorkerRequestHandler,
+  private val iterationOutcome: GoalRunnerIterationOutcome,
+  private val pauseBoundary: GoalRunnerPauseBoundary,
+  private val launchPrepare: GoalRunnerSubtaskLaunchPrepare,
+  private val clock: Clock,
+  pendingState: GoalRunnerIterationPendingState,
 ) {
-  private val manifestStore get() = deps.manifestStore
-  private val subtaskLauncher get() = deps.subtaskLauncher
-  private val reconciler get() = deps.reconciler
-  private val workerRequestHandler get() = deps.workerRequestHandler
-  private val iterationOutcome get() = deps.iterationOutcome
-  private val pauseBoundary get() = deps.pauseBoundary
-  private val launchPrepare get() = deps.launchPrepare
-  private val clock get() = deps.clock
-  private val validationQualityState get() = deps.pendingState.validationQualityState
+  private val validationQualityState = pendingState.validationQualityState
   internal fun runSelectedSubtask(args: RunSelectedSubtaskArgs): GoalRunnerIterationResult {
     val state = args.state
     val selection = args.selection
@@ -98,7 +102,7 @@ internal class GoalRunnerSelectedSubtaskLoop(
     planning: GoalPlanningSweepOutcome.PreparedAll,
   ): SelectedSubtaskPreparation {
     val baselineCapture = launchPrepare.goalReviewBaseline(state, subtaskId, request)
-    if (!baselineCapture.ok) {
+    if (baselineCapture.status != WorkflowGitOperationStatus.OK || baselineCapture.baseline == null) {
       return SelectedSubtaskPreparation.Stopped(
         launchPrepare.blockedReviewBaselineIteration(
           state,

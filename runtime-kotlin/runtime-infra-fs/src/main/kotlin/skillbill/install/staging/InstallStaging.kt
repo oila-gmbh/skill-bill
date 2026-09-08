@@ -4,6 +4,7 @@ import skillbill.install.identity.SKILL_CONTENT_IDENTITY_FILENAME
 import skillbill.install.identity.suppliedSkillContentIdentity
 import skillbill.install.model.InstallPlanSkill
 import skillbill.install.model.RenderedSkill
+import skillbill.model.toPath
 import skillbill.scaffold.model.PlatformManifest
 import skillbill.scaffold.model.PointerSpec
 import skillbill.scaffold.platformpack.discoverPlatformPackManifests
@@ -60,7 +61,7 @@ internal fun applicablePointers(
   }
   val collected = mutableListOf<Pair<PlatformManifest, PointerSpec>>()
   discovered.forEach { manifest ->
-    val packRoot = manifest.packRoot.toAbsolutePath().normalize()
+    val packRoot = manifest.packRoot.toPath().toAbsolutePath().normalize()
     if (!resolvedInstall.startsWith(packRoot)) {
       return@forEach
     }
@@ -82,7 +83,7 @@ internal fun authoredFilesFor(
   excluded.add(sourceSkillDir.resolve(INSTALL_STAGING_SKILL_FILENAME).toAbsolutePath().normalize())
   excluded.add(sourceSkillDir.resolve(SKILL_CONTENT_IDENTITY_FILENAME).toAbsolutePath().normalize())
   applicablePointers.forEach { (manifest, spec) ->
-    val packRoot = manifest.packRoot.toAbsolutePath().normalize()
+    val packRoot = manifest.packRoot.toPath().toAbsolutePath().normalize()
     val pointerPath = packRoot.resolve(spec.skillRelativeDir).resolve(spec.name).toAbsolutePath().normalize()
     excluded.add(pointerPath)
   }
@@ -221,5 +222,5 @@ internal fun resolveStagedSymlinkTarget(input: StagedSymlinkTargetInput): Path {
       selectedPlatformSlugs = input.selectedPlatformSlugs,
       suppliedCompactIdentity = suppliedSkillContentIdentity(input.resolvedSkill).compact(),
     ),
-  ).stagingDir.toAbsolutePath().normalize()
+  ).stagingDir.toPath().toAbsolutePath().normalize()
 }

@@ -17,6 +17,7 @@ import skillbill.install.model.RuntimeDistributionInputs
 import skillbill.install.model.WindowsSymlinkDecision
 import skillbill.install.model.WindowsSymlinkPreflight
 import skillbill.install.model.WindowsSymlinkPreflightState
+import skillbill.ports.repository.toFileLocation
 import skillbill.testing.seedConformingPlatformPack
 import java.io.File
 import java.nio.file.Files
@@ -160,7 +161,7 @@ data class ApplyFixture(
     telemetryLevel: InstallTelemetryLevel = InstallTelemetryLevel.ANONYMOUS,
     mcpRegistrationChoice: McpRegistrationChoice = McpRegistrationChoice(
       register = true,
-      runtimeMcpBin = home.resolve(".skill-bill/runtime/runtime-mcp/bin/runtime-mcp"),
+      runtimeMcpBin = home.resolve(".skill-bill/runtime/runtime-mcp/bin/runtime-mcp").toFileLocation(),
     ),
     replaceExistingSkillBillLinks: Boolean = false,
   ): InstallPlanRequest {
@@ -174,19 +175,19 @@ data class ApplyFixture(
       PlatformPackSelectionMode.SELECTED
     }
     val targetPaths = InstallationTargetPaths(
-      skillsRoot = repoRoot.resolve("skills"),
-      platformPacksRoot = repoRoot.resolve("platform-packs"),
+      skillsRoot = repoRoot.resolve("skills").toFileLocation(),
+      platformPacksRoot = repoRoot.resolve("platform-packs").toFileLocation(),
       agentTargets = agents.map { agent ->
         InstallAgentTarget(
           agent = agent,
-          path = home.resolve("agent-skill-targets/${agent.id}"),
+          path = home.resolve("agent-skill-targets/${agent.id}").toFileLocation(),
           source = InstallAgentTargetSource.MANUAL,
         )
       },
     )
     return InstallPlanRequest(
-      repoRoot = repoRoot,
-      home = home,
+      repoRoot = repoRoot.toFileLocation(),
+      home = home.toFileLocation(),
       agentSelection = InstallAgentSelection(
         mode = InstallAgentSelectionMode.MANUAL,
         manualAgents = agents,
@@ -198,7 +199,7 @@ data class ApplyFixture(
       telemetryLevel = telemetryLevel,
       mcpRegistrationChoice = mcpRegistrationChoice,
       runtimeDistributionInputs = RuntimeDistributionInputs(
-        runtimeInstallRoot = home.resolve(".skill-bill/runtime"),
+        runtimeInstallRoot = home.resolve(".skill-bill/runtime").toFileLocation(),
       ),
       targetPaths = targetPaths,
       windowsSymlinkPreflight = windowsSymlinkPreflight,

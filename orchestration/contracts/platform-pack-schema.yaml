@@ -19,7 +19,7 @@
 # Versioning rule:
 #
 # - `contract_version` is pinned by `SHELL_CONTRACT_VERSION` in
-#   `runtime-kotlin/runtime-infra-fs/src/main/kotlin/skillbill/scaffold/runtime/ScaffoldSupport.kt`.
+#   `runtime-kotlin/runtime-infra-fs/src/main/kotlin/skillbill/scaffold/runtime/ScaffoldContract.kt`.
 # - The parity test `PlatformPackSchemaContractVersionTest` fails the build
 #   if they diverge. To bump the contract, edit BOTH constants in the same
 #   change.
@@ -159,7 +159,7 @@ properties:
     description: >
       Approved code-review areas the pack declares specialists for. The
       enum mirrors `APPROVED_CODE_REVIEW_AREAS` in
-      `runtime-kotlin/.../scaffold/ScaffoldSupport.kt` and is declared once
+      `runtime-kotlin/.../scaffold/ScaffoldContract.kt` and is declared once
       under `$defs/codeReviewArea` above. May be empty when the pack ships
       no code-review specializations.
   declared_files:

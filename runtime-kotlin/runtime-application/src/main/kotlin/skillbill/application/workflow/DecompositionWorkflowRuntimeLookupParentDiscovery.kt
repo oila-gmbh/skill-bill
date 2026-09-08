@@ -2,12 +2,15 @@ package skillbill.application.workflow
 
 import skillbill.application.decomposition.DECOMPOSITION_RUNTIME_ARTIFACT_KEY
 import skillbill.application.decomposition.decodeArtifacts
-import skillbill.application.decomposition.isActiveGoalRuntime
 import skillbill.ports.workflow.WorkflowStateRepository
 import skillbill.ports.workflow.model.FeatureTaskWorkflowMode
 import skillbill.ports.workflow.model.WorkflowStateRecord
+import skillbill.ports.workflow.model.toSnapshot
 import skillbill.workflow.decomposition.DecompositionManifestValidator
 import skillbill.workflow.decomposition.model.DecompositionManifest
+import skillbill.workflow.decomposition.runtime.isActiveGoalRuntime
+import skillbill.workflow.model.WorkflowStatus
+import skillbill.workflow.model.workflowStatus
 
 fun WorkflowStateRepository.findDecomposedParentOrCorruptFallback(
   issueKey: String,
@@ -29,12 +32,13 @@ fun WorkflowStateRepository.findDecomposedParentOrCorruptFallback(
     }
     .forEach { row ->
       val manifest = row.toSnapshot().decompositionRuntime(validator)
+      val workflowStatus = row.workflowStatus.workflowStatus()
       when {
         manifest != null &&
           manifest.issueKey == normalizedIssueKey &&
-          row.workflowStatus !in IMPLEMENT_TERMINAL_STATUSES ->
+          workflowStatus !in IMPLEMENT_TERMINAL_STATUSES ->
           validCandidates += DecomposedParentCandidate(row, manifest)
-        manifest == null && row.workflowStatus !in IMPLEMENT_TERMINAL_STATUSES ->
+        manifest == null && workflowStatus !in IMPLEMENT_TERMINAL_STATUSES ->
           corruptCandidates += row
       }
     }
@@ -67,7 +71,7 @@ private data class DecomposedParentCandidate(
 private fun DecomposedParentCandidate.isStaleAbandonedLineage(
   currentProjectedManifest: DecompositionManifest?,
 ): Boolean {
-  if (currentProjectedManifest == null || record.workflowStatus != "abandoned") return false
+  if (currentProjectedManifest == null || record.workflowStatus.workflowStatus() != WorkflowStatus.ABANDONED) return false
   if (manifest.subtasks.any { subtask -> subtask.hasStarted() }) return false
   return manifest.subtasks.map { it.specPath } != currentProjectedManifest.subtasks.map { it.specPath }
 }

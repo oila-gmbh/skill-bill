@@ -1,5 +1,6 @@
 package skillbill.ports.repository
 
+import skillbill.model.FileLocation
 import java.nio.file.Path
 
 interface RepositoryEnclosingRootPort {
@@ -11,3 +12,5 @@ interface RepositoryEnclosingRootPort {
 
   fun repositoryIdentity(repoRoot: Path): String
 }
+
+fun Path.toFileLocation(): FileLocation = FileLocation(toString())

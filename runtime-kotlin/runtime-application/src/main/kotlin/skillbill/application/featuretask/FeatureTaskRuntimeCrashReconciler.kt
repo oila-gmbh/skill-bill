@@ -7,6 +7,7 @@ import skillbill.ports.db.DatabaseSessionFactory
 import skillbill.ports.diagnostics.RuntimeDiagnostics
 import skillbill.ports.featuretask.model.FeatureTaskRuntimeCrashReconciliationCandidate
 import skillbill.ports.taskruntime.FeatureTaskRuntimeWorkerSupervisor
+import skillbill.ports.taskruntime.model.isConfirmedDead
 import java.time.Clock
 
 /**
@@ -57,7 +58,7 @@ class FeatureTaskRuntimeCrashReconciler(
     candidate: FeatureTaskRuntimeCrashReconciliationCandidate,
     dbOverride: String?,
   ): String? = runCatching {
-    if (!FeatureTaskRuntimeCrashLiveness.isConfirmedDead(supervisor.inspect(candidate.ownership))) {
+    if (!supervisor.inspect(candidate.ownership).isConfirmedDead()) {
       return@runCatching null
     }
     val reason = interruptionReason()

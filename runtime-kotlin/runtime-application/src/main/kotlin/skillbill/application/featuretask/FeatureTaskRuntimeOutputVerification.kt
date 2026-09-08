@@ -1,6 +1,7 @@
 package skillbill.application.featuretask
 
-import skillbill.contracts.JsonSupport
+import skillbill.contracts.JsonCodec
+import skillbill.goalrunner.subtaskreview.FeatureTaskRuntimeVerificationSignalKeys
 import skillbill.review.ReviewFindingActionability
 import skillbill.review.model.ReviewClaimVerdict
 import skillbill.review.model.ReviewScopeDisposition
@@ -44,27 +45,27 @@ object FeatureTaskRuntimeOutputVerification {
     reviewVerdictFrom(outputObject)?.unresolvedFindings.orEmpty()
 
   fun auditProseValue(outputObject: Map<String, Any?>?): String? = outputObject?.get("produced_outputs")
-    ?.let(JsonSupport::anyToStringAnyMap)
+    ?.let(JsonCodec::anyToStringAnyMap)
     ?.get("value")
     ?.toString()
     ?.takeIf(String::isNotBlank)
 
   fun auditGapCriterionRefs(outputObject: Map<String, Any?>?): Set<String> {
     val value = outputObject?.get("produced_outputs")
-      ?.let(JsonSupport::anyToStringAnyMap)
+      ?.let(JsonCodec::anyToStringAnyMap)
       ?.get("value")
     val valueMap = when (value) {
-      is String -> JsonSupport.parseObjectOrNull(value)
-        ?.let(JsonSupport::jsonElementToValue)
-        ?.let(JsonSupport::anyToStringAnyMap)
-      else -> JsonSupport.anyToStringAnyMap(value)
+      is String -> JsonCodec.parseObjectOrNull(value)
+        ?.let(JsonCodec::jsonElementToValue)
+        ?.let(JsonCodec::anyToStringAnyMap)
+      else -> JsonCodec.anyToStringAnyMap(value)
     } ?: return setOf(FeatureTaskRuntimeAuditGapProgress.HAD_GAPS_MARKER)
     val refs = sequenceOf("gaps", "unmet_criteria", "failing_criteria")
       .flatMap { key ->
         (valueMap[key] as? List<*>)?.asSequence().orEmpty().mapNotNull { entry ->
           when (entry) {
             is String -> entry.takeIf(String::isNotBlank)
-            else -> JsonSupport.anyToStringAnyMap(entry)?.get("criterion") as? String
+            else -> JsonCodec.anyToStringAnyMap(entry)?.get("criterion") as? String
           }
         }
       }
@@ -84,7 +85,7 @@ private fun findingVerificationVerdictFrom(
   outputObject: Map<String, Any?>?,
 ): FeatureTaskRuntimeFindingVerificationVerdict? {
   val dispositionsRaw = outputObject?.get("produced_outputs")
-    ?.let(JsonSupport::anyToStringAnyMap)
+    ?.let(JsonCodec::anyToStringAnyMap)
     ?.get(FeatureTaskRuntimeVerificationSignalKeys.FINDINGS_VERIFICATION_DISPOSITIONS) as? List<*>
     ?: return null
   val dispositions = FeatureTaskRuntimeFindingVerificationDisposition.parseList(
@@ -109,7 +110,7 @@ private fun auditVerdict(wireVerdict: FeatureTaskRuntimeVerdict?): FeatureTaskRu
 
 private fun reviewVerdictFrom(outputObject: Map<String, Any?>?): FeatureTaskRuntimeReviewVerdict? {
   val findingsRaw = outputObject?.get("produced_outputs")
-    ?.let(JsonSupport::anyToStringAnyMap)
+    ?.let(JsonCodec::anyToStringAnyMap)
     ?.get(FeatureTaskRuntimeVerificationSignalKeys.REVIEW_FINDINGS) as? List<*>
     ?: return null
   val findings = findingsRaw.mapNotNull(::actionableReviewFinding)
@@ -117,7 +118,7 @@ private fun reviewVerdictFrom(outputObject: Map<String, Any?>?): FeatureTaskRunt
 }
 
 private fun actionableReviewFinding(entry: Any?): FeatureTaskRuntimeReviewFinding? {
-  val map = JsonSupport.anyToStringAnyMap(entry) ?: return null
+  val map = JsonCodec.anyToStringAnyMap(entry) ?: return null
   val severity = (map["severity"] as? String)?.takeIf(String::isNotBlank)
   val message = (map["message"] as? String)?.takeIf(String::isNotBlank)
   if (severity == null || message == null) return null

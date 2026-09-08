@@ -1,22 +1,21 @@
 package skillbill.application.featuretask
 
-import me.tatarka.inject.annotations.Inject
+import skillbill.ports.workflow.gitops.model.WorkflowGitOperationResult
 import skillbill.application.featuretask.model.AppendCheckpointIdentityArgs
-import skillbill.contracts.JsonSupport
+import skillbill.contracts.JsonCodec
 import skillbill.ports.workflow.gitops.stagedPaths
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_STANDALONE_SUBTASK_ID
 import skillbill.workflow.taskruntime.model.NormalizedFeatureTaskRuntimePhaseOutput
 import skillbill.workflow.taskruntime.model.requireAcceptedOutput
 
-@Inject
-class FeatureTaskRuntimeRunLoopSubtaskCommit {
+object FeatureTaskRuntimeRunLoopSubtaskCommit {
   internal fun unownedWorktreeCommitSha(
     runLoop: FeatureTaskRuntimeRunLoop,
     run: PhaseRun,
     normalizedOutput: NormalizedFeatureTaskRuntimePhaseOutput,
   ): CommitPushFinalisation {
     val head = runLoop.phaseGates.gitOperations.headCommitSha(runLoop.request.repoRoot)
-    val sha = head.value.orEmpty().trim().takeIf { head.ok && it.isNotBlank() }
+    val sha = head.value.orEmpty().trim().takeIf { head is WorkflowGitOperationResult.Ok && it.isNotBlank() }
       ?: return CommitPushNotApplicable
     runCatching {
       runLoop.diagnostics.warning(
@@ -38,23 +37,14 @@ class FeatureTaskRuntimeRunLoopSubtaskCommit {
     )
   }
 
-  /**
-   * The branch finalisation may write to: the run's own resolved, unprotected, currently checked-out
-   * branch. Anything else means the runtime does not own this working tree, which is the same condition
-   * under which no checkpoint ever committed here either.
-   */
   fun finalisationBranch(runLoop: FeatureTaskRuntimeRunLoop): String? {
     val branch = runLoop.session.resolvedBranch
       ?.takeIf { FeatureTaskRuntimeBranchSetup.protectedBranchName(it) == null }
       ?: return null
     val head = runLoop.phaseGates.gitOperations.currentBranch(runLoop.request.repoRoot)
-    return branch.takeIf { head.ok && head.value.trim() == branch.trim() }
+    return branch.takeIf { head is WorkflowGitOperationResult.Ok && head.value.trim() == branch.trim() }
   }
 
-  /**
-   * The decomposition manifest records the post-push commit sha only after the goal runner reconciles a
-   * completed child, so finalisation usually sees null here and defers pruning to that boundary.
-   */
   internal fun recordFinalisedCheckpointIdentity(
     runLoop: FeatureTaskRuntimeRunLoop,
     args: RecordFinalisedCheckpointIdentityArgs,
@@ -74,7 +64,7 @@ class FeatureTaskRuntimeRunLoopSubtaskCommit {
           branch = branch,
           phaseId = phaseId,
           loopId = null,
-          generation = runLoop.collaborators.checkpointContinued5.checkpointGeneration(runLoop, null),
+          generation = FeatureTaskRuntimeRunLoopCheckpoint.checkpointGeneration(runLoop, null),
           parentSha = ledger.commitSha,
           ownedPaths = stagedPaths,
           commitSha = commitSha,
@@ -103,7 +93,7 @@ class FeatureTaskRuntimeRunLoopSubtaskCommit {
     phaseId: String,
     envelope: Map<String, Any?>,
   ): NormalizedFeatureTaskRuntimePhaseOutput = runLoop.outputValidator
-    .validatePhaseOutput(JsonSupport.mapToJsonString(envelope), sourceLabel = phaseId)
+    .validatePhaseOutput(JsonCodec.mapToJsonString(envelope), sourceLabel = phaseId)
     .requireAcceptedOutput(phaseId)
     .normalizedOutput
 }

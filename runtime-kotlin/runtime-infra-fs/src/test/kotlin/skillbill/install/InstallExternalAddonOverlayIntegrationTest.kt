@@ -8,11 +8,13 @@ import skillbill.install.model.InstallApplyResult
 import skillbill.install.model.InstallApplyStatus
 import skillbill.install.model.InstallPlanRequest
 import skillbill.install.nativeagent.installNativeAgentCompositionContext
+import skillbill.model.toPath
 import skillbill.nativeagent.rendering.NativeAgentInstallRenderRequest
 import skillbill.nativeagent.rendering.NativeAgentOperations
 import skillbill.nativeagent.rendering.NativeAgentProvider
 import skillbill.ports.install.addon.ExternalAddonOverlayPort
 import skillbill.ports.install.addon.model.ExternalAddonOverlayRequest
+import skillbill.ports.repository.toFileLocation
 import java.nio.file.Files
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -34,21 +36,26 @@ class InstallExternalAddonOverlayIntegrationTest : InstallApplyTestSupport() {
     val staging = result.skills.first { it.skillName == "bill-code-review" }.staging
     val stagingDir = staging.stagingDir
       ?: error("ios code-review skill was not staged")
-    val acmeRendered = staging.renderedPointerFiles.firstOrNull { it.fileName.toString() == "acme-review.md" }
+    val acmeRendered = staging.renderedPointerFiles.firstOrNull { it.fileName == "acme-review.md" }
       ?: error(
         "acme-review.md must appear among the RENDERED pointer files in $stagingDir; " +
           "got: ${staging.renderedPointerFiles}",
       )
     assertTrue(
-      Files.isRegularFile(acmeRendered),
+      Files.isRegularFile(acmeRendered.toPath()),
       "external addon must be inlined as a rendered pointer file under the install cache",
     )
     assertTrue(
-      acmeRendered.toAbsolutePath().normalize().startsWith(fixture.home.resolve(".skill-bill/installed-skills")),
+      acmeRendered.toPath().toAbsolutePath().normalize().startsWith(
+        fixture.home.resolve(".skill-bill/installed-skills"),
+      ),
       "rendered addon pointer must live under the install cache, not the source tree ($acmeRendered)",
     )
-    assertTrue(Files.isRegularFile(stagingDir.resolve("offline-review.md")), "pack-owned addon must remain inlined")
-    val renderedAddonBody = Files.readString(acmeRendered)
+    assertTrue(
+      Files.isRegularFile(stagingDir.resolve("offline-review.md").toPath()),
+      "pack-owned addon must remain inlined",
+    )
+    val renderedAddonBody = Files.readString(acmeRendered.toPath())
     assertContains(
       renderedAddonBody,
       "acme review body",
@@ -142,7 +149,7 @@ class InstallExternalAddonOverlayIntegrationTest : InstallApplyTestSupport() {
   private fun stagedSkillBody(result: InstallApplyResult, name: String): String {
     val stagingDir = result.skills.first { it.skillName == "bill-code-review" }.staging.stagingDir
       ?: error("bill-code-review was not staged")
-    return Files.readString(stagingDir.resolve("$name.md"))
+    return Files.readString(stagingDir.resolve("$name.md").toPath())
   }
 
   private fun setupIosFixture(): ApplyFixture {
@@ -196,7 +203,7 @@ class InstallExternalAddonOverlayIntegrationTest : InstallApplyTestSupport() {
             target: $entrypoint
       """.trimIndent() + "\n",
     )
-    return ExternalAddonSource(sourceDir, "ios")
+    return ExternalAddonSource(sourceDir.toFileLocation(), "ios")
   }
 
   private fun runOverlay(fixture: ApplyFixture, sources: List<ExternalAddonSource>) {

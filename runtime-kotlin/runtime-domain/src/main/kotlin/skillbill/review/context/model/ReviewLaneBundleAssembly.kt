@@ -1,6 +1,5 @@
 package skillbill.review.context.model
 
-import java.nio.charset.StandardCharsets
 import java.security.MessageDigest
 
 /**
@@ -155,6 +154,10 @@ enum class ReviewLaneReviewDisposition {
   ;
 
   val wireValue: String get() = name.lowercase()
+
+  companion object {
+    fun fromWire(value: String): ReviewLaneReviewDisposition? = entries.firstOrNull { it.wireValue == value }
+  }
 }
 
 data class ReviewLaneSegmentAccounting(
@@ -346,5 +349,5 @@ private const val FAILED_RUN_SEGMENT_ID = "seg-lane-run-failed"
 private const val FAILED_RUN_UNIT = "entire assigned bundle"
 
 private fun sha256Hex(value: String): String = MessageDigest.getInstance("SHA-256")
-  .digest(value.toByteArray(StandardCharsets.UTF_8))
+  .digest(value.toByteArray(Charsets.UTF_8))
   .joinToString("") { byte -> "%02x".format(byte) }

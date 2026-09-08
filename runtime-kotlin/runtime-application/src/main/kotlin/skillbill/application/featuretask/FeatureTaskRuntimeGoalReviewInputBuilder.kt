@@ -6,6 +6,7 @@ import skillbill.application.featuretask.model.GoalSubtaskReviewInputPreparation
 import skillbill.application.featuretask.model.GoalSubtaskReviewInputReady
 import skillbill.application.workflow.model.WorkflowFamily
 import skillbill.ports.db.DatabaseSessionFactory
+import skillbill.ports.workflow.get
 import skillbill.ports.workflow.gitops.WorkflowGitOperations
 import skillbill.ports.workflow.gitops.buildGoalSubtaskReviewInput
 import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewBaseline
@@ -13,6 +14,7 @@ import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewBaselineRecoveryRe
 import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewInput
 import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewInputFailureReason
 import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewInputResult
+import skillbill.ports.workflow.gitops.model.WorkflowGitOperationStatus
 import skillbill.ports.workflow.gitops.recoverGoalSubtaskReviewBaseline
 import skillbill.workflow.goal.model.GOAL_REVIEW_BASE_RECOVERIES_ARTIFACT_KEY
 import skillbill.workflow.goal.model.GOAL_SUBTASK_REVIEW_INPUT_ARTIFACT_KEY
@@ -52,7 +54,7 @@ class FeatureTaskRuntimeGoalReviewInputBuilder(
       selectedBaseline,
       continuation.goalBranch,
     )
-    val recovery = if (result.ok) {
+    val recovery = if (result.status == WorkflowGitOperationStatus.OK && result.input != null) {
       null
     } else {
       recoverGoalReviewInput(
@@ -95,7 +97,7 @@ class FeatureTaskRuntimeGoalReviewInputBuilder(
       ),
       request.continuation.goalBranch,
     )
-    if (!recovered.ok) {
+    if (recovered.status != WorkflowGitOperationStatus.OK || recovered.baseline == null) {
       return GoalReviewInputRecovery.Failed(
         recovered.error.ifBlank {
           "Goal-subtask review baseline recovery could not find a reachable base for unreachable sha " +
@@ -122,7 +124,7 @@ class FeatureTaskRuntimeGoalReviewInputBuilder(
       recoveredBaseline,
       request.continuation.goalBranch,
     )
-    check(rebuilt.ok) {
+    check(rebuilt.status == WorkflowGitOperationStatus.OK && rebuilt.input != null) {
       "Recovered goal-subtask review base '${recoveredBaseline.reviewBaseSha}' could not materialize " +
         "review input after replacing incompatible base '${request.failedBaseSha}': " +
         rebuilt.error.ifBlank { request.failureMessage }
@@ -236,7 +238,7 @@ internal fun FeatureTaskRuntimeGoalReviewInputBuilder.goalReviewInputFromBuildRe
   result: GoalSubtaskReviewInputResult,
   recovery: GoalReviewInputRecovery?,
 ): GoalSubtaskReviewInput? = when {
-  result.ok -> requireNotNull(result.input)
+  result.status == WorkflowGitOperationStatus.OK -> requireNotNull(result.input)
   recovery is GoalReviewInputRecovery.Recovered -> recovery.input
   else -> null
 }

@@ -6,7 +6,7 @@ import skillbill.application.review.toAssignmentEnvelope
 import skillbill.application.review.toIntegrationLaunchEnvelope
 import skillbill.application.review.toLaunchEnvelope
 import skillbill.application.review.toParentPacketEnvelope
-import skillbill.contracts.JsonSupport
+import skillbill.contracts.JsonCodec
 import skillbill.error.InvalidReviewContextSchemaError
 import skillbill.infrastructure.fs.ReviewContextEnvelopeValidatorAdapter
 import skillbill.ports.review.ReviewBuildTestFactsPort
@@ -147,14 +147,14 @@ class ReviewContextSchemaValidatorTest {
       GovernedReviewLaunch(assignment, packet, "contract", "rubric", "broker", ReviewContextBudgetPolicy.DEFAULT)
     ReviewContextSchemaValidator.validateLaunch(launch.toLaunchEnvelope().asWireMap(), "launch")
     val parentHunks = requireNotNull(
-      JsonSupport.anyToStringAnyMapList(packet.toParentPacketEnvelope().asWireMap()["changed_hunks"]),
+      JsonCodec.anyToStringAnyMapList(packet.toParentPacketEnvelope().asWireMap()["changed_hunks"]),
     )
     parentHunks.forEach { hunk ->
       INDEX_HUNK_KEYS.forEach { key -> assertTrue(key in hunk.keys, "parent hunk missing $key") }
       assertEquals(false, hunk.containsKey("content"))
     }
-    val bundle = requireNotNull(JsonSupport.anyToStringAnyMap(launch.toLaunchEnvelope().asWireMap()["bundle"]))
-    val launchEntries = requireNotNull(JsonSupport.anyToStringAnyMapList(bundle["entries"]))
+    val bundle = requireNotNull(JsonCodec.anyToStringAnyMap(launch.toLaunchEnvelope().asWireMap()["bundle"]))
+    val launchEntries = requireNotNull(JsonCodec.anyToStringAnyMapList(bundle["entries"]))
     launchEntries.forEach { entry ->
       INDEX_HUNK_KEYS.forEach { key -> assertTrue(key in entry.keys, "launch entry missing $key") }
       assertEquals(false, entry.containsKey("content"))
@@ -349,8 +349,8 @@ class ReviewContextSchemaValidatorTest {
     val launch =
       GovernedReviewLaunch(assignment, packet, "contract", "rubric", "broker", ReviewContextBudgetPolicy.DEFAULT)
     val envelope = launch.toLaunchEnvelope().asWireMap().toMutableMap()
-    val bundle = requireNotNull(JsonSupport.anyToStringAnyMap((envelope["bundle"]))).toMutableMap()
-    val entries = requireNotNull(JsonSupport.anyToStringAnyMapList(bundle["entries"]))
+    val bundle = requireNotNull(JsonCodec.anyToStringAnyMap((envelope["bundle"]))).toMutableMap()
+    val entries = requireNotNull(JsonCodec.anyToStringAnyMapList(bundle["entries"]))
     require(entries.size >= 2) { "Fixture needs at least two bundle entries to split." }
     val first = entries.first()
     val second = entries[1]
@@ -390,8 +390,8 @@ class ReviewContextSchemaValidatorTest {
     val launch =
       GovernedReviewLaunch(assignment, packet, "contract", "rubric", "broker", ReviewContextBudgetPolicy.DEFAULT)
     val envelope = launch.toLaunchEnvelope().asWireMap().toMutableMap()
-    val bundle = requireNotNull(JsonSupport.anyToStringAnyMap((envelope["bundle"]))).toMutableMap()
-    val entries = requireNotNull(JsonSupport.anyToStringAnyMapList((bundle["entries"]))).map { it.toMutableMap() }
+    val bundle = requireNotNull(JsonCodec.anyToStringAnyMap((envelope["bundle"]))).toMutableMap()
+    val entries = requireNotNull(JsonCodec.anyToStringAnyMapList((bundle["entries"]))).map { it.toMutableMap() }
     bundle["entries"] = listOf(entries.first() - "commit_sha")
     envelope["bundle"] = bundle
     assertFailsWith<InvalidReviewContextSchemaError> {
@@ -428,7 +428,7 @@ class ReviewContextSchemaValidatorTest {
     val launch =
       GovernedReviewLaunch(assignment, packet, "contract", "rubric", "broker", ReviewContextBudgetPolicy.DEFAULT)
     val envelope = launch.toLaunchEnvelope().asWireMap().toMutableMap()
-    val bundle = requireNotNull(JsonSupport.anyToStringAnyMap((envelope["bundle"]))).toMutableMap()
+    val bundle = requireNotNull(JsonCodec.anyToStringAnyMap((envelope["bundle"]))).toMutableMap()
     bundle["lane_disposition"] = "incomplete"
     bundle["unreviewed_segment_ids"] = listOf("unreviewable")
     bundle.remove("budget_dimension")
@@ -440,7 +440,7 @@ class ReviewContextSchemaValidatorTest {
 
   @Test fun `index hunks reject inlined diff bodies on parent assignment and launch`() {
     val parent = packet.toParentPacketEnvelope().asWireMap().toMutableMap()
-    val hunks = requireNotNull(JsonSupport.anyToStringAnyMapList((parent["changed_hunks"]))).map { it.toMutableMap() }
+    val hunks = requireNotNull(JsonCodec.anyToStringAnyMapList((parent["changed_hunks"]))).map { it.toMutableMap() }
     hunks[0]["content"] = "+smuggled"
     parent["changed_hunks"] = hunks
     assertFailsWith<InvalidReviewContextSchemaError> {
@@ -462,9 +462,9 @@ class ReviewContextSchemaValidatorTest {
     }
 
     val launchEnvelope = launch.toLaunchEnvelope().asWireMap().toMutableMap()
-    val bundle = requireNotNull(JsonSupport.anyToStringAnyMap(launchEnvelope["bundle"])).toMutableMap()
+    val bundle = requireNotNull(JsonCodec.anyToStringAnyMap(launchEnvelope["bundle"])).toMutableMap()
     val entries = (bundle["entries"] as? List<*>).orEmpty()
-      .map { requireNotNull(JsonSupport.anyToStringAnyMap(it)).toMutableMap() }
+      .map { requireNotNull(JsonCodec.anyToStringAnyMap(it)).toMutableMap() }
     entries[0]["content"] = "+smuggled"
     bundle["entries"] = entries
     launchEnvelope["bundle"] = bundle

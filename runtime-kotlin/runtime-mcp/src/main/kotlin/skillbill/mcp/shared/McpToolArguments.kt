@@ -1,6 +1,6 @@
 package skillbill.mcp.shared
 
-import skillbill.contracts.JsonSupport
+import skillbill.contracts.JsonCodec
 
 internal fun Map<String, Any?>.string(name: String): String = optionalString(name).orEmpty()
 
@@ -44,7 +44,7 @@ internal fun Map<String, Any?>.stringList(name: String): List<String> =
 
 internal fun Map<String, Any?>.map(name: String): Map<String, Any?> = optionalMap(name).orEmpty()
 
-internal fun Map<String, Any?>.optionalMap(name: String): Map<String, Any?>? = JsonSupport.anyToStringAnyMap(this[name])
+internal fun Map<String, Any?>.optionalMap(name: String): Map<String, Any?>? = JsonCodec.anyToStringAnyMap(this[name])
 
 internal fun Map<String, Any?>.optionalListMap(name: String): List<Map<String, Any?>>? =
-  (this[name] as? List<*>)?.mapNotNull(JsonSupport::anyToStringAnyMap)
+  (this[name] as? List<*>)?.mapNotNull(JsonCodec::anyToStringAnyMap)

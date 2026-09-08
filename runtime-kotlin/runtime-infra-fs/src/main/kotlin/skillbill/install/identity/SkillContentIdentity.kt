@@ -1,6 +1,6 @@
 package skillbill.install.identity
 
-import skillbill.contracts.JsonSupport
+import skillbill.contracts.JsonCodec
 import skillbill.error.InvalidSkillContentIdentityError
 import skillbill.error.SkillContentIdentityMismatchError
 import skillbill.scaffold.validation.parseSkillFrontmatter
@@ -29,7 +29,7 @@ internal data class SkillContentIdentity(
   }
 
   /** The compact form is suitable for diagnostics and contains no skill body. */
-  fun compact(): String = JsonSupport.mapToJsonString(toMap())
+  fun compact(): String = JsonCodec.mapToJsonString(toMap())
 
   fun toMap(): Map<String, Any?> = linkedMapOf(
     "contract_version" to SKILL_CONTENT_IDENTITY_CONTRACT_VERSION,
@@ -68,9 +68,9 @@ internal data class SkillContentIdentity(
       if (!Files.isRegularFile(marker, LinkOption.NOFOLLOW_LINKS)) {
         invalidIdentity(stagingDir.toString(), "identity marker is missing")
       }
-      val parsed = JsonSupport.parseObjectOrNull(Files.readString(marker, StandardCharsets.UTF_8))
-        ?.let(JsonSupport::jsonElementToValue)
-        ?.let(JsonSupport::anyToStringAnyMap)
+      val parsed = JsonCodec.parseObjectOrNull(Files.readString(marker, StandardCharsets.UTF_8))
+        ?.let(JsonCodec::jsonElementToValue)
+        ?.let(JsonCodec::anyToStringAnyMap)
         ?: invalidIdentity(stagingDir.toString(), "identity marker is not an object")
       val expectedFields = setOf(
         "contract_version",
@@ -105,9 +105,9 @@ internal data class SkillContentIdentity(
     }
 
     fun fromCompact(compact: String, sourceLabel: String): SkillContentIdentity {
-      val parsed = JsonSupport.parseObjectOrNull(compact)
-        ?.let(JsonSupport::jsonElementToValue)
-        ?.let(JsonSupport::anyToStringAnyMap)
+      val parsed = JsonCodec.parseObjectOrNull(compact)
+        ?.let(JsonCodec::jsonElementToValue)
+        ?.let(JsonCodec::anyToStringAnyMap)
         ?: invalidIdentity(sourceLabel, "compact identity is not an object")
       val expectedFields = setOf(
         "contract_version",

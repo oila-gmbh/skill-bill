@@ -4,19 +4,30 @@ import me.tatarka.inject.annotations.Inject
 import skillbill.application.featuretask.model.FeatureTaskRuntimePreparation
 import skillbill.application.featuretask.model.FeatureTaskRuntimeRunReport
 import skillbill.application.featuretask.model.FeatureTaskRuntimeRunRequest
-import skillbill.application.featuretask.model.FeatureTaskRuntimeRunnerDependencies
 import skillbill.application.idestatus.AgentActivityStampWriter
+import skillbill.ports.diagnostics.RuntimeDiagnostics
+import skillbill.ports.goalrunner.runner.GoalRunnerSubtaskLauncher
 import skillbill.ports.workflow.model.FeatureTaskWorkflowMode
+import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseOutputValidator
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
+import java.time.Clock
 
 @Inject
 class FeatureTaskRuntimeRunner(
-  val dependencies: FeatureTaskRuntimeRunnerDependencies,
+  val subtaskLauncher: GoalRunnerSubtaskLauncher,
+  val recorder: FeatureTaskRuntimePhaseRecorder,
+  val goalContinuationRecorder: FeatureTaskRuntimeGoalContinuationRecorder,
+  val runInvariantsStore: FeatureTaskRuntimeRunInvariantsStore,
+  val outputValidator: FeatureTaskRuntimePhaseOutputValidator,
+  val phaseGates: FeatureTaskRuntimePhaseGates,
+  val crashReconciler: FeatureTaskRuntimeCrashReconciler,
+  val phaseSettlementService: FeatureTaskPhaseSettlementService,
+  val diagnostics: RuntimeDiagnostics,
+  val clock: Clock,
   val activityStampWriter: AgentActivityStampWriter,
-  val runLoopCollaborators: FeatureTaskRuntimeRunLoopCollaborators,
 ) {
   fun run(request: FeatureTaskRuntimeRunRequest): FeatureTaskRuntimeRunReport {
-    val reconciliation = dependencies.crashReconciler.reconcile(request.dbPathOverride)
+    val reconciliation = crashReconciler.reconcile(request.dbPathOverride)
     return when (val preparation = prepareRun(request)) {
       is FeatureTaskRuntimePreparation.PreparationBlocked -> preparation.report
       is FeatureTaskRuntimePreparation.Prepared -> executePreparedRun(preparation.request, reconciliation)
@@ -26,13 +37,13 @@ class FeatureTaskRuntimeRunner(
   private fun prepareRun(request: FeatureTaskRuntimeRunRequest): FeatureTaskRuntimePreparation =
     foreignModeWorkflowBlock(request)?.let(FeatureTaskRuntimePreparation::PreparationBlocked)
       ?: FeatureTaskRuntimeRunPreparation(
-        dependencies.recorder,
-        dependencies.goalContinuationRecorder,
-        dependencies.runInvariantsStore,
+        recorder,
+        goalContinuationRecorder,
+        runInvariantsStore,
       ).prepare(request)
 
   private fun foreignModeWorkflowBlock(request: FeatureTaskRuntimeRunRequest): FeatureTaskRuntimeRunReport.Blocked? {
-    val existingMode = dependencies.recorder.existingWorkflowMode(request.workflowId, request.dbPathOverride)
+    val existingMode = recorder.existingWorkflowMode(request.workflowId, request.dbPathOverride)
     if (existingMode == null || existingMode == FeatureTaskWorkflowMode.RUNTIME) {
       return null
     }

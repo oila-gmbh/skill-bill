@@ -17,7 +17,7 @@ import skillbill.scaffold.policy.platformpack.model.PlatformPackManifestRenderRe
  *
  * SKILL-52.1 subtask 2: this is the single source of truth for the shell-contract version. The
  * historical `runtime-infra-fs` `SHELL_CONTRACT_VERSION` is now a `get()` alias of this constant
- * (see `runtime-infra-fs/.../scaffold/ScaffoldSupport.kt`) so the two cannot drift.
+ * (see `runtime-infra-fs/.../scaffold/ScaffoldContract.kt`) so the two cannot drift.
  */
 const val PLATFORM_PACK_SHELL_CONTRACT_VERSION: String = "1.7"
 

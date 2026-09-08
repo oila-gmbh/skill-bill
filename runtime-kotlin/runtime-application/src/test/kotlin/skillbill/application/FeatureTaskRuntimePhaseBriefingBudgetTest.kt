@@ -1,7 +1,7 @@
 package skillbill.application
 
 import skillbill.application.featuretask.FeatureTaskRuntimePhaseBriefingAssembler
-import skillbill.contracts.JsonSupport
+import skillbill.contracts.JsonCodec
 import skillbill.workflow.taskruntime.FeatureTaskRuntimeHandoffContract
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_FORBIDDEN_PROJECTION_FIELD_NAMES
@@ -37,7 +37,11 @@ class FeatureTaskRuntimePhaseBriefingBudgetTest {
       ),
     )
 
-    val briefing = FeatureTaskRuntimePhaseBriefingAssembler.assemble(handoff, workflowId = "wftr-1")
+    val briefing = FeatureTaskRuntimePhaseBriefingAssembler.assemble(
+      handoff,
+      workflowId = "wftr-1",
+      planningProjectionValidator = realPlanningProjectionValidator,
+    )
     assertContains(briefing.briefingText, "r".repeat(64))
   }
 
@@ -66,7 +70,10 @@ class FeatureTaskRuntimePhaseBriefingBudgetTest {
       ),
     )
 
-    val briefing = FeatureTaskRuntimePhaseBriefingAssembler.assemble(handoff)
+    val briefing = FeatureTaskRuntimePhaseBriefingAssembler.assemble(
+      handoff,
+      planningProjectionValidator = realPlanningProjectionValidator,
+    )
 
     assertFalse(briefing.briefingText.contains(planBody))
     assertFalse(briefing.briefingText.contains(implementBody))
@@ -89,7 +96,10 @@ class FeatureTaskRuntimePhaseBriefingBudgetTest {
       ),
     )
 
-    val briefing = FeatureTaskRuntimePhaseBriefingAssembler.assemble(handoff)
+    val briefing = FeatureTaskRuntimePhaseBriefingAssembler.assemble(
+      handoff,
+      planningProjectionValidator = realPlanningProjectionValidator,
+    )
 
     assertTrue(briefing.briefingText.contains("Fixture plan prose for downstream implement and audit."))
     assertFalse(briefing.hasUpstreamReceipt("review"))
@@ -110,7 +120,11 @@ class FeatureTaskRuntimePhaseBriefingBudgetTest {
       derivedContextKeys = emptyList(),
     )
 
-    val briefing = FeatureTaskRuntimePhaseBriefingAssembler.assemble(handoff, workflowId = "wftr-1")
+    val briefing = FeatureTaskRuntimePhaseBriefingAssembler.assemble(
+      handoff,
+      workflowId = "wftr-1",
+      planningProjectionValidator = realPlanningProjectionValidator,
+    )
     assertContains(briefing.briefingText, "AC-huge:")
     assertContains(briefing.briefingText, "x".repeat(64))
   }
@@ -129,6 +143,7 @@ class FeatureTaskRuntimePhaseBriefingBudgetTest {
         upstreamOutputs = FeatureTaskRuntimeResolvedUpstreamOutputs(emptyMap()),
         derivedContextKeys = emptyList(),
       ),
+      planningProjectionValidator = realPlanningProjectionValidator,
     )
 
     val implementText = briefingFor(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT).briefingText
@@ -173,8 +188,11 @@ class FeatureTaskRuntimePhaseBriefingBudgetTest {
       ),
     )
 
-    val briefing = FeatureTaskRuntimePhaseBriefingAssembler.assemble(handoff)
-    val serialized = JsonSupport.mapToJsonString(briefing.toArtifactMap())
+    val briefing = FeatureTaskRuntimePhaseBriefingAssembler.assemble(
+      handoff,
+      planningProjectionValidator = realPlanningProjectionValidator,
+    )
+    val serialized = JsonCodec.mapToJsonString(briefing.toArtifactMap())
 
     FEATURE_TASK_RUNTIME_FORBIDDEN_PROJECTION_FIELD_NAMES.forEach { forbidden ->
       assertFalse(
@@ -219,6 +237,7 @@ class FeatureTaskRuntimePhaseBriefingBudgetTest {
       val briefing = FeatureTaskRuntimePhaseBriefingAssembler.assemble(
         handoff,
         sharedReviewEvidence = evidence(hunksPerFile),
+        planningProjectionValidator = realPlanningProjectionValidator,
       )
       assertFalse(briefing.briefingText.contains("@@"), "diff hunk bodies must not reach the briefing")
       assertFalse(briefing.briefingText.contains("+val "), "diff bytes must not reach the briefing")

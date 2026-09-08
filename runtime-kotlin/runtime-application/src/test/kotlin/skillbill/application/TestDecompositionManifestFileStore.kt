@@ -8,12 +8,13 @@ import skillbill.application.decomposition.model.DecompositionManifestRuntimeUpd
 import skillbill.application.decomposition.model.DecompositionManifestWorkflowProjectionInput
 import skillbill.application.decomposition.model.DecompositionManifestWriteRequest
 import skillbill.application.decomposition.model.DecompositionManifestWriteResult
-import skillbill.contracts.JsonSupport
+import skillbill.contracts.JsonCodec
 import skillbill.install.model.InstallPlanWireValidator
 import skillbill.model.RepositoryRoot
 import skillbill.ports.workflow.decomposition.DecompositionManifestStore
 import skillbill.workflow.decomposition.DecompositionManifestValidator
 import skillbill.workflow.engine.WorkflowSnapshotValidator
+import skillbill.workflow.engine.model.WorkflowStateSnapshot
 import java.nio.file.AtomicMoveNotSupportedException
 import java.nio.file.Files
 import java.nio.file.Path
@@ -97,7 +98,7 @@ internal val testDecompositionManifestValidator: DecompositionManifestValidator 
   object : DecompositionManifestValidator {
     override fun validate(manifest: Map<String, Any?>, sourceLabel: String) = Unit
     override fun validateYamlText(yamlText: String, sourceLabel: String): Map<String, Any?> =
-      requireNotNull(JsonSupport.anyToStringAnyMap(YAMLMapper().readValue(yamlText, Map::class.java)))
+      requireNotNull(JsonCodec.anyToStringAnyMap(YAMLMapper().readValue(yamlText, Map::class.java)))
   }
 
 /**
@@ -107,7 +108,7 @@ internal val testDecompositionManifestValidator: DecompositionManifestValidator 
  */
 internal val testWorkflowSnapshotValidator: WorkflowSnapshotValidator =
   object : WorkflowSnapshotValidator {
-    override fun validate(snapshot: Map<String, Any?>, slug: String) = Unit
+    override fun validate(snapshot: WorkflowStateSnapshot, slug: String) = Unit
   }
 
 /** Pass-through install-plan wire validator fake — see above for rationale. */

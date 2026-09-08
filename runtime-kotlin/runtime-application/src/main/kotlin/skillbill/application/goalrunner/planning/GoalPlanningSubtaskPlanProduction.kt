@@ -8,6 +8,8 @@ import skillbill.ports.goalrunner.model.GoalPlanningIdentity
 import skillbill.ports.goalrunner.model.GoalSubtaskPlanCheckpoint
 import skillbill.ports.goalrunner.model.GovernedGoalSubtaskDescriptor
 import skillbill.workflow.decomposition.model.DecompositionSubtask
+import skillbill.workflow.model.DecompositionStatus
+import skillbill.workflow.model.decompositionStatus
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutput
 
 internal fun DefaultGoalPlanningSweep.produceMissingPlans(args: ProduceMissingPlansArgs): GoalPlanningSweepOutcome {
@@ -98,7 +100,7 @@ internal fun DefaultGoalPlanningSweep.descriptor(
     shared.dbPathOverride,
   )
   val subSpecHash = when {
-    recovered != null && subtask.status == "complete" -> recovered.subSpecHash
+    recovered != null && subtask.status.decompositionStatus() == DecompositionStatus.COMPLETE -> recovered.subSpecHash
     manifestFileStore.isRegularFile(path) -> sha256HexUtf8(manifestFileStore.readText(path))
     else -> error(unresolvedSpecReason(subtask))
   }

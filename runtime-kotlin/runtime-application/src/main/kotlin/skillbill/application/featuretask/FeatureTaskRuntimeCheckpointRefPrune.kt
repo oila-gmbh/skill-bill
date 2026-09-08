@@ -1,5 +1,6 @@
 package skillbill.application.featuretask
 
+import skillbill.ports.workflow.gitops.model.WorkflowGitOperationResult
 import skillbill.application.featuretask.model.FeatureTaskRuntimeCheckpointRefPruneRequest
 import skillbill.ports.workflow.gitops.WorkflowGitOperations
 import skillbill.ports.workflow.gitops.deleteCheckpointRef
@@ -19,9 +20,9 @@ fun subtaskCommitReachableOnRemote(
   val sha = commitSha.trim()
   if (branch.isBlank() || sha.isBlank()) return false
   val remoteTip = gitOperations.resolveCommit(repoRoot, "origin/$branch")
-  val remoteSha = remoteTip.value.orEmpty().trim().takeIf { remoteTip.ok && it.isNotBlank() } ?: return false
+  val remoteSha = remoteTip.value.orEmpty().trim().takeIf { remoteTip is WorkflowGitOperationResult.Ok && it.isNotBlank() } ?: return false
   val reachable = gitOperations.isCommitAncestor(repoRoot, sha, remoteSha)
-  return reachable.ok && reachable.value.orEmpty().trim().equals("true", ignoreCase = true)
+  return reachable is WorkflowGitOperationResult.Ok && reachable.value.orEmpty().trim().equals("true", ignoreCase = true)
 }
 
 fun subtaskCommitSupersededOnPublishedBranch(
@@ -35,9 +36,9 @@ fun subtaskCommitSupersededOnPublishedBranch(
   val sha = commitSha.trim()
   if (branch.isBlank() || sha.isBlank()) return false
   val remoteTip = gitOperations.resolveCommit(repoRoot, "origin/$branch")
-  if (!remoteTip.ok || remoteTip.value.orEmpty().isBlank()) return false
+  if (remoteTip !is WorkflowGitOperationResult.Ok || remoteTip.value.orEmpty().isBlank()) return false
   val recordedCommit = gitOperations.resolveCommit(repoRoot, sha)
-  return recordedCommit.ok && recordedCommit.value.orEmpty().trim().isNotBlank()
+  return recordedCommit is WorkflowGitOperationResult.Ok && recordedCommit.value.orEmpty().trim().isNotBlank()
 }
 
 internal data class FeatureTaskRuntimeCheckpointRefPruneResult(
@@ -117,7 +118,7 @@ private fun WorkflowGitOperations.pruneListedCheckpointRefs(
 ): FeatureTaskRuntimeCheckpointRefPruneResult {
   val prefix = featureTaskRuntimeSubtaskCheckpointRefPrefix(issueKey, subtaskId)
   val listed = listCheckpointRefs(repoRoot, prefix)
-  if (!listed.ok) {
+  if (listed !is WorkflowGitOperationResult.Ok) {
     record(
       "seam=FeatureTaskRuntimeCheckpointRefPrune.pruneSubtaskCheckpointRefs " +
         "value_used='ref listing failed for $prefix' " +
@@ -146,7 +147,7 @@ private fun WorkflowGitOperations.deleteListedCheckpointRefs(
   var deleted = 0
   refs.forEach { refName ->
     val removed = deleteCheckpointRef(repoRoot, FEATURE_TASK_RUNTIME_CHECKPOINT_REF_NAMESPACE, refName)
-    if (!removed.ok) {
+    if (removed !is WorkflowGitOperationResult.Ok) {
       record(
         "seam=FeatureTaskRuntimeCheckpointRefPrune.pruneSubtaskCheckpointRefs " +
           "value_used='delete failed for $refName' " +

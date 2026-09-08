@@ -1,9 +1,7 @@
 
 package skillbill.domain.skillremove
 
-import java.nio.file.InvalidPathException
-import java.nio.file.Path
-import java.nio.file.Paths
+import skillbill.model.FileLocation
 
 /**
  * F-S04: removes absolute-path tokens from exception messages before they reach the dialog/CLI.
@@ -22,9 +20,9 @@ import java.nio.file.Paths
  */
 object SkillRemoveErrorSanitizer {
   fun sanitize(message: String, repoRootAbsolutePath: String): String {
-    val repoRoot: Path? = if (message.isBlank()) null else parseRepoRoot(repoRootAbsolutePath)
+    val repoRoot: FileLocation? = if (message.isBlank()) null else parseRepoRoot(repoRootAbsolutePath)
     if (repoRoot == null) return message
-    val repoRootStr = repoRoot.toString()
+    val repoRootStr = repoRoot.value
     // Split on whitespace; rejoin with a single space so we don't widen newlines into noise.
     return message.splitToSequence(' ', '\t', '\n')
       .map { token ->
@@ -39,11 +37,8 @@ object SkillRemoveErrorSanitizer {
       .joinToString(" ")
   }
 
-  private fun parseRepoRoot(repoRootAbsolutePath: String): Path? = try {
-    Paths.get(repoRootAbsolutePath).toAbsolutePath().normalize()
-  } catch (_: InvalidPathException) {
-    null
-  }
+  private fun parseRepoRoot(repoRootAbsolutePath: String): FileLocation? =
+    FileLocation(repoRootAbsolutePath).takeIf(FileLocation::isAbsolute)?.normalized()
 
   private fun stripTrailingPunctuation(token: String): Pair<String, String> {
     var idx = token.length
@@ -51,23 +46,18 @@ object SkillRemoveErrorSanitizer {
     return token.substring(0, idx) to token.substring(idx)
   }
 
-  private fun sanitizeToken(token: String, repoRoot: Path, repoRootStr: String): String? = try {
-    val parsed = Paths.get(token)
+  private fun sanitizeToken(token: String, repoRoot: FileLocation, repoRootStr: String): String? {
+    if (token.contains('\u0000')) return null
+    val parsed = FileLocation(token)
     if (!parsed.isAbsolute) return null
-    val normalized = parsed.normalize()
-    if (normalized.startsWith(repoRoot)) {
-      val relative = repoRoot.relativize(normalized).toString().replace('\\', '/')
-      relative.ifBlank { "." }
-    } else if (token.startsWith(repoRootStr)) {
+    val normalized = parsed.normalized()
+    return when {
+      normalized.startsWith(repoRoot) -> repoRoot.relativize(normalized).value.ifBlank { "." }
       // Defensive: same as above but in case the path string contains components we couldn't
       // resolve cleanly.
-      val rel = token.removePrefix(repoRootStr).trimStart('/', '\\')
-      rel.ifBlank { "." }
-    } else {
-      EXTERNAL_PATH_PLACEHOLDER
+      token.startsWith(repoRootStr) -> token.removePrefix(repoRootStr).trimStart('/', '\\').ifBlank { "." }
+      else -> EXTERNAL_PATH_PLACEHOLDER
     }
-  } catch (_: InvalidPathException) {
-    null
   }
 
   private const val EXTERNAL_PATH_PLACEHOLDER: String = "<external path>"

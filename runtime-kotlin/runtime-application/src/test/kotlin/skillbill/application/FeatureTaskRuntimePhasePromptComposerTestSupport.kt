@@ -103,6 +103,7 @@ internal fun promptComposerBriefingFor(
         priorGapMemory = options.priorGapMemory,
       ),
     ),
+    planningProjectionValidator = realPlanningProjectionValidator,
   )
 }
 

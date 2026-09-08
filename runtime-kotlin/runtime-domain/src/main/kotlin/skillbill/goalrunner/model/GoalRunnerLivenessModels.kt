@@ -44,6 +44,11 @@ enum class GoalRunnerLivenessState(val wireValue: String) {
   UNRESPONSIVE("unresponsive"),
   ;
 
+  companion object {
+    fun fromWire(value: String?): GoalRunnerLivenessState? =
+      value?.trim()?.let { candidate -> entries.firstOrNull { it.wireValue == candidate } }
+  }
+
   /** Idle is the only state that arms the progress-idle timeout (AC22, AC23). */
   val armsIdleTimeout: Boolean
     get() = this == IDLE
@@ -70,6 +75,34 @@ data class GoalRunnerLivenessDecision(
   val disarmIdleTimeout: Boolean get() = !armIdleTimeout
 }
 
+enum class GoalRunnerProcessState(val wireValue: String) {
+  UNKNOWN("unknown"),
+  KILLED("killed"),
+  EXITED("exited"),
+  CONFIRMED_ALIVE("confirmed_alive"),
+  PROGRESSING("progressing"),
+  IDLE("idle"),
+  ;
+
+  companion object {
+    fun fromWire(value: String?): GoalRunnerProcessState? =
+      value?.trim()?.let { candidate -> entries.firstOrNull { it.wireValue == candidate } }
+  }
+}
+
+enum class GoalRunnerContinuationMode(val wireValue: String) {
+  KILLED_UNRESPONSIVE_CHILD("killed_unresponsive_child"),
+  KILLED_BY_PARENT_INTERRUPT("killed_by_parent_interrupt"),
+  CONTINUE_INLINE("continue_inline"),
+  NONE("none"),
+  ;
+
+  companion object {
+    fun fromWire(value: String?): GoalRunnerContinuationMode? =
+      value?.trim()?.let { candidate -> entries.firstOrNull { it.wireValue == candidate } }
+  }
+}
+
 /**
  * Pure classifier mapping declared facts to a [GoalRunnerLivenessState] and an
  * arm/disarm idle-timeout decision. Ordering encodes the documented semantics:
@@ -93,7 +126,7 @@ object GoalRunnerLivenessClassifier {
 data class GoalRunnerLivenessSnapshot(
   val phase: String,
   val reason: String,
-  val processState: String,
+  val processState: GoalRunnerProcessState,
   val workflowId: String? = null,
   val workflowStep: String? = null,
   val lastDurableProgressAt: String? = null,
@@ -110,8 +143,8 @@ data class GoalRunnerLivenessSnapshot(
 data class GoalRunnerSupervisionEvent(
   val phase: String,
   val reason: String,
-  val continuationMode: String,
-  val processState: String,
+  val continuationMode: GoalRunnerContinuationMode,
+  val processState: GoalRunnerProcessState,
   val workflowId: String?,
   val stepId: String?,
   val lastDurableProgress: String?,

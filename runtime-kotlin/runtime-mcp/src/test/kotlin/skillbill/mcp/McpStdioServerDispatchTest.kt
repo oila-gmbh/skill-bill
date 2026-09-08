@@ -2,7 +2,7 @@ package skillbill.mcp
 
 import skillbill.SAMPLE_REVIEW
 import skillbill.SkillBillVersion
-import skillbill.contracts.JsonSupport
+import skillbill.contracts.JsonCodec
 import skillbill.mcp.core.McpStdioServer
 import skillbill.mcp.shared.McpRuntimeContext
 import java.nio.file.Files
@@ -29,7 +29,7 @@ class McpStdioServerDispatchTest {
 
   @Test
   fun `SKILL-175 the advertised surface carries no prose family name`() {
-    val advertised = toolsList().map { tool -> requireNotNull(JsonSupport.anyToStringAnyMap(tool))["name"].toString() }
+    val advertised = toolsList().map { tool -> requireNotNull(JsonCodec.anyToStringAnyMap(tool))["name"].toString() }
 
     val retired = advertised.filter { name ->
       name.startsWith("feature_task_prose_") ||
@@ -59,7 +59,7 @@ class McpStdioServerDispatchTest {
       )
       val result = response.fieldMap("result")
       val content = result["content"] as List<*>
-      val textContent = requireNotNull(JsonSupport.anyToStringAnyMap(content.first()))
+      val textContent = requireNotNull(JsonCodec.anyToStringAnyMap(content.first()))
 
       assertEquals(true, result["isError"], removed)
       assertContains(textContent["text"].toString(), "Unknown MCP tool '$removed'")
@@ -76,7 +76,7 @@ class McpStdioServerDispatchTest {
       )
     val result = response.fieldMap("result")
     val content = result["content"] as List<*>
-    val textContent = requireNotNull(JsonSupport.anyToStringAnyMap(content.first()))
+    val textContent = requireNotNull(JsonCodec.anyToStringAnyMap(content.first()))
     val payload = decodeStdioJsonObject(textContent["text"].toString())
 
     assertEquals(false, result["isError"])
@@ -130,8 +130,8 @@ class McpStdioServerDispatchTest {
     assertEquals(false, result["isError"], payload.toString())
     val recorded = payload["recorded"] as List<*>
     assertEquals(2, recorded.size)
-    assertEquals("fix_applied", requireNotNull(JsonSupport.anyToStringAnyMap(recorded[0]))["outcome_type"])
-    assertEquals("fix_rejected", requireNotNull(JsonSupport.anyToStringAnyMap(recorded[1]))["outcome_type"])
+    assertEquals("fix_applied", requireNotNull(JsonCodec.anyToStringAnyMap(recorded[0]))["outcome_type"])
+    assertEquals("fix_rejected", requireNotNull(JsonCodec.anyToStringAnyMap(recorded[1]))["outcome_type"])
   }
 
   @Test
@@ -155,7 +155,7 @@ class McpStdioServerDispatchTest {
     assertEquals(1, payload["blocked_runs"])
     val topBlocked = payload["top_blocked_subtasks"] as List<*>
     assertEquals(1, topBlocked.size)
-    val blockedEntry = requireNotNull(JsonSupport.anyToStringAnyMap(topBlocked.first()))
+    val blockedEntry = requireNotNull(JsonCodec.anyToStringAnyMap(topBlocked.first()))
     assertEquals("test failure", blockedEntry["blocked_reason"])
   }
 

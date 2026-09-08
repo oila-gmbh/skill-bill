@@ -1,7 +1,7 @@
 package skillbill.workflow.taskruntime.model
 
 import skillbill.boundary.OpenBoundaryMap
-import skillbill.contracts.JsonSupport
+import skillbill.contracts.JsonCodec
 import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_PERSISTENCE_CONTRACT_VERSION
 import skillbill.error.InvalidWorkflowStateSchemaError
 
@@ -87,7 +87,7 @@ data class FeatureTaskRuntimeDeliveredProjectionRecord(
       iteration = (raw["consumer_delivery_iteration"] as? Number)?.toInt()
         ?: missing("consumer_delivery_iteration"),
       envelope = FeatureTaskRuntimeHandoffEnvelope.fromEnvelopeMap(
-        JsonSupport.anyToStringAnyMap(raw["handoff_envelope"])
+        JsonCodec.anyToStringAnyMap(raw["handoff_envelope"])
           // Named explicitly: the private phase-output artifact is never an acceptable substitute
           // for the delivered projection, so an absent envelope is a hard decode failure.
           ?: missing("handoff_envelope"),
@@ -98,7 +98,7 @@ data class FeatureTaskRuntimeDeliveredProjectionRecord(
     private fun decodeSourceProducerIterations(raw: Map<String, Any?>): List<FeatureTaskRuntimeProducerIteration> =
       (raw["source_producer_iterations"] as? List<*>)
         ?.map { identity ->
-          val map = JsonSupport.anyToStringAnyMap(identity) ?: missing("source_producer_iterations")
+          val map = JsonCodec.anyToStringAnyMap(identity) ?: missing("source_producer_iterations")
           FeatureTaskRuntimeProducerIteration(
             phaseId = map["phase_id"] as? String ?: missing("source_producer_iterations.phase_id"),
             iteration = (map["iteration"] as? Number)?.toInt()
@@ -110,7 +110,7 @@ data class FeatureTaskRuntimeDeliveredProjectionRecord(
       raw: Map<String, Any?>,
       record: FeatureTaskRuntimeDeliveredProjectionRecord,
     ) {
-      val checkpoint = JsonSupport.anyToStringAnyMap(raw["repository_checkpoint"])
+      val checkpoint = JsonCodec.anyToStringAnyMap(raw["repository_checkpoint"])
         ?: missing("repository_checkpoint")
       val persistedFingerprint = checkpoint["fingerprint"] as? String ?: missing("repository_checkpoint.fingerprint")
       if (persistedFingerprint != record.repositoryCheckpointFingerprint) {

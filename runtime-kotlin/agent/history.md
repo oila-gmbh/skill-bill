@@ -1,3 +1,27 @@
+## [2026-09-06] SKILL-233 subtask 2 — Ports evacuation and domain purity
+Areas: runtime-kotlin/{runtime-ports,runtime-domain,runtime-contracts,runtime-application,runtime-cli,runtime-core,runtime-infra-{fs,http,sqlite},runtime-mcp,agent,ARCHITECTURE.md}
+- Evacuated runtime behavior from ports into domain and infrastructure seams, leaving interfaces, DTOs, and pure DTO extensions; the non-interface census is 84 files / 2,886 lines versus 7,031 at start. reusable
+- Removed production null objects and diagnostic sinks, moved test substitutes to testFixtures, and made UnitOfWork members explicit at every implementation boundary. reusable
+- Kept wire mapping at the adapter boundary where contract modules cannot depend on domain snapshots; import and dependency ownership rules now enforce the thin-port/domain-purity shape. reusable
+- Limitation: 23 duplicate basenames remain as distinct types or adapter/model layers; WorkflowStateSnapshotWireMapper remains in infra-fs, and known relative-path differences remain for callers that provide absolute paths.
+Feature flag: N/A
+Acceptance criteria: 13/13 implemented
+
+## [2026-09-06] SKILL-233 subtask 1 — Guard recalibration, run-loop consolidation, DI flattening
+Areas: runtime-kotlin/{runtime-application/featuretask,runtime-core/{di,architecture},config/detekt,agent,ARCHITECTURE.md,runtime-{ports,domain,contracts,cli,mcp,infra-fs,infra-sqlite,infra-http}}, scripts
+- Guards moved by dated decision, never by baseline row: `PRODUCTION_LINE_CEILING` 500→1200, detekt `TooManyFunctions` 11→40 classes/objects and 45 files, `LongParameterList.constructorThreshold` 7→12, `LargeClass` 1200. `thresholdInInterfaces`/`thresholdInEnums` stay 11 as the SKILL-231 port-width guard; `LongMethod`, `CyclomaticComplexMethod`, `NestedBlockDepth`, `ComplexCondition` unchanged. reusable
+- Pattern: when a guard is what produced the fragments, change the guard first and argue it in `agent/decisions.md`; merging under the old rule would only have moved the split into suppressions. reusable
+- Spillover scanner widened from file names to top-level and member declaration names; bare `Support`/`Helpers`/`Misc`/`Extras` scoped to `/src/main/` so the 42 `*TestSupport` helpers keep their names. Identifier acceptance and rejection fixtures added; baseline still empty.
+- Run loop reassembled by responsibility: 65 `FeatureTaskRuntimeRunLoop*` files (10,606 lines) → 20 files (9,494); `skillbill.application.featuretask` 223→166 files and 88→24 `@Inject` sites. No `*Continued<N>`, `*Collaborators`, or `*CollaboratorFacets` survives; sub-steps are private functions, not sibling `@Inject` classes.
+- `FeatureTaskRuntimeRunState` re-merged from ten `*Extensions` files into one 386-line type plus a `FeatureTaskRuntimeRunStateReconstruction` object for durable-ledger replay.
+- DI flattened: 28 `skillbill/di` files → 20, every forwarding `*Bindings` object deleted except `RuntimeBootstrapBindings`, 18 area-named `*Provides` mixins, 126 `@Provides` declared once, `RuntimeComponent`'s abstract property set byte-identical.
+- Bundle survivors after the dissolve pass are `GoalRunnerDeps` and CLI `FeatureTaskRuntimeRunDependencies`; everything else inlined into the one constructor that consumed it. `scripts/split-runloop.py` deleted with its input.
+- Over-injection in tests was solved with test-only fixture value types (`GoalRunnerStatusTestPorts`, `OutcomeStoreTestArtifactPorts`) rather than default args on production constructors; the store factories live in `testFixtures`, the only test tree allowed to import `skillbill.infrastructure.*`. reusable
+- Public-ABI fallout to expect when flattening DI: the `RepositoryRoot` `@Provides` had to leave `RuntimeComponent` for `RuntimeWorkflowProvides`, and the raw-map allowlist FQN became `FeatureTaskRuntimeRunState.parsedOutput` in both ARCHITECTURE.md lists and the test — both only surface once compilation succeeds.
+- Limitation: the run loop stays in `runtime-application` and ports/domain/null-object work is untouched; subtasks 2–4 own those. Renames reached `runtime-ports`, `runtime-domain`, and `runtime-contracts` as rename-only steps to empty the all-module census.
+Feature flag: N/A
+Acceptance criteria: 9/9 implemented
+
 ## [2026-09-04] SKILL-232 subtask 1 — Unused private/internal deletion pass
 Areas: runtime-kotlin/{runtime-application/{featuretask,goalrunner,work},runtime-domain/review/context/model,runtime-infra-fs/{infrastructure/fs,install/nativeagent,launcher/mcp,scaffold/platformpack},runtime-infra-sqlite/{db/workflow,infrastructure/sqlite/goalrunner},runtime-core/architecture/baselines}
 - Deleted 15 confirmed-unused `internal` declarations plus the eight-symbol cascade inside `GoalSubtaskReviewDeletionElision.kt`; 6 insertions, 243 deletions, no observable behavior change.

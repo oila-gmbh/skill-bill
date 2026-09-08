@@ -1,7 +1,7 @@
 package skillbill.application.featuretask
 
 import skillbill.application.featuretask.model.CompletedUpstreamRepairRequest
-import skillbill.contracts.JsonSupport
+import skillbill.contracts.JsonCodec
 import skillbill.workflow.engine.model.WorkflowUpdateInput
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_RUN_INVARIANTS_ARTIFACT_KEY
@@ -9,11 +9,13 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFeatureSize
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseRecord
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeQualityGateSelection
 import skillbill.workflow.taskruntime.model.featureTaskRuntimeRunInvariantsFromArtifactMap
+import skillbill.workflow.model.WorkflowStepStatus
+import skillbill.workflow.model.workflowStepStatus
 
 fun featureSizeFromArtifacts(artifacts: Map<String, Any?>): FeatureTaskRuntimeFeatureSize {
   val raw = artifacts[FEATURE_TASK_RUNTIME_RUN_INVARIANTS_ARTIFACT_KEY] as? Map<*, *>
     ?: return FeatureTaskRuntimeFeatureSize.MEDIUM
-  val invariantsMap = JsonSupport.anyToStringAnyMap(raw) ?: return FeatureTaskRuntimeFeatureSize.MEDIUM
+  val invariantsMap = JsonCodec.anyToStringAnyMap(raw) ?: return FeatureTaskRuntimeFeatureSize.MEDIUM
   return featureTaskRuntimeRunInvariantsFromArtifactMap(invariantsMap).featureSize
 }
 
@@ -25,7 +27,9 @@ fun diagnoseUnsettledCompletedUpstreamPhaseId(
 ): String? {
   val recordedOutputs = settledPhaseOutputs(phaseRecords)
   val stepOrder = FeatureTaskRuntimePhaseWorkflowDefinition.definition.stepIds
-  val blockedConsumers = phaseRecords.filterValues { it.status == "blocked" }.keys
+  val blockedConsumers = phaseRecords.filterValues {
+    it.status.workflowStepStatus() == WorkflowStepStatus.BLOCKED
+  }.keys
   for (consumerPhaseId in blockedConsumers) {
     val declaration = phaseDeclaration(consumerPhaseId, featureSize, qualityGateSelection)
     val blockedReason = phaseRecords[consumerPhaseId]?.blockedReason.orEmpty()

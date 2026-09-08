@@ -1,15 +1,17 @@
 package skillbill.application.featuretask
 
 import skillbill.application.featuretask.model.FeatureTaskRuntimePhaseStateRequest
-import skillbill.contracts.issuekey.normalizeIssueKey
 import skillbill.application.workflow.model.WorkflowFamily
-import skillbill.application.workflow.toRecord
+import skillbill.contracts.issuekey.normalizeIssueKey
 import skillbill.error.InvalidWorkflowStateSchemaError
 import skillbill.error.WorkflowIssueKeyConflictError
 import skillbill.ports.db.DatabaseSessionFactory
 import skillbill.ports.featuretask.model.FeatureTaskRuntimeWorkerOwnership
 import skillbill.ports.workflow.WorkflowStateRepository
 import skillbill.ports.workflow.model.FeatureTaskWorkflowMode
+import skillbill.ports.workflow.save
+import skillbill.ports.workflow.saveRecord
+import skillbill.ports.workflow.toRecord
 import skillbill.workflow.engine.WorkflowEngine
 import skillbill.workflow.engine.WorkflowSnapshotValidator
 import skillbill.workflow.engine.model.WorkflowStateSnapshot
@@ -20,6 +22,8 @@ import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_STATUS_PA
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_STATUS_PENDING
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeImplementationAttemptStatus
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseRecord
+import skillbill.workflow.model.WorkflowStepStatus
+import skillbill.workflow.model.workflowStepStatus
 import java.security.MessageDigest
 import java.time.Duration
 import java.time.Instant
@@ -115,11 +119,11 @@ class FeatureTaskRuntimeWorkflowPersistence(
 
 fun stepUpdatesFrom(records: Map<String, FeatureTaskRuntimePhaseRecord>): List<Map<String, Any?>> {
   fun stepStatusFor(record: FeatureTaskRuntimePhaseRecord): String = when {
-    record.status == FEATURE_TASK_RUNTIME_PHASE_STATUS_BLOCKED -> FEATURE_TASK_RUNTIME_PHASE_STATUS_BLOCKED
-    record.status == FEATURE_TASK_RUNTIME_PHASE_STATUS_PAUSED -> FEATURE_TASK_RUNTIME_PHASE_STATUS_PAUSED
-    record.status == FEATURE_TASK_RUNTIME_PHASE_STATUS_PENDING -> FEATURE_TASK_RUNTIME_PHASE_STATUS_PENDING
+    record.status.workflowStepStatus() == WorkflowStepStatus.BLOCKED -> FEATURE_TASK_RUNTIME_PHASE_STATUS_BLOCKED
+    record.status.workflowStepStatus() == WorkflowStepStatus.PAUSED -> FEATURE_TASK_RUNTIME_PHASE_STATUS_PAUSED
+    record.status.workflowStepStatus() == WorkflowStepStatus.PENDING -> FEATURE_TASK_RUNTIME_PHASE_STATUS_PENDING
     record.finishedAt != null -> "completed"
-    record.status == "running" || record.status == "completed" -> record.status
+    record.status.workflowStepStatus() in setOf(WorkflowStepStatus.RUNNING, WorkflowStepStatus.COMPLETED) -> record.status.wireValue
     else -> throw InvalidWorkflowStateSchemaError(
       "Feature-task-runtime phase '${record.phaseId}' has unmappable status '${record.status}' for steps[].",
     )
@@ -134,17 +138,17 @@ fun stepUpdatesFrom(records: Map<String, FeatureTaskRuntimePhaseRecord>): List<M
 }
 
 fun workflowStatusFor(request: FeatureTaskRuntimePhaseStateRequest): String = when {
-  request.status == FEATURE_TASK_RUNTIME_PHASE_STATUS_PAUSED -> "paused"
-  request.status == FEATURE_TASK_RUNTIME_PHASE_STATUS_BLOCKED -> "blocked"
+  request.status.workflowStepStatus() == WorkflowStepStatus.PAUSED -> "paused"
+  request.status.workflowStepStatus() == WorkflowStepStatus.BLOCKED -> "blocked"
   request.finished && request.phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.definition.stepIds.last() ->
     "completed"
   else -> "running"
 }
 
 fun attemptStatusFor(request: FeatureTaskRuntimePhaseStateRequest): FeatureTaskRuntimeImplementationAttemptStatus =
-  when (request.status) {
-    "completed" -> FeatureTaskRuntimeImplementationAttemptStatus.COMPLETED
-    FEATURE_TASK_RUNTIME_PHASE_STATUS_BLOCKED -> FeatureTaskRuntimeImplementationAttemptStatus.BLOCKED
+  when (request.status.workflowStepStatus()) {
+    WorkflowStepStatus.COMPLETED -> FeatureTaskRuntimeImplementationAttemptStatus.COMPLETED
+    WorkflowStepStatus.BLOCKED -> FeatureTaskRuntimeImplementationAttemptStatus.BLOCKED
     else -> FeatureTaskRuntimeImplementationAttemptStatus.INCOMPLETE
   }
 

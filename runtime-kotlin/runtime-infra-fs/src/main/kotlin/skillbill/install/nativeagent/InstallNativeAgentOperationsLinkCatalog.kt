@@ -1,5 +1,6 @@
 package skillbill.install.nativeagent
 
+import skillbill.model.toPath
 import skillbill.scaffold.platformpack.loadPlatformManifest
 import java.nio.file.Files
 import java.nio.file.LinkOption
@@ -22,8 +23,8 @@ private fun stageReviewCatalogPack(source: Path, staging: Path) {
   val manifest = loadPlatformManifest(source)
   val runtimeFiles = buildList {
     add(source.resolve("platform.yaml"))
-    manifest.declaredFiles.baseline?.let(::add)
-    addAll(manifest.declaredFiles.areas.values)
+    manifest.declaredFiles.baseline?.let { baseline -> add(baseline.toPath()) }
+    addAll(manifest.declaredFiles.areas.values.map { area -> area.toPath() })
     val declaredAddons = manifest.addonUsage.flatMap { it.addons } +
       manifest.featureAddonUsage.flatMap { it.addons }
     declaredAddons.forEach { addon ->
