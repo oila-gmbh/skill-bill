@@ -13,6 +13,7 @@ import skillbill.telemetry.model.RemoteStatsRequest
 import skillbill.telemetry.model.TelemetryProxyCapabilities
 import skillbill.telemetry.model.TelemetryRemoteStatsResult
 import skillbill.telemetry.model.TelemetrySettings
+import skillbill.telemetry.model.TelemetrySyncStatus
 import skillbill.telemetry.sync.TelemetrySyncRuntime
 import java.io.IOException
 import java.nio.file.Files
@@ -107,7 +108,7 @@ class TelemetryRuntimeTest {
 
       val successClient = RecordingTelemetryClient()
       val successResult = TelemetrySyncRuntime.syncTelemetry(settings, outboxStore, successClient)
-      assertEquals("synced", successResult.status)
+      assertEquals(TelemetrySyncStatus.SYNCED, successResult.status)
       assertEquals(2, successResult.syncedEvents)
       assertEquals(listOf(listOf(1L, 2L)), successClient.sentBatchIds)
     }
@@ -118,7 +119,7 @@ class TelemetryRuntimeTest {
 
       val failingClient = RecordingTelemetryClient(failure = IOException("blocked by network isolation sentinel"))
       val failedResult = TelemetrySyncRuntime.syncTelemetry(settings, outboxStore, failingClient)
-      assertEquals("failed", failedResult.status)
+      assertEquals(TelemetrySyncStatus.FAILED, failedResult.status)
       assertEquals("blocked by network isolation sentinel", failedResult.message)
       assertEquals("blocked by network isolation sentinel", outboxStore.latestError())
     }
@@ -148,7 +149,7 @@ class TelemetryRuntimeTest {
           reportFailures = false,
         )
 
-      assertEquals("disabled", result?.status)
+      assertEquals(TelemetrySyncStatus.DISABLED, result?.status)
       assertEquals(
         false,
         TelemetrySyncRuntime.telemetryStatusPayload(dbPath, disabledSettings).telemetryEnabled,
@@ -164,7 +165,7 @@ class TelemetryRuntimeTest {
           RecordingTelemetryClient(),
         )
 
-      assertEquals("noop", noopResult.status)
+      assertEquals(TelemetrySyncStatus.NOOP, noopResult.status)
     }
 
     DatabaseRuntime.ensureDatabase(dbPath).use { connection ->
@@ -181,7 +182,7 @@ class TelemetryRuntimeTest {
           RecordingTelemetryClient(failure = IOException("must not call client")),
         )
 
-      assertEquals("unconfigured", unconfiguredResult.status)
+      assertEquals(TelemetrySyncStatus.UNCONFIGURED, unconfiguredResult.status)
       assertEquals(1, unconfiguredResult.pendingEvents)
     }
   }

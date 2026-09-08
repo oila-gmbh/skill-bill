@@ -12,5 +12,3 @@ enum class TelemetrySyncStatus(val wireValue: String) {
     fun fromWire(value: String): TelemetrySyncStatus? = entries.firstOrNull { it.wireValue == value }
   }
 }
-
-fun String?.telemetrySyncStatus(): TelemetrySyncStatus? = this?.let(TelemetrySyncStatus::fromWire)

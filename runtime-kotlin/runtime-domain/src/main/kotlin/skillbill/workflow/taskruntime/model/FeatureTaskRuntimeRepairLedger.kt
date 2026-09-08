@@ -21,6 +21,12 @@ private const val LEDGER_CLOSE_MARKER_PREFIX: String = "<<<END_REPAIR_LEDGER"
 enum class FeatureTaskRuntimeRepairLedgerStatus(val wireValue: String) {
   RESOLVED("resolved"),
   DISREGARDED("disregarded"),
+  ;
+
+  companion object {
+    fun fromWire(value: String?): FeatureTaskRuntimeRepairLedgerStatus? =
+      value?.trim()?.let { candidate -> entries.firstOrNull { it.wireValue == candidate } }
+  }
 }
 
 data class FeatureTaskRuntimeRepairLedgerEntry(

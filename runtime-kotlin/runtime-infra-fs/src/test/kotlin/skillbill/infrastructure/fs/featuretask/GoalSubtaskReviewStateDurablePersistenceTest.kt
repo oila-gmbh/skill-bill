@@ -11,7 +11,12 @@ import skillbill.application.workflow.model.WorkflowFamily
 import skillbill.contracts.JsonCodec
 import skillbill.infrastructure.fs.GitWorkflowGitOperations
 import skillbill.ports.diagnostics.NoopRuntimeDiagnostics
+import skillbill.ports.workflow.gitops.GoalSubtaskReviewGitOperations
 import skillbill.ports.workflow.gitops.WorkflowGitOperations
+import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewBaseline
+import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewBaselineResult
+import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewInputResult
+import skillbill.ports.workflow.gitops.model.WorkflowGitOperationStatus
 import skillbill.ports.workflow.toRecord
 import skillbill.review.context.model.CodeReviewExecutionMode
 import skillbill.workflow.engine.WorkflowEngine
@@ -250,6 +255,21 @@ class GoalSubtaskReviewStateDurablePersistenceTest {
     return output
   }
 
+  private fun gitOpsWithoutBaselineRecovery(): WorkflowGitOperations = object : WorkflowGitOperations by realGitOps() {
+    override val goalSubtaskReviewOperations: GoalSubtaskReviewGitOperations =
+      object : GoalSubtaskReviewGitOperations {
+        override fun captureBaseline(repoRoot: Path, expectedBranch: String): GoalSubtaskReviewBaselineResult =
+          GoalSubtaskReviewBaselineResult(status = WorkflowGitOperationStatus.ERROR, error = "unsupported")
+
+        override fun buildInput(
+          repoRoot: Path,
+          baseline: GoalSubtaskReviewBaseline,
+          expectedBranch: String,
+        ): GoalSubtaskReviewInputResult =
+          GoalSubtaskReviewInputResult(status = WorkflowGitOperationStatus.ERROR, error = "unsupported")
+      }
+  }
+
   private fun realGitOps(): WorkflowGitOperations = GitWorkflowGitOperations()
 
   private fun pausedState(): GoalSubtaskReviewState {
@@ -417,7 +437,7 @@ class GoalSubtaskReviewStateDurablePersistenceTest {
   }
 
   @Test
-  fun `resume coherence blocks when stored remediation base is orphaned and no ref resolves`() {
+  fun `resume coherence recovers an orphaned remediation base to the nearest reachable ancestor`() {
     val fixture = skill15GitFixture()
     val head = git(fixture.repoRoot, "rev-parse", "HEAD")
     assertTrue(head != fixture.orphanedBase, "fixture must leave the orphan unreachable from HEAD")
@@ -427,8 +447,39 @@ class GoalSubtaskReviewStateDurablePersistenceTest {
     val recorder = recorderWith(state, repository, goalBranch = "feat/skill-15")
     val gitOps = realGitOps()
 
-    val blocked = assertIs<RemediationBaseBlocked>(
+    val coherent = assertIs<RemediationBaseCoherent>(
       recorder.remediationReconciler.reconcileRemediationBaseCoherence(workflowId, gitOps, fixture.repoRoot),
+    )
+
+    assertEquals(fixture.parent, coherent.state?.remediationBaseSha)
+    val persisted = recorder.reviewStateRecorder.reviewState(workflowId)?.remediationBaseSha
+    assertEquals(fixture.parent, persisted)
+    assertNotEquals(head, persisted)
+    val evidence = requireNotNull(
+      JsonCodec.anyToStringAnyMapList(
+        repository.taskRuntimeArtifacts(workflowId)[GOAL_REVIEW_BASE_RECOVERIES_ARTIFACT_KEY],
+      ),
+    )
+    assertEquals("base_not_ancestor", evidence.first()["failure_reason"])
+    assertEquals(fixture.orphanedBase, evidence.first()["original_sha"])
+    assertEquals(fixture.parent, evidence.first()["replacement_sha"])
+  }
+
+  @Test
+  fun `resume coherence blocks when an orphaned base has no recoverable ancestor`() {
+    val fixture = skill15GitFixture()
+    val head = git(fixture.repoRoot, "rev-parse", "HEAD")
+    val state = deepRemediationState(completedPasses = 1)
+      .copy(remediationBaseSha = fixture.orphanedBase)
+    val repository = FeatureTaskGitIntegrationWorkflowRepository()
+    val recorder = recorderWith(state, repository, goalBranch = "feat/skill-15")
+
+    val blocked = assertIs<RemediationBaseBlocked>(
+      recorder.remediationReconciler.reconcileRemediationBaseCoherence(
+        workflowId,
+        gitOpsWithoutBaselineRecovery(),
+        fixture.repoRoot,
+      ),
     )
 
     assertContains(blocked.operatorGuidance, "feat/skill-15")

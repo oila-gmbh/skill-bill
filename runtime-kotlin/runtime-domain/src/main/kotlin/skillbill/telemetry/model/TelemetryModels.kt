@@ -13,7 +13,7 @@ data class TelemetrySettings(
 )
 
 data class SyncResult(
-  val status: String,
+  val status: TelemetrySyncStatus,
   val syncedEvents: Int,
   val pendingEvents: Int,
   val configPath: FileLocation,

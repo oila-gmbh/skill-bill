@@ -13,6 +13,12 @@ enum class GoalPlanningStatusState(val wireValue: String) {
   PARTIALLY_PLANNED("partially_planned"),
   BLOCKED("blocked"),
   PREPARED("prepared"),
+  ;
+
+  companion object {
+    fun fromWire(value: String?): GoalPlanningStatusState? =
+      value?.trim()?.let { candidate -> entries.firstOrNull { it.wireValue == candidate } }
+  }
 }
 
 /** Shared planning-status reason phrases so store projection and launch-aligned overlays stay in lockstep. */
@@ -34,6 +40,12 @@ enum class ExecutionLiveness(val wireValue: String) {
   LIVE("live"),
   IDLE("idle"),
   UNKNOWN("unknown"),
+  ;
+
+  companion object {
+    fun fromWire(value: String?): ExecutionLiveness? =
+      value?.trim()?.let { candidate -> entries.firstOrNull { it.wireValue == candidate } }
+  }
 }
 
 data class GoalPlanningStatusSnapshot(

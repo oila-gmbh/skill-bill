@@ -44,6 +44,11 @@ enum class GoalRunnerLivenessState(val wireValue: String) {
   UNRESPONSIVE("unresponsive"),
   ;
 
+  companion object {
+    fun fromWire(value: String?): GoalRunnerLivenessState? =
+      value?.trim()?.let { candidate -> entries.firstOrNull { it.wireValue == candidate } }
+  }
+
   /** Idle is the only state that arms the progress-idle timeout (AC22, AC23). */
   val armsIdleTimeout: Boolean
     get() = this == IDLE
