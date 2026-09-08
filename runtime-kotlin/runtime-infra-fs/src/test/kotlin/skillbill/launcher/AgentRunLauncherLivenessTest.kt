@@ -280,6 +280,6 @@ class AgentRunLauncherLivenessTest {
     assertTrue(completed.interrupted)
     assertContains(completed.stderr, "interrupted by parent signal")
     assertEquals("parent_interrupted", completed.liveness?.reason)
-    assertEquals("killed", completed.liveness?.processState)
+    assertEquals("killed", completed.liveness?.processState?.wireValue)
   }
 }

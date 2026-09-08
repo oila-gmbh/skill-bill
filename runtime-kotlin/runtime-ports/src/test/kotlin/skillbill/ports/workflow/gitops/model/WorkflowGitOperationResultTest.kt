@@ -30,6 +30,14 @@ class WorkflowGitOperationResultTest {
   }
 
   @Test
+  fun `wire error without diagnostics preserves the error status`() {
+    assertEquals(
+      WorkflowGitOperationResult.Failed(error = "error"),
+      WorkflowGitOperationResult.fromWire("error"),
+    )
+  }
+
+  @Test
   fun `structured result status owns canonical wire mapping`() {
     assertEquals("ok", WorkflowGitOperationStatus.OK.wireValue)
     assertEquals("error", WorkflowGitOperationStatus.ERROR.wireValue)

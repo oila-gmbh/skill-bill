@@ -10,8 +10,8 @@ import skillbill.goalrunner.toArtifactMap
 fun GoalRunnerSupervisionEvent.toArtifactsMap(): Map<String, Any?> = linkedMapOf(
   "phase" to phase,
   "reason" to reason,
-  "continuation_mode" to continuationMode,
-  "process_state" to processState,
+  "continuation_mode" to continuationMode.wireValue,
+  "process_state" to processState.wireValue,
   "workflow_id" to workflowId,
   "step_id" to stepId,
   "last_durable_progress" to lastDurableProgress,
