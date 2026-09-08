@@ -65,7 +65,43 @@ class RemediationBaseReconciliationUnderAmendTest {
   }
 
   @Test
-  fun `unresolvable checkpoint ref blocks without rewriting remediation base to HEAD`() {
+  fun `unresolvable checkpoint ref recovers the nearest reachable base instead of blocking`() {
+    val fixture = amendRemediationFixture()
+    val head = git(fixture.repoRoot, "rev-parse", "HEAD")
+    val ref = featureTaskRuntimeCheckpointRefName(issueKey, subtaskId, 1)
+    git(fixture.repoRoot, "update-ref", "-d", ref)
+    val identity = reviewFixIdentity(
+      sequenceNumber = 1,
+      commitSha = fixture.postRemediationSha,
+      parentSha = fixture.preRemediationSha,
+    )
+    val state = remediationState(remediationBaseSha = fixture.preRemediationSha)
+    val repository = FeatureTaskGitIntegrationWorkflowRepository()
+    val recorder = recorderWith(state, listOf(identity), repository)
+
+    val coherent = assertIs<RemediationBaseCoherent>(
+      recorder.remediationReconciler.reconcileRemediationBaseCoherence(workflowId, realGitOps(), fixture.repoRoot),
+    )
+    val mergeBase = git(fixture.repoRoot, "merge-base", fixture.preRemediationSha, head)
+    assertEquals(mergeBase, coherent.state?.remediationBaseSha)
+    val persisted = recorder.reviewStateRecorder.reviewState(workflowId)?.remediationBaseSha
+    assertEquals(mergeBase, persisted)
+    assertNotEquals(head, persisted)
+    assertNotEquals(fixture.preRemediationSha, persisted)
+    val evidence = requireNotNull(
+      JsonSupport.anyToStringAnyMapList(
+        repository.taskRuntimeArtifacts(workflowId)[GOAL_REVIEW_BASE_RECOVERIES_ARTIFACT_KEY],
+      ),
+    )
+    val entry = evidence.first()
+    assertEquals("FeatureTaskRuntimeGoalContinuationRecorder.reconcileRemediationBaseCoherence", entry["seam"])
+    assertEquals(fixture.preRemediationSha, entry["original_sha"])
+    assertEquals(mergeBase, entry["replacement_sha"])
+    assertEquals("base_not_ancestor", entry["failure_reason"])
+  }
+
+  @Test
+  fun `blocks with operator guidance when no reachable base can be recovered`() {
     val fixture = amendRemediationFixture()
     val head = git(fixture.repoRoot, "rev-parse", "HEAD")
     val ref = featureTaskRuntimeCheckpointRefName(issueKey, subtaskId, 1)
@@ -80,12 +116,17 @@ class RemediationBaseReconciliationUnderAmendTest {
     val recorder = recorderWith(state, listOf(identity), repository)
 
     val blocked = assertIs<RemediationBaseBlocked>(
-      recorder.remediationReconciler.reconcileRemediationBaseCoherence(workflowId, realGitOps(), fixture.repoRoot),
+      recorder.remediationReconciler.reconcileRemediationBaseCoherence(
+        workflowId,
+        gitOpsWithoutBaselineRecovery(),
+        fixture.repoRoot,
+      ),
     )
     assertContains(blocked.operatorGuidance, workflowId)
     assertContains(blocked.operatorGuidance, goalBranch)
     assertContains(blocked.operatorGuidance, ref)
-    assertContains(blocked.operatorGuidance, "skill-bill goal repair")
+    assertContains(blocked.operatorGuidance, "skill-bill goal repair $issueKey --subtask")
+    assertFalse(blocked.operatorGuidance.contains("--issue-key"))
     assertEquals(fixture.preRemediationSha, recorder.reviewStateRecorder.reviewState(workflowId)?.remediationBaseSha)
     assertNotEquals(head, recorder.reviewStateRecorder.reviewState(workflowId)?.remediationBaseSha)
     val evidence = requireNotNull(
@@ -98,6 +139,28 @@ class RemediationBaseReconciliationUnderAmendTest {
     assertEquals(ref, entry["value_used"])
     assertEquals("resolvable review_fix checkpoint ref commit", entry["value_expected"])
     assertNotNull(entry["cause"])
+  }
+
+  @Test
+  fun `a stored base that resolves but left the branch is not reported as unresolvable`() {
+    val fixture = amendRemediationFixture()
+    val ref = featureTaskRuntimeCheckpointRefName(issueKey, subtaskId, 1)
+    git(fixture.repoRoot, "update-ref", "-d", ref)
+    val state = remediationState(remediationBaseSha = fixture.preRemediationSha)
+    val recorder = recorderWith(state, emptyList())
+
+    val blocked = assertIs<RemediationBaseBlocked>(
+      recorder.remediationReconciler.reconcileRemediationBaseCoherence(
+        workflowId,
+        gitOpsWithoutBaselineRecovery(),
+        fixture.repoRoot,
+      ),
+    )
+    assertFalse(
+      blocked.operatorGuidance.contains("also failed to resolve"),
+      "a stored base that still resolves must not be reported as unresolvable: ${blocked.operatorGuidance}",
+    )
+    assertContains(blocked.operatorGuidance, "not reachable from the branch")
   }
 
   @Test
@@ -403,6 +466,8 @@ class RemediationBaseReconciliationUnderAmendTest {
     check(exitCode == 0) { "git ${args.joinToString(" ")} failed with $exitCode: $output" }
     return output
   }
+
+  private fun gitOpsWithoutBaselineRecovery(): WorkflowGitOperations = object : WorkflowGitOperations by realGitOps() {}
 
   private fun realGitOps(): WorkflowGitOperations = GitWorkflowGitOperations()
 }

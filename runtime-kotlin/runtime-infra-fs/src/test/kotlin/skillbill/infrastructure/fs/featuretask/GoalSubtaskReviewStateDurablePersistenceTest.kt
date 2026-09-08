@@ -250,6 +250,8 @@ class GoalSubtaskReviewStateDurablePersistenceTest {
     return output
   }
 
+  private fun gitOpsWithoutBaselineRecovery(): WorkflowGitOperations = object : WorkflowGitOperations by realGitOps() {}
+
   private fun realGitOps(): WorkflowGitOperations = GitWorkflowGitOperations()
 
   private fun pausedState(): GoalSubtaskReviewState {
@@ -417,7 +419,7 @@ class GoalSubtaskReviewStateDurablePersistenceTest {
   }
 
   @Test
-  fun `resume coherence blocks when stored remediation base is orphaned and no ref resolves`() {
+  fun `resume coherence recovers an orphaned remediation base to the nearest reachable ancestor`() {
     val fixture = skill15GitFixture()
     val head = git(fixture.repoRoot, "rev-parse", "HEAD")
     assertTrue(head != fixture.orphanedBase, "fixture must leave the orphan unreachable from HEAD")
@@ -427,8 +429,39 @@ class GoalSubtaskReviewStateDurablePersistenceTest {
     val recorder = recorderWith(state, repository, goalBranch = "feat/skill-15")
     val gitOps = realGitOps()
 
-    val blocked = assertIs<RemediationBaseBlocked>(
+    val coherent = assertIs<RemediationBaseCoherent>(
       recorder.remediationReconciler.reconcileRemediationBaseCoherence(workflowId, gitOps, fixture.repoRoot),
+    )
+
+    assertEquals(fixture.parent, coherent.state?.remediationBaseSha)
+    val persisted = recorder.reviewStateRecorder.reviewState(workflowId)?.remediationBaseSha
+    assertEquals(fixture.parent, persisted)
+    assertNotEquals(head, persisted)
+    val evidence = requireNotNull(
+      JsonSupport.anyToStringAnyMapList(
+        repository.taskRuntimeArtifacts(workflowId)[GOAL_REVIEW_BASE_RECOVERIES_ARTIFACT_KEY],
+      ),
+    )
+    assertEquals("base_not_ancestor", evidence.first()["failure_reason"])
+    assertEquals(fixture.orphanedBase, evidence.first()["original_sha"])
+    assertEquals(fixture.parent, evidence.first()["replacement_sha"])
+  }
+
+  @Test
+  fun `resume coherence blocks when an orphaned base has no recoverable ancestor`() {
+    val fixture = skill15GitFixture()
+    val head = git(fixture.repoRoot, "rev-parse", "HEAD")
+    val state = deepRemediationState(completedPasses = 1)
+      .copy(remediationBaseSha = fixture.orphanedBase)
+    val repository = FeatureTaskGitIntegrationWorkflowRepository()
+    val recorder = recorderWith(state, repository, goalBranch = "feat/skill-15")
+
+    val blocked = assertIs<RemediationBaseBlocked>(
+      recorder.remediationReconciler.reconcileRemediationBaseCoherence(
+        workflowId,
+        gitOpsWithoutBaselineRecovery(),
+        fixture.repoRoot,
+      ),
     )
 
     assertContains(blocked.operatorGuidance, "feat/skill-15")

@@ -185,37 +185,23 @@ internal fun FeatureTaskRuntimeRemediationBaseReconciler.applyRemediationReconci
 ): RemediationBaseCoherenceResult {
   val state = request.snapshot.state
   val continuation = request.snapshot.continuation
-  val checkpoints = request.snapshot.checkpoints
   val stored = state.remediationBaseSha
   val storedResolves = stored?.let { resolvesCommit(request.gitOperations, request.repoRoot, it) } == true
   return when (request.reconciliation) {
     RemediationReconciliationCoherent -> RemediationBaseCoherent(state)
     RemediationReconciliationBlocked -> {
-      val failedRef = latestReviewFixCheckpointRef(checkpoints)
-      val guidance = remediationBaseReconciliationBlockedGuidance(
-        workflowId = request.workflowId,
+      val recovered = recoveredRemediationBaseSha(
+        stored = stored,
+        state = state,
         continuation = continuation,
-        failedRef = failedRef,
-        storedSha = stored,
+        gitOperations = request.gitOperations,
+        repoRoot = request.repoRoot,
       )
-      appendRemediationBaseReconciliationEvidence(
-        workflowId = request.workflowId,
-        recovery = RemediationBaseRecovery(
-          originalSha = stored,
-          replacementSha = null,
-          reason = "reconciliation_blocked",
-          goalBranch = continuation.goalBranch,
-          failureMessageOverride = guidance,
-        ),
-        signal = RemediationDegradationSignal(
-          seam = "FeatureTaskRuntimeGoalContinuationRecorder.reconcileRemediationBaseCoherence",
-          valueUsed = failedRef ?: stored.orEmpty(),
-          valueExpected = "resolvable review_fix checkpoint ref commit",
-          cause = remediationBlockedCause(stored, storedResolves, failedRef),
-        ),
-        dbOverride = request.dbOverride,
-      )
-      RemediationBaseBlocked(guidance)
+      if (recovered != null) {
+        healRemediationBaseFromRecoveredBaseline(request, recovered)
+      } else {
+        blockRemediationBaseReconciliation(request, storedResolves)
+      }
     }
     is RemediationReconciliationHeal -> healRemediationBase(
       RemediationBaseHealRequest(
@@ -232,6 +218,81 @@ internal fun FeatureTaskRuntimeRemediationBaseReconciler.applyRemediationReconci
       ),
     )
   }
+}
+
+private fun FeatureTaskRuntimeRemediationBaseReconciler.healRemediationBaseFromRecoveredBaseline(
+  request: RemediationReconciliationApplyRequest,
+  recovered: String,
+): RemediationBaseCoherenceResult {
+  val state = request.snapshot.state
+  val continuation = request.snapshot.continuation
+  val stored = state.remediationBaseSha
+  if (recovered == stored) return RemediationBaseCoherent(state)
+  appendRemediationBaseReconciliationEvidence(
+    workflowId = request.workflowId,
+    recovery = RemediationBaseRecovery(
+      originalSha = stored,
+      replacementSha = recovered,
+      reason = "base_not_ancestor",
+      goalBranch = continuation.goalBranch,
+      failureMessageOverride =
+      "Resume recovered remediation_base_sha from the goal branch after the stored base left the branch.",
+    ),
+    signal = RemediationDegradationSignal(
+      seam = "FeatureTaskRuntimeGoalContinuationRecorder.reconcileRemediationBaseCoherence",
+      valueUsed = stored.orEmpty(),
+      valueExpected = "remediation_base_sha reachable from the goal branch",
+      cause = "no review_fix checkpoint ref resolved; recovered the nearest reachable base from the goal branch",
+    ),
+    dbOverride = request.dbOverride,
+  )
+  val healed = persistHealedRemediationBaseState(
+    PersistHealedRemediationBaseRequest(
+      workflowId = request.workflowId,
+      target = recovered,
+      stored = stored,
+      reason = "base_not_ancestor",
+      continuation = continuation,
+      gitOperations = request.gitOperations,
+      repoRoot = request.repoRoot,
+      dbOverride = request.dbOverride,
+    ),
+  )
+  return RemediationBaseCoherent(healed ?: state)
+}
+
+private fun FeatureTaskRuntimeRemediationBaseReconciler.blockRemediationBaseReconciliation(
+  request: RemediationReconciliationApplyRequest,
+  storedResolves: Boolean,
+): RemediationBaseCoherenceResult {
+  val continuation = request.snapshot.continuation
+  val stored = request.snapshot.state.remediationBaseSha
+  val failedRef = latestReviewFixCheckpointRef(request.snapshot.checkpoints)
+  val guidance = remediationBaseReconciliationBlockedGuidance(
+    workflowId = request.workflowId,
+    continuation = continuation,
+    failedRef = failedRef,
+    storedSha = stored,
+    storedResolves = storedResolves,
+  )
+  appendRemediationBaseReconciliationEvidence(
+    workflowId = request.workflowId,
+    recovery = RemediationBaseRecovery(
+      originalSha = stored,
+      replacementSha = null,
+      reason = "reconciliation_blocked",
+      goalBranch = continuation.goalBranch,
+      failureMessageOverride = guidance,
+    ),
+    signal = RemediationDegradationSignal(
+      seam = "FeatureTaskRuntimeGoalContinuationRecorder.reconcileRemediationBaseCoherence",
+      valueUsed = failedRef ?: stored.orEmpty(),
+      valueExpected = "resolvable review_fix checkpoint ref commit",
+      cause = remediationBlockedCause(stored, storedResolves, failedRef),
+    ),
+    dbOverride = request.dbOverride,
+  )
+  return RemediationBaseBlocked(guidance)
 }
 
 private fun FeatureTaskRuntimeRemediationBaseReconciler.healRemediationBase(
@@ -279,13 +340,27 @@ internal fun FeatureTaskRuntimeRemediationBaseReconciler.remediationBaseReconcil
   continuation: FeatureTaskRuntimeGoalContinuationArtifact,
   failedRef: String?,
   storedSha: String?,
-): String {
-  val refDetail = failedRef?.let { "checkpoint ref '$it'" } ?: "stored remediation base"
-  val storedDetail = storedSha?.let { " (stored sha '$it' also failed to resolve)" }.orEmpty()
-  return "Remediation base reconciliation blocked for workflow '$workflowId' on branch " +
-    "'${continuation.goalBranch}': $refDetail could not be resolved to a commit$storedDetail. " +
-    "Run `skill-bill goal repair --issue-key ${continuation.issueKey} --subtask ${continuation.subtaskId} " +
+  storedResolves: Boolean,
+): String =
+  "Remediation base reconciliation blocked for workflow '$workflowId' on branch " +
+    "'${continuation.goalBranch}': ${remediationBlockedDetail(failedRef, storedSha, storedResolves)}. " +
+    "Run `skill-bill goal repair ${continuation.issueKey} --subtask ${continuation.subtaskId} " +
     "--apply` to repoint or clear the unreachable remediation base, then resume the goal child."
+
+private fun remediationBlockedDetail(failedRef: String?, storedSha: String?, storedResolves: Boolean): String {
+  val storedDetail = when {
+    storedSha == null -> ""
+    storedResolves -> " (stored sha '$storedSha' resolves but is not reachable from the branch)"
+    else -> " (stored sha '$storedSha' also failed to resolve)"
+  }
+  if (failedRef != null) return "checkpoint ref '$failedRef' could not be resolved to a commit$storedDetail"
+  return when {
+    storedSha == null -> "no remediation base is recorded and no review_fix checkpoint ref resolved to a commit"
+    storedResolves ->
+      "stored remediation base '$storedSha' is not reachable from the branch and no review_fix " +
+        "checkpoint ref resolved to a commit"
+    else -> "stored remediation base '$storedSha' could not be resolved to a commit"
+  }
 }
 
 internal fun FeatureTaskRuntimeRemediationBaseReconciler.appendRemediationBaseReconciliationEvidence(

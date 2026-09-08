@@ -4,9 +4,15 @@ import skillbill.application.decomposition.decodeArtifacts
 import skillbill.application.featuretask.model.PersistHealedRemediationBaseRequest
 import skillbill.application.featuretask.model.ResolvedReviewFixCheckpoint
 import skillbill.application.workflow.model.WorkflowFamily
+import skillbill.ports.workflow.gitops.WorkflowGitOperations
+import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewBaselineRecoveryRequest
+import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewInputFailureReason
+import skillbill.ports.workflow.gitops.recoverGoalSubtaskReviewBaseline
 import skillbill.workflow.goal.model.GOAL_REVIEW_BASE_RECOVERIES_ARTIFACT_KEY
 import skillbill.workflow.goal.model.GOAL_SUBTASK_REVIEW_STATE_ARTIFACT_KEY
 import skillbill.workflow.goal.model.GoalSubtaskReviewState
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeGoalContinuationArtifact
+import java.nio.file.Path
 
 internal fun remediationBaseHealReason(
   stored: String?,
@@ -49,4 +55,24 @@ internal fun FeatureTaskRuntimeRemediationBaseReconciler.persistHealedRemediatio
     )
     updated
   }
+}
+
+internal fun recoveredRemediationBaseSha(
+  stored: String?,
+  state: GoalSubtaskReviewState,
+  continuation: FeatureTaskRuntimeGoalContinuationArtifact,
+  gitOperations: WorkflowGitOperations,
+  repoRoot: Path,
+): String? {
+  if (stored == null) return null
+  val request = runCatching {
+    GoalSubtaskReviewBaselineRecoveryRequest(
+      unreachableSha = stored,
+      failureReason = GoalSubtaskReviewInputFailureReason.BASE_NOT_ANCESTOR,
+      baselineUntrackedPaths = state.baselineUntrackedPaths,
+    )
+  }.getOrNull() ?: return null
+  val recovered = gitOperations.recoverGoalSubtaskReviewBaseline(repoRoot, request, continuation.goalBranch)
+  if (!recovered.ok) return null
+  return recovered.baseline?.reviewBaseSha
 }
