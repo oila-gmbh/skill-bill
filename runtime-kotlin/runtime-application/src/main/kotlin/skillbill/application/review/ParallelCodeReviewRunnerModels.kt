@@ -1,4 +1,6 @@
 package skillbill.application.review
+
+import skillbill.review.context.model.ReviewAccountingTerminalOutcome
 import skillbill.application.review.model.ParallelCodeReviewRequest
 import skillbill.application.review.model.ReviewDelegatedStageLaunch
 import skillbill.application.review.model.ReviewSpecialistLaunchRequest
@@ -223,8 +225,8 @@ internal const val PARALLEL_REVIEW_INLINE_NATIVE_WORKER = "bill-code-review-inli
 internal const val PARALLEL_REVIEW_NO_SEQUENCE_DIGEST = "no-commit-sequence"
 internal const val PARALLEL_REVIEW_NO_FINDINGS_TOKEN = "NO_FINDINGS"
 
-internal const val NO_OP_RESUME_TERMINAL_STATUS: String = "no_op_resume"
-internal const val UNSUPPORTED_PROVIDER_TERMINAL_STATUS: String = "unsupported_provider"
+internal val NO_OP_RESUME_TERMINAL_STATUS = ReviewAccountingTerminalOutcome.NO_OP_RESUME
+internal val UNSUPPORTED_PROVIDER_TERMINAL_STATUS = ReviewAccountingTerminalOutcome.UNSUPPORTED_PROVIDER
 internal const val INLINE_FINDING_PARSE_SEAM: String = "attributeInlineFindings"
 
 internal const val PARALLEL_REVIEW_INLINE_DEPTH_DIRECTIVE: String =

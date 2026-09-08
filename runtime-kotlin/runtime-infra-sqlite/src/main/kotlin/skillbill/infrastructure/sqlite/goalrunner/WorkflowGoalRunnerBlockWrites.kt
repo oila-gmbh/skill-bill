@@ -22,6 +22,7 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerAction
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerEntry
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseRecord
 import skillbill.workflow.model.WorkflowStepStatus
+import skillbill.workflow.engine.model.isTerminalStatus
 import skillbill.workflow.taskruntime.phaseartifacts.asPendingForOperatorResume
 import skillbill.workflow.taskruntime.phaseartifacts.phaseLedgerFrom
 import skillbill.workflow.taskruntime.phaseartifacts.phaseRecordsFrom
@@ -90,7 +91,7 @@ internal class WorkflowGoalRunnerBlockWrites(
   ): Boolean {
     val family = WorkflowFamily.TASK_RUNTIME
     val existing = family.get(unitOfWork.workflowStates, workflowId) ?: return false
-    if (existing.workflowStatus in family.definition.terminalStatuses) {
+    if (family.definition.isTerminalStatus(existing.workflowStatus)) {
       return false
     }
     val artifacts = decodeArtifacts(existing.artifactsJson)

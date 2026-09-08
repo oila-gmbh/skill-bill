@@ -21,6 +21,7 @@ import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_RECORDS_A
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerAction
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerEntry
 import skillbill.workflow.model.workflowStatus
+import skillbill.workflow.engine.model.isTerminalStatus
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseRecord
 import skillbill.workflow.model.WorkflowStepStatus
 import skillbill.workflow.model.workflowStepStatus
@@ -92,7 +93,7 @@ class WorkflowServiceBlockedPhaseRetry(
           unitOfWork.dbPath.toString(),
         ),
       )
-    if (existing.workflowStatus.workflowStatus()?.wireValue in family.definition.terminalStatuses) {
+    if (family.definition.isTerminalStatus(existing.workflowStatus)) {
       return BlockedPhaseRetryPersistence.error(
         WorkflowUpdateResult.Error(
           request.workflowId,

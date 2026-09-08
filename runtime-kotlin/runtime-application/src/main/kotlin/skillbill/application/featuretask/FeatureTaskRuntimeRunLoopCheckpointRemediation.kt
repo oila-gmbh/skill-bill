@@ -11,6 +11,8 @@ import skillbill.ports.workflow.gitops.stagePaths
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeCheckpointIdentity
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeResolvedBranch
+import skillbill.workflow.model.WorkflowStepStatus
+import skillbill.workflow.model.workflowStepStatus
 
 object FeatureTaskRuntimeRunLoopCheckpointRemediation {
   fun concurrentlyModifiedOwnedPaths(
@@ -101,7 +103,7 @@ object FeatureTaskRuntimeRunLoopCheckpointRemediation {
     outputMap
       .takeIf {
         run.phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT_FIX &&
-          it["status"] == STATUS_COMPLETED
+          it["status"].workflowStepStatus() == WorkflowStepStatus.COMPLETED
       }
       ?.let { JsonCodec.anyToStringAnyMap(it["produced_outputs"]).orEmpty() }
 

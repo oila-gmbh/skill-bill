@@ -127,6 +127,15 @@ data class WorkflowDefinition(
     RequiredArtifactPresenceResolver.DEFAULT,
 )
 
+fun WorkflowDefinition.isTerminalStatus(status: String): Boolean {
+  val decoded = WorkflowStatus.fromWire(status)
+  return if (decoded == null) {
+    status in terminalStatuses
+  } else {
+    decoded.wireValue in terminalStatuses
+  }
+}
+
 /**
  * Closed-world declaration for model-delivered workflow input. Durable artifacts not named
  * here remain private and are available only through explicit operator inspection surfaces.

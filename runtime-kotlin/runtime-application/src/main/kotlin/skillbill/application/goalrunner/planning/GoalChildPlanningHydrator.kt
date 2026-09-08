@@ -394,13 +394,13 @@ private class GoalChildPlanningImportMatcher(
   // Expected step statuses mirror FeatureTaskRuntimePhaseRecorder.stepUpdatesFrom: a quarantined
   // producer lands running/running, and blocked is an interrupt that the quarantine produces and the
   // fix loop handles. Accepting a status the recorder cannot emit would admit forged state.
-  private fun settledStepStatus(record: Map<*, *>?, phaseId: String): String? {
+  private fun settledStepStatus(record: Map<*, *>?, phaseId: String): WorkflowStepStatus? {
     if (record == null || record["phase_id"] != phaseId) return null
     return when (record["status"].workflowStepStatus()) {
-      WorkflowStepStatus.COMPLETED -> WorkflowStepStatus.COMPLETED.wireValue
+      WorkflowStepStatus.COMPLETED -> WorkflowStepStatus.COMPLETED
         .takeIf { (record["output_artifact"] as? String)?.isNotBlank() == true }
-      WorkflowStepStatus.RUNNING -> WorkflowStepStatus.RUNNING.wireValue
-      WorkflowStepStatus.BLOCKED -> WorkflowStepStatus.BLOCKED.wireValue
+      WorkflowStepStatus.RUNNING -> WorkflowStepStatus.RUNNING
+      WorkflowStepStatus.BLOCKED -> WorkflowStepStatus.BLOCKED
       else -> null
     }
   }
@@ -424,10 +424,10 @@ private class GoalChildPlanningImportMatcher(
   // Expected step statuses mirror FeatureTaskRuntimePhaseRecorder.stepUpdatesFrom, which writes both
   // the phase record and its step from one record set: a quarantined producer lands running/running,
   // never running/completed. Accepting a status the recorder cannot emit would admit forged state.
-  private fun stepsSettled(existing: WorkflowStateSnapshot, expected: Map<String, String>): Boolean {
+  private fun stepsSettled(existing: WorkflowStateSnapshot, expected: Map<String, WorkflowStepStatus>): Boolean {
     val planningSteps = decodeWorkflowSteps(existing.stepsJson).filter { it.stepId in PLANNING_PHASE_IDS }
     return planningSteps.size == PLANNING_PHASE_IDS.size &&
-      planningSteps.all { it.status.workflowStepStatus()?.wireValue == expected[it.stepId] }
+      planningSteps.all { it.status.workflowStepStatus() == expected[it.stepId] }
   }
 }
 

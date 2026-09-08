@@ -400,9 +400,7 @@ internal fun parallelAccountingSummary(outcomes: ParallelReviewLaneRunResult): R
       toolCalls,
       modelTurns,
     ),
-    terminalOutcome = requireNotNull(ReviewAccountingTerminalOutcome.fromWire(terminalStatus)) {
-      "Unknown review lane terminal outcome '$terminalStatus'."
-    },
+    terminalOutcome = terminalStatus,
     bundleCompositionDigest = bundleCompositionDigest,
     segmentAccounting = segmentAccounting,
     unreviewedSegmentIds = unreviewedSegmentIds,

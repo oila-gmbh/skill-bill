@@ -23,6 +23,7 @@ import skillbill.ports.review.model.ReviewLaunchAgentStagingRequest
 import skillbill.ports.taskruntime.FeatureTaskRuntimeSharedEvidenceLocatorReadPort
 import skillbill.review.context.model.ResolvedReviewExecutionMode
 import skillbill.review.context.model.ReviewBudgetEvaluator
+import skillbill.review.context.model.ReviewAccountingTerminalOutcome
 import skillbill.review.context.model.ReviewContextBudgetExceededException
 import skillbill.review.context.model.ReviewContextBudgetPolicy
 import skillbill.review.context.model.ReviewContextPacket
@@ -271,7 +272,7 @@ private inline fun <T> Result<T>.getOrElseRethrowingCancellation(onFailure: () -
 
 private fun inlineParentAccounting(
   launch: ParallelCodeReviewInlineParentLaunch,
-  terminalStatus: String,
+  terminalStatus: ReviewAccountingTerminalOutcome,
   outcome: AgentRunLaunchFacts?,
   brokerAccounting: ReviewLaneAccounting?,
   completionState: ReviewLaneCompletionState = launch.bundleState,

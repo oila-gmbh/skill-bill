@@ -109,7 +109,7 @@ object GoalPlanningSharedContextPacket {
       linkedMapOf<String, Any?>(
         "heading_id" to heading.headingId,
         "source_path" to heading.sourcePath,
-        "kind" to heading.kind,
+        "kind" to heading.kind.wireValue,
         "heading" to heading.heading,
       )
     },

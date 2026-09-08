@@ -10,6 +10,7 @@ import skillbill.workflow.engine.model.WorkflowStateSnapshot
 import skillbill.workflow.engine.model.WorkflowUpdateAcknowledgementView
 import skillbill.workflow.engine.model.WorkflowUpdateInput
 import skillbill.workflow.model.workflowStatus
+import skillbill.workflow.engine.model.isTerminalStatus
 import java.time.OffsetDateTime
 import java.time.ZoneOffset
 
@@ -22,7 +23,7 @@ class WorkflowServiceFeatureTaskAbandon(
     normalizedReason: String,
   ): WorkflowUpdateResult {
     val family = WorkflowFamily.TASK_RUNTIME
-    if (existing.workflowStatus.workflowStatus()?.wireValue in family.definition.terminalStatuses) {
+    if (family.definition.isTerminalStatus(existing.workflowStatus)) {
       return WorkflowUpdateResult.Error(
         existing.workflowId,
         "Runtime workflow '${existing.workflowId}' is already terminal with status '${existing.workflowStatus}'.",

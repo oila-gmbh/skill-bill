@@ -154,6 +154,10 @@ enum class ReviewLaneReviewDisposition {
   ;
 
   val wireValue: String get() = name.lowercase()
+
+  companion object {
+    fun fromWire(value: String): ReviewLaneReviewDisposition? = entries.firstOrNull { it.wireValue == value }
+  }
 }
 
 data class ReviewLaneSegmentAccounting(
