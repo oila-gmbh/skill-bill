@@ -204,7 +204,7 @@ private fun AgentAddonCatalogueEntry.toSkillStatus(repoRoot: Path, contentMode: 
     area = "",
     contentFile = contentPath.toString(),
     renderCommand = "skill-bill render bill-feature --repo-root ${repoRoot.toAbsolutePath().normalize()}",
-    completionStatus = "authored",
+    completionStatus = skillbill.ports.scaffold.model.ScaffoldCompletionStatus.AUTHORED,
     sectionCount = 0,
     sections = emptyList(),
     recommendedCommands = listOf("skill-bill validate", "skill-bill render bill-feature"),

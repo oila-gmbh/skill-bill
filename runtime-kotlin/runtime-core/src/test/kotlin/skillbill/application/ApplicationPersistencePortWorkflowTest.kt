@@ -21,6 +21,7 @@ import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_LEDGER_AR
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_RECORDS_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerAction
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeProjectionFailureClassification
+import skillbill.workflow.model.WorkflowStepStatus
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
@@ -446,7 +447,7 @@ class ApplicationPersistencePortWorkflowTest {
     recorder.recordRuntimePhase(workflowId, "preplan", status = "running", finished = true)
 
     val record = requireNotNull(recorder.loadPhaseRecords(workflowId))["preplan"]
-    assertEquals("running", requireNotNull(record).status)
+    assertEquals(WorkflowStepStatus.RUNNING, requireNotNull(record).status)
     assertNotNull(record.finishedAt)
     assertEquals("completed", stepStatusFor(workflowRepository, workflowId, "preplan"))
   }

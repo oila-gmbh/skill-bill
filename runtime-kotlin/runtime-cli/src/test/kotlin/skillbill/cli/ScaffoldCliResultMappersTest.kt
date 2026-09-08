@@ -10,6 +10,8 @@ import skillbill.ports.scaffold.model.ScaffoldBaselineLayer
 import skillbill.ports.scaffold.model.ScaffoldReviewComposition
 import skillbill.ports.scaffold.model.ScaffoldSectionStatus
 import skillbill.ports.scaffold.model.ScaffoldSkillStatus
+import skillbill.ports.scaffold.model.ScaffoldCompletionStatus
+import skillbill.ports.scaffold.model.ScaffoldSectionCompletionStatus
 import skillbill.ports.scaffold.repo.model.ScaffoldValidateResult
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -38,11 +40,21 @@ class ScaffoldCliResultMappersTest {
     area = "architecture",
     contentFile = "skills/bill-kotlin-code-review/content.md",
     renderCommand = "skill-bill render bill-kotlin-code-review",
-    completionStatus = "complete",
+    completionStatus = ScaffoldCompletionStatus.COMPLETE,
     sectionCount = 2,
     sections = listOf(
-      ScaffoldSectionStatus(heading = "Overview", status = "filled", lineCount = 3, preview = "Intro text"),
-      ScaffoldSectionStatus(heading = "Guidance", status = "todo", lineCount = 0, preview = ""),
+      ScaffoldSectionStatus(
+        heading = "Overview",
+        status = ScaffoldSectionCompletionStatus.FILLED,
+        lineCount = 3,
+        preview = "Intro text",
+      ),
+      ScaffoldSectionStatus(
+        heading = "Guidance",
+        status = ScaffoldSectionCompletionStatus.TODO,
+        lineCount = 0,
+        preview = "",
+      ),
     ),
     recommendedCommands = listOf("skill-bill fill bill-kotlin-code-review"),
     reviewComposition = reviewComposition,

@@ -26,6 +26,7 @@ import skillbill.review.model.ReviewPassClaimSnapshot
 import skillbill.review.model.ReviewRunLane
 import skillbill.review.model.ReviewSpecProjectionReference
 import skillbill.review.model.ReviewStageBoundary
+import skillbill.review.model.ReviewExecutionMode
 import java.sql.Connection
 
 class SQLiteReviewRunLaneCompletenessRepository(
@@ -42,7 +43,7 @@ class SQLiteReviewRunLaneCompletenessRepository(
   override fun reviewLaneEffectiveness(runId: String?): List<ReviewLaneEffectivenessRow> =
     queryReviewLaneEffectiveness(connection, runId)
 
-  override fun ensureTerminalReviewState(runId: String, executionMode: String?) =
+  override fun ensureTerminalReviewState(runId: String, executionMode: ReviewExecutionMode?) =
     ensureTerminalReviewState(connection, runId, executionMode)
 
   override fun recordIntegrationPass(runId: String, record: ReviewIntegrationPassRecord) =

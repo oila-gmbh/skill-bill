@@ -8,6 +8,7 @@ import skillbill.review.model.ReviewPassClaimSnapshot
 import skillbill.review.model.ReviewRunLane
 import skillbill.review.model.ReviewSpecProjectionReference
 import skillbill.review.model.ReviewStageBoundary
+import skillbill.review.model.ReviewExecutionMode
 
 interface ReviewRunLaneCompletenessRepository {
   fun replaceReviewRunLanes(runId: String, lanes: List<ReviewRunLane>)
@@ -18,7 +19,7 @@ interface ReviewRunLaneCompletenessRepository {
 
   fun reviewLaneEffectiveness(runId: String?): List<ReviewLaneEffectivenessRow>
 
-  fun ensureTerminalReviewState(runId: String, executionMode: String?)
+  fun ensureTerminalReviewState(runId: String, executionMode: ReviewExecutionMode?)
 
   fun recordIntegrationPass(runId: String, record: ReviewIntegrationPassRecord)
 

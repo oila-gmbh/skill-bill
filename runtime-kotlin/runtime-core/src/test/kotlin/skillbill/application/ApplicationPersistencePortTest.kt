@@ -12,6 +12,7 @@ import skillbill.model.EnvironmentContext
 import skillbill.ports.diagnostics.NoopRuntimeDiagnostics
 import skillbill.ports.review.EmptyReviewAttributionPort
 import skillbill.ports.telemetry.model.TelemetryOutboxRecord
+import skillbill.review.model.ReviewExecutionMode
 import java.nio.file.Files
 import java.time.Clock
 import kotlin.test.Test
@@ -159,7 +160,10 @@ class ApplicationPersistencePortTest {
     val saved = reviewRepository.savedReviews.single()
     assertEquals(emptyList(), saved.findings)
     assertEquals(listOf("bill-kmp-code-review-architecture", "narrated-only"), saved.planLanes.map { it.laneSkillName })
-    assertEquals(listOf<Pair<String, String?>>("rvw-lane-app-001" to "inline"), reviewRepository.terminalStateWrites)
+    assertEquals(
+      listOf<Pair<String, ReviewExecutionMode?>>("rvw-lane-app-001" to ReviewExecutionMode.INLINE),
+      reviewRepository.terminalStateWrites,
+    )
   }
 
   @Test
@@ -184,7 +188,10 @@ class ApplicationPersistencePortTest {
     val lanes = reviewRepository.savedReviews.single().planLanes
     assertEquals(listOf("architecture", "narrated-only"), lanes.map { it.laneSkillName })
     assertTrue(lanes.all { it.resolutionState == "unresolved" })
-    assertEquals(listOf<Pair<String, String?>>("rvw-lane-app-001" to "inline"), reviewRepository.terminalStateWrites)
+    assertEquals(
+      listOf<Pair<String, ReviewExecutionMode?>>("rvw-lane-app-001" to ReviewExecutionMode.INLINE),
+      reviewRepository.terminalStateWrites,
+    )
   }
 
   // A partially staged catalog — the routed pack composes a baseline layer that is not installed —
@@ -211,7 +218,10 @@ class ApplicationPersistencePortTest {
     val lanes = reviewRepository.savedReviews.single().planLanes
     assertEquals(listOf("architecture", "narrated-only"), lanes.map { it.laneSkillName })
     assertTrue(lanes.all { it.resolutionState == "unresolved" })
-    assertEquals(listOf<Pair<String, String?>>("rvw-lane-app-001" to "inline"), reviewRepository.terminalStateWrites)
+    assertEquals(
+      listOf<Pair<String, ReviewExecutionMode?>>("rvw-lane-app-001" to ReviewExecutionMode.INLINE),
+      reviewRepository.terminalStateWrites,
+    )
   }
 
   @Test

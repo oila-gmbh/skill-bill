@@ -439,13 +439,13 @@ internal class FakeReviewRepository(
   val feedbackRequests = mutableListOf<FeedbackRequest>()
   val learningSourceLookups = mutableListOf<String>()
   val savedReviews = mutableListOf<ImportedReview>()
-  val terminalStateWrites = mutableListOf<Pair<String, String?>>()
+  val terminalStateWrites = mutableListOf<Pair<String, skillbill.review.model.ReviewExecutionMode?>>()
 
   override fun saveImportedReview(review: ImportedReview, sourcePath: String?) {
     savedReviews += review
   }
 
-  override fun ensureTerminalReviewState(runId: String, executionMode: String?) {
+  override fun ensureTerminalReviewState(runId: String, executionMode: skillbill.review.model.ReviewExecutionMode?) {
     terminalStateWrites += runId to executionMode
   }
 
@@ -944,9 +944,9 @@ internal fun FeatureTaskRuntimePhaseRecorder.recordRuntimePhase(
   ),
 )
 internal fun expectedStepStatusForRecord(record: FeatureTaskRuntimePhaseRecord): String = when {
-  record.status == "blocked" -> "blocked"
+  record.status == skillbill.workflow.model.WorkflowStepStatus.BLOCKED -> "blocked"
   record.finishedAt != null -> "completed"
-  else -> record.status
+  else -> record.status.wireValue
 }
 
 internal fun decodeStepsForTest(

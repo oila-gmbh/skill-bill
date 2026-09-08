@@ -148,7 +148,7 @@ fun upsertReviewRun(connection: Connection, review: ImportedReview, sourcePath: 
     statement.setString(PARAM_THREE, review.routedSkill)
     statement.setString(PARAM_FOUR, review.detectedScope)
     statement.setString(PARAM_FIVE, review.detectedStack)
-    statement.setString(PARAM_SIX, review.executionMode)
+    statement.setString(PARAM_SIX, review.executionMode?.wireValue)
     statement.setString(PARAM_SEVEN, review.routedSkillCanonical)
     statement.setString(PARAM_EIGHT, review.detectedStackCanonical)
     statement.setString(PARAM_NINE, review.detectedScopeCanonical)

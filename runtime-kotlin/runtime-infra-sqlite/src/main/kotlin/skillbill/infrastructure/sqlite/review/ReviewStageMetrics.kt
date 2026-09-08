@@ -8,6 +8,7 @@ import skillbill.review.model.ReviewRejectedVerdictCounts
 import skillbill.review.model.ReviewScopeDisposition
 import skillbill.review.model.ReviewSeverityAdjustmentCounts
 import skillbill.review.model.ReviewSeverityAdjustmentDirection
+import skillbill.review.model.ReviewExecutionMode
 import skillbill.review.model.ReviewStage
 import skillbill.review.model.ReviewStageMetrics
 import skillbill.review.model.ReviewStageVerdictDistribution
@@ -61,18 +62,18 @@ fun aggregateReviewStageMetrics(
   )
 }
 
-fun resolvedTier(executionMode: String?): String = when (executionMode?.trim()?.lowercase()) {
-  "inline" -> "inline"
-  "delegated" -> "delegated"
+fun resolvedTier(executionMode: ReviewExecutionMode?): String = when (executionMode) {
+  ReviewExecutionMode.INLINE -> ReviewExecutionMode.INLINE.wireValue
+  ReviewExecutionMode.DELEGATED -> ReviewExecutionMode.DELEGATED.wireValue
   else -> "unresolved"
 }
 
-fun fetchReviewExecutionMode(connection: Connection, reviewRunId: String): String? = connection.prepareStatement(
+fun fetchReviewExecutionMode(connection: Connection, reviewRunId: String): ReviewExecutionMode? = connection.prepareStatement(
   "SELECT execution_mode FROM review_runs WHERE review_run_id = ?",
 ).use { statement ->
   statement.setString(PARAM_ONE, reviewRunId)
   statement.executeQuery().use { resultSet ->
-    if (resultSet.next()) resultSet.getString("execution_mode") else null
+    if (resultSet.next()) resultSet.getString("execution_mode")?.let(ReviewExecutionMode::fromWire) else null
   }
 }
 
@@ -82,7 +83,10 @@ fun loadReviewRunTiers(connection: Connection): Map<String, String> = connection
   statement.executeQuery().use { resultSet ->
     buildMap {
       while (resultSet.next()) {
-        put(resultSet.getString("review_run_id"), resolvedTier(resultSet.getString("execution_mode")))
+        put(
+          resultSet.getString("review_run_id"),
+          resolvedTier(resultSet.getString("execution_mode")?.let(ReviewExecutionMode::fromWire)),
+        )
       }
     }
   }

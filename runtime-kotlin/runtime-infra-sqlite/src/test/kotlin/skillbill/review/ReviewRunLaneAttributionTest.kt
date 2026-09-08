@@ -127,10 +127,10 @@ class ReviewRunLaneAttributionTest {
 
       val summary = ReviewRuntime.fetchReviewSummary(connection, RUN_ID)
       val finishedAt = assertNotNull(summary.reviewFinishedAt)
-      assertEquals("inline", summary.executionMode)
+      assertEquals("inline", summary.executionMode?.wireValue)
       assertEquals(2, fetchReviewRunLanes(connection, RUN_ID).size, "A zero-findings run still records its lanes.")
 
-      ensureTerminalReviewState(connection, RUN_ID, "delegated")
+      ensureTerminalReviewState(connection, RUN_ID, skillbill.review.model.ReviewExecutionMode.DELEGATED)
       assertEquals(finishedAt, ReviewRuntime.fetchReviewSummary(connection, RUN_ID).reviewFinishedAt)
     }
   }
@@ -144,7 +144,7 @@ class ReviewRunLaneAttributionTest {
       ensureTerminalReviewState(connection, RUN_ID, executionMode = null)
 
       val summary = ReviewRuntime.fetchReviewSummary(connection, RUN_ID)
-      assertEquals("unresolved", summary.executionMode)
+      assertEquals("unresolved", summary.executionMode?.wireValue)
       assertNotNull(summary.reviewFinishedAt)
     }
   }
@@ -156,7 +156,7 @@ class ReviewRunLaneAttributionTest {
     routedSkill = "bill-kmp-code-review",
     detectedScope = "unstaged changes",
     detectedStack = "kmp",
-    executionMode = "inline",
+    executionMode = skillbill.review.model.ReviewExecutionMode.INLINE,
     specialistReviews = listOf("bill-kmp-code-review-architecture", "bill-kotlin-code-review-testing"),
     findings = listOf(
       ImportedFinding(

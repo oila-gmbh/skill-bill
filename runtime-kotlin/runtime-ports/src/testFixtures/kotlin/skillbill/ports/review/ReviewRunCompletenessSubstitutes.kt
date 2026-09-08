@@ -8,6 +8,7 @@ import skillbill.review.model.ReviewPassClaimSnapshot
 import skillbill.review.model.ReviewRunLane
 import skillbill.review.model.ReviewSpecProjectionReference
 import skillbill.review.model.ReviewStageBoundary
+import skillbill.review.model.ReviewExecutionMode
 
 object UnavailableReviewRunLaneCompletenessRepository : ReviewRunLaneCompletenessRepository {
   override fun replaceReviewRunLanes(runId: String, lanes: List<ReviewRunLane>) = unavailableCompleteness()
@@ -18,7 +19,7 @@ object UnavailableReviewRunLaneCompletenessRepository : ReviewRunLaneCompletenes
 
   override fun reviewLaneEffectiveness(runId: String?): List<ReviewLaneEffectivenessRow> = unavailableCompleteness()
 
-  override fun ensureTerminalReviewState(runId: String, executionMode: String?) = unavailableCompleteness()
+  override fun ensureTerminalReviewState(runId: String, executionMode: ReviewExecutionMode?) = unavailableCompleteness()
 
   override fun recordIntegrationPass(runId: String, record: ReviewIntegrationPassRecord) = unavailableCompleteness()
 

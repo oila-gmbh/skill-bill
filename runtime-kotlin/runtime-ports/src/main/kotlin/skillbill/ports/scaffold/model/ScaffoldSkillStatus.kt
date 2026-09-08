@@ -23,7 +23,7 @@ data class ScaffoldSkillStatus(
   val area: String,
   val contentFile: String,
   val renderCommand: String,
-  val completionStatus: String,
+  val completionStatus: ScaffoldCompletionStatus,
   val sectionCount: Int,
   val sections: List<ScaffoldSectionStatus>,
   val recommendedCommands: List<String>,
@@ -45,10 +45,34 @@ data class ScaffoldSkillStatus(
  */
 data class ScaffoldSectionStatus(
   val heading: String,
-  val status: String,
+  val status: ScaffoldSectionCompletionStatus,
   val lineCount: Int,
   val preview: String,
 )
+
+enum class ScaffoldCompletionStatus(val wireValue: String) {
+  DRAFT("draft"),
+  COMPLETE("complete"),
+  AUTHORED("authored");
+
+  companion object {
+    fun fromWire(value: String?): ScaffoldCompletionStatus? =
+      value?.trim()?.let { candidate -> entries.firstOrNull { it.wireValue == candidate } }
+  }
+}
+
+enum class ScaffoldSectionCompletionStatus(val wireValue: String) {
+  EMPTY("empty"),
+  DRAFT("draft"),
+  TODO("todo"),
+  FILLED("filled"),
+  COMPLETE("complete");
+
+  companion object {
+    fun fromWire(value: String?): ScaffoldSectionCompletionStatus? =
+      value?.trim()?.let { candidate -> entries.firstOrNull { it.wireValue == candidate } }
+  }
+}
 
 /**
  * SKILL-52.3 subtask 3 — Typed review-composition block (legacy keys: `source`,
