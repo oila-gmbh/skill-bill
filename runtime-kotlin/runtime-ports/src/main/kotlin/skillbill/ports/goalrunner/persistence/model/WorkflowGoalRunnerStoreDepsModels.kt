@@ -4,6 +4,7 @@ import me.tatarka.inject.annotations.Inject
 import skillbill.model.RepositoryRoot
 import skillbill.ports.db.DatabaseSessionFactory
 import skillbill.ports.decomposition.DecompositionManifestProjectionWriter
+import skillbill.ports.diagnostics.RuntimeDiagnostics
 import skillbill.ports.goalrunner.persistence.GoalChildPlanningHydratorPort
 import skillbill.ports.goalrunner.persistence.GoalRunnerChildRepairRunnerPort
 import skillbill.ports.taskruntime.FeatureTaskRuntimeWorkerSupervisor
@@ -45,4 +46,5 @@ data class WorkflowGoalRunnerOutcomeStoreDeps(
   val clock: Clock,
   val decompositionManifestWriter: DecompositionManifestProjectionWriter,
   val childRepairExecutor: GoalRunnerChildRepairRunnerPort,
+  val diagnostics: RuntimeDiagnostics,
 )

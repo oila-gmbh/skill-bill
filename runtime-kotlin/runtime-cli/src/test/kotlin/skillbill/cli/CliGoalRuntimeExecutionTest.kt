@@ -16,6 +16,120 @@ import kotlin.time.Duration.Companion.minutes
 
 class CliGoalRuntimeExecutionTest {
   @Test
+  fun `prune stale workflows reports by default and retires only selected invalid rows`() {
+    val help = CliRuntime.run(listOf("goal", "prune-stale-workflows", "--help"), CliRuntimeContext())
+    assertEquals(0, help.exitCode, help.stdout)
+    assertContains(help.stdout, "--workflow-id")
+    assertContains(help.stdout, "--confirm")
+
+    val fixture = goalFixture(subtaskCount = 1)
+    val staleWorkflowId = "wftr-stale-332"
+    insertStaleWorkflow(fixture, staleWorkflowId)
+    assertReportsStaleWorkflow(fixture, staleWorkflowId)
+    assertGoalStatusRemainsReadable(fixture)
+    assertRetiresSelectedWorkflow(fixture, staleWorkflowId)
+    assertEmptyPruneReport(fixture)
+  }
+
+  private fun insertStaleWorkflow(fixture: GoalCliFixture, workflowId: String) {
+    DriverManager.getConnection("jdbc:sqlite:${fixture.dbPath}").use { connection ->
+      connection.prepareStatement(
+        """
+        INSERT INTO feature_task_workflows (
+          workflow_id, session_id, workflow_name, mode, implementation_skill, contract_version,
+          workflow_status, current_step_id, steps_json, artifacts_json, issue_key,
+          started_at, updated_at, state_entered_at, state_entered_at_estimated, finished_at
+        ) VALUES (?, ?, 'bill-feature-task', 'runtime', 'bill-feature',
+          (SELECT contract_version FROM feature_task_workflows LIMIT 1), 'pending', 'preplan',
+          'not-json', '{}', 'SKILL-902', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, 0, NULL)
+        """.trimIndent(),
+      ).use { statement ->
+        statement.setString(1, workflowId)
+        statement.setString(2, "ftr-stale-332")
+        statement.executeUpdate()
+      }
+    }
+  }
+
+  private fun assertReportsStaleWorkflow(fixture: GoalCliFixture, workflowId: String) {
+    val report = CliRuntime.run(
+      listOf("--db", fixture.dbPath.toString(), "goal", "prune-stale-workflows"),
+      fixture.context(launcher = NoopGoalTestAgentRunLauncher),
+    )
+    assertEquals(0, report.exitCode, report.stdout)
+    assertContains(report.stdout, "mode: report_only")
+    assertContains(report.stdout, "workflow_id=$workflowId")
+    assertContains(report.stdout, "issue_key=SKILL-902")
+    assertContains(report.stdout, "validation_failure=")
+    assertContains(report.stdout, "malformed JSON")
+    assertFalse(report.stdout.contains("not-json"), report.stdout)
+  }
+
+  private fun assertGoalStatusRemainsReadable(fixture: GoalCliFixture) {
+    val status = CliRuntime.run(
+      listOf(
+        "--db",
+        fixture.dbPath.toString(),
+        "goal",
+        "status",
+        "SKILL-901",
+        "--agent",
+        "codex",
+      ),
+      fixture.context(launcher = NoopGoalTestAgentRunLauncher),
+    )
+    assertEquals(0, status.exitCode, status.stdout)
+    assertContains(status.stdout, "pending: 1")
+  }
+
+  private fun assertRetiresSelectedWorkflow(fixture: GoalCliFixture, workflowId: String) {
+    val confirmed = CliRuntime.run(
+      listOf(
+        "--db",
+        fixture.dbPath.toString(),
+        "goal",
+        "prune-stale-workflows",
+        "--workflow-id",
+        workflowId,
+        "--confirm",
+      ),
+      fixture.context(launcher = NoopGoalTestAgentRunLauncher),
+    )
+    assertEquals(0, confirmed.exitCode, confirmed.stdout)
+    assertContains(confirmed.stdout, "mode: confirmed")
+    assertContains(confirmed.stdout, "deleted_workflow_ids: $workflowId")
+    DriverManager.getConnection("jdbc:sqlite:${fixture.dbPath}").use { connection ->
+      connection.prepareStatement(
+        "SELECT COUNT(*) FROM feature_task_workflows WHERE workflow_id = ?",
+      ).use { statement ->
+        statement.setString(1, workflowId)
+        statement.executeQuery().use { rows ->
+          assertTrue(rows.next())
+          assertEquals(0, rows.getInt(1))
+        }
+      }
+      connection.prepareStatement(
+        "SELECT COUNT(*) FROM feature_task_workflows WHERE workflow_id <> ?",
+      ).use { statement ->
+        statement.setString(1, workflowId)
+        statement.executeQuery().use { rows ->
+          assertTrue(rows.next())
+          assertEquals(1, rows.getInt(1))
+        }
+      }
+    }
+  }
+
+  private fun assertEmptyPruneReport(fixture: GoalCliFixture) {
+    val empty = CliRuntime.run(
+      listOf("--db", fixture.dbPath.toString(), "goal", "prune-stale-workflows"),
+      fixture.context(launcher = NoopGoalTestAgentRunLauncher),
+    )
+    assertEquals(0, empty.exitCode, empty.stdout)
+    assertContains(empty.stdout, "stale_workflows:\n  - none")
+  }
+
+  @Test
   fun `goal status help documents diff observability cost controls`() {
     val status = CliRuntime.run(listOf("goal", "status", "--help"), CliRuntimeContext())
     val watch = CliRuntime.run(listOf("goal", "watch", "--help"), CliRuntimeContext())

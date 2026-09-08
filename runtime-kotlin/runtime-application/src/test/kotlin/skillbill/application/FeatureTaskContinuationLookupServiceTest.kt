@@ -15,7 +15,9 @@ import skillbill.application.workflow.openFeatureTask
 import skillbill.application.workflow.toRecord
 import skillbill.contracts.JsonSupport
 import skillbill.error.InvalidFeatureTaskExecutionIdentitySchemaError
+import skillbill.error.InvalidWorkflowStateSchemaError
 import skillbill.error.LegacyProseWorkflowError
+import skillbill.ports.diagnostics.NoopRuntimeDiagnostics
 import skillbill.ports.workflow.decomposition.UnavailableDecompositionManifestStore
 import skillbill.ports.workflow.gitops.NoopWorkflowGitOperations
 import skillbill.ports.workflow.model.FeatureTaskRouteScope
@@ -170,6 +172,36 @@ class FeatureTaskContinuationLookupServiceTest {
 
     assertFailsWith<InvalidFeatureTaskExecutionIdentitySchemaError> {
       fixture.lookup.lookup("SKILL-120", REPOSITORY_A)
+    }
+  }
+
+  @Test
+  fun `malformed requested workflow raises the typed workflow schema error`() {
+    val fixture = fixture()
+    val opened = fixture.open(REPOSITORY_A)
+    val row = requireNotNull(fixture.states.getFeatureTaskRuntimeWorkflow(opened.workflowId))
+    fixture.states.saveFeatureTaskRuntimeWorkflow(row.copy(stepsJson = "not-json"))
+
+    assertFailsWith<InvalidWorkflowStateSchemaError> {
+      fixture.lookup.lookup("SKILL-120", REPOSITORY_A)
+    }
+  }
+
+  @Test
+  fun `goal-child lookup raises the typed schema error for an ownerless malformed child`() {
+    val fixture = fixture()
+    val opened = fixture.open(REPOSITORY_A)
+    val ownerless = requireNotNull(fixture.states.getFeatureTaskRuntimeWorkflow(opened.workflowId)).copy(
+      workflowId = "wftr-ownerless-child",
+      sessionId = "ftr-ownerless-child",
+      issueKey = null,
+      stepsJson = "not-json",
+      artifactsJson = """{"decomposition_runtime":{"issue_key":"SKILL-901"}}""",
+    )
+    fixture.states.saveFeatureTaskRuntimeWorkflow(ownerless)
+
+    assertFailsWith<InvalidWorkflowStateSchemaError> {
+      fixture.lookup.lookupGoalChild("SKILL-120", REPOSITORY_A, ownerless.workflowId)
     }
   }
 
@@ -336,6 +368,7 @@ class FeatureTaskContinuationLookupServiceTest {
         database,
         testWorkflowSnapshotValidator,
         testDecompositionManifestValidator,
+        diagnostics = NoopRuntimeDiagnostics,
       ),
     )
   }

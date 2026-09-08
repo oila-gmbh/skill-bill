@@ -10,6 +10,7 @@ import skillbill.error.InvalidFeatureTaskExecutionIdentitySchemaError
 import skillbill.error.LegacyProseWorkflowError
 import skillbill.ports.continuation.FeatureTaskExecutionIdentityPolicy
 import skillbill.ports.db.DatabaseSessionFactory
+import skillbill.ports.diagnostics.RuntimeDiagnostics
 import skillbill.ports.featuretask.model.FeatureTaskRuntimeWorkerOwnership
 import skillbill.ports.persistence.UnitOfWork
 import skillbill.ports.workflow.model.FeatureTaskExecutionIdentity
@@ -26,6 +27,7 @@ class FeatureTaskContinuationLookupService(
   private val database: DatabaseSessionFactory,
   workflowSnapshotValidator: WorkflowSnapshotValidator,
   private val decompositionManifestValidator: DecompositionManifestValidator,
+  private val diagnostics: RuntimeDiagnostics,
 ) {
   private val engine = WorkflowEngine(workflowSnapshotValidator)
 
@@ -83,11 +85,27 @@ class FeatureTaskContinuationLookupService(
   private fun lookup(query: FeatureTaskContinuationLookupQuery): FeatureTaskContinuationLookupResult {
     val lookup = { unitOfWork: UnitOfWork ->
       executeFeatureTaskContinuationLookup(
-        query = query,
-        unitOfWork = unitOfWork,
-        decompositionManifestValidator = decompositionManifestValidator,
-        project = ::project,
-        classify = ::classify,
+        FeatureTaskContinuationLookupExecutionRequest(
+          query = query,
+          unitOfWork = unitOfWork,
+          decompositionManifestValidator = decompositionManifestValidator,
+          callbacks = FeatureTaskContinuationLookupCallbacks(
+            project = ::project,
+            classify = ::classify,
+            validateCandidate = { candidate ->
+              engine.snapshotView(
+                FeatureTaskRuntimePhaseWorkflowDefinition.definition,
+                candidate.workflow.toSnapshot(),
+              )
+            },
+            warnOnUnrelatedSchemaFailure = { candidate, error ->
+              diagnostics.warning(
+                "Skipped stale feature-task workflow '${candidate.workflow.workflowId}': " +
+                  "schema validation failed (${redactedWorkflowStateFailure(error)}).",
+              )
+            },
+          ),
+        ),
       )
     }
     return if (query.readIfPresent) {

@@ -19,6 +19,7 @@ import skillbill.ports.agentaddon.AgentAddonSelectionPort
 import skillbill.ports.agentaddon.ExternalAgentAddonSourceConfigPort
 import skillbill.ports.agentaddon.model.ExternalAgentAddonSourceConfigRequest
 import skillbill.ports.agentaddon.model.ExternalAgentAddonSourceConfigResult
+import skillbill.ports.diagnostics.NoopRuntimeDiagnostics
 import skillbill.ports.goalrunner.runner.GoalRunnerManifestStore
 import skillbill.ports.goalrunner.runner.model.GoalRunnerManifestState
 import skillbill.ports.goalrunner.runner.model.GoalRunnerReviewPolicy
@@ -268,6 +269,7 @@ class GoalPreflightServiceTest {
           database,
           testWorkflowSnapshotValidator,
           testDecompositionManifestValidator,
+          diagnostics = NoopRuntimeDiagnostics,
         ),
         manifestStore = TestManifestStore(manifestState, persistedReviewPolicy),
         agentAddonSelectionPort = TestAgentAddonSelectionPort,

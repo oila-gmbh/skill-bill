@@ -29,6 +29,7 @@ class WorkflowGoalRunnerOutcomeStore private constructor(
         clock = deps.clock,
         decompositionManifestWriter = deps.decompositionManifestWriter,
         childRepairExecutor = deps.childRepairExecutor,
+        diagnostics = deps.diagnostics,
       ),
     ),
   )

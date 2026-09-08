@@ -7,6 +7,16 @@ Areas: runtime-kotlin/{runtime-application/{featuretask,review,reviewevidence,go
 Feature flag: N/A
 Acceptance criteria: 9/9 implemented
 
+## [2026-09-09] 332 subtask 1 — Resilient stale workflow handling
+Areas: runtime-kotlin/{runtime-application/{featuretask,goalrunner,workflow},runtime-cli/goal,runtime-core/di,runtime-domain/workflow/taskruntime/model,runtime-infra-fs/{install/apply,nativeagent/discovery},runtime-infra-sqlite/{db/workflow,infrastructure/sqlite/goalrunner},runtime-ports/{goalrunner/persistence/model,workflow/{model,persistence}}}
+- Candidate loading now validates task-runtime snapshots independently, keeps valid rows, warns with the skipped workflow identity, and preserves the typed schema error for a requested invalid goal.
+- Status, refresh/watch, and authoritative-outcome projections tolerate unrelated invalid snapshots; normal correlation and valid continuation behavior remain unchanged.
+- Added `goal prune-stale-workflows` with report-only default and explicit selective retirement, plus focused application, SQLite, and CLI regression coverage. reusable
+- Pattern: classify snapshot ownership before schema validation so unrelated corruption degrades locally while requested-goal failures stay loud. reusable
+- Limitation: stale snapshots are not migrated; retirement is limited to selected invalid task-runtime rows, and the workflow-state contract version stays unchanged.
+Feature flag: N/A
+Acceptance criteria: 7/7 implemented
+
 ## [2026-09-04] SKILL-232 subtask 1 — Unused private/internal deletion pass
 Areas: runtime-kotlin/{runtime-application/{featuretask,goalrunner,work},runtime-domain/review/context/model,runtime-infra-fs/{infrastructure/fs,install/nativeagent,launcher/mcp,scaffold/platformpack},runtime-infra-sqlite/{db/workflow,infrastructure/sqlite/goalrunner},runtime-core/architecture/baselines}
 - Deleted 15 confirmed-unused `internal` declarations plus the eight-symbol cascade inside `GoalSubtaskReviewDeletionElision.kt`; 6 insertions, 243 deletions, no observable behavior change.

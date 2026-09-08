@@ -4,6 +4,7 @@ import skillbill.ports.featuretask.model.FeatureTaskRuntimeCrashReconciliationCa
 import skillbill.ports.featuretask.model.FeatureTaskRuntimeWorkerOwnership
 import skillbill.ports.workflow.model.FeatureImplementSessionSummary
 import skillbill.ports.workflow.model.FeatureTaskExecutionIdentity
+import skillbill.ports.workflow.model.FeatureTaskRuntimeSnapshot
 import skillbill.ports.workflow.model.FeatureTaskWorkflowCandidate
 import skillbill.ports.workflow.model.FeatureTaskWorkflowMode
 import skillbill.ports.workflow.model.FeatureVerifySessionSummary
@@ -39,6 +40,11 @@ interface FeatureTaskExecutionLookupRepository {
     repositoryIdentity: String,
   ): List<FeatureTaskWorkflowCandidate> =
     error("Goal-child feature-task lookup is not implemented by this persistence adapter.")
+
+  fun findGoalChildFeatureTaskCandidatesForExecution(
+    normalizedIssueKey: String,
+    repositoryIdentity: String,
+  ): List<FeatureTaskWorkflowCandidate> = findGoalChildFeatureTaskCandidates(normalizedIssueKey, repositoryIdentity)
 
   fun countGoalChildIdentities(normalizedIssueKey: String): Int = 0
 
@@ -211,5 +217,14 @@ interface FeatureTaskRuntimeWorkflowStateRepository {
 
   fun listFeatureTaskRuntimeWorkflows(limit: Int = 20): List<WorkflowStateRecord>
 
+  fun listFeatureTaskRuntimeSnapshots(limit: Int = Int.MAX_VALUE): List<FeatureTaskRuntimeSnapshot> =
+    listFeatureTaskRuntimeWorkflows(limit).map(::FeatureTaskRuntimeSnapshot)
+
+  fun getFeatureTaskRuntimeSnapshot(workflowId: String): FeatureTaskRuntimeSnapshot? =
+    getFeatureTaskRuntimeWorkflow(workflowId)?.let(::FeatureTaskRuntimeSnapshot)
+
   fun latestFeatureTaskRuntimeWorkflow(): WorkflowStateRecord?
+
+  fun deleteFeatureTaskRuntimeWorkflow(workflowId: String): Boolean =
+    error("Feature-task runtime workflow deletion is not implemented by this persistence adapter.")
 }
