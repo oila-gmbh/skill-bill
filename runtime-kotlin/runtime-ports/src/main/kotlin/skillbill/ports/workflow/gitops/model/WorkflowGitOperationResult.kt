@@ -23,7 +23,7 @@ sealed interface WorkflowGitOperationResult {
     fun fromWire(status: String, value: String = "", error: String = ""): WorkflowGitOperationResult =
       when (status) {
         "ok" -> Ok(value = value, error = error)
-        "error" -> Failed(error = error, value = value)
+        "error" -> Failed(error = error.ifBlank { status }, value = value)
         else -> Failed(error = error.ifBlank { status }, value = value)
       }
   }

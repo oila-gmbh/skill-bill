@@ -6,6 +6,7 @@ import skillbill.application.featuretask.model.FeatureTaskRuntimeRunReport
 import skillbill.application.featuretask.model.FeatureTaskRuntimeRunRequest
 import skillbill.application.featuretask.model.FeatureTaskRuntimeSubtaskOutcome
 import skillbill.contracts.JsonCodec
+import skillbill.goalrunner.model.GoalRunnerTerminalStatus
 import skillbill.ports.workflow.gitops.WorkflowGitOperations
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerAction
@@ -41,7 +42,7 @@ fun completedGoalContinuationOutcome(
     FeatureTaskRuntimeSubtaskOutcome(
       issueKey = context.parentIssueKey,
       subtaskId = context.subtaskId,
-      status = "blocked",
+      status = GoalRunnerTerminalStatus.BLOCKED,
       commitSha = null,
       workflowId = request.workflowId,
       blockedReason = "commit_push completed under suppress_pr but no commit SHA could be captured " +
@@ -59,7 +60,7 @@ fun completeSubtaskOutcome(
 ): FeatureTaskRuntimeSubtaskOutcome = FeatureTaskRuntimeSubtaskOutcome(
   issueKey = context.parentIssueKey,
   subtaskId = context.subtaskId,
-  status = "complete",
+  status = GoalRunnerTerminalStatus.COMPLETE,
   commitSha = commitSha,
   workflowId = request.workflowId,
   blockedReason = null,

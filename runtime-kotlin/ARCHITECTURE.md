@@ -2095,8 +2095,15 @@ containing its descendants is never added to them again, and counters aggregate 
 Closed workflow and decomposition decisions use the domain-owned `DecompositionStatus`,
 `WorkflowStatus`, and `WorkflowStepStatus` vocabularies. Their `wireValue` members are the only
 declarations of the supported tokens, and `fromWire` is used at durable-map seams. The following
-string fields remain open because their values are supplied by a provider, a pack, or a versioned
-durable payload whose vocabulary is intentionally owned by that boundary:
+fields are either typed here or remain open because their values are supplied by a provider, a pack,
+or a versioned durable payload whose vocabulary is intentionally owned by that boundary:
+
+- `skillbill.goalrunner.model.GoalRunnerLivenessSnapshot.processState`,
+  `skillbill.ports.agentrun.model.AgentRunLivenessSnapshot.processState`, and
+  `skillbill.goalrunner.model.GoalRunnerSupervisionEvent.continuationMode`/`processState` use the
+  domain-owned `GoalRunnerProcessState` and `GoalRunnerContinuationMode` enums. Their artifact
+  writers emit `wireValue`, and the supervision projection uses the explicit `UNKNOWN` process
+  state when no liveness snapshot is available.
 
 - `skillbill.workflow.decomposition.model.DecompositionManifest.status` and
   `DecompositionSubtask.status`: legacy manifest state accepts unknown future values and keeps the
@@ -2107,9 +2114,21 @@ durable payload whose vocabulary is intentionally owned by that boundary:
 - `skillbill.ports.workflow.model.WorkflowStateRecord.workflowStatus`: this is the persisted port
   record crossing the SQLite and workflow-engine compatibility seam, so it preserves unknown
   definition values; consumers convert it with `workflowStatus()` before making closed decisions.
+- `skillbill.ports.featuretask.model.FeatureTaskRuntimeCrashReconciliationCandidate.workflowStatus`
+  and `skillbill.ports.workflow.decomposition.runtime.model.DecompositionManifestRuntimeUpdate.workflowStatus`
+  are read from SQLite worker/decomposition update rows and preserve the workflow-definition token
+  while crossing worker and decomposition update ports; their consumers convert it with
+  `workflowStatus()` before closed dispatch.
+- `skillbill.goalrunner.model.GoalRunnerObservabilityProgressInput.workflowStatus` preserves the
+  caller-supplied workflow-definition token while `WorkflowServiceInputMapping` projects
+  observability from durable artifacts; it is not a process or goal status owned by the
+  observability model.
 - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseRecord.status` is owned by
   `WorkflowStepStatus`, and `FeatureTaskRuntimeGoalContinuationOutcome.status` is owned by
   `GoalRunnerTerminalStatus`; both durable decoders reject unknown values at their artifact seams.
+- `skillbill.application.featuretask.model.FeatureTaskRuntimeSubtaskOutcome.status` is owned by
+  `GoalRunnerTerminalStatus`; `FeatureTaskRuntimeRunnerLaunchOutcomes` uses exhaustive typed
+  dispatch and the CLI presentation emits its `wireValue`.
 - `skillbill.telemetry.model.SyncResult.status` is owned by `TelemetrySyncStatus`; the remaining
   `FeatureTaskRuntimeStartedRecord.status`, `FeatureTaskRuntimeFinishedRecord.status`,
   `QualityCheckStartedRecord.status`, `QualityCheckFinishedRecord.status`,
@@ -2117,8 +2136,8 @@ durable payload whose vocabulary is intentionally owned by that boundary:
   `GoalStartedRecord.status`, `GoalSubtaskFinishedRecord.status`, `GoalFinishedRecord.status`,
   `GoalIssueFinishedRecord.status`, and `LifecycleTelemetryModels.mode` are provider and telemetry
   labels owned by their emitting contracts.
-- `skillbill.goalrunner.model.GoalRunnerObservabilityModels.kind`,
-  `GoalRunnerLivenessModels.phase`, `skillbill.review.model.ReviewStatsModels.status`,
+- `skillbill.goalrunner.model.GoalRunnerProgressEvent.kind`,
+  `skillbill.goalrunner.model.GoalRunnerLivenessSnapshot.phase`,
   `skillbill.review.context.model.ReviewContextPacket.status`, and
   `skillbill.review.context.model.ReviewBuildTestFact.kind`/`outcome` are exact open labels owned by
   their emitting contracts. `ImportedReview.executionMode` and `ReviewSummary.executionMode` are
@@ -2127,6 +2146,10 @@ durable payload whose vocabulary is intentionally owned by that boundary:
   `ReviewLaneResolutionState`, and `ReviewRunLane.reviewDisposition` is owned by
   `ReviewLaneReviewDisposition`; SQLite legacy null or unknown values fail closed to unresolved
   and incomplete before application dispatch.
+- `skillbill.ports.review.model.ReviewScopeFacts.status`,
+  `skillbill.review.model.GoalRunSummary.status` preserve review-store and provider status labels;
+  the review scope and stats boundaries own those vocabularies and do not make closed decisions
+  from the raw values.
 - `skillbill.ports.scaffold.model.ScaffoldSkillStatus.completionStatus` is owned by
   `ScaffoldCompletionStatus`, and `ScaffoldSectionStatus.status` is owned by
   `ScaffoldSectionCompletionStatus`; both use their enum `wireValue`/`fromWire` pair at the

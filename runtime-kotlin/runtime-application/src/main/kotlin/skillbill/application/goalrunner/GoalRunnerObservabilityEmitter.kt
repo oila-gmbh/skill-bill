@@ -107,7 +107,7 @@ class GoalRunnerObservabilityEmitter(
       signal = GoalRunnerObservabilitySignal(
         workflowPhase = phase,
         livenessClass = "heartbeat",
-        activitySummary = "process_state=${liveness.processState}; reason=${liveness.reason}",
+        activitySummary = "process_state=${liveness.processState.wireValue}; reason=${liveness.reason}",
       ),
     )
     liveness.lastFileActivityAt?.takeIf(String::isNotBlank)?.let { at ->

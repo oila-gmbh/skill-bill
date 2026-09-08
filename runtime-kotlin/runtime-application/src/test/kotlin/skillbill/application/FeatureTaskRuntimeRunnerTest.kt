@@ -29,6 +29,7 @@ import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_CONTRACT_VERSION
 import skillbill.error.InvalidFeatureTaskRuntimePhaseOutputSchemaError
 import skillbill.error.InvalidWorkflowStateSchemaError
 import skillbill.error.WorkflowIssueKeyConflictError
+import skillbill.goalrunner.model.GoalRunnerTerminalStatus
 import skillbill.install.model.InstallAgent
 import skillbill.ports.agentrun.model.AgentRunLaunchFacts
 import skillbill.ports.diagnostics.NoopRuntimeDiagnostics
@@ -1952,7 +1953,7 @@ class FeatureTaskRuntimeGoalContinuationPersistenceTest {
     val report = harness.runner.run(harness.request())
 
     val completed = assertIs<FeatureTaskRuntimeRunReport.Completed>(report)
-    assertEquals("complete", completed.subtaskOutcome?.status)
+    assertEquals(GoalRunnerTerminalStatus.COMPLETE, completed.subtaskOutcome?.status)
     assertEquals(git.headCommitShaValue, completed.subtaskOutcome?.commitSha)
     assertEquals(listOf("feat/existing-runtime-branch"), git.pushedBranches, "finalisation pushes exactly once")
     val outcome = harness.repository.taskRuntimeArtifacts(WORKFLOW_ID)["goal_continuation_outcome"] as Map<*, *>
@@ -5416,7 +5417,7 @@ class FeatureTaskRuntimeOperatorBlockSettlementTest {
     assertTrue(blocked.blockedReason.isNotBlank())
     assertContains(blocked.blockedReason, "Cannot connect to docker.sock.")
     val subtaskOutcome = requireNotNull(blocked.subtaskOutcome)
-    assertEquals("blocked", subtaskOutcome.status)
+    assertEquals(GoalRunnerTerminalStatus.BLOCKED, subtaskOutcome.status)
     assertEquals(blocked.blockedReason, subtaskOutcome.blockedReason)
     assertTrue(subtaskOutcome.blockedReason.orEmpty().isNotBlank())
   }

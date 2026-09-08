@@ -1,7 +1,9 @@
 package skillbill.application.goalrunner
 
 import skillbill.application.featuretask.FeatureTaskRuntimePhaseRecorder
+import skillbill.goalrunner.model.GoalRunnerContinuationMode
 import skillbill.goalrunner.model.GoalRunnerLivenessSnapshot
+import skillbill.goalrunner.model.GoalRunnerProcessState
 import skillbill.goalrunner.model.GoalRunnerReconciledOutcome
 import skillbill.goalrunner.model.GoalRunnerRunReport
 import skillbill.goalrunner.model.GoalRunnerStopReason
@@ -119,9 +121,9 @@ fun supervisionEvent(
   phase = "goal_runner_supervision",
   reason = reason.name.lowercase(),
   continuationMode = when (reason) {
-    GoalRunnerStopReason.TIMEOUT -> "killed_unresponsive_child"
-    GoalRunnerStopReason.INTERRUPTED -> "killed_by_parent_interrupt"
-    GoalRunnerStopReason.NO_TERMINAL_STORE_OUTCOME -> "continue_inline"
+    GoalRunnerStopReason.TIMEOUT -> GoalRunnerContinuationMode.KILLED_UNRESPONSIVE_CHILD
+    GoalRunnerStopReason.INTERRUPTED -> GoalRunnerContinuationMode.KILLED_BY_PARENT_INTERRUPT
+    GoalRunnerStopReason.NO_TERMINAL_STORE_OUTCOME -> GoalRunnerContinuationMode.CONTINUE_INLINE
     GoalRunnerStopReason.FAILED,
     GoalRunnerStopReason.BLOCKED,
     GoalRunnerStopReason.POLICY_BLOCKED,
@@ -130,9 +132,9 @@ fun supervisionEvent(
     GoalRunnerStopReason.RECONCILED_RESUMABLE,
     GoalRunnerStopReason.AWAITING_OPERATOR_DECISION,
     GoalRunnerStopReason.PAUSED,
-    -> "none"
+    -> GoalRunnerContinuationMode.NONE
   },
-  processState = liveness?.processState.orEmpty().ifBlank { "unknown" },
+  processState = liveness?.processState ?: GoalRunnerProcessState.UNKNOWN,
   workflowId = knownWorkflowId,
   stepId = progress?.currentStepId ?: liveness?.workflowStep,
   lastDurableProgress = progress?.latestLivenessSignal ?: liveness?.lastDurableProgressLabel,
