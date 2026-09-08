@@ -22,6 +22,8 @@ import skillbill.ports.workflow.model.WorkflowFamily
 import skillbill.workflow.engine.WorkflowEngine
 import skillbill.workflow.goal.GoalObservabilityEventValidator
 import skillbill.workflow.goal.model.goalObservabilityLatestEventFromArtifacts
+import skillbill.workflow.model.WorkflowStatus
+import skillbill.workflow.model.workflowStatus
 import java.nio.file.Path
 import java.time.Clock
 import java.time.Duration
@@ -125,7 +127,7 @@ internal class WorkflowGoalRunnerOutcomeReconcile(
     activeSet: Set<String>,
     gate: GoalRunnerReconcileGate,
   ): Boolean {
-    if (candidate.snapshot.workflowStatus != "running") return false
+    if (candidate.snapshot.workflowStatus.workflowStatus() != WorkflowStatus.RUNNING) return false
     if (candidate.outcome?.status == GoalRunnerTerminalStatus.COMPLETE) return false
     val authoritative = initialAuthoritative[candidate.goalContinuation.subtaskId]
     val inactive = candidate.snapshot.workflowId !in activeSet

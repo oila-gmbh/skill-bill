@@ -14,6 +14,8 @@ import skillbill.workflow.decomposition.model.DecompositionManifestValidationRes
 import skillbill.workflow.decomposition.model.requireAccepted
 import skillbill.workflow.decomposition.runtime.isActiveGoalRuntime
 import skillbill.workflow.decomposition.toWireMap
+import skillbill.workflow.model.DecompositionStatus
+import skillbill.workflow.model.decompositionStatus
 import java.nio.file.NoSuchFileException
 import java.nio.file.Path
 
@@ -156,10 +158,19 @@ fun resolveDecompositionManifest(
 
 fun DecompositionManifest.withParentStatus(): DecompositionManifest {
   val parentStatus = when {
-    subtasks.all { it.status in setOf("complete", "skipped") } -> "complete"
-    subtasks.any { it.status == "blocked" } -> "blocked"
-    subtasks.any { it.status in setOf("in_progress", "complete", "skipped") || it.hasStarted() } -> "in_progress"
-    else -> "pending"
+    subtasks.all {
+      it.status.decompositionStatus() in setOf(DecompositionStatus.COMPLETE, DecompositionStatus.SKIPPED)
+    } -> DecompositionStatus.COMPLETE.wireValue
+    subtasks.any { it.status.decompositionStatus() == DecompositionStatus.BLOCKED } ->
+      DecompositionStatus.BLOCKED.wireValue
+    subtasks.any {
+      it.status.decompositionStatus() in setOf(
+        DecompositionStatus.IN_PROGRESS,
+        DecompositionStatus.COMPLETE,
+        DecompositionStatus.SKIPPED,
+      ) || it.hasStarted()
+    } -> DecompositionStatus.IN_PROGRESS.wireValue
+    else -> DecompositionStatus.PENDING.wireValue
   }
   return copy(status = parentStatus)
 }
