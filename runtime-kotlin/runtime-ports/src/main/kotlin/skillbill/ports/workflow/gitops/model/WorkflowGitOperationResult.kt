@@ -24,7 +24,7 @@ sealed interface WorkflowGitOperationResult {
       when (status) {
         "ok" -> Ok(value = value, error = error)
         "error" -> Failed(error = error, value = value)
-        else -> kotlin.error("Unknown workflow Git operation result '$status'.")
+        else -> Failed(error = error.ifBlank { status }, value = value)
       }
   }
 }

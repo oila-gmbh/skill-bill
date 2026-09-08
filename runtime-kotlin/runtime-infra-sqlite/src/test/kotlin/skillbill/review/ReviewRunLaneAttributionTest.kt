@@ -8,6 +8,8 @@ import skillbill.infrastructure.sqlite.review.recordFindingLaneAttribution
 import skillbill.review.model.ImportedFinding
 import skillbill.review.model.ImportedReview
 import skillbill.review.model.ReviewRunLane
+import skillbill.review.model.ReviewLaneResolutionState
+import skillbill.review.context.model.ReviewLaneReviewDisposition
 import skillbill.tempDbConnection
 import java.sql.Connection
 import kotlin.test.Test
@@ -188,8 +190,8 @@ class ReviewRunLaneAttributionTest {
         required = false,
         orderIndex = 0,
         originLayerChain = listOf("kmp"),
-        resolutionState = ReviewRunLaneResolver.RESOLVED,
-        reviewDisposition = ReviewRunLaneResolver.INCOMPLETE_DISPOSITION,
+        resolutionState = ReviewLaneResolutionState.RESOLVED,
+        reviewDisposition = ReviewLaneReviewDisposition.INCOMPLETE,
       ),
       ReviewRunLane(
         laneSkillName = "bill-kotlin-code-review-testing",
@@ -199,8 +201,8 @@ class ReviewRunLaneAttributionTest {
         required = true,
         orderIndex = 1,
         originLayerChain = listOf("kmp", "kotlin"),
-        resolutionState = ReviewRunLaneResolver.RESOLVED,
-        reviewDisposition = ReviewRunLaneResolver.INCOMPLETE_DISPOSITION,
+        resolutionState = ReviewLaneResolutionState.RESOLVED,
+        reviewDisposition = ReviewLaneReviewDisposition.INCOMPLETE,
       ),
     ),
   )

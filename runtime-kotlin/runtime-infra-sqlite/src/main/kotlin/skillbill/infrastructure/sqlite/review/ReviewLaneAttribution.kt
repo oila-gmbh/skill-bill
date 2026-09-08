@@ -4,11 +4,12 @@ import skillbill.db.PARAM_ONE
 import skillbill.db.PARAM_THREE
 import skillbill.db.PARAM_TWO
 import skillbill.ports.review.model.ReviewIntegrationPassRecord
-import skillbill.review.ReviewRunLaneResolver
 import skillbill.review.model.ImportedFinding
 import skillbill.review.model.ImportedReview
 import skillbill.review.model.ReviewLaneEffectivenessRow
 import skillbill.review.model.ReviewRunLane
+import skillbill.review.model.ReviewLaneResolutionState
+import skillbill.review.context.model.ReviewLaneReviewDisposition
 import skillbill.review.model.toStoredSegmentIdList
 import java.sql.Connection
 
@@ -55,8 +56,8 @@ fun replaceReviewRunLanes(connection: Connection, reviewRunId: String, lanes: Li
       statement.setBoolean(PARAM_SIX, lane.required)
       statement.setInt(PARAM_SEVEN, lane.orderIndex)
       statement.setString(PARAM_EIGHT, lane.originLayerChain.joinToString("->"))
-      statement.setString(PARAM_NINE, lane.resolutionState)
-      statement.setString(PARAM_TEN, lane.reviewDisposition)
+      statement.setString(PARAM_NINE, lane.resolutionState.wireValue)
+      statement.setString(PARAM_TEN, lane.reviewDisposition.wireValue)
       statement.setString(PARAM_ELEVEN, lane.bundleCompositionDigest)
       statement.setString(PARAM_TWELVE, lane.segmentAccountingJson)
       statement.setString(PARAM_THIRTEEN, lane.unreviewedSegmentIds.toStoredSegmentIdList())
@@ -99,11 +100,10 @@ fun fetchReviewRunLanes(connection: Connection, reviewRunId: String): List<Revie
                 .orEmpty()
                 .split("->")
                 .filter(String::isNotEmpty),
-              resolutionState = resultSet.getString("resolution_state"),
-              // A missing disposition (legacy row written before the column existed) is unknown, not
-              // complete: reading it as complete would silently drop the lane from resume coverage.
-              reviewDisposition = resultSet.getString("review_disposition")
-                ?: ReviewRunLaneResolver.INCOMPLETE_DISPOSITION,
+              resolutionState = ReviewLaneResolutionState.fromWire(resultSet.getString("resolution_state"))
+                ?: ReviewLaneResolutionState.UNRESOLVED,
+              reviewDisposition = ReviewLaneReviewDisposition.fromWire(resultSet.getString("review_disposition"))
+                ?: ReviewLaneReviewDisposition.INCOMPLETE,
               bundleCompositionDigest = resultSet.getString("bundle_composition_digest"),
               segmentAccountingJson = resultSet.getString("segment_accounting_json"),
               unreviewedSegmentIds = resultSet.getString("unreviewed_segment_ids").orEmpty().toStoredSegmentIdList(),

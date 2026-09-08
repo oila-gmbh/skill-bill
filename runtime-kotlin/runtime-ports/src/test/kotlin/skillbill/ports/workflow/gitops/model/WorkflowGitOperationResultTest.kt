@@ -2,7 +2,6 @@ package skillbill.ports.workflow.gitops.model
 
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertFailsWith
 import kotlin.test.assertTrue
 
 class WorkflowGitOperationResultTest {
@@ -22,10 +21,12 @@ class WorkflowGitOperationResultTest {
   }
 
   @Test
-  fun `wire mapping rejects unknown tokens`() {
-    assertFailsWith<IllegalStateException> {
-      WorkflowGitOperationResult.fromWire("unknown")
-    }
+  fun `wire mapping preserves unknown diagnostics as failed`() {
+    val result = WorkflowGitOperationResult.fromWire("unknown", value = "output")
+    val diagnosed = WorkflowGitOperationResult.fromWire("unknown", error = "diagnostic")
+
+    assertEquals(WorkflowGitOperationResult.Failed(value = "output", error = "unknown"), result)
+    assertEquals(WorkflowGitOperationResult.Failed(value = "", error = "diagnostic"), diagnosed)
   }
 
   @Test

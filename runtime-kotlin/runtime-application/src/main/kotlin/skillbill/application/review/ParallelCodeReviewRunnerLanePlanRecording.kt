@@ -3,10 +3,10 @@ package skillbill.application.review
 import skillbill.application.review.model.ReviewSpecialistLaunchRequest
 import skillbill.application.runtimepersistence.RuntimeOwnedPersistenceBoundary
 import skillbill.contracts.review.REVIEW_CONTEXT_CONTRACT_VERSION
-import skillbill.review.ReviewRunLaneResolver
 import skillbill.review.context.model.ReviewLaneReviewDisposition
 import skillbill.review.context.model.SpecIntentResolution
 import skillbill.review.model.ReviewRunLane
+import skillbill.review.model.ReviewLaneResolutionState
 import skillbill.review.model.ReviewRunLaneSegmentAccountingJson
 import skillbill.review.model.ReviewSpecProjectionReference
 import skillbill.review.model.ReviewStage
@@ -57,7 +57,7 @@ internal class ParallelCodeReviewRunnerLanePlanRecording(
     ) { unitOfWork -> unitOfWork.reviews.fetchReviewRunLanes(reviewRunId) }
     if (existing.isEmpty()) return launches
     val completeNames = existing
-      .filter { it.reviewDisposition == ReviewRunLaneResolver.COMPLETE_DISPOSITION }
+      .filter { it.reviewDisposition == ReviewLaneReviewDisposition.COMPLETE }
       .map { it.laneSkillName }
       .toSet()
     return launches.filterNot { launch ->
@@ -76,7 +76,7 @@ internal class ParallelCodeReviewRunnerLanePlanRecording(
       expected = "runtime-owned review lane dispositions",
     ) { unitOfWork -> unitOfWork.reviews.fetchReviewRunLanes(reviewRunId) }
     val preservedComplete = existing.filter {
-      it.reviewDisposition == ReviewRunLaneResolver.COMPLETE_DISPOSITION
+      it.reviewDisposition == ReviewLaneReviewDisposition.COMPLETE
     }
     val completionBySkill = launches.associate { launch ->
       requireNotNull(launch.assignment.laneDecision.specialistSkillName) to
@@ -95,8 +95,8 @@ internal class ParallelCodeReviewRunnerLanePlanRecording(
           required = planned.descriptor.required,
           orderIndex = planned.descriptor.orderIndex,
           originLayerChain = planned.descriptor.originLayerChain,
-          resolutionState = ReviewRunLaneResolver.RESOLVED,
-          reviewDisposition = ReviewLaneReviewDisposition.INCOMPLETE.wireValue,
+          resolutionState = ReviewLaneResolutionState.RESOLVED,
+          reviewDisposition = ReviewLaneReviewDisposition.INCOMPLETE,
           bundleCompositionDigest = completion.bundleCompositionDigest,
           segmentAccountingJson = ReviewRunLaneSegmentAccountingJson.encode(completion.segments),
           unreviewedSegmentIds = completion.unreviewedSegmentIds,

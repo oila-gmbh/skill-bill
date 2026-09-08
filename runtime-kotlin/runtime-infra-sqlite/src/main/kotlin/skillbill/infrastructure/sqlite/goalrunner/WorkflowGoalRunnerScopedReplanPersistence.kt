@@ -10,6 +10,8 @@ import skillbill.ports.persistence.UnitOfWork
 import skillbill.ports.workflow.model.GoalChildWorkflowDeletionScope
 import skillbill.workflow.decomposition.model.CurrentSubtaskIntent
 import skillbill.workflow.decomposition.model.DecompositionManifest
+import skillbill.workflow.model.DecompositionStatus
+import skillbill.workflow.model.decompositionStatus
 
 internal class WorkflowGoalRunnerScopedReplanPersistence(
   private val projectionPersistence: WorkflowGoalRunnerManifestProjectionPersistence,
@@ -118,7 +120,11 @@ internal fun deleteStaleReplanChildren(
 ): List<Int> = subtaskIds.distinct().sorted().filter { id ->
   val subtask = state.manifest.subtasks.singleOrNull { it.id == id }
   val childWorkflowId = subtask?.workflowId?.takeIf(String::isNotBlank)
-  if (subtask == null || childWorkflowId == null || subtask.status in setOf("complete", "skipped")) {
+  if (
+    subtask == null ||
+    childWorkflowId == null ||
+    subtask.status.decompositionStatus() in setOf(DecompositionStatus.COMPLETE, DecompositionStatus.SKIPPED)
+  ) {
     false
   } else {
     unitOfWork.workflowStates.deleteGoalChildWorkflow(

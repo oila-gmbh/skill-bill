@@ -11,6 +11,8 @@ import skillbill.ports.workflow.get
 import skillbill.ports.workflow.model.WorkflowFamily
 import skillbill.workflow.decomposition.DecompositionManifestValidator
 import skillbill.workflow.engine.model.WorkflowStateSnapshot
+import skillbill.workflow.model.DecompositionStatus
+import skillbill.workflow.model.decompositionStatus
 
 internal fun reconcileControlStateForManifest(
   unitOfWork: UnitOfWork,
@@ -53,7 +55,9 @@ internal fun GoalRunnerControlCoordinator.spawnAuthorization(
 
 internal fun GoalRunnerControlState.targetReached(state: GoalRunnerManifestState): Boolean =
   stopAfterSubtaskId?.let { targetId ->
-    state.manifest.subtasks.any { it.id == targetId && it.status == "complete" }
+    state.manifest.subtasks.any {
+      it.id == targetId && it.status.decompositionStatus() == DecompositionStatus.COMPLETE
+    }
   } == true && !stopAfterConsumed
 
 internal fun GoalRunnerControlCoordinator.bindRepositoryIdentity(

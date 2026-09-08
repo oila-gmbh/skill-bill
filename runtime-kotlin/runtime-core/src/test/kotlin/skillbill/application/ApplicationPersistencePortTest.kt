@@ -144,8 +144,8 @@ class ApplicationPersistencePortTest {
     )
     assertEquals("kmp", lanes.first().packSlug)
     assertEquals("architecture", lanes.first().area)
-    assertEquals("resolved", lanes.first().resolutionState)
-    assertEquals("unresolved", lanes.last().resolutionState)
+    assertEquals("resolved", lanes.first().resolutionState.wireValue)
+    assertEquals("unresolved", lanes.last().resolutionState.wireValue)
   }
 
   // AC-002/AC-005/AC-006: a run that produced no findings still records its lanes and its terminal
@@ -187,7 +187,7 @@ class ApplicationPersistencePortTest {
 
     val lanes = reviewRepository.savedReviews.single().planLanes
     assertEquals(listOf("architecture", "narrated-only"), lanes.map { it.laneSkillName })
-    assertTrue(lanes.all { it.resolutionState == "unresolved" })
+    assertTrue(lanes.all { it.resolutionState.wireValue == "unresolved" })
     assertEquals(
       listOf<Pair<String, ReviewExecutionMode?>>("rvw-lane-app-001" to ReviewExecutionMode.INLINE),
       reviewRepository.terminalStateWrites,
@@ -217,7 +217,7 @@ class ApplicationPersistencePortTest {
 
     val lanes = reviewRepository.savedReviews.single().planLanes
     assertEquals(listOf("architecture", "narrated-only"), lanes.map { it.laneSkillName })
-    assertTrue(lanes.all { it.resolutionState == "unresolved" })
+    assertTrue(lanes.all { it.resolutionState.wireValue == "unresolved" })
     assertEquals(
       listOf<Pair<String, ReviewExecutionMode?>>("rvw-lane-app-001" to ReviewExecutionMode.INLINE),
       reviewRepository.terminalStateWrites,

@@ -1214,12 +1214,12 @@ class ParallelCodeReviewRunnerFailureTest {
     val (runId, lanes) = database.laneWrites.last()
     assertEquals(request.reviewRunId, runId)
     assertTrue(lanes.isNotEmpty(), "A runtime-launched review must record the lanes it planned.")
-    assertTrue(lanes.all { it.resolutionState == "resolved" })
+    assertTrue(lanes.all { it.resolutionState.wireValue == "resolved" })
     assertTrue(lanes.all { it.packSlug.isNotBlank() && it.area.isNotBlank() })
     assertEquals(lanes.map { it.laneSkillName }.distinct().size, lanes.size)
     assertEquals(lanes.map { it.orderIndex }.sorted(), lanes.map { it.orderIndex })
     assertTrue(
-      lanes.all { it.reviewDisposition == "complete" },
+      lanes.all { it.reviewDisposition.wireValue == "complete" },
       "Successful parallel pass must persist complete disposition for every planned lane.",
     )
     assertTrue(database.laneWrites.size >= 2, "Plan recording and disposition finalization must both write.")

@@ -6,8 +6,6 @@ import skillbill.review.model.GoalRunSummary
 import skillbill.review.model.GoalWorkflowStats
 import skillbill.workflow.model.DecompositionStatus
 import skillbill.workflow.model.WorkflowStatus
-import skillbill.workflow.model.decompositionStatus
-import skillbill.workflow.model.workflowStatus
 import java.sql.Connection
 import java.util.Locale
 
@@ -23,8 +21,17 @@ import java.util.Locale
 // retired. `buildByModeStats` therefore emits only runtime-mode buckets so a
 // retained prose row never surfaces as a live `prose` bucket in goal stats.
 
-private val goalFinishedStatuses = listOf("completed", "paused", "blocked", "abandoned")
-private val goalSubtaskStatuses = listOf("complete", "blocked", "skipped")
+private val goalFinishedStatuses = listOf(
+  WorkflowStatus.COMPLETED,
+  WorkflowStatus.PAUSED,
+  WorkflowStatus.BLOCKED,
+  WorkflowStatus.ABANDONED,
+)
+private val goalSubtaskStatuses = listOf(
+  DecompositionStatus.COMPLETE,
+  DecompositionStatus.BLOCKED,
+  DecompositionStatus.SKIPPED,
+)
 
 fun loadGoalRows(connection: Connection, tableName: String): List<Map<String, Any?>> =
   connection.prepareStatement("SELECT * FROM $tableName").use { statement ->
@@ -35,22 +42,22 @@ fun buildGoalStats(runRows: List<Map<String, Any?>>, subtaskRows: List<Map<Strin
   val runs = runRows.map(::parseGoalRunRow)
   val subtasks = subtaskRows.map(::parseGoalSubtaskRow)
   val finished = runs.filter { it.finishedAt.isNotBlank() }
-  val completedRuns = finished.count { it.status.workflowStatus() == WorkflowStatus.COMPLETED }
-  val blockedRuns = finished.count { it.status.workflowStatus() == WorkflowStatus.BLOCKED }
+  val completedRuns = finished.count { it.workflowStatus == WorkflowStatus.COMPLETED }
+  val blockedRuns = finished.count { it.workflowStatus == WorkflowStatus.BLOCKED }
   val mostRecent = runs.maxByOrNull { it.startedAt }
   return GoalWorkflowStats(
     totalRuns = runs.size,
     finishedRuns = finished.size,
     inProgressRuns = runs.size - finished.size,
-    completionStatusCounts = goalFinishedStatuses.associateWith { status ->
-      finished.count { it.status.workflowStatus()?.wireValue == status }
+    completionStatusCounts = goalFinishedStatuses.associate { status ->
+      status.wireValue to finished.count { it.workflowStatus == status }
     },
     completedRuns = completedRuns,
     completedRate = rate(completedRuns, finished.size),
     blockedRuns = blockedRuns,
     blockedRate = rate(blockedRuns, finished.size),
-    subtaskOutcomeCounts = goalSubtaskStatuses.associateWith { status ->
-      subtasks.count { it.status.decompositionStatus()?.wireValue == status }
+    subtaskOutcomeCounts = goalSubtaskStatuses.associate { status ->
+      status.wireValue to subtasks.count { it.decompositionStatus == status }
     },
     totalSubtaskEvents = subtasks.size,
     averageRunDurationMs = averageMillis(finished.map { it.durationMs }),
@@ -70,7 +77,7 @@ fun buildGoalStats(runRows: List<Map<String, Any?>>, subtaskRows: List<Map<Strin
       )
     },
     topBlockedSubtasks = subtasks
-      .filter { it.status.decompositionStatus() == DecompositionStatus.BLOCKED }
+      .filter { it.decompositionStatus == DecompositionStatus.BLOCKED }
       .map { s ->
         GoalBlockedSubtaskSummary(
           subtaskId = s.subtaskId,
@@ -91,8 +98,8 @@ private fun buildByModeStats(runs: List<GoalRunRow>): Map<String, GoalModeStats>
   .groupBy { it.mode }
   .mapValues { (_, modeRuns) ->
     val modeFinished = modeRuns.filter { it.finishedAt.isNotBlank() }
-    val modeCompleted = modeFinished.count { it.status.workflowStatus() == WorkflowStatus.COMPLETED }
-    val modeBlocked = modeFinished.count { it.status.workflowStatus() == WorkflowStatus.BLOCKED }
+    val modeCompleted = modeFinished.count { it.workflowStatus == WorkflowStatus.COMPLETED }
+    val modeBlocked = modeFinished.count { it.workflowStatus == WorkflowStatus.BLOCKED }
     GoalModeStats(
       totalRuns = modeRuns.size,
       finishedRuns = modeFinished.size,
@@ -113,6 +120,7 @@ internal data class GoalRunRow(
   val resumed: Boolean,
   val startedAt: String,
   val status: String,
+  val workflowStatus: WorkflowStatus?,
   val finishedAt: String,
   val durationMs: Long,
   val mode: String,
@@ -124,6 +132,7 @@ internal data class GoalSubtaskRow(
   val issueKey: String,
   val blockedReason: String?,
   val status: String,
+  val decompositionStatus: DecompositionStatus?,
   val durationMs: Long,
   val attemptCount: Int,
 )
@@ -137,6 +146,7 @@ private fun parseGoalRunRow(row: Map<String, Any?>): GoalRunRow {
     row.requireNonNegativeInt("subtasks_blocked", identity)
     row.requireNonNegativeInt("subtasks_skipped", identity)
   }
+  val status = if (finished) row.requireEnum("status", goalFinishedStatuses.map { it.wireValue }, identity) else ""
   return GoalRunRow(
     workflowId = row.requireNonBlankString("workflow_id", identity),
     issueKey = row.requireNonBlankString("issue_key", identity),
@@ -144,7 +154,8 @@ private fun parseGoalRunRow(row: Map<String, Any?>): GoalRunRow {
     subtaskTotal = row.requireNonNegativeInt("subtask_total", identity),
     resumed = row.requireBooleanInt("resumed", identity),
     startedAt = row.requireNonBlankString("started_at", identity),
-    status = if (finished) row.requireEnum("status", goalFinishedStatuses, identity) else "",
+    status = status,
+    workflowStatus = status.takeIf(String::isNotEmpty)?.let(WorkflowStatus::fromWire),
     finishedAt = finishedAtRaw,
     durationMs = if (finished) row.requireNonNegativeLong("finished_duration_ms", identity) else 0L,
     mode = row.requireNonBlankString("mode", identity),
@@ -157,12 +168,14 @@ private fun parseGoalSubtaskRow(row: Map<String, Any?>): GoalSubtaskRow {
       "subtask_id=${row["subtask_id"] ?: "<null>"}, workflow_id=${row["workflow_id"] ?: "<null>"}]"
   row.requireNonBlankString("started_at", identity)
   row.requireNonBlankString("finished_at", identity)
+  val status = row.requireEnum("status", goalSubtaskStatuses.map { it.wireValue }, identity)
   return GoalSubtaskRow(
     subtaskId = row.requirePositiveInt("subtask_id", identity),
     subtaskName = row.requirePresentString("subtask_name", identity),
     issueKey = row.requireNonBlankString("issue_key", identity),
     blockedReason = row["blocked_reason"]?.toString(),
-    status = row.requireEnum("status", goalSubtaskStatuses, identity),
+    status = status,
+    decompositionStatus = DecompositionStatus.fromWire(status),
     durationMs = row.requireNonNegativeLong("duration_ms", identity),
     attemptCount = row.requireNonNegativeInt("attempt_count", identity),
   )

@@ -22,6 +22,8 @@ import skillbill.workflow.decomposition.DecompositionManifestValidator
 import skillbill.workflow.decomposition.model.DecompositionManifest
 import skillbill.workflow.engine.WorkflowEngine
 import skillbill.workflow.engine.model.WorkflowUpdateInput
+import skillbill.workflow.model.DecompositionStatus
+import skillbill.workflow.model.decompositionStatus
 import java.nio.file.Path
 
 internal class WorkflowGoalRunnerManifestLoader(
@@ -161,12 +163,16 @@ internal fun mergeConcurrentGoalProgress(
   val persistedById = persisted.subtasks.associateBy { it.id }
   val mergedSubtasks = incoming.subtasks.map { candidate ->
     val current = persistedById[candidate.id]
-    if (current?.status == "complete" && candidate.status != "complete") current else candidate
+    if (
+      current?.status.decompositionStatus() == DecompositionStatus.COMPLETE &&
+      candidate.status.decompositionStatus() != DecompositionStatus.COMPLETE
+    ) current ?: candidate else candidate
   }
   val merged = incoming.copy(subtasks = mergedSubtasks)
   return if (
     persisted.currentSubtaskIntent.subtaskId > 0 &&
-    merged.subtasks.firstOrNull { it.id == persisted.currentSubtaskIntent.subtaskId }?.status == "complete" &&
+    merged.subtasks.firstOrNull { it.id == persisted.currentSubtaskIntent.subtaskId }
+      ?.status.decompositionStatus() == DecompositionStatus.COMPLETE &&
     merged.currentSubtaskIntent.subtaskId == persisted.currentSubtaskIntent.subtaskId
   ) {
     merged.copy(currentSubtaskIntent = persisted.currentSubtaskIntent).withParentStatus()
@@ -176,7 +182,8 @@ internal fun mergeConcurrentGoalProgress(
 }
 
 private fun DecompositionManifest.isCompleteGoalProjection(): Boolean =
-  status == "complete" && currentSubtaskIntent.action == "complete" && subtasks.all { subtask ->
-    subtask.status in setOf("complete", "skipped") &&
-      (subtask.status == "skipped" || !subtask.commitSha.isNullOrBlank())
+  status.decompositionStatus() == DecompositionStatus.COMPLETE &&
+    currentSubtaskIntent.action == "complete" && subtasks.all { subtask ->
+    subtask.status.decompositionStatus() in setOf(DecompositionStatus.COMPLETE, DecompositionStatus.SKIPPED) &&
+      (subtask.status.decompositionStatus() == DecompositionStatus.SKIPPED || !subtask.commitSha.isNullOrBlank())
   }

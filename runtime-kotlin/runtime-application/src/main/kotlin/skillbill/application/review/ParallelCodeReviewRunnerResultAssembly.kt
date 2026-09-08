@@ -15,7 +15,6 @@ import skillbill.ports.review.model.ReviewIntegrationPassRecord
 import skillbill.ports.review.model.ReviewLaneAccounting
 import skillbill.review.ParallelReviewMerger
 import skillbill.review.ReviewLaneAggregation
-import skillbill.review.ReviewRunLaneResolver
 import skillbill.review.ReviewStageDegradationSelection
 import skillbill.review.context.ReviewContextEnvelopeValidator
 import skillbill.review.context.ReviewTreeAccounting
@@ -129,9 +128,9 @@ class ParallelCodeReviewRunnerResultAssembly(
       val durableComplete = completion.disposition == ReviewLaneReviewDisposition.COMPLETE
       lane.copy(
         reviewDisposition = if (durableComplete) {
-          ReviewRunLaneResolver.COMPLETE_DISPOSITION
+          ReviewLaneReviewDisposition.COMPLETE
         } else {
-          ReviewLaneReviewDisposition.INCOMPLETE.wireValue
+          ReviewLaneReviewDisposition.INCOMPLETE
         },
         bundleCompositionDigest = completion.bundleCompositionDigest,
         segmentAccountingJson = ReviewRunLaneSegmentAccountingJson.encode(completion.segments),
@@ -222,7 +221,7 @@ class ParallelCodeReviewRunnerResultAssembly(
       seam = "ParallelCodeReviewRunner.recordReviewStageBoundary.read",
       expected = "runtime-owned review lane dispositions",
     ) { unitOfWork -> unitOfWork.reviews.fetchReviewRunLanes(reviewRunId) }
-    if (lanes.isEmpty() || lanes.any { it.reviewDisposition != ReviewRunLaneResolver.COMPLETE_DISPOSITION }) {
+    if (lanes.isEmpty() || lanes.any { it.reviewDisposition != ReviewLaneReviewDisposition.COMPLETE }) {
       return
     }
     persistReviewPassClaims(reviewRunId, findings, persistEmpty = true)
@@ -347,7 +346,7 @@ internal fun ParallelCodeReviewRunnerResultAssembly.durablyCompleteLanes(
     seam = "ParallelCodeReviewRunner.durablyCompleteLanes",
     expected = "runtime-owned review lane dispositions",
   ) { unitOfWork -> unitOfWork.reviews.fetchReviewRunLanes(reviewRunId) }
-    .filter { it.reviewDisposition == ReviewRunLaneResolver.COMPLETE_DISPOSITION }
+    .filter { it.reviewDisposition == ReviewLaneReviewDisposition.COMPLETE }
     .map { it.laneSkillName }
     .toSet()
   return notRun.filter { it.substringAfter(':') in completeSkills }.map { lane ->

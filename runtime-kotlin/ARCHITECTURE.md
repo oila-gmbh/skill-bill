@@ -2121,10 +2121,17 @@ durable payload whose vocabulary is intentionally owned by that boundary:
   `GoalRunnerLivenessModels.phase`, `skillbill.review.model.ReviewStatsModels.status`,
   `skillbill.review.context.model.ReviewContextPacket.status`, and
   `skillbill.review.context.model.ReviewBuildTestFact.kind`/`outcome` are exact open labels owned by
-  their emitting contracts.
-- `skillbill.scaffold.model.ScaffoldModels.mode`/`kind`,
+  their emitting contracts. `ImportedReview.executionMode` and `ReviewSummary.executionMode` are
+  owned by `ReviewExecutionMode`; the decoder preserves nullable absence and emits `wireValue`.
+- `skillbill.review.model.ReviewRunLane.resolutionState` is owned by
+  `ReviewLaneResolutionState`, and `ReviewRunLane.reviewDisposition` is owned by
+  `ReviewLaneReviewDisposition`; SQLite legacy null or unknown values fail closed to unresolved
+  and incomplete before application dispatch.
+- `skillbill.ports.scaffold.model.ScaffoldSkillStatus.completionStatus` is owned by
+  `ScaffoldCompletionStatus`, and `ScaffoldSectionStatus.status` is owned by
+  `ScaffoldSectionCompletionStatus`; both use their enum `wireValue`/`fromWire` pair at the
+  authoring adapter boundary. `skillbill.scaffold.model.ScaffoldModels.mode`/`kind`,
   `skillbill.ports.scaffold.repo.model.ScaffoldValidateResult.mode`/`status`,
-  `skillbill.ports.scaffold.model.ScaffoldSkillStatus.status`/`mode`,
   `skillbill.ports.agentrun.model.AgentRunLauncherModels.phase`,
   `skillbill.ports.featuretask.model.FeatureTaskPhaseSettlement.kind`, and
   `skillbill.ports.goalrunner.planning.model.GoalPlanningContext.kind` are extension-owned labels

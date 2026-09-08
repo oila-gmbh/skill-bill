@@ -19,6 +19,8 @@ import skillbill.ports.workflow.gitops.model.WorkflowGitOperationResult
 import skillbill.ports.workflow.save
 import skillbill.workflow.engine.WorkflowEngine
 import skillbill.workflow.engine.model.WorkflowUpdateInput
+import skillbill.workflow.model.WorkflowStatus
+import skillbill.workflow.model.workflowStatus
 import java.nio.file.Path
 import java.time.Clock
 
@@ -88,7 +90,7 @@ internal class WorkflowGoalRunnerOutcomeTerminalPersistence(
     val ownership = workflowStates.getFeatureTaskRuntimeWorkerOwnership(workflowId)
     val row = ownership?.let { workflowStates.getFeatureTaskRuntimeWorkflow(workflowId) }
     val continuation = row
-      ?.takeIf { it.workflowStatus == "running" }
+      ?.takeIf { it.workflowStatus.workflowStatus() == WorkflowStatus.RUNNING }
       ?.let { goalContinuation(decodeArtifacts(it.artifactsJson)) }
       ?.takeIf { it.issueKey == issueKey && it.subtaskId == subtaskId }
     if (ownership == null || row == null || continuation == null) return null
