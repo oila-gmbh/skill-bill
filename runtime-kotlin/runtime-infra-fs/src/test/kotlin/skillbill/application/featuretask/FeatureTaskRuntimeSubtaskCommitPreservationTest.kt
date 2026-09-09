@@ -223,6 +223,7 @@ class FeatureTaskRuntimeSubtaskCommitPreservationTest {
     git("init", "-b", "feature")
     git("config", "user.name", "Test")
     git("config", "user.email", "test@example.test")
+    git("config", "commit.gpgsign", "false")
     Files.writeString(repo.resolve("owned.txt"), "base")
     Files.writeString(repo.resolve("foreign.txt"), "base")
     git("add", ".")
