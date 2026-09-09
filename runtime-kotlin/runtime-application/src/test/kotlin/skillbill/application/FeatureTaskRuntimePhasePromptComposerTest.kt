@@ -616,8 +616,8 @@ class FeatureTaskRuntimePhasePromptComposerTest {
     }
 
     assertFalse(prompt.contains("scope-fingerprint:abc"))
-    assertContains(prompt, "durable base `${input.reviewBaseSha}`")
-    assertContains(prompt, "resolves that scope itself")
+    assertContains(prompt, "from base `${input.reviewBaseSha}`")
+    assertContains(prompt, "`${input.currentHeadSha}` with target tree")
   }
 
   @Test

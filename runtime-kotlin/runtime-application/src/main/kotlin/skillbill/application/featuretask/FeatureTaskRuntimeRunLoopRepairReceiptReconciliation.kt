@@ -68,7 +68,7 @@ fun FeatureTaskRuntimeRunLoopRepairReceipt.blockRemediationBaseSha(
   return false
 }
 
-private fun FeatureTaskRuntimeRunLoopRepairReceipt.blockCheckpointAfterIndexMutation(
+private fun blockCheckpointAfterIndexMutation(
   runLoop: FeatureTaskRuntimeRunLoop,
   args: CommitCheckpointArgs,
   error: String,

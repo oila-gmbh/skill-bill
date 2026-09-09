@@ -178,7 +178,7 @@ class FeatureTaskRuntimeRunState(
     FeatureTaskRuntimePhaseWorkflowDefinition.definition.stepIds.filter { it in completed }
 }
 
-private fun FeatureTaskRuntimeRunState.validatedRecordToOutput(
+internal fun FeatureTaskRuntimeRunState.validatedRecordToOutput(
   record: FeatureTaskRuntimePhaseRecord,
 ): FeatureTaskRuntimePhaseOutput? = record.outputArtifact?.let { artifact ->
   val accepted = try {

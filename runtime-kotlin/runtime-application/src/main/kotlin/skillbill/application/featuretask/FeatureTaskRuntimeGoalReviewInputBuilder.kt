@@ -149,7 +149,7 @@ class FeatureTaskRuntimeGoalReviewInputBuilder(
 
   private fun recoverEligibleGoalReviewInput(
     request: GoalReviewInputRecoveryRequest,
-    failureReason: String,
+    failureReason: GoalSubtaskReviewInputFailureReason,
   ): GoalReviewInputRecovery {
     val recovered = request.execution.gitOperations.recoverGoalSubtaskReviewBaseline(
       request.execution.repoRoot,

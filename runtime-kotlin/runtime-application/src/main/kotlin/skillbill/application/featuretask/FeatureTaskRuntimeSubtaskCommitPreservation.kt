@@ -64,7 +64,7 @@ private fun WorkflowGitOperations.restoreForeignIndex(
   paths: List<String>,
   snapshot: String,
 ): WorkflowGitOperationResult = try {
-  restoreIndexState(repoRoot, paths, snapshot)
+  if (paths.isEmpty()) WorkflowGitOperationResult(status = "ok") else restoreIndexState(repoRoot, paths, snapshot)
 } catch (error: CancellationException) {
   throw error
 } catch (error: IllegalStateException) {

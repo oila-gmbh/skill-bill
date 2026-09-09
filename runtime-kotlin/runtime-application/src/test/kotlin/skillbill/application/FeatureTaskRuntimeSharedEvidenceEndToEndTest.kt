@@ -58,6 +58,7 @@ class FeatureTaskRuntimeSharedEvidenceEndToEndTest {
     val store = CountingSharedEvidenceStore()
     val git = RecordingWorkflowGitOperations().also {
       it.headCommitShaValue = "a".repeat(40)
+      it.localBranchHasUnpushedCommitsValue = false
       it.ownedPathsValue = listOf("src/A.kt")
     }
     val fingerprintsAtAudit = mutableListOf<String>()

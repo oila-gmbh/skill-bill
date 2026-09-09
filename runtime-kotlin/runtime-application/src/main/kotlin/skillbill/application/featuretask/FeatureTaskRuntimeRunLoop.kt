@@ -133,6 +133,7 @@ class FeatureTaskRuntimeRunLoop internal constructor(
   )
 
   init {
+    session.resolvedBranch = recorder.loadResolvedBranch(request.workflowId, request.dbPathOverride)?.branch
     session.pendingReentry = collaborators.drive.resumedReentry(this)
     session.activeReentry = session.pendingReentry
   }

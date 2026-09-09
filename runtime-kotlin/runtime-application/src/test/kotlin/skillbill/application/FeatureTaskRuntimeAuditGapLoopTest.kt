@@ -165,7 +165,10 @@ class FeatureTaskRuntimeAuditGapLoopTest {
   // (c) AC2: convergence on the last allowed (2nd) iteration still advances.
   @Test
   fun `m2 pauses when the audit repeats the same criteria`() {
-    val harness = runnerHarness(RuntimeHarnessConfig(launcher = auditGapLauncher(convergeOnAudit = 3)))
+    val harness = runnerHarness(RuntimeHarnessConfig(
+        branchSetup = BranchSetupTestConfig(
+          gitOperations = RecordingWorkflowGitOperations().apply { repositoryFingerprintValue = "unchanged" },
+        ),launcher = auditGapLauncher(convergeOnAudit = 3)))
 
     val report = harness.runner.run(harness.request())
 
@@ -181,7 +184,10 @@ class FeatureTaskRuntimeAuditGapLoopTest {
 
   @Test
   fun `m2 audit gaps pause before the warn-threshold crossing`() {
-    val harness = runnerHarness(RuntimeHarnessConfig(launcher = auditGapLauncher(convergeOnAudit = 5)))
+    val harness = runnerHarness(RuntimeHarnessConfig(
+        branchSetup = BranchSetupTestConfig(
+          gitOperations = RecordingWorkflowGitOperations().apply { repositoryFingerprintValue = "unchanged" },
+        ),launcher = auditGapLauncher(convergeOnAudit = 5)))
 
     val report = assertIs<FeatureTaskRuntimeRunReport.Paused>(harness.runner.run(harness.request()))
 
@@ -220,7 +226,7 @@ class FeatureTaskRuntimeAuditGapLoopTest {
   }
 
   @Test
-  fun `repository changes do not hide recurring audit gaps`() {
+  fun `proven repository changes permit another audit repair attempt`() {
     // Each audit iteration reads the fingerprint twice: once to refresh the receipt projection's
     // repository checkpoint at launch (AC-012), then once for audit-gap progress detection. Both reads
     // in an iteration observe the same repository, so the values are paired.
@@ -235,14 +241,13 @@ class FeatureTaskRuntimeAuditGapLoopTest {
       ),
     )
 
-    val report = assertIs<FeatureTaskRuntimeRunReport.Paused>(harness.runner.run(harness.request()))
+    assertIs<FeatureTaskRuntimeRunReport.Completed>(harness.runner.run(harness.request()))
 
     assertTrue(
       git.repositoryFingerprintCalls > 0,
       "audit-gap progress still records repository evidence",
     )
-    assertEquals(2, harness.launchedPromptPhaseOrder().count { it == "audit" })
-    assertContains(report.pauseReason, "criterion set did not shrink")
+    assertEquals(3, harness.launchedPromptPhaseOrder().count { it == "audit" })
   }
 
   @Test
@@ -251,6 +256,9 @@ class FeatureTaskRuntimeAuditGapLoopTest {
     var implementLaunches = 0
     val harness = runnerHarness(
       RuntimeHarnessConfig(
+        branchSetup = BranchSetupTestConfig(
+          gitOperations = RecordingWorkflowGitOperations().apply { repositoryFingerprintValue = "unchanged" },
+        ),
         launcher = RuntimeRecordingLauncher { request ->
           when (val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))) {
             "audit" -> {
@@ -320,7 +328,7 @@ class FeatureTaskRuntimeAuditGapLoopTest {
     val looped = telemetryRunnerHarness(launcher = auditGapLauncher(convergeOnAudit = 3))
     looped.runner.run(looped.request)
     val loopedFinished = looped.lifecycle.finishedRecords.single()
-    assertEquals(1, loopedFinished.auditGapIterationCount, "one audit-gap iteration is reflected in telemetry")
+    assertEquals(2, loopedFinished.auditGapIterationCount, "both audit-gap iterations are reflected in telemetry")
     assertEquals(false, loopedFinished.auditFirstPassConvergence)
     // The per-item repair counters these once carried counted a repair ledger the runtime no longer
     // keeps, so they report zero rather than being dropped from the relay's wire contract.

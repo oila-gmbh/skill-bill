@@ -197,6 +197,7 @@ class FeatureTaskRuntimeSubtaskCommitPreservationTest {
     val record = checkpoint(current, 1)
     assertTrue(
       operations.reviewIdentityStillAuthoritative(
+        ReviewIdentityAuthorityRequest(
         repo,
         reviewed,
         current,
@@ -204,10 +205,12 @@ class FeatureTaskRuntimeSubtaskCommitPreservationTest {
         reviewedTree,
         record,
         identity,
+        ),
       ),
     )
     assertFalse(
       operations.reviewIdentityStillAuthoritative(
+        ReviewIdentityAuthorityRequest(
         repo,
         reviewed,
         current,
@@ -215,11 +218,13 @@ class FeatureTaskRuntimeSubtaskCommitPreservationTest {
         reviewedTree,
         record.copy(branch = "foreign"),
         identity,
+        ),
       ),
     )
     git("update-ref", record.checkpointRef, record.parentSha!!)
     assertFalse(
       operations.reviewIdentityStillAuthoritative(
+        ReviewIdentityAuthorityRequest(
         repo,
         reviewed,
         current,
@@ -227,6 +232,7 @@ class FeatureTaskRuntimeSubtaskCommitPreservationTest {
         reviewedTree,
         record,
         identity,
+        ),
       ),
     )
   }

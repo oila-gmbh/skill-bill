@@ -140,7 +140,7 @@ class GoalRunnerFeatureTaskRuntimeIntegrationTest {
     val outcomes = RecordingOutcomeStore().apply { seedReviewState(workflowId) }
     val phaseLauncher = defaultPhaseAwareLauncher()
     val gitOperations = RecordingWorkflowGitOperations(currentBranchValue = "feat/SKILL-56-goal")
-      .apply { headCommitShaValue = "goal-child-commit" }
+      .apply { headCommitShaValue = "0".repeat(40) }
     val runtime = runnerHarness(
       RuntimeHarnessConfig(
         branchSetup = BranchSetupTestConfig(
@@ -298,7 +298,7 @@ class GoalRunnerFeatureTaskRuntimeIntegrationTest {
     assertIs<GoalRunnerRunReport.Stopped>(parity.report)
     val blocked = assertNotNull(parity.blockedChildReason())
     assertContains(blocked, "Audit made no progress")
-    assertContains(blocked, "repository fingerprint is unchanged")
+    assertContains(blocked, "unresolved criterion set did not shrink")
     assertTrue(parity.runtime.recorder.loadPhaseRecords(WORKFLOW_ID).orEmpty()["validate"] == null)
   }
 
@@ -493,7 +493,7 @@ private fun standaloneAndGoalChildParity(
   acceptanceCriteria: List<String> = listOf("AC-1", "AC-2"),
 ): GoalChildParityRun {
   val standaloneGit = gitOperations().apply {
-    if (headCommitShaValue.isBlank()) headCommitShaValue = "goal-child-commit"
+    if (headCommitShaValue.isBlank()) headCommitShaValue = "0".repeat(40)
   }
   val standalone = runnerHarness(
     RuntimeHarnessConfig(
@@ -611,7 +611,7 @@ private fun goalChildParityRun(
   config: GoalChildParityConfig = GoalChildParityConfig(),
 ): GoalChildParityRun {
   if (config.ensureCommitSha && config.gitOperations.headCommitShaValue.isBlank()) {
-    config.gitOperations.headCommitShaValue = "goal-child-commit"
+    config.gitOperations.headCommitShaValue = "0".repeat(40)
   }
   val outcomes = RecordingOutcomeStore().apply { seedReviewState(WORKFLOW_ID) }
   val runtime = runnerHarness(

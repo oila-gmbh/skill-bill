@@ -19,7 +19,7 @@ class FeatureTaskRuntimeRunLoopCheckpointRemediationStage {
     if (branch == null || FeatureTaskRuntimeBranchSetup.protectedBranchName(branch) != null) {
       return unavailableBranchResult(runLoop, precedingPhaseId, branch, blockedReason)
     }
-    if (runLoop.collaborators.checkpointContinued5.remediationCheckpointOffBranch(runLoop, branch)) {
+    if (remediationCheckpointOffBranch(runLoop, branch)) {
       return unavailableCheckedOutBranchResult(runLoop, precedingPhaseId, branch, blockedReason)
     }
     if (!FeatureTaskRuntimeSubtaskCommitMigrationNormalizer.reconcile(

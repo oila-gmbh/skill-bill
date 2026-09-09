@@ -1,5 +1,7 @@
 package skillbill.application.featuretask
 
+import skillbill.ports.workflow.gitops.headCommitMessage
+import kotlin.coroutines.cancellation.CancellationException
 import skillbill.application.featuretask.model.FeatureTaskRuntimeSubtaskCommitIdentity
 import skillbill.error.FeatureTaskRuntimeSubtaskCommitReconciliationError
 import skillbill.ports.workflow.gitops.model.WorkflowGitOperationResult
@@ -193,7 +195,9 @@ private fun reconcileLedgerHead(request: LedgerHeadReconciliationRequest): Boole
   }
   val current = relevant.lastOrNull { it.commitSha == headSha }
   return if (current != null) {
-    verifyCurrentCheckpointTree(runLoop, current, precedingPhaseId, branch, blockedReason)
+    runLoop.collaborators.checkpointContinued5.verifyCurrentCheckpointTree(
+      runLoop, current, precedingPhaseId, branch, blockedReason,
+    )
   } else {
     recoverMissingCheckpointIdentity(
       MissingCheckpointIdentityRequest(
@@ -320,7 +324,8 @@ private fun recordRecoveredCheckpointIdentity(request: MissingCheckpointIdentity
       request.runLoop.request.workflowId,
       request.runLoop.request.dbPathOverride,
     )
-  }.getOrElse { error: IllegalStateException ->
+  }.getOrElse { error ->
+    if (error is CancellationException) throw error
     return blockLedgerReconciliation(
       request.runLoop,
       BlockReconciliationRequest(

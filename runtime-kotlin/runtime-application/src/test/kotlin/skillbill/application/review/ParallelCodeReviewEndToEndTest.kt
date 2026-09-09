@@ -70,15 +70,16 @@ class ParallelCodeReviewEndToEndTest {
     }
   }
 
-  @Test fun `assigned evidence is carried only in prompt hunk envelopes`() {
+  @Test fun `immutable review prompts exclude paths and bind on-demand evidence`() {
     val recorder = ReviewRecorder()
 
     reviewHarness(kotlinConfig(), recorder).run(harnessRequest())
 
+    assertTrue(recorder.parentLaunches.all { it.skillRunRequest.reviewEvidenceBroker != null })
     recorder.parentPrompts.forEach { prompt ->
-      assertTrue(prompt.contains("## Assigned bundle:"))
-      assertTrue(prompt.contains("\"src/Repo.kt\""))
-      assertTrue(prompt.contains("they are not read_evidence arguments and passing one is refused"))
+      assertTrue(prompt.contains("immutable review pair"))
+      assertTrue(!prompt.contains("src/Repo.kt"))
+      assertTrue(prompt.contains("read_evidence"))
     }
   }
 

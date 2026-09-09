@@ -1,5 +1,6 @@
 package skillbill.application.featuretask
 
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeCheckpointIdentity
 import skillbill.application.featuretask.model.FeatureTaskRuntimeRunRequest
 import skillbill.application.featuretask.model.FeatureTaskRuntimeSubtaskCommitIdentity
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
@@ -9,9 +10,9 @@ private data class StaleReviewApprovalContext(
   val reviewedTree: String,
   val currentHead: String,
   val currentTree: String,
-  val boundaryHistory: BoundaryHistoryProjection,
+  val boundaryHistory: DeclaredBoundaryHistoryProjection,
   val dirtyRepair: Boolean,
-  val durableTarget: skillbill.workflow.taskruntime.model.FeatureTaskRuntimeCheckpointIdentity?,
+  val durableTarget: FeatureTaskRuntimeCheckpointIdentity?,
   val identity: FeatureTaskRuntimeSubtaskCommitIdentity,
 )
 
@@ -31,10 +32,12 @@ internal fun invalidateStaleGoalReviewApprovalForGoalRuntime(
     )
   }
   val state = stateResult.getOrNull() ?: return
-  if (state.reviewedTargetSha == null || state.reviewedTreeSha == null) return
-  val context = loadStaleReviewApprovalContext(runner, request, state.reviewedTargetSha, state.reviewedTreeSha)
+  val reviewedTarget = state.reviewedTargetSha ?: return
+  val reviewedTree = state.reviewedTreeSha ?: return
+  val context = loadStaleReviewApprovalContext(runner, request, reviewedTarget, reviewedTree)
   var identityReadFailure: String? = null
   if (!context.dirtyRepair && runner.phaseGates.gitOperations.reviewIdentityStillAuthoritative(
+      ReviewIdentityAuthorityRequest(
       request.repoRoot,
       context.reviewedTarget,
       context.currentHead,
@@ -43,6 +46,7 @@ internal fun invalidateStaleGoalReviewApprovalForGoalRuntime(
       context.durableTarget,
       context.identity,
       onReadFailure = { identityReadFailure = it },
+      ),
     )
   ) {
     return

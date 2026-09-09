@@ -1,5 +1,8 @@
 package skillbill.application.featuretask
 
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeCheckpointIdentity
+import skillbill.application.featuretask.model.FeatureTaskRuntimeSubtaskCommitIdentity
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeResolvedBranch
 import skillbill.error.FeatureTaskRuntimeSubtaskCommitReconciliationError
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 
@@ -8,10 +11,10 @@ private data class ReviewIdentityContext(
   val reviewedTree: String,
   val currentHead: String,
   val currentTree: String,
-  val ledger: skillbill.workflow.taskruntime.model.FeatureTaskRuntimeCheckpointIdentity?,
-  val identity: skillbill.application.featuretask.model.FeatureTaskRuntimeSubtaskCommitIdentity,
+  val ledger: FeatureTaskRuntimeCheckpointIdentity?,
+  val identity: FeatureTaskRuntimeSubtaskCommitIdentity,
   val dirtyPaths: List<String>,
-  val boundaryHistory: BoundaryHistoryProjection,
+  val boundaryHistory: DeclaredBoundaryHistoryProjection,
 )
 
 private data class ReviewIdentityLoadResult(
@@ -30,19 +33,17 @@ internal fun reviewIdentityFailureForSubtask(runLoop: FeatureTaskRuntimeRunLoop)
 
 private fun evaluateReviewIdentityForSubtask(runLoop: FeatureTaskRuntimeRunLoop): String? {
   val loaded = loadReviewIdentityContext(runLoop)
-  return loaded.failure?.let { reviewIdentityReconciliationFailure(runLoop, it, loaded.cause) }
-    ?: loaded.context?.let { context ->
-      val unreviewed = context.dirtyPaths.filterNot {
-        isBoundaryHistoryPath(it, context.boundaryHistory.paths, context.boundaryHistory.roots)
-      }
-      if (unreviewed.isEmpty()) {
-        evaluateReviewIdentity(runLoop, context)
-      } else {
-        "review approval is stale: changed paths ${unreviewed.joinToString(", ")} are outside the " +
-          "declared boundary-history exemption; changed code must re-enter audit and review"
-      }
-    }
-    ?: "goal-subtask review cannot prove its reviewed revision"
+  loaded.failure?.let { return reviewIdentityReconciliationFailure(runLoop, it, loaded.cause) }
+  val context = loaded.context ?: return "goal-subtask review cannot prove its reviewed revision"
+  val unreviewed = context.dirtyPaths.filterNot {
+    isBoundaryHistoryPath(it, context.boundaryHistory.paths, context.boundaryHistory.roots)
+  }
+  return if (unreviewed.isEmpty()) {
+    evaluateReviewIdentity(runLoop, context)
+  } else {
+    "review approval is stale: changed paths ${unreviewed.joinToString(", ")} are outside the " +
+      "declared boundary-history exemption; changed code must re-enter audit and review"
+  }
 }
 
 private class ReviewIdentityFailure(message: String, cause: Throwable? = null) : RuntimeException(message, cause)
@@ -85,7 +86,7 @@ private fun loadReviewIdentityContextData(runLoop: FeatureTaskRuntimeRunLoop): R
   val resolved = loadReviewIdentityBranch(runLoop)
     ?: refuse("durable subtask ownership could not be read")
   val phaseRecords = runLoop.recorder.loadPhaseRecords(runLoop.request.workflowId, runLoop.request.dbPathOverride)
-  val boundaryHistory = resolved.boundaryHistoryProjection()?.takeUnless { it.paths.isEmpty() && it.roots.isEmpty() }
+  val boundaryHistory = resolved.boundaryHistoryProjection().takeUnless { it.paths.isEmpty() && it.roots.isEmpty() }
     ?: declaredBoundaryHistoryProjection(
       phaseRecords?.get(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_WRITE_HISTORY),
       resolved.boundaryHistoryRoots,
@@ -111,6 +112,7 @@ private fun loadReviewIdentityBranch(runLoop: FeatureTaskRuntimeRunLoop): Featur
 private fun evaluateReviewIdentity(runLoop: FeatureTaskRuntimeRunLoop, context: ReviewIdentityContext): String? {
   var readFailure: String? = null
   val authoritative = runLoop.phaseGates.gitOperations.reviewIdentityStillAuthoritative(
+    ReviewIdentityAuthorityRequest(
     runLoop.request.repoRoot,
     context.target,
     context.currentHead,
@@ -119,6 +121,7 @@ private fun evaluateReviewIdentity(runLoop: FeatureTaskRuntimeRunLoop, context: 
     context.ledger,
     context.identity,
     onReadFailure = { readFailure = it },
+    ),
   )
   if (authoritative) return null
   return readFailure?.let { reviewIdentityReconciliationFailure(runLoop, it, null) }

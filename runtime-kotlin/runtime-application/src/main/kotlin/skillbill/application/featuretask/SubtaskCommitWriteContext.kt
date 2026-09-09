@@ -1,5 +1,6 @@
 package skillbill.application.featuretask
 
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeResolvedBranch
 import skillbill.application.featuretask.model.FeatureTaskRuntimeSubtaskCommitIdentity
 import skillbill.error.FeatureTaskRuntimeSubtaskCommitReconciliationError
 import skillbill.ports.workflow.gitops.headCommitMessage

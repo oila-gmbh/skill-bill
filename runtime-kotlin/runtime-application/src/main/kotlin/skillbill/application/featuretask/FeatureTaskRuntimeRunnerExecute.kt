@@ -55,6 +55,8 @@ fun FeatureTaskRuntimeRunner.executePreparedRun(
 }
 
 fun FeatureTaskRuntimeRunner.reopenCappedReviewOnChangedDelta(request: FeatureTaskRuntimeRunRequest) {
+  val state = goalContinuationRecorder.reviewState(request.workflowId, request.dbPathOverride)
+  if (state?.reviewedTargetSha != null && state.reviewedTreeSha != null) return
   if (!cappedReviewIsStale(request)) return
   runCatching {
     recorder.persistReviewGenerationInvalidation(request.workflowId, request.dbPathOverride)

@@ -1,5 +1,8 @@
 package skillbill.application.featuretask
 
+import skillbill.ports.workflow.gitops.updateCheckpointRef
+import skillbill.ports.workflow.gitops.resolveCheckpointRef
+import skillbill.application.featuretask.model.FeatureTaskRuntimeSubtaskCommitIdentity
 import skillbill.error.FeatureTaskRuntimeSubtaskCommitReconciliationError
 import skillbill.ports.workflow.gitops.commitMessage
 import skillbill.ports.workflow.gitops.deleteCheckpointRef

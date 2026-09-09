@@ -18,7 +18,7 @@ class FeatureTaskRuntimeSubtaskFinalisation(
   val gitOperations: WorkflowGitOperations,
   val repoRoot: Path,
   val record: (String) -> Unit,
-  val recordCommit: (commitSha: String, stagedPaths: List<String>) -> String?,
+  internal val recordCommit: (commitSha: String, stagedPaths: List<String>) -> String?,
 ) {
   fun finalise(request: FeatureTaskRuntimeSubtaskFinaliseRequest): FeatureTaskRuntimeSubtaskFinalisationResult {
     val dirty = gitOperations.dirtyImplementationPaths(repoRoot)

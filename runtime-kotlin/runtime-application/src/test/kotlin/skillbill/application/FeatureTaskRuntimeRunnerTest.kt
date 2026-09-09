@@ -90,7 +90,7 @@ class FeatureTaskRuntimeRunnerTest {
     val harness = runnerHarness(RuntimeHarnessConfig(agentAssignment = phasePerAgentAssignment()))
     val report = harness.runner.run(harness.request())
 
-    val completed = assertIs<FeatureTaskRuntimeRunReport.Completed>(report)
+    val completed = assertIs<FeatureTaskRuntimeRunReport.Completed>(report, report.toString())
     assertEquals(COMPLETED_PHASES_CLEAN_RUN, completed.completedPhaseIds)
     assertEquals(
       AGENT_LAUNCHED_PHASES,
@@ -121,7 +121,7 @@ class FeatureTaskRuntimeRunnerTest {
   fun `goal-continuation completion does not reconcile a single-spec Agent line`() {
     val repoRoot = Files.createTempDirectory("skillbill-runtime-goal-no-spec-line")
     val git = RecordingWorkflowGitOperations(currentBranchValue = "feat/existing-runtime-branch")
-      .also { it.headCommitShaValue = "measured-head-sha" }
+      .also { it.headCommitShaValue = "e".repeat(40) }
     val harness = goalContinuationHarness(repoRoot, git, goalContinuationLauncher(validJsonOutput("commit_push")))
 
     harness.runner.run(harness.request())
@@ -313,7 +313,7 @@ class FeatureTaskRuntimeRunnerTest {
 
     val report = harness.runner.run(harness.request())
 
-    val completed = assertIs<FeatureTaskRuntimeRunReport.Completed>(report)
+    val completed = assertIs<FeatureTaskRuntimeRunReport.Completed>(report, report.toString())
     assertEquals(COMPLETED_PHASES_CLEAN_RUN, completed.completedPhaseIds)
     assertEquals(3, harness.launchedPhaseOrder().count { it == "validate" })
     assertTrue(
@@ -375,7 +375,7 @@ class FeatureTaskRuntimeRunnerTest {
 
     val report = harness.runner.run(harness.request())
 
-    assertIs<FeatureTaskRuntimeRunReport.Completed>(report)
+    assertIs<FeatureTaskRuntimeRunReport.Completed>(report, report.toString())
     assertEquals(1, reviewAttempts)
     val launchedPhases = harness.launchOrder()
     assertEquals(1, launchedPhases.count { it == "plan" })
@@ -390,7 +390,7 @@ class FeatureTaskRuntimeRunnerTest {
 
     val report = harness.runner.run(harness.request())
 
-    assertIs<FeatureTaskRuntimeRunReport.Completed>(report)
+    assertIs<FeatureTaskRuntimeRunReport.Completed>(report, report.toString())
     assertEquals(1, harness.launchOrder().count { it == "review" })
     assertEquals(1, harness.launchOrder().count { it == "implement_fix" })
     val reviewRecord = requireNotNull(harness.recorder.loadPhaseRecords(WORKFLOW_ID).orEmpty()["review"])
@@ -551,7 +551,7 @@ class FeatureTaskRuntimeRunnerAgentResumeTest {
 
     val report = harness.runner.run(harness.request())
 
-    assertIs<FeatureTaskRuntimeRunReport.Completed>(report)
+    assertIs<FeatureTaskRuntimeRunReport.Completed>(report, report.toString())
     assertEquals(
       listOf("audit", "verify_findings", "validate", "write_history", "commit_push", "pr"),
       harness.launchedPhaseOrder(),
@@ -587,7 +587,7 @@ class FeatureTaskRuntimeRunnerAgentResumeTest {
 
     val report = harness.runner.run(harness.request())
 
-    assertIs<FeatureTaskRuntimeRunReport.Completed>(report)
+    assertIs<FeatureTaskRuntimeRunReport.Completed>(report, report.toString())
     assertEquals(
       listOf("plan", "implement", "audit", "verify_findings", "validate", "write_history", "commit_push", "pr"),
       harness.launchedPhaseOrder(),
@@ -606,7 +606,7 @@ class FeatureTaskRuntimeRunnerAgentResumeTest {
 
     val report = harness.runner.run(harness.request())
 
-    assertIs<FeatureTaskRuntimeRunReport.Completed>(report)
+    assertIs<FeatureTaskRuntimeRunReport.Completed>(report, report.toString())
     assertEquals(AGENT_LAUNCHED_PHASES, harness.launchedPhaseOrder())
     val planBriefing = requireNotNull(harness.recorder.loadPhaseBriefings(WORKFLOW_ID).orEmpty()["plan"])
     assertContains(planBriefing.briefingText, "### from: preplan")
@@ -621,7 +621,7 @@ class FeatureTaskRuntimeRunnerAgentResumeTest {
 
     val report = harness.runner.run(harness.request())
 
-    assertIs<FeatureTaskRuntimeRunReport.Completed>(report)
+    assertIs<FeatureTaskRuntimeRunReport.Completed>(report, report.toString())
     assertTrue(harness.launchedPhaseOrder().contains("implement"))
     val implementRecord = requireNotNull(harness.recorder.loadPhaseRecords(WORKFLOW_ID).orEmpty()["implement"])
     assertEquals("completed", implementRecord.status)
@@ -636,7 +636,7 @@ class FeatureTaskRuntimeRunnerAgentResumeTest {
 
     val report = harness.runner.run(harness.request())
 
-    assertIs<FeatureTaskRuntimeRunReport.Completed>(report)
+    assertIs<FeatureTaskRuntimeRunReport.Completed>(report, report.toString())
     val reviewRecord = requireNotNull(harness.recorder.loadPhaseRecords(WORKFLOW_ID).orEmpty()["review"])
     assertEquals(2, reviewRecord.attemptCount)
     assertEquals("completed", reviewRecord.status)
@@ -672,7 +672,7 @@ class FeatureTaskRuntimeRunnerAgentResumeTest {
 
     val report = harness.runner.run(harness.request())
 
-    assertIs<FeatureTaskRuntimeRunReport.Completed>(report)
+    assertIs<FeatureTaskRuntimeRunReport.Completed>(report, report.toString())
     assertTrue(harness.launchedPhaseOrder().contains("validate"))
     val validateRecord = requireNotNull(harness.recorder.loadPhaseRecords(WORKFLOW_ID).orEmpty()["validate"])
     assertEquals("completed", validateRecord.status)
@@ -708,7 +708,7 @@ class FeatureTaskRuntimeRunnerAgentResumeTest {
 
     val report = harness.runner.run(harness.request())
 
-    assertIs<FeatureTaskRuntimeRunReport.Completed>(report)
+    assertIs<FeatureTaskRuntimeRunReport.Completed>(report, report.toString())
     assertEquals(1, harness.launchedPhaseOrder().count { it == "validate" })
     assertTrue(harness.launchedPhaseOrder().contains("write_history"))
     assertEquals(2, gateCalls.get())
@@ -747,7 +747,7 @@ class FeatureTaskRuntimeRunnerAgentResumeTest {
 
     val report = harness.runner.run(harness.request())
 
-    assertIs<FeatureTaskRuntimeRunReport.Completed>(report)
+    assertIs<FeatureTaskRuntimeRunReport.Completed>(report, report.toString())
     assertEquals(2, gateCalls.get())
     assertTrue(
       harness.io.database.rejectedDiagnostics().none { it.metadata.phaseId == "validate" },
@@ -786,7 +786,7 @@ class FeatureTaskRuntimeRunnerAgentResumeTest {
 
     val report = harness.runner.run(harness.request())
 
-    assertIs<FeatureTaskRuntimeRunReport.Completed>(report)
+    assertIs<FeatureTaskRuntimeRunReport.Completed>(report, report.toString())
     assertEquals(1, harness.launchedPhaseOrder().count { it == "validate" })
     assertTrue(harness.launchedPhaseOrder().contains("write_history"))
     val validateRecord = requireNotNull(harness.recorder.loadPhaseRecords(WORKFLOW_ID).orEmpty()["validate"])
@@ -816,7 +816,7 @@ class FeatureTaskRuntimeRunnerAgentResumeTest {
 
     val report = harness.runner.run(harness.request(PLAN_FIX_CYCLE))
 
-    assertIs<FeatureTaskRuntimeRunReport.Completed>(report)
+    assertIs<FeatureTaskRuntimeRunReport.Completed>(report, report.toString())
     assertEquals(2, harness.launchedPhaseOrder().count { it == "preplan" })
     assertEquals(2, planLaunches)
   }
@@ -941,7 +941,7 @@ class FeatureTaskRuntimeRunnerAgentResumeTest {
 
     val report = harness.runner.run(harness.request(forwardOnly))
 
-    assertIs<FeatureTaskRuntimeRunReport.Completed>(report)
+    assertIs<FeatureTaskRuntimeRunReport.Completed>(report, report.toString())
     assertEquals(
       listOf(
         "preplan",
@@ -984,7 +984,7 @@ class FeatureTaskRuntimeRunnerBlockedAndLedgerTest {
 
     val report = harness.runner.run(harness.request())
 
-    assertIs<FeatureTaskRuntimeRunReport.Completed>(report)
+    assertIs<FeatureTaskRuntimeRunReport.Completed>(report, report.toString())
     val planRecord = requireNotNull(harness.recorder.loadPhaseRecords(WORKFLOW_ID).orEmpty()["plan"])
     assertTrue(planRecord.startedAt >= originalStartedAt)
     assertEquals(originalStartedAt, planRecord.firstStartedAt)
@@ -996,7 +996,7 @@ class FeatureTaskRuntimeRunnerBlockedAndLedgerTest {
 
     val report = harness.runner.run(harness.request())
 
-    assertIs<FeatureTaskRuntimeRunReport.Completed>(report)
+    assertIs<FeatureTaskRuntimeRunReport.Completed>(report, report.toString())
     val row = requireNotNull(harness.repository.getFeatureTaskRuntimeWorkflow(WORKFLOW_ID))
     assertEquals("completed", row.workflowStatus)
     assertEquals("pr", row.currentStepId)
@@ -1035,7 +1035,7 @@ class FeatureTaskRuntimeRunnerBlockedAndLedgerTest {
   fun `all upstreams satisfied produces no spurious missing-upstream block`() {
     val harness = runnerHarness()
     val report = harness.runner.run(harness.request())
-    assertIs<FeatureTaskRuntimeRunReport.Completed>(report)
+    assertIs<FeatureTaskRuntimeRunReport.Completed>(report, report.toString())
   }
 
   @Test
@@ -1051,7 +1051,7 @@ class FeatureTaskRuntimeRunnerBlockedAndLedgerTest {
 
     val report = harness.runner.run(harness.request())
 
-    assertIs<FeatureTaskRuntimeRunReport.Completed>(report)
+    assertIs<FeatureTaskRuntimeRunReport.Completed>(report, report.toString())
     assertContains(
       requireNotNull(harness.repository.reconciledInterruptionReasons[WORKFLOW_ID]),
       "lease_expired",
@@ -1139,7 +1139,7 @@ class FeatureTaskRuntimeLifecycleTelemetryRunnerTest {
 
     val report = harness.runner.run(harness.request)
 
-    assertIs<FeatureTaskRuntimeRunReport.Completed>(report)
+    assertIs<FeatureTaskRuntimeRunReport.Completed>(report, report.toString())
     assertEquals(1, harness.lifecycle.startedRecords.size)
     val started = harness.lifecycle.startedRecords.single()
     assertEquals("MEDIUM", started.featureSize)
@@ -1161,7 +1161,7 @@ class FeatureTaskRuntimeLifecycleTelemetryRunnerTest {
 
     val report = harness.runner.run(harness.request)
 
-    assertIs<FeatureTaskRuntimeRunReport.Completed>(report)
+    assertIs<FeatureTaskRuntimeRunReport.Completed>(report, report.toString())
     assertTrue(harness.database.transactionDbOverrides.isNotEmpty())
     assertTrue(harness.database.transactionDbOverrides.all { it == dbOverride })
     assertEquals(SESSION_ID, harness.lifecycle.startedRecords.single().sessionId)
@@ -1266,7 +1266,7 @@ class FeatureTaskRuntimeRemediationGenerationTest {
       harness.request().copy(requestedCodeReviewMode = CodeReviewExecutionMode.INLINE),
     )
 
-    assertIs<FeatureTaskRuntimeRunReport.Completed>(report)
+    assertIs<FeatureTaskRuntimeRunReport.Completed>(report, report.toString())
     assertEquals(1, harness.launchOrder().count { it == "review" })
     val reviewState = requireNotNull(harness.goalContinuationRecorder.reviewStateRecorder.reviewState(WORKFLOW_ID))
     assertEquals(1, reviewState.completedPassCount)
@@ -1297,7 +1297,7 @@ class FeatureTaskRuntimeRemediationGenerationTest {
       harness.request().copy(requestedCodeReviewMode = CodeReviewExecutionMode.INLINE),
     )
 
-    assertIs<FeatureTaskRuntimeRunReport.Completed>(report)
+    assertIs<FeatureTaskRuntimeRunReport.Completed>(report, report.toString())
     assertEquals(1, harness.launchOrder().count { it == "review" })
     assertEquals(1, harness.launchOrder().count { it == "implement_fix" })
     val reviewState = requireNotNull(harness.goalContinuationRecorder.reviewStateRecorder.reviewState(WORKFLOW_ID))
@@ -1643,7 +1643,7 @@ class FeatureTaskRuntimeRunnerPersistenceTest {
 
     val report = harness.runner.run(harness.request())
 
-    assertIs<FeatureTaskRuntimeRunReport.Completed>(report)
+    assertIs<FeatureTaskRuntimeRunReport.Completed>(report, report.toString())
     val records = harness.recorder.loadPhaseRecords(WORKFLOW_ID).orEmpty()
     assertEquals(COMPLETED_PHASES_CLEAN_RUN.toSet(), records.keys)
     COMPLETED_PHASES_CLEAN_RUN.forEach { phaseId ->
@@ -1816,7 +1816,7 @@ class FeatureTaskRuntimeGoalContinuationPersistenceTest {
 
     val report = harness.runner.run(harness.request())
 
-    val completed = assertIs<FeatureTaskRuntimeRunReport.Completed>(report)
+    val completed = assertIs<FeatureTaskRuntimeRunReport.Completed>(report, report.toString())
     assertEquals(AGENT_LAUNCHED_PHASES.filterNot { it == "pr" }, harness.launchedPhaseOrder())
     assertEquals("commit_push", completed.subtaskOutcome?.lastResumableStep)
     assertNull(harness.decomposeTerminalRecorder.loadDecomposeTerminal(WORKFLOW_ID))
@@ -1857,7 +1857,7 @@ class FeatureTaskRuntimeGoalContinuationPersistenceTest {
 
     val report = harness.runner.run(harness.request())
 
-    val completed = assertIs<FeatureTaskRuntimeRunReport.Completed>(report)
+    val completed = assertIs<FeatureTaskRuntimeRunReport.Completed>(report, report.toString())
     assertEquals("complete", completed.subtaskOutcome?.status)
     assertEquals(git.headCommitShaValue, completed.subtaskOutcome?.commitSha)
     assertEquals(listOf("feat/existing-runtime-branch"), git.pushedBranches, "finalisation pushes exactly once")
@@ -1997,7 +1997,7 @@ class FeatureTaskRuntimeGoalContinuationPersistenceTest {
     assertEquals(emptyList(), state.baselineUntrackedPaths)
     assertEquals(1, git.goalReviewRecoverCalls)
     assertEquals(
-      listOf("0".repeat(40), recoveredBaseline.reviewBaseSha),
+      listOf(COMMITTED_HEAD_SHA, recoveredBaseline.reviewBaseSha),
       git.goalReviewBuildInputs.map { it.reviewBaseSha },
     )
   }
@@ -2010,7 +2010,7 @@ class FeatureTaskRuntimeGoalContinuationReviewPrepTest {
   }
 
   @Test
-  fun `scope-shaped review preparation failure still reports the scope-specific message`() {
+  fun `missing durable review scope fails before resuming implementation`() {
     val repoRoot = Files.createTempDirectory("skillbill-runtime-review-prep-scope")
     val git = RecordingWorkflowGitOperations(currentBranchValue = "feat/existing-runtime-branch")
       .also { it.headCommitShaValue = COMMITTED_HEAD_SHA }
@@ -2051,7 +2051,7 @@ class FeatureTaskRuntimeGoalContinuationReviewPrepTest {
       ),
     )
 
-    assertEquals("review", blocked.lastIncompletePhase)
+    assertEquals("preplan", blocked.lastIncompletePhase)
     assertContains(blocked.blockedReason, "review_base_sha must be captured before implementation")
     assertTrue(
       "Goal-subtask review preparation could not establish the exact durable review scope." !in
@@ -2226,7 +2226,7 @@ class FeatureTaskRuntimeGoalContinuationStaleReviewTest {
 
     val report = harness.runner.run(harness.request())
 
-    val completed = assertIs<FeatureTaskRuntimeRunReport.Completed>(report)
+    val completed = assertIs<FeatureTaskRuntimeRunReport.Completed>(report, report.toString())
     val subtaskOutcome =
       requireNotNull(completed.subtaskOutcome) { "subtaskOutcome must be present for a goal-continuation run" }
     assertEquals(
@@ -2254,7 +2254,7 @@ class FeatureTaskRuntimeGoalContinuationStaleReviewTest {
     assertContains(blocked.blockedReason, "commit_push_result.message")
     assertTrue(git.pushedBranches.isEmpty(), "a rejected handoff must not push")
     assertTrue(git.leasePushedBranches.isEmpty(), "a rejected handoff must not force-push")
-    assertEquals(COMMITTED_HEAD_SHA, git.headCommitShaValue, "a rejected handoff must not move HEAD")
+    assertEquals("1".padStart(40, '0'), git.headCommitShaValue, "a rejected handoff must preserve the reviewed checkpoint")
   }
 
   @Test
@@ -2277,7 +2277,6 @@ class FeatureTaskRuntimeCheckpointScopeTest {
   fun `linear checkpoint inventory excludes runtime spec scratch while preserving code paths`() {
     val paths = reconcileCheckpointPathInventory(
       repoRoot = Path.of("/repo"),
-      issueKey = "SKILL-146",
       specReference = ".feature-specs/SKILL-146-least-context/spec.md",
       paths = listOf(
         ".feature-specs/SKILL-146-least-context/spec.md",
@@ -2293,7 +2292,6 @@ class FeatureTaskRuntimeCheckpointScopeTest {
   fun `local checkpoint inventory excludes feature spec scratch while preserving code paths`() {
     val paths = reconcileCheckpointPathInventory(
       repoRoot = Path.of("/repo"),
-      issueKey = "SKILL-146",
       specReference = ".feature-specs/SKILL-146-least-context/spec.md",
       paths = listOf(
         ".feature-specs/SKILL-146-least-context/spec.md",
@@ -2309,7 +2307,6 @@ class FeatureTaskRuntimeCheckpointScopeTest {
   fun `checkpoint inventory excludes the collapsed feature-specs directory`() {
     val paths = reconcileCheckpointPathInventory(
       repoRoot = Path.of("/repo"),
-      issueKey = "SKILL-146",
       specReference = ".feature-specs/SKILL-146-least-context/spec.md",
       paths = listOf(
         ".feature-specs",
@@ -2326,14 +2323,11 @@ class FeatureTaskRuntimeCheckpointScopeTest {
     val harness = checkpointScopeHarness()
 
     val report = harness.runner.run(harness.request())
-    assertIs<FeatureTaskRuntimeRunReport.Completed>(report)
+    assertIs<FeatureTaskRuntimeRunReport.Completed>(report, report.toString())
 
     val auditBriefing = requireNotNull(harness.recorder.loadPhaseBriefings(WORKFLOW_ID).orEmpty()["audit"])
     assertContains(auditBriefing.briefingText, "base_ref: ${"0".repeat(40)}")
-    assertContains(auditBriefing.briefingText, "- runtime-domain/Child.kt")
-    assertContains(auditBriefing.briefingText, "- runtime-domain/Committed.kt")
-    assertContains(auditBriefing.briefingText, "- runtime-domain/Remediation.kt")
-    assertContains(auditBriefing.briefingText, "- runtime-domain/Renamed.kt")
+    assertContains(auditBriefing.briefingText, "scoped_owned_path_count: 4")
     assertFalse(
       auditBriefing.briefingText.contains("- $SPEC_REFERENCE"),
       "the local feature spec is workflow input, not an audit or commit path",
@@ -2767,7 +2761,7 @@ class FeatureTaskRuntimeReviewFixLoopTest {
 
     val report = harness.runner.run(harness.request())
 
-    assertIs<FeatureTaskRuntimeRunReport.Completed>(report)
+    assertIs<FeatureTaskRuntimeRunReport.Completed>(report, report.toString())
     val reviewRecord = requireNotNull(harness.recorder.loadPhaseRecords(WORKFLOW_ID).orEmpty()["review"])
     assertEquals("completed", reviewRecord.status)
   }
@@ -2790,7 +2784,7 @@ class FeatureTaskRuntimeReviewFixLoopTest {
 
     val report = harness.runner.run(harness.request())
 
-    assertIs<FeatureTaskRuntimeRunReport.Completed>(report)
+    assertIs<FeatureTaskRuntimeRunReport.Completed>(report, report.toString())
     assertTrue(harness.launchOrder().contains("review"))
     val reviewRecord = requireNotNull(harness.recorder.loadPhaseRecords(WORKFLOW_ID).orEmpty()["review"])
     assertEquals("completed", reviewRecord.status)
@@ -2855,7 +2849,7 @@ class FeatureTaskRuntimeReviewFixLoopTest {
 
     val report = harness.runner.run(harness.request)
 
-    assertIs<FeatureTaskRuntimeRunReport.Completed>(report)
+    assertIs<FeatureTaskRuntimeRunReport.Completed>(report, report.toString())
     val finished = harness.lifecycle.finishedRecords.single()
     assertEquals(1, finished.reviewFixIterationCount, "the single review->fix iteration is reflected in telemetry")
   }
@@ -2868,7 +2862,7 @@ class FeatureTaskRuntimeReviewFixLoopTest {
 
     val report = harness.runner.run(harness.request)
 
-    assertIs<FeatureTaskRuntimeRunReport.Completed>(report)
+    assertIs<FeatureTaskRuntimeRunReport.Completed>(report, report.toString())
     assertEquals(0, harness.lifecycle.finishedRecords.single().reviewFixIterationCount)
   }
 
@@ -2878,7 +2872,7 @@ class FeatureTaskRuntimeReviewFixLoopTest {
 
     val report = harness.runner.run(harness.request())
 
-    assertIs<FeatureTaskRuntimeRunReport.Completed>(report)
+    assertIs<FeatureTaskRuntimeRunReport.Completed>(report, report.toString())
     val launched = harness.launchedPromptPhaseOrder()
     assertEquals(AGENT_LAUNCHED_PHASES, launched, "a clean run launches the forward pipeline, skipping implement_fix")
     assertTrue(launched.none { it == "implement_fix" })
@@ -2925,7 +2919,7 @@ class FeatureTaskRuntimeReviewFixLoopTest {
       harness.request().copy(requestedCodeReviewMode = CodeReviewExecutionMode.INLINE),
     )
 
-    assertIs<FeatureTaskRuntimeRunReport.Completed>(report)
+    assertIs<FeatureTaskRuntimeRunReport.Completed>(report, report.toString())
     val launched = harness.launchOrder()
     assertEquals(1, launched.count { it == "review" })
     assertEquals(1, launched.count { it == "implement_fix" }, "Major findings must launch implement_fix once")
@@ -2953,7 +2947,7 @@ class FeatureTaskRuntimeReviewFixLoopTest {
       harness.request().copy(requestedCodeReviewMode = CodeReviewExecutionMode.INLINE),
     )
 
-    assertIs<FeatureTaskRuntimeRunReport.Completed>(report)
+    assertIs<FeatureTaskRuntimeRunReport.Completed>(report, report.toString())
     val launched = harness.launchOrder()
     assertEquals(1, launched.count { it == "implement_fix" }, "one fix iteration before advancing")
     assertEquals(1, launched.count { it == "review" }, "review runs exactly once")
@@ -3050,7 +3044,7 @@ class FeatureTaskRuntimeReviewFixLoopTest {
 
     val report = harness.runner.run(harness.request())
 
-    assertIs<FeatureTaskRuntimeRunReport.Completed>(report)
+    assertIs<FeatureTaskRuntimeRunReport.Completed>(report, report.toString())
     val launched = harness.launchOrder()
     assertEquals(
       1,
@@ -3070,7 +3064,7 @@ class FeatureTaskRuntimeReviewFixLoopTest {
 
     val report = harness.runner.run(harness.request())
 
-    assertIs<FeatureTaskRuntimeRunReport.Completed>(report)
+    assertIs<FeatureTaskRuntimeRunReport.Completed>(report, report.toString())
     val launched = harness.launchOrder()
     assertTrue(
       launched.indexOf("audit") < launched.indexOf("review"),
@@ -3207,7 +3201,7 @@ class FeatureTaskRuntimeReviewFixLoopTest {
 
     val report = harness.runner.run(harness.request())
 
-    assertIs<FeatureTaskRuntimeRunReport.Completed>(report)
+    assertIs<FeatureTaskRuntimeRunReport.Completed>(report, report.toString())
     val launched = harness.launchedPromptPhaseOrder()
     assertTrue(launched.none { it == "audit" }, "the seeded satisfied audit is reused, not relaunched")
     assertTrue(launched.none { it == "review" }, "review already completed; no second pass")
@@ -3238,7 +3232,7 @@ class FeatureTaskRuntimeReviewFixLoopTest {
 
     val report = harness.runner.run(harness.request())
 
-    assertIs<FeatureTaskRuntimeRunReport.Completed>(report)
+    assertIs<FeatureTaskRuntimeRunReport.Completed>(report, report.toString())
     val launched = harness.launchedPromptPhaseOrder()
     assertEquals("implement_fix", launched.first())
     assertTrue(launched.none { it == "preplan" || it == "plan" })
@@ -3276,7 +3270,7 @@ class FeatureTaskRuntimeReviewFixLoopTest {
 
     val report = harness.runner.run(harness.request())
 
-    assertIs<FeatureTaskRuntimeRunReport.Completed>(report)
+    assertIs<FeatureTaskRuntimeRunReport.Completed>(report, report.toString())
     val launched = harness.launchOrder()
     assertTrue(launched.contains("review"), "the resumed review relaunched rather than pre-blocking")
     assertTrue(launched.contains("validate"), "the run advances to validate after the single fix round")
@@ -3290,7 +3284,7 @@ class FeatureTaskRuntimeReviewFixLoopTest {
 
     val report = harness.runner.run(harness.request())
 
-    assertIs<FeatureTaskRuntimeRunReport.Completed>(report)
+    assertIs<FeatureTaskRuntimeRunReport.Completed>(report, report.toString())
     assertEquals(1, harness.launchOrder().count { it == "review" })
     val reviewRecord = requireNotNull(harness.recorder.loadPhaseRecords(WORKFLOW_ID).orEmpty()["review"])
     assertEquals("completed", reviewRecord.status)
@@ -3308,7 +3302,7 @@ class FeatureTaskRuntimeBranchSetupRunnerTest {
 
     val report = harness.runner.run(harness.request())
 
-    val completed = assertIs<FeatureTaskRuntimeRunReport.Completed>(report)
+    val completed = assertIs<FeatureTaskRuntimeRunReport.Completed>(report, report.toString())
     assertEquals(EXPECTED_FEATURE_BRANCH, completed.resolvedBranch)
     assertEquals(
       listOf(RecordingWorkflowGitOperations.CheckoutCall(EXPECTED_FEATURE_BRANCH, "main")),
@@ -3331,7 +3325,7 @@ class FeatureTaskRuntimeBranchSetupRunnerTest {
 
     val report = harness.runner.run(harness.request())
 
-    val completed = assertIs<FeatureTaskRuntimeRunReport.Completed>(report)
+    val completed = assertIs<FeatureTaskRuntimeRunReport.Completed>(report, report.toString())
     assertEquals("feat/pre-created", completed.resolvedBranch)
     assertTrue(git.checkoutCalls.isEmpty(), "reuse must not check out a new branch")
     val resolved = requireNotNull(harness.recorder.loadResolvedBranch(WORKFLOW_ID))
@@ -3389,7 +3383,7 @@ class FeatureTaskRuntimeBranchSetupRunnerTest {
 
     val report = harness.runner.run(harness.request())
 
-    val completed = assertIs<FeatureTaskRuntimeRunReport.Completed>(report)
+    val completed = assertIs<FeatureTaskRuntimeRunReport.Completed>(report, report.toString())
     assertEquals(persistedBranch, completed.resolvedBranch)
     assertEquals(
       listOf(RecordingWorkflowGitOperations.CheckoutCall(persistedBranch, null)),
@@ -3419,7 +3413,7 @@ class FeatureTaskRuntimeBranchSetupRunnerTest {
 
     val report = harness.runner.run(harness.request())
 
-    val completed = assertIs<FeatureTaskRuntimeRunReport.Completed>(report)
+    val completed = assertIs<FeatureTaskRuntimeRunReport.Completed>(report, report.toString())
     assertEquals(persistedBranch, completed.resolvedBranch)
     assertTrue(git.checkoutCalls.isEmpty(), "HEAD already on the persisted branch must not check out")
     val branchEvent = assertIs<FeatureTaskRuntimeRunEvent.BranchResolved>(
@@ -3625,7 +3619,7 @@ class FeatureTaskRuntimeBranchSetupRunnerTest {
 
     val report = harness.runner.run(harness.request())
 
-    val completed = assertIs<FeatureTaskRuntimeRunReport.Completed>(report)
+    val completed = assertIs<FeatureTaskRuntimeRunReport.Completed>(report, report.toString())
     assertEquals(EXPECTED_FEATURE_BRANCH, completed.resolvedBranch)
     assertEquals(AGENT_LAUNCHED_PHASES.filterNot(NON_FILE_MUTATING_PHASES::contains), harness.launchedPhaseOrder())
     val implementRecord = requireNotNull(harness.recorder.loadPhaseRecords(WORKFLOW_ID).orEmpty()["implement"])
@@ -3659,7 +3653,7 @@ class FeatureTaskRuntimeBranchSetupRunnerTest {
 
     val report = harness.runner.run(harness.request())
 
-    val completed = assertIs<FeatureTaskRuntimeRunReport.Completed>(report)
+    val completed = assertIs<FeatureTaskRuntimeRunReport.Completed>(report, report.toString())
     assertEquals(EXPECTED_FEATURE_BRANCH, completed.resolvedBranch)
     assertEquals(COMPLETED_PHASES_CLEAN_RUN, harness.launchOrder())
     assertEquals(
@@ -3739,7 +3733,7 @@ class FeatureTaskRuntimeReconcileOnResumeTest {
 
     val report = harness.runner.run(harness.request(IMPLEMENT_FIX_CYCLE))
 
-    assertIs<FeatureTaskRuntimeRunReport.Completed>(report)
+    assertIs<FeatureTaskRuntimeRunReport.Completed>(report, report.toString())
     assertEquals(2, harness.launchedPhaseOrder().count { it == "implement" })
     assertTrue(git.createCommitMessages.isEmpty(), "a clean tree must not produce a checkpoint commit")
   }
@@ -3766,7 +3760,7 @@ class FeatureTaskRuntimeReconcileOnResumeTest {
 
     val report = harness.runner.run(harness.request(IMPLEMENT_FIX_CYCLE))
 
-    assertIs<FeatureTaskRuntimeRunReport.Completed>(report)
+    assertIs<FeatureTaskRuntimeRunReport.Completed>(report, report.toString())
     val checkpointMessages = git.createCommitMessages + git.amendCommitMessages
     assertEquals(3, checkpointMessages.size)
     assertEquals(1, git.createCommitMessages.size, "three checkpoints, one subtask commit on the branch")
@@ -3824,7 +3818,7 @@ class FeatureTaskRuntimeReconcileOnResumeTest {
 
     val report = harness.runner.run(harness.request(IMPLEMENT_FIX_CYCLE))
 
-    assertIs<FeatureTaskRuntimeRunReport.Completed>(report)
+    assertIs<FeatureTaskRuntimeRunReport.Completed>(report, report.toString())
     assertTrue(git.stagePathsCalls.isNotEmpty(), "the owned inventory must be staged")
     assertEquals(
       setOf("src/Owned.kt"),
@@ -3841,7 +3835,7 @@ class FeatureTaskRuntimeReconcileOnResumeTest {
 
     val report = harness.runner.run(harness.request(IMPLEMENT_FIX_CYCLE))
 
-    assertIs<FeatureTaskRuntimeRunReport.Completed>(report)
+    assertIs<FeatureTaskRuntimeRunReport.Completed>(report, report.toString())
     assertTrue(git.createCommitMessages.isEmpty(), "an empty owned delta must not commit foreign dirt")
     assertTrue(git.stagePathsCalls.isEmpty())
     assertTrue(git.amendCommitMessages.isEmpty(), "a Skip verdict must neither create nor amend")
@@ -3855,7 +3849,7 @@ class FeatureTaskRuntimeReconcileOnResumeTest {
 
     val report = harness.runner.run(harness.request(IMPLEMENT_FIX_CYCLE))
 
-    assertIs<FeatureTaskRuntimeRunReport.Completed>(report)
+    assertIs<FeatureTaskRuntimeRunReport.Completed>(report, report.toString())
     assertEquals(setOf("src/Owned.kt"), git.stagePathsCalls.toSet(), "the overlap is staged from the worktree")
     assertTrue(git.createCommitMessages.isNotEmpty(), "the checkpoint must commit rather than refuse")
   }
@@ -3944,7 +3938,10 @@ class FeatureTaskRuntimeReconcileOnResumeTest {
     val identities = requireNotNull(harness.recorder.loadCheckpointIdentities(WORKFLOW_ID))
     assertEquals(3, identities.size)
     assertEquals(
-      identities.drop(1).associate { it.checkpointRef to identities[it.sequenceNumber - 1].commitSha },
+      identities.associate { identity ->
+        identity.checkpointRef to if (identity.sequenceNumber == 0) COMMITTED_HEAD_SHA
+        else identities[identity.sequenceNumber - 1].commitSha
+      },
       git.checkpointRefs,
     )
   }
@@ -3952,7 +3949,12 @@ class FeatureTaskRuntimeReconcileOnResumeTest {
   @Test
   fun `a failed pre-amend ref write blocks the checkpoint and leaves HEAD unchanged`() {
     val git = checkpointGit(ownedPaths = listOf("src/Owned.kt"))
-    git.updateCheckpointRefResult = WorkflowGitOperationResult(status = "error", error = "ref write refused")
+    git.onResolveCheckpointRef = { ref ->
+      if (ref.endsWith("/1")) {
+        git.updateCheckpointRefResult = WorkflowGitOperationResult(status = "error", error = "ref write refused")
+      }
+      null
+    }
     val harness = checkpointRunHarness(git)
 
     val report = harness.runner.run(harness.request(IMPLEMENT_FIX_CYCLE))
@@ -3969,10 +3971,13 @@ class FeatureTaskRuntimeReconcileOnResumeTest {
   }
 
   @Test
-  fun `a wiped durable pointer recovers the amend target from the HEAD trailer and records the fallback`() {
+  fun `a wiped durable pointer cannot overwrite an existing recovery ref`() {
     val git = checkpointGit(ownedPaths = listOf("src/Owned.kt"))
     val diagnostics = RecordingDiagnostics()
     var pointerWiped = false
+    var preservedHead = ""
+    var preservedAmends = 0
+    var preservedRefs = emptyMap<String, String>()
     var harness: RunnerHarness? = null
     harness = checkpointRunHarness(
       git,
@@ -3980,30 +3985,22 @@ class FeatureTaskRuntimeReconcileOnResumeTest {
       onPhase = { phaseId ->
         if (phaseId == "audit" && !pointerWiped && git.createCommitMessages.isNotEmpty()) {
           pointerWiped = true
+          preservedHead = git.headCommitShaValue
+          preservedAmends = git.amendCommitMessages.size
+          preservedRefs = git.checkpointRefs.toMap()
           harness?.recorder?.quarantineCheckpointIdentities(WORKFLOW_ID)
         }
       },
     )
     val run = requireNotNull(harness)
 
-    assertIs<FeatureTaskRuntimeRunReport.Completed>(run.runner.run(run.request(IMPLEMENT_FIX_CYCLE)))
-
-    assertEquals(1, git.createCommitMessages.size, "the recovered checkpoint must not open a second commit")
-    assertTrue(git.amendCommitMessages.isNotEmpty())
-    assertTrue(
-      diagnostics.warnings.any { it.contains("FeatureTaskRuntimeSubtaskCommitResolver.decide") },
-      "the trailer fallback is a degradation and must emit an observability record",
-    )
-    assertEquals(
-      git.updateCheckpointRefCalls.size,
-      git.checkpointRefs.size,
-      "each amend preserves its predecessor under its own ref; a reused ref name discards a checkpoint state",
-    )
-    assertContains(
-      git.checkpointRefs.values,
-      1.toString(16).padStart(40, '0'),
-      "the created subtask commit must still be reachable after the post-restart amend",
-    )
+    val result = assertIs<FeatureTaskRuntimeRunReport.Blocked>(run.runner.run(run.request(IMPLEMENT_FIX_CYCLE)))
+    assertContains(result.blockedReason, "already preserves")
+    assertEquals(1, git.createCommitMessages.size)
+    assertTrue(pointerWiped)
+    assertEquals(preservedAmends, git.amendCommitMessages.size)
+    assertEquals(preservedRefs, git.checkpointRefs)
+    assertEquals(preservedHead, git.headCommitShaValue)
   }
 
   @Test
@@ -4035,7 +4032,9 @@ class FeatureTaskRuntimeReconcileOnResumeTest {
   @Test
   fun `an amend whose checkpoint ref occupancy cannot be determined is refused before HEAD is rewritten`() {
     val git = checkpointGit(ownedPaths = listOf("src/Owned.kt"))
-    git.resolveCheckpointRefResult = WorkflowGitOperationResult(status = "error", error = "ref lookup failed")
+    git.onResolveCheckpointRef = { ref ->
+      if (ref.endsWith("/1")) WorkflowGitOperationResult(status = "error", error = "ref lookup failed") else null
+    }
     val harness = checkpointRunHarness(git)
 
     val report = harness.runner.run(harness.request(IMPLEMENT_FIX_CYCLE))
@@ -4043,7 +4042,7 @@ class FeatureTaskRuntimeReconcileOnResumeTest {
     val blocked = assertIs<FeatureTaskRuntimeRunReport.Blocked>(report)
     assertContains(blocked.blockedReason, "could not be preserved")
     assertTrue(git.amendCommitMessages.isEmpty(), "the amend must not run on an undetermined checkpoint ref")
-    assertTrue(git.updateCheckpointRefCalls.isEmpty(), "no ref may be written while occupancy is undetermined")
+    assertEquals(listOf("0"), git.updateCheckpointRefCalls.map { it.first.substringAfterLast("/") })
     assertEquals(
       1.toString(16).padStart(40, '0'),
       git.headCommitShaValue,
@@ -4260,7 +4259,7 @@ class FeatureTaskRuntimeCheckpointHistoryOnResumeTest {
 
     val report = harness.runner.run(harness.request(IMPLEMENT_FIX_CYCLE))
 
-    assertIs<FeatureTaskRuntimeRunReport.Completed>(report)
+    assertIs<FeatureTaskRuntimeRunReport.Completed>(report, report.toString())
     assertTrue(git.stagePathsCalls.isNotEmpty(), "the run's checkpoint must stage phase-written paths")
   }
 
@@ -4274,7 +4273,7 @@ class FeatureTaskRuntimeCheckpointHistoryOnResumeTest {
 
     val report = harness.runner.run(harness.request(IMPLEMENT_FIX_CYCLE))
 
-    assertIs<FeatureTaskRuntimeRunReport.Completed>(report)
+    assertIs<FeatureTaskRuntimeRunReport.Completed>(report, report.toString())
     assertFalse(foreign in git.stagePathsCalls, "a path this run never wrote must never be staged")
     assertTrue(git.stagePathsCalls.isNotEmpty(), "the run's own owned inventory is still checkpointed")
   }
@@ -4294,7 +4293,7 @@ class FeatureTaskRuntimeCheckpointHistoryOnResumeTest {
 
     val report = harness.runner.run(harness.request(IMPLEMENT_FIX_CYCLE))
 
-    assertIs<FeatureTaskRuntimeRunReport.Completed>(report)
+    assertIs<FeatureTaskRuntimeRunReport.Completed>(report, report.toString())
     assertTrue("src/ReviewWrote.kt" in git.stagePathsCalls, "phase-written paths are staged")
   }
 
@@ -4306,7 +4305,7 @@ class FeatureTaskRuntimeCheckpointHistoryOnResumeTest {
 
     val report = harness.runner.run(harness.request(IMPLEMENT_FIX_CYCLE))
 
-    assertIs<FeatureTaskRuntimeRunReport.Completed>(report)
+    assertIs<FeatureTaskRuntimeRunReport.Completed>(report, report.toString())
     assertContains(git.stagePathsCalls, "src/Owned.kt", "the worktree content is staged")
     assertTrue(git.createCommitMessages.isNotEmpty(), "the checkpoint must commit rather than refuse")
   }

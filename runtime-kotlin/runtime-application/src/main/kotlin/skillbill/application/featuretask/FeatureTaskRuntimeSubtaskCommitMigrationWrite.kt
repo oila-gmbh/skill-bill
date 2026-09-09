@@ -1,5 +1,6 @@
 package skillbill.application.featuretask
 
+import skillbill.application.featuretask.model.FeatureTaskRuntimeSubtaskCommitIdentity
 import skillbill.ports.workflow.gitops.model.WorkflowGitOperationResult
 import skillbill.ports.workflow.gitops.stagePaths
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeCheckpointIdentity
@@ -23,7 +24,7 @@ internal data class NormalizationRefused(val reason: String) : NormalizationPrep
 
 internal fun writeNormalizedSubtaskCommit(request: NormalizedSubtaskCommitRequest): Boolean {
   return when (val preparation = prepareNormalization(request)) {
-    is NormalizationRefused -> refuseSubtaskMigration(request.refusal(preparation.reason))
+    is NormalizationRefused -> refuseSubtaskMigration(request.runLoop, request.refusal(preparation.reason))
     is NormalizationReady -> writePreparedNormalization(preparation.value)
   }
 }
@@ -137,7 +138,7 @@ private fun abortNormalization(preparation: NormalizationPreparation, reason: St
       snapshot = preparation.indexSnapshot,
     ),
   )
-  return refuseSubtaskMigration(preparation.request.refusal(reason))
+  return refuseSubtaskMigration(preparation.request.runLoop, preparation.request.refusal(reason))
 }
 
 private fun settleNormalizedCommit(preparation: NormalizationPreparation, replacementSha: String): Boolean {
@@ -208,6 +209,7 @@ private fun replaceNormalizedIdentities(preparation: NormalizationPreparation, r
     )
   }.getOrElse { error ->
     return refuseSubtaskMigration(
+      request.runLoop,
       request.refusal(
         "replacement checkpoint identities could not be read " +
           "(${error.message ?: error::class.simpleName}); operator decision: repair the workflow store before resuming",
@@ -217,13 +219,14 @@ private fun replaceNormalizedIdentities(preparation: NormalizationPreparation, r
   }.orEmpty()
   val replacementIdentity = updated.lastOrNull { it.commitSha == replacementSha }
     ?: return refuseSubtaskMigration(
+      request.runLoop,
       request.refusal(
         "replacement commit '$replacementSha' has no durable identity; operator decision: " +
           "repair the workflow store before resuming",
       ),
     )
   val ref = updateNormalizedIdentityRef(request, replacementIdentity.checkpointRef, replacementSha)
-  if (ref != null) return refuseSubtaskMigration(request.refusal(ref))
+  if (ref != null) return refuseSubtaskMigration(request.runLoop, request.refusal(ref))
   val retained = updated
     .filterNot { candidate ->
       request.active.any { it.sequenceNumber == candidate.sequenceNumber }
@@ -239,6 +242,7 @@ private fun replaceNormalizedIdentities(preparation: NormalizationPreparation, r
     )
   }.getOrElse { error ->
     refuseSubtaskMigration(
+      request.runLoop,
       request.refusal(
         "superseded active checkpoint identities could not be persisted " +
           "(${error.message ?: error::class.simpleName}); operator decision: repair the workflow store before resuming",

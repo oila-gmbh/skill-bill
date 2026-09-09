@@ -1,8 +1,10 @@
 package skillbill.application.featuretask
 
+import skillbill.application.featuretask.model.FeatureTaskRuntimeSubtaskCommitIdentity
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeResolvedBranch
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseRecord
 import skillbill.application.featuretask.model.FeatureTaskRuntimeCommitPushHandoffInvalid
 import skillbill.application.featuretask.model.FeatureTaskRuntimeCommitPushHandoffValid
-import skillbill.application.featuretask.model.FeatureTaskRuntimePhaseRecord
 import skillbill.application.featuretask.model.FeatureTaskRuntimeSubtaskFinalisationBlocked
 import skillbill.application.featuretask.model.FeatureTaskRuntimeSubtaskFinaliseRequest
 import skillbill.application.featuretask.model.FeatureTaskRuntimeSubtaskFinalised
@@ -13,11 +15,11 @@ import kotlin.coroutines.cancellation.CancellationException
 
 private data class FinalisationPreparation(
   val handoff: FeatureTaskRuntimeCommitPushHandoffValid,
-  val identity: skillbill.application.featuretask.model.FeatureTaskRuntimeSubtaskCommitIdentity,
+  val identity: FeatureTaskRuntimeSubtaskCommitIdentity,
   val ledger: SubtaskCommitLedgerState,
   val branch: String,
   val ownedPaths: List<String>,
-  val boundaryHistory: BoundaryHistoryProjection,
+  val boundaryHistory: DeclaredBoundaryHistoryProjection,
 )
 
 private sealed interface FinalisationPreparationOutcome
@@ -84,7 +86,7 @@ private fun prepareFinalisationWithLedger(
   runLoop: FeatureTaskRuntimeRunLoop,
   branch: String,
   validHandoff: FeatureTaskRuntimeCommitPushHandoffValid,
-  identity: skillbill.application.featuretask.model.FeatureTaskRuntimeSubtaskCommitIdentity,
+  identity: FeatureTaskRuntimeSubtaskCommitIdentity,
   ledger: SubtaskCommitLedgerState,
 ): FinalisationPreparationOutcome {
   val resolvedBranch = loadFinalisationBranch(runLoop)

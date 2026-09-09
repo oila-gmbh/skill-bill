@@ -1,5 +1,6 @@
 package skillbill.application.featuretask
 
+import skillbill.ports.workflow.gitops.restoreIndexState
 import skillbill.ports.workflow.gitops.model.WorkflowGitOperationResult
 
 internal fun FeatureTaskRuntimeSubtaskFinalisation.restoreForeignIndex(

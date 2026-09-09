@@ -123,7 +123,7 @@ private fun inlineGoalContinuationHarness(
           parentWorkflowId = "wfl-parent",
           codeReviewMode = CodeReviewExecutionMode.INLINE,
         ),
-        reviewBaseline = GoalSubtaskReviewBaseline("0".repeat(40)),
+        reviewBaseline = GoalSubtaskReviewBaseline(git.headCommitShaValue),
       ),
     ),
   )
@@ -161,7 +161,7 @@ private fun pausedReviewState(reviewedDeltaDigest: String) = GoalSubtaskReviewSt
 private fun seedStaleReviewHarness(tempPrefix: String): Pair<RunnerHarness, RecordingWorkflowGitOperations> {
   val repoRoot = Files.createTempDirectory(tempPrefix)
   val git = RecordingWorkflowGitOperations(currentBranchValue = "feat/existing-runtime-branch")
-    .also { it.headCommitShaValue = COMMITTED_HEAD_SHA }
+    .also { it.headCommitShaValue = "0".repeat(40) }
   git.goalReviewBuildResults += GoalSubtaskReviewInputResult(
     status = "error",
     error = "Persisted review base '${"9".repeat(40)}' is not an ancestor of current HEAD.",
@@ -269,6 +269,11 @@ internal fun assertCappedReviewStaleReopensWhenImmutableDigestChanged() {
   )
   checkNotNull(harness.goalContinuationRecorder.updateReviewState(WORKFLOW_ID) { paused })
   harness.seedRawReviewResults(paused)
+  git.goalReviewBuildResults.removeLast()
+  git.goalReviewBuildResults += GoalSubtaskReviewInputResult(
+    status = "ok",
+    input = GoalSubtaskReviewInput("0".repeat(40), "b".repeat(40)),
+  )
   harness.runner.run(
     harness.request().copy(
       transitionsOverride = FeatureTaskRuntimeTransitionDeclaration(

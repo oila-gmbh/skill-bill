@@ -364,7 +364,7 @@ class ParallelCodeReviewRunnerTest {
       assertContains(request.skillRunRequest.promptOverride.orEmpty(), "bill-code-review mode:inline")
       assertContains(request.skillRunRequest.promptOverride.orEmpty(), "do not launch specialists")
       assertContains(request.skillRunRequest.promptOverride.orEmpty(), "governed generic rubric")
-      assertContains(request.skillRunRequest.promptOverride.orEmpty(), "paths=\"A.kt\"")
+      assertFalse(request.skillRunRequest.promptOverride.orEmpty().contains("A.kt"))
     }
   }
 

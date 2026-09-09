@@ -1,5 +1,6 @@
 package skillbill.application.featuretask
 
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeResolvedBranch
 import me.tatarka.inject.annotations.Inject
 import skillbill.application.featuretask.model.FeatureTaskRuntimeCheckpointDecision
 import skillbill.application.featuretask.model.FeatureTaskRuntimeCheckpointScopeInput
@@ -152,7 +153,7 @@ class FeatureTaskRuntimeRunLoopCheckpoint {
     return false
   }
 
-  private fun stagedCheckpointPaths(
+  internal fun stagedCheckpointPaths(
     runLoop: FeatureTaskRuntimeRunLoop,
     precedingPhaseId: String,
     branch: String,
@@ -300,7 +301,9 @@ private fun prepareCheckpointScopeForRuntime(
     runLoop,
     resolved.baselineOwnedPathsForCheckpoint(),
   ) ?: return blockCheckpointScopePreparation(runLoop, precedingPhaseId, branch, blockedReason)
-  val stagedPaths = stagedCheckpointPaths(runLoop, precedingPhaseId, branch, blockedReason) ?: return null
+  val stagedPaths = runLoop.collaborators.checkpoint.stagedCheckpointPaths(
+    runLoop, precedingPhaseId, branch, blockedReason,
+  ) ?: return null
   return buildCheckpointScopePreparation(runLoop, precedingPhaseId, resolved, worktreeDelta, stagedPaths)
 }
 

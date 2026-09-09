@@ -17,7 +17,7 @@ internal data class ParallelCodeReviewParentPromptRequest(
 )
 
 object ParallelCodeReviewRunnerParentPrompt {
-  fun build(request: ParallelCodeReviewParentPromptRequest): String {
+  internal fun build(request: ParallelCodeReviewParentPromptRequest): String {
     val selected = request.selected
     val resolvedMode = request.resolvedMode
     val inline = resolvedMode == ResolvedReviewExecutionMode.INLINE

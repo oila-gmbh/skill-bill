@@ -1,5 +1,7 @@
 package skillbill.application.featuretask
 
+import skillbill.ports.workflow.gitops.restoreIndexState
+import skillbill.error.FeatureTaskRuntimeSubtaskCommitReconciliationError
 import me.tatarka.inject.annotations.Inject
 import skillbill.application.featuretask.model.AppendCheckpointIdentityArgs
 import skillbill.application.featuretask.model.FeatureTaskRuntimeSubtaskCommitIdentity
@@ -68,6 +70,26 @@ class FeatureTaskRuntimeRunLoopCheckpointSubtaskCommitLedger {
     return unpushed.ok && unpushed.value.orEmpty().trim().equals("true", ignoreCase = true)
   }
 
+  fun ledgerUnavailableRecord(identity: FeatureTaskRuntimeSubtaskCommitIdentity, cause: String): String =
+    "seam=FeatureTaskRuntimeRunLoop.subtaskCommitLedgerState value_used='no durable pointer, sequence 0' " +
+      "value_expected=the recorded checkpoint-identity ledger for '${identity.issueKey}/${identity.subtaskId}' " +
+      "cause=$cause"
+
+  fun withIndexRestoreOutcome(
+    runLoop: FeatureTaskRuntimeRunLoop,
+    error: String,
+    ownedPaths: List<String>,
+    snapshot: String,
+  ): String {
+    val restored = runLoop.phaseGates.gitOperations.restoreIndexState(runLoop.request.repoRoot, ownedPaths, snapshot)
+    return if (restored.ok) {
+      "$error; the pre-checkpoint index was restored and the working tree is unchanged"
+    } else {
+      "$error; the pre-checkpoint index could NOT be restored (${restored.error}) — inspect " +
+        "`git status` before committing anything yourself"
+    }
+  }
+
   fun checkpointGeneration(runLoop: FeatureTaskRuntimeRunLoop, loopId: String?): Int = loopId?.let {
     runLoop.state.edgeIterationCount(it)
   } ?: 0
@@ -95,7 +117,14 @@ class FeatureTaskRuntimeRunLoopCheckpointSubtaskCommitLedger {
       )
     }
     if (recorded.getOrDefault(false)) return true
-    val error = checkpointIdentityRecordFailure(runLoop, recorded.exceptionOrNull())
+    val error = FeatureTaskRuntimeSubtaskCommitReconciliationError(
+      workflowId = runLoop.request.workflowId,
+      issueKey = runLoop.request.issueKey,
+      subtaskId = runLoop.request.goalContinuation?.subtaskId?.toString()
+        ?: FEATURE_TASK_RUNTIME_STANDALONE_SUBTASK_ID,
+      reason = recorded.exceptionOrNull()?.message ?: "the workflow row was absent",
+      cause = recorded.exceptionOrNull(),
+    )
     runCatching {
       runLoop.diagnostics.warning(
         "seam=FeatureTaskRuntimeRunLoopCheckpointSubtaskCommitLedger.recordCheckpointIdentity " +

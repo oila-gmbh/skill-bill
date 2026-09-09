@@ -1,5 +1,6 @@
 package skillbill.application.featuretask
 
+import skillbill.workflow.goal.model.GoalSubtaskReviewRevision
 import skillbill.application.decomposition.decodeArtifacts
 import skillbill.application.featuretask.model.GoalSubtaskReviewPassCarryForward
 import skillbill.application.featuretask.model.GoalSubtaskReviewPassInFlight

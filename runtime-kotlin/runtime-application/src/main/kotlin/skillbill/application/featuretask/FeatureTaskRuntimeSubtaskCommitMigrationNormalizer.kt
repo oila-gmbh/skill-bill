@@ -1,5 +1,7 @@
 package skillbill.application.featuretask
 
+import skillbill.application.featuretask.model.FeatureTaskRuntimeSubtaskCommitIdentity
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeResolvedBranch
 import skillbill.ports.workflow.gitops.commitMessage
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeCheckpointIdentity
 
@@ -30,7 +32,7 @@ object FeatureTaskRuntimeSubtaskCommitMigrationNormalizer {
 }
 
 private data class MigrationContext(
-  val identity: skillbill.application.featuretask.model.FeatureTaskRuntimeSubtaskCommitIdentity,
+  val identity: FeatureTaskRuntimeSubtaskCommitIdentity,
   val identities: List<FeatureTaskRuntimeCheckpointIdentity>,
   val resolved: FeatureTaskRuntimeResolvedBranch,
   val headSha: String,

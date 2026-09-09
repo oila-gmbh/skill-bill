@@ -76,11 +76,10 @@ class FeatureTaskRuntimeGoalContinuationRecorder(
     gitOperations: WorkflowGitOperations,
     repoRoot: Path,
     scope: GoalReviewInputScope = GoalReviewInputScope(),
-  ): GoalSubtaskReviewInputPreparation = try {
+  ): GoalSubtaskReviewInputPreparation = runCatching {
     inputBuilder.buildGoalReviewInput(workflowId, gitOperations, repoRoot, scope)
-  } catch (error: CancellationException) {
-    throw error
-  } catch (error: IllegalStateException) {
+  }.getOrElse { error ->
+    if (error is CancellationException) throw error
     val refusal = error as? FeatureTaskRuntimeSubtaskCommitReconciliationError
       ?: FeatureTaskRuntimeSubtaskCommitReconciliationError(
         workflowId = workflowId,

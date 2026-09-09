@@ -4,7 +4,7 @@ import skillbill.application.InMemoryRuntimeWorkflowRepository
 import skillbill.application.RuntimeFakeDatabaseSessionFactory
 import skillbill.application.testWorkflowSnapshotValidator
 import skillbill.error.FeatureTaskRuntimeSubtaskCommitReconciliationError
-import skillbill.infrastructure.fs.GitWorkflowGitOperations
+import skillbill.ports.workflow.gitops.NoopWorkflowGitOperations
 import skillbill.ports.db.DatabaseSessionFactory
 import skillbill.ports.diagnostics.RuntimeDiagnostics
 import skillbill.ports.persistence.UnitOfWork
@@ -41,7 +41,7 @@ class FeatureTaskRuntimeReviewInputFailureTest {
       Clock.systemUTC(),
     )
     val result = assertFailsWith<FeatureTaskRuntimeSubtaskCommitReconciliationError> {
-      recorder.buildGoalReviewInput("wftr-test", GitWorkflowGitOperations(), Path.of("unused"))
+      recorder.buildGoalReviewInput("wftr-test", NoopWorkflowGitOperations, Path.of("unused"))
     }
     assertSame(failure, result.cause)
     assertEquals(1, records.size)

@@ -1,5 +1,6 @@
 package skillbill.application.featuretask
 
+import skillbill.ports.persistence.UnitOfWork
 import skillbill.application.decomposition.decodeArtifacts
 import skillbill.application.subtaskreview.GoalSubtaskReviewSummaryReducer
 import skillbill.application.subtaskreview.reviewRunIdOf
@@ -27,7 +28,7 @@ class FeatureTaskRuntimeReviewGenerationRecorder(
     }
 
   private fun persistReviewGenerationInvalidationInTransaction(
-    unitOfWork: skillbill.ports.persistence.UnitOfWork,
+    unitOfWork: UnitOfWork,
     workflowId: String,
   ): Int? {
     val record = WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, workflowId)
@@ -69,7 +70,7 @@ class FeatureTaskRuntimeReviewGenerationRecorder(
         stepUpdates = stepUpdatesFrom(updatedRecords),
       ),
     )
-    nextGeneration
+    return nextGeneration
   }
 
   private fun invalidatedReviewRecords(
