@@ -2,6 +2,7 @@ package skillbill.workflow.goal.model
 
 import skillbill.boundary.OpenBoundaryMap
 import skillbill.contracts.JsonSupport
+import skillbill.contracts.workflow.GOAL_OBSERVABILITY_EVENT_CONTRACT_VERSION
 import skillbill.workflow.goal.GoalObservabilityEventValidator
 import skillbill.workflow.goal.invalidGoalObservabilityEvent
 
@@ -11,6 +12,18 @@ fun goalObservabilityLatestEventFromArtifacts(
   validator: GoalObservabilityEventValidator,
 ): GoalObservabilityEvent? = artifacts[GOAL_OBSERVABILITY_LATEST_EVENT_ARTIFACT_KEY]
   ?.let { raw -> goalObservabilityEventFromArtifact(raw, GOAL_OBSERVABILITY_LATEST_EVENT_ARTIFACT_KEY, validator) }
+
+fun goalObservabilityLatestEventForLiveness(
+  artifacts: Map<String, Any?>,
+  validator: GoalObservabilityEventValidator,
+): GoalObservabilityEvent? {
+  val raw = artifacts[GOAL_OBSERVABILITY_LATEST_EVENT_ARTIFACT_KEY] ?: return null
+  val eventMap = JsonSupport.anyToStringAnyMap(raw) ?: return null
+  if (eventMap["contract_version"] != GOAL_OBSERVABILITY_EVENT_CONTRACT_VERSION) return null
+  return runCatching {
+    goalObservabilityEventFromArtifact(raw, GOAL_OBSERVABILITY_LATEST_EVENT_ARTIFACT_KEY, validator)
+  }.getOrNull()
+}
 
 @OpenBoundaryMap("Goal observability bounded-history durable artifact parse seam")
 fun goalObservabilityHistoryFromArtifacts(

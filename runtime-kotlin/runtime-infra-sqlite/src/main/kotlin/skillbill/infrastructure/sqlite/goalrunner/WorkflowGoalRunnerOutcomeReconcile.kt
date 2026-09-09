@@ -25,7 +25,7 @@ import skillbill.ports.workflow.persistence.model.WorkflowFamily
 import skillbill.ports.workflow.persistence.toSnapshot
 import skillbill.workflow.engine.WorkflowEngine
 import skillbill.workflow.goal.GoalObservabilityEventValidator
-import skillbill.workflow.goal.model.goalObservabilityLatestEventFromArtifacts
+import skillbill.workflow.goal.model.goalObservabilityLatestEventForLiveness
 import java.nio.file.Path
 import java.time.Clock
 import java.time.Duration
@@ -214,7 +214,7 @@ internal class WorkflowGoalRunnerOutcomeReconcile(
   private fun candidateLivenessInstants(candidate: GoalContinuationCandidate): List<Instant> {
     val artifacts = decodeArtifacts(candidate.snapshot.artifactsJson)
     val declared = declaredProgressEventFrom(artifacts)?.timestamp
-    val observed = goalObservabilityLatestEventFromArtifacts(artifacts, goalObservabilityEventValidator)?.timestamp
+    val observed = goalObservabilityLatestEventForLiveness(artifacts, goalObservabilityEventValidator)?.timestamp
     return listOfNotNull(declared, observed, candidate.snapshot.updatedAt).mapNotNull(::parseInstantOrNull)
   }
 }

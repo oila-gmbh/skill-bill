@@ -24,6 +24,10 @@ private fun stageReviewCatalogPack(source: Path, staging: Path) {
     add(source.resolve("platform.yaml"))
     manifest.declaredFiles.baseline?.let(::add)
     addAll(manifest.declaredFiles.areas.values)
+    manifest.requiredRubricCompanions.forEach { (area, companions) ->
+      val areaContent = manifest.declaredFiles.areas[area] ?: return@forEach
+      companions.forEach { companion -> areaContent.parent?.resolve(companion)?.let(::add) }
+    }
     val declaredAddons = manifest.addonUsage.flatMap { it.addons } +
       manifest.featureAddonUsage.flatMap { it.addons }
     declaredAddons.forEach { addon ->

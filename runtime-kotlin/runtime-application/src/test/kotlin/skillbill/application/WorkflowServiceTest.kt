@@ -2179,6 +2179,45 @@ class WorkflowGoalRunnerOutcomeStoreTest {
 
 class WorkflowGoalRunnerReconciliationTest {
   @Test
+  fun `reconciliation ignores an unsupported legacy observability event when checking liveness`() {
+    val workflows = InMemoryWorkflowStates()
+    val definition = FeatureTaskRuntimePhaseWorkflowDefinition.definition
+    val opened = testWorkflowEngine.openRecord(definition, "wfl-legacy-observability", "ftr-legacy", "preplan")
+    val running = testWorkflowEngine.updateRecord(
+      definition,
+      opened,
+      WorkflowUpdateInput(
+        workflowStatus = "running",
+        currentStepId = "implement",
+        stepUpdates = listOf(
+          mapOf("step_id" to "implement", "status" to "running", "attempt_count" to 1),
+        ),
+        artifactsPatch = mapOf(
+          "goal_continuation" to mapOf(
+            "issue_key" to "SKILL-52.1",
+            "subtask_id" to 1,
+            "suppress_pr" to true,
+          ),
+          "goal_observability_latest_event" to mapOf(
+            "contract_version" to "0.1",
+            "issue_key" to "SKILL-52.1",
+            "subtask_id" to 1,
+          ),
+        ),
+        sessionId = "ftr-legacy",
+      ),
+    )
+    workflows.saveFeatureImplementWorkflow(running.toRecord())
+    val store = testWorkflowGoalRunnerOutcomeStore(
+      outcomeStoreDeps(FakeDatabaseSessionFactory(workflows), testWorkflowSnapshotValidator),
+    )
+
+    val outcomes = store.reconcileAuthoritativeOutcomes("SKILL-52.1", emptySet())
+
+    assertTrue(outcomes.containsKey(1))
+  }
+
+  @Test
   fun `goal runner outcome reconciliation closes stale running child in favor of authoritative terminal workflow`() {
     val workflows = InMemoryWorkflowStates()
     val definition = FeatureTaskRuntimePhaseWorkflowDefinition.definition

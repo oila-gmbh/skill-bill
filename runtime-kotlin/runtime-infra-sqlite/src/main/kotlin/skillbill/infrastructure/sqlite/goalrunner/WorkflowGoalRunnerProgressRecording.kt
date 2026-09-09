@@ -40,7 +40,7 @@ import skillbill.workflow.goal.model.GOAL_PROGRESS_HISTORY_LIMIT
 import skillbill.workflow.goal.model.GOAL_PROGRESS_LATEST_EVENT_ARTIFACT_KEY
 import skillbill.workflow.goal.model.GOAL_PROGRESS_RUN_HISTORY_ARTIFACT_KEY
 import skillbill.workflow.goal.model.appendBoundedHistoryBySequence
-import skillbill.workflow.goal.model.goalObservabilityLatestEventFromArtifacts
+import skillbill.workflow.goal.model.goalObservabilityLatestEventForLiveness
 
 private val PROGRESS_POLL_ARTIFACT_KEYS = setOf(
   "progress_event",
@@ -65,9 +65,7 @@ internal class WorkflowGoalRunnerProgressRecording(
       val currentStep = if (record.workflowStatus == "completed" || finishCompleted) "pr" else record.currentStepId
       val progressEvent = progressEventFrom(artifacts)
       val declaredProgressEvent = declaredProgressEventFrom(artifacts)
-      val observabilityEvent = runCatching {
-        goalObservabilityLatestEventFromArtifacts(artifacts, goalObservabilityEventValidator)
-      }.getOrNull()
+      val observabilityEvent = goalObservabilityLatestEventForLiveness(artifacts, goalObservabilityEventValidator)
       GoalRunnerWorkflowProgress(
         workflowId = record.workflowId,
         workflowStatus = record.workflowStatus,
