@@ -1,4 +1,5 @@
 package skillbill.ports.workflow.persistence
+import skillbill.error.InvalidWorkflowStateSchemaError
 import skillbill.error.LegacyProseWorkflowError
 import skillbill.ports.workflow.WorkflowStateRepository
 import skillbill.ports.workflow.decomposition.runtime.DECOMPOSITION_RUNTIME_ARTIFACT_KEY
@@ -6,6 +7,7 @@ import skillbill.ports.workflow.decomposition.runtime.asStringAnyMapOrNull
 import skillbill.ports.workflow.decomposition.runtime.decodeArtifacts
 import skillbill.ports.workflow.decomposition.runtime.decodeDecompositionManifestMap
 import skillbill.ports.workflow.decomposition.runtime.isActiveGoalRuntime
+import skillbill.ports.workflow.model.FeatureTaskRuntimeSnapshot
 import skillbill.ports.workflow.model.FeatureTaskWorkflowMode
 import skillbill.ports.workflow.model.WorkflowStateRecord
 import skillbill.workflow.decomposition.DecompositionManifestValidator
@@ -21,15 +23,32 @@ fun WorkflowStateSnapshot.hasDecompositionPlan(): Boolean =
 
 val IMPLEMENT_TERMINAL_STATUSES: Set<String> = setOf("completed", "failed", "abandoned")
 
-fun WorkflowStateRepository.listFeatureTaskWorkflowsForParentDiscovery(): List<WorkflowStateRecord> {
-  val byId = LinkedHashMap<String, WorkflowStateRecord>()
-  listFeatureTaskWorkflows(FeatureTaskWorkflowMode.RUNTIME, Int.MAX_VALUE).forEach { row ->
-    byId[row.workflowId] = row
+fun WorkflowStateRepository.listFeatureTaskWorkflowsForParentDiscovery(): List<FeatureTaskRuntimeSnapshot> {
+  val byId = LinkedHashMap<String, FeatureTaskRuntimeSnapshot>()
+  listFeatureTaskRuntimeSnapshots(Int.MAX_VALUE).forEach { snapshot ->
+    byId[snapshot.workflow.workflowId] = snapshot
   }
   listFeatureTaskWorkflows(FeatureTaskWorkflowMode.PROSE, Int.MAX_VALUE).forEach { row ->
-    byId.putIfAbsent(row.workflowId, row)
+    byId.putIfAbsent(row.workflowId, FeatureTaskRuntimeSnapshot(row))
   }
   return byId.values.toList()
+}
+
+internal enum class FeatureTaskRuntimeSnapshotOwnership {
+  REQUESTED,
+  EXPLICIT_MISMATCH,
+  UNKNOWN,
+}
+
+internal fun FeatureTaskRuntimeSnapshot.ownershipFor(issueKey: String): FeatureTaskRuntimeSnapshotOwnership {
+  val normalizedIssueKey = issueKey.trim()
+  return when {
+    workflow.issueKey?.trim()?.equals(normalizedIssueKey, ignoreCase = true) == true ||
+      identity?.normalizedIssueKey?.trim()?.equals(normalizedIssueKey, ignoreCase = true) == true ->
+      FeatureTaskRuntimeSnapshotOwnership.REQUESTED
+    workflow.issueKey.isNullOrBlank() && identity == null -> FeatureTaskRuntimeSnapshotOwnership.UNKNOWN
+    else -> FeatureTaskRuntimeSnapshotOwnership.EXPLICIT_MISMATCH
+  }
 }
 
 fun WorkflowStateRecord.requireRuntimeModeForEngineWrite() {
@@ -44,16 +63,23 @@ fun WorkflowStateRepository.findDecomposedParentWorkflow(
   currentProjectedManifest: DecompositionManifest? = null,
 ): WorkflowStateRecord? {
   val normalizedIssueKey = issueKey.trim()
-  val candidates = listFeatureTaskWorkflowsForParentDiscovery().mapNotNull { row ->
-    val snapshot = row.toSnapshot()
-    if (snapshot.isGoalContinuationChildWorkflow()) return@mapNotNull null
-    val manifest = snapshot.decompositionRuntime(validator) ?: return@mapNotNull null
-    if (
-      (snapshot.hasDecompositionPlan() || row.issueKey?.trim() == normalizedIssueKey) &&
-      manifest.issueKey == normalizedIssueKey
-    ) {
-      DecomposedParentLookupCandidate(row, manifest)
-    } else {
+  val candidates = listFeatureTaskWorkflowsForParentDiscovery().mapNotNull { candidate ->
+    val row = candidate.workflow
+    val ownership = candidate.ownershipFor(normalizedIssueKey)
+    try {
+      val snapshot = row.toSnapshot()
+      if (snapshot.isGoalContinuationChildWorkflow()) return@mapNotNull null
+      val manifest = snapshot.decompositionRuntime(validator) ?: return@mapNotNull null
+      if (
+        (snapshot.hasDecompositionPlan() || row.issueKey?.trim() == normalizedIssueKey) &&
+        manifest.issueKey == normalizedIssueKey
+      ) {
+        DecomposedParentLookupCandidate(row, manifest)
+      } else {
+        null
+      }
+    } catch (error: InvalidWorkflowStateSchemaError) {
+      if (ownership != FeatureTaskRuntimeSnapshotOwnership.EXPLICIT_MISMATCH) throw error
       null
     }
   }.filterNot { candidate -> candidate.isStaleAbandonedLineage(currentProjectedManifest) }

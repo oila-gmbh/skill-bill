@@ -97,6 +97,7 @@ import skillbill.ports.workflow.gitops.model.WorkflowGitOperationResult
 import skillbill.ports.workflow.model.FeatureImplementSessionSummary
 import skillbill.ports.workflow.model.FeatureTaskExecutionIdentity
 import skillbill.ports.workflow.model.FeatureTaskRouteScope
+import skillbill.ports.workflow.model.FeatureTaskRuntimeSnapshot
 import skillbill.ports.workflow.model.FeatureTaskWorkflowCandidate
 import skillbill.ports.workflow.model.FeatureTaskWorkflowMode
 import skillbill.ports.workflow.model.FeatureVerifySessionSummary
@@ -743,6 +744,47 @@ class WorkflowServiceDecomposedParentTest {
           "plan" to mapOf("mode" to "decompose"),
           DECOMPOSITION_RUNTIME_ARTIFACT_KEY to
             encodeDecompositionManifestMap(parentRuntime, testDecompositionManifestValidator),
+        ),
+      ),
+    )
+
+    val selected = workflows.findDecomposedParentWorkflow("SKILL-52.1", testDecompositionManifestValidator)
+
+    assertEquals("wfl-parent", selected?.workflowId)
+  }
+
+  @Test
+  fun `decomposed parent lookup skips malformed child with an identity for another issue`() {
+    val workflows = InMemoryWorkflowStates()
+    workflows.saveFeatureTaskRuntimeWorkflow(
+      workflowRecord(
+        workflowId = "wfl-other-child",
+        artifactsPatch = emptyMap(),
+      ).copy(
+        issueKey = null,
+        artifactsJson = "not-json",
+      ),
+    )
+    workflows.saveFeatureTaskExecutionIdentity(
+      FeatureTaskExecutionIdentity(
+        workflowId = "wfl-other-child",
+        normalizedIssueKey = "OTHER-52.1",
+        repositoryIdentity = "repo",
+        governedSpecPath = ".feature-specs/OTHER-52.1/spec.md",
+        mode = FeatureTaskWorkflowMode.RUNTIME,
+        routeScope = FeatureTaskRouteScope.GOAL_CHILD,
+      ),
+    )
+    workflows.saveFeatureTaskRuntimeWorkflow(
+      workflowRecord(
+        workflowId = "wfl-parent",
+        artifactsPatch = mapOf(
+          "plan" to mapOf("mode" to "decompose"),
+          DECOMPOSITION_RUNTIME_ARTIFACT_KEY to
+            encodeDecompositionManifestMap(
+              decompositionRuntime(status = "in_progress"),
+              testDecompositionManifestValidator,
+            ),
         ),
       ),
     )
@@ -4029,6 +4071,19 @@ internal class InMemoryWorkflowStates : WorkflowStateRepository {
     }
     .map { row -> FeatureTaskWorkflowCandidate(identities[row.workflowId], row) }
 
+  override fun findGoalChildFeatureTaskCandidatesForExecution(
+    normalizedIssueKey: String,
+    repositoryIdentity: String,
+  ): List<FeatureTaskWorkflowCandidate> = featureTaskRowsInInsertionOrder()
+    .filter { row ->
+      identities[row.workflowId]?.let { identity ->
+        identity.normalizedIssueKey == normalizedIssueKey &&
+          identity.repositoryIdentity == repositoryIdentity &&
+          identity.routeScope == FeatureTaskRouteScope.GOAL_CHILD
+      } ?: row.issueKey.isNullOrBlank()
+    }
+    .map { row -> FeatureTaskWorkflowCandidate(identities[row.workflowId], row) }
+
   override fun countGoalChildIdentities(normalizedIssueKey: String): Int = identities.values.count { identity ->
     identity.normalizedIssueKey == normalizedIssueKey && identity.routeScope == FeatureTaskRouteScope.GOAL_CHILD
   }
@@ -4112,6 +4167,8 @@ internal class InMemoryWorkflowStates : WorkflowStateRepository {
     (taskRuntime.values + implement.values.filter { it.mode == FeatureTaskWorkflowMode.RUNTIME })
       .distinctBy(WorkflowStateRecord::workflowId)
       .take(limit)
+  override fun listFeatureTaskRuntimeSnapshots(limit: Int): List<FeatureTaskRuntimeSnapshot> =
+    listFeatureTaskRuntimeWorkflows(limit).map { row -> FeatureTaskRuntimeSnapshot(row, identities[row.workflowId]) }
   override fun latestFeatureTaskRuntimeWorkflow(): WorkflowStateRecord? =
     listFeatureTaskRuntimeWorkflows(Int.MAX_VALUE).lastOrNull()
 

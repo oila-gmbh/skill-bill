@@ -26,6 +26,7 @@ internal fun linkPlannedSkill(
     stagingDir = stagingDir,
     agentTarget = agentTarget,
     installedSkillsRoot = installedSkillsCacheRoot(plan.request.home),
+    allowExternalReplacement = plan.request.replaceExistingSkillBillLinks,
   ).also { outcome ->
     outcome.issue?.let(failures::add)
   }
@@ -36,6 +37,7 @@ private fun linkSkillToAgent(
   stagingDir: Path,
   agentTarget: InstallAgentTarget,
   installedSkillsRoot: Path,
+  allowExternalReplacement: Boolean,
 ): InstallAgentSkillLinkOutcome {
   val targetDir = agentTarget.path.toAbsolutePath().normalize()
   val context = SkillLinkContext(
@@ -45,6 +47,7 @@ private fun linkSkillToAgent(
     linkPath = targetDir.resolve(skillName).normalize(),
     linkTarget = stagingDir.toAbsolutePath().normalize(),
     installedSkillsRoot = installedSkillsRoot.toAbsolutePath().normalize(),
+    allowExternalReplacement = allowExternalReplacement,
   )
   return runCatching { createOrSkipSkillLink(context) }
     .getOrElse { error -> failedSkillLinkOutcome(context, error) }
@@ -62,7 +65,10 @@ private fun createOrSkipSkillLink(context: SkillLinkContext): InstallAgentSkillL
         message = "already linked to ${context.linkTarget}",
       )
     }
-    require(existingTarget != null && existingTarget.startsWith(context.installedSkillsRoot)) {
+    require(
+      context.allowExternalReplacement ||
+        (existingTarget != null && existingTarget.startsWith(context.installedSkillsRoot)),
+    ) {
       "Existing symlink at ${context.linkPath} points outside Skill Bill installed-skills cache and was preserved."
     }
   } else if (Files.exists(context.linkPath, LinkOption.NOFOLLOW_LINKS)) {
@@ -141,4 +147,5 @@ private data class SkillLinkContext(
   val linkPath: Path,
   val linkTarget: Path,
   val installedSkillsRoot: Path,
+  val allowExternalReplacement: Boolean,
 )

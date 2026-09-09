@@ -42,13 +42,24 @@ class GoalControlSubcommands(
 )
 
 @Inject
-class GoalRunSubcommands(
+class GoalRunInspectionSubcommands(
   val preflight: GoalPreflightCommand,
   val status: GoalStatusCommand,
   val watch: GoalWatchCommand,
+)
+
+@Inject
+class GoalRunReportingSubcommands(
   val controls: GoalControlSubcommands,
   val findings: GoalFindingsCommand,
   val planningLog: GoalPlanningLogCommand,
+  val pruneStaleWorkflows: GoalPruneStaleWorkflowsCommand,
+)
+
+@Inject
+class GoalRunSubcommands(
+  val inspection: GoalRunInspectionSubcommands,
+  val reporting: GoalRunReportingSubcommands,
 )
 
 @Inject
@@ -118,19 +129,20 @@ class GoalRunCommand(
 
   init {
     subcommands(
-      goalRunSubcommands.preflight,
-      goalRunSubcommands.status,
-      goalRunSubcommands.watch,
-      goalRunSubcommands.controls.flow.pause,
-      goalRunSubcommands.controls.flow.stop,
-      goalRunSubcommands.controls.flow.resume,
-      goalRunSubcommands.controls.flow.reset,
-      goalRunSubcommands.controls.operator.replan,
-      goalRunSubcommands.controls.operator.accept,
-      goalRunSubcommands.controls.operator.repair,
-      goalRunSubcommands.controls.operator.operatorDecision,
-      goalRunSubcommands.findings,
-      goalRunSubcommands.planningLog,
+      goalRunSubcommands.inspection.preflight,
+      goalRunSubcommands.inspection.status,
+      goalRunSubcommands.inspection.watch,
+      goalRunSubcommands.reporting.controls.flow.pause,
+      goalRunSubcommands.reporting.controls.flow.stop,
+      goalRunSubcommands.reporting.controls.flow.resume,
+      goalRunSubcommands.reporting.controls.flow.reset,
+      goalRunSubcommands.reporting.controls.operator.replan,
+      goalRunSubcommands.reporting.controls.operator.accept,
+      goalRunSubcommands.reporting.controls.operator.repair,
+      goalRunSubcommands.reporting.controls.operator.operatorDecision,
+      goalRunSubcommands.reporting.findings,
+      goalRunSubcommands.reporting.planningLog,
+      goalRunSubcommands.reporting.pruneStaleWorkflows,
     )
   }
 

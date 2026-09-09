@@ -10,10 +10,8 @@ import skillbill.goalrunner.model.ExecutionLiveness
 import skillbill.goalrunner.model.GoalRunnerStatusProjection
 import skillbill.goalrunner.model.GoalRunnerStatusProjectionExtras
 import skillbill.goalrunner.model.GoalRunnerStatusProjector
-import skillbill.ports.featuretask.model.FeatureTaskRuntimeWorkerOwnership
 import skillbill.ports.goalrunner.runner.model.GoalRunnerManifestState
 import skillbill.ports.goalrunner.runner.model.GoalRunnerOutOfBandAcceptance
-import skillbill.ports.taskruntime.model.FeatureTaskRuntimeProcessInspection
 import skillbill.ports.workflow.gitops.model.WorkflowSelectedDiffHunksRequest
 import skillbill.ports.workflow.model.FeatureTaskWorkflowMode
 import skillbill.workflow.decomposition.model.DecompositionManifest
@@ -28,7 +26,6 @@ class GoalRunnerStatusProjectionAssembler(deps: GoalRunnerStatusProjectionAssemb
   val gitOperations = deps.gitOperations
   val attemptLedgerStore = deps.attemptLedgerStore
   val clock = deps.clock
-  val workerSupervisor = deps.workerSupervisor
   val planningStatusReasonCoherence = deps.planningStatusReasonCoherence
   val diagnostics = deps.diagnostics
   val runtimeStatusService = deps.runtimeStatusService
@@ -204,7 +201,7 @@ internal fun GoalRunnerStatusProjectionAssembler.resolveChildExecutionLiveness(
   } else {
     val ownership = phaseRecorder.workerOwnership(workflowId, dbPathOverride)
     if (ownership != null && Instant.parse(ownership.expiresAt).isAfter(clock.instant())) {
-      livenessOfLeaseOwner(ownership)
+      livenessOfLeaseOwner()
     } else {
       ExecutionLiveness.IDLE
     }
@@ -218,21 +215,13 @@ internal fun GoalRunnerStatusProjectionAssembler.resolveParentExecutionLiveness(
   val lease = manifestStore.executionLease(parentWorkflowId, dbPathOverride)
     ?: return@runCatching ExecutionLiveness.IDLE
   if (Instant.parse(lease.expiresAt).isAfter(clock.instant())) {
-    livenessOfLeaseOwner(lease.asWorkerOwnership(parentWorkflowId))
+    livenessOfLeaseOwner()
   } else {
     ExecutionLiveness.IDLE
   }
 }.getOrDefault(ExecutionLiveness.UNKNOWN)
 
-internal fun GoalRunnerStatusProjectionAssembler.livenessOfLeaseOwner(
-  ownership: FeatureTaskRuntimeWorkerOwnership,
-): ExecutionLiveness = when (workerSupervisor.inspect(ownership)) {
-  FeatureTaskRuntimeProcessInspection.NotRunning -> ExecutionLiveness.IDLE
-  FeatureTaskRuntimeProcessInspection.ExactLive,
-  is FeatureTaskRuntimeProcessInspection.OwnershipMismatch,
-  is FeatureTaskRuntimeProcessInspection.Unsupported,
-  -> ExecutionLiveness.LIVE
-}
+internal fun GoalRunnerStatusProjectionAssembler.livenessOfLeaseOwner(): ExecutionLiveness = ExecutionLiveness.LIVE
 
 internal fun GoalRunnerStatusProjectionAssembler.resolveActiveAgent(
   currentSubtask: DecompositionSubtask?,

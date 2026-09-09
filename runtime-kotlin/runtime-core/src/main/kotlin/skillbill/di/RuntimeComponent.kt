@@ -7,6 +7,7 @@ import skillbill.application.config.ConfigResolutionService
 import skillbill.application.featuretask.FeatureTaskContinuationLookupService
 import skillbill.application.featuretask.FeatureTaskRuntimePhaseRecorder
 import skillbill.application.featuretask.FeatureTaskRuntimeRunner
+import skillbill.application.featuretask.FeatureTaskRuntimeStaleWorkflowService
 import skillbill.application.featuretask.FeatureTaskRuntimeStatusService
 import skillbill.application.featuretask.FeatureTaskRuntimeWorkerCoordinator
 import skillbill.application.goalplanning.GoalPlanningPreparationCheckpoint
@@ -106,6 +107,7 @@ abstract class RuntimeComponent(
   abstract val agentRunService: AgentRunService
   abstract val featureTaskRuntimePhaseRecorder: FeatureTaskRuntimePhaseRecorder
   abstract val featureTaskRuntimeRunner: FeatureTaskRuntimeRunner
+  abstract val featureTaskRuntimeStaleWorkflowService: FeatureTaskRuntimeStaleWorkflowService
   abstract val featureTaskRuntimeStatusService: FeatureTaskRuntimeStatusService
   abstract val featureTaskRuntimeWorkerCoordinator: FeatureTaskRuntimeWorkerCoordinator
   abstract val goalPlanningPreparationCheckpoint: GoalPlanningPreparationCheckpoint

@@ -329,6 +329,7 @@ internal fun workflowGoalRunnerOutcomeStoreDeps(
   clock = testHarnessClock,
   decompositionManifestWriter = testDecompositionManifestWriter,
   childRepairExecutor = testGoalRunnerChildRepairExecutor(gitOperations),
+  diagnostics = NoopRuntimeDiagnostics,
 )
 
 internal fun outcomeStoreDeps(

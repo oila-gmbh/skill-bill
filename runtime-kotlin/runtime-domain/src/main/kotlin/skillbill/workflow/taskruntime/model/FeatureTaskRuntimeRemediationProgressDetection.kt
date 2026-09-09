@@ -60,8 +60,13 @@ fun detectAuditRepairNonProgress(
   return FeatureTaskRuntimeAuditRepairProgressDecision(
     blocked = blocked,
     reason = if (blocked) {
-      "Audit made no progress: the unresolved criterion set did not shrink and repository evidence " +
-        "did not change."
+      if (repositoryChanged) {
+        "Audit made no progress: the unresolved criterion set did not shrink even though repository " +
+          "evidence changed."
+      } else {
+        "Audit made no progress: the unresolved criterion set did not shrink and repository fingerprint " +
+          "is unchanged."
+      }
     } else {
       null
     },

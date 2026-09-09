@@ -61,12 +61,17 @@ internal fun createWorkflowGoalRunnerOutcomeStoreBridges(
     args.clock,
   )
   val outcomeReconcile = WorkflowGoalRunnerOutcomeReconcile(
-    engine,
-    args.gitOperations,
-    args.goalObservabilityEventValidator,
-    blockWrites,
-    terminalPersistence,
-    args.clock,
+    runtime = WorkflowGoalRunnerOutcomeReconcileRuntime(
+      engine = engine,
+      gitOperations = args.gitOperations,
+      goalObservabilityEventValidator = args.goalObservabilityEventValidator,
+      clock = args.clock,
+      diagnostics = args.diagnostics,
+    ),
+    persistence = WorkflowGoalRunnerOutcomeReconcilePersistence(
+      blockWrites = blockWrites,
+      terminalPersistence = terminalPersistence,
+    ),
   )
   val progressRecording = WorkflowGoalRunnerProgressRecording(
     args.database,

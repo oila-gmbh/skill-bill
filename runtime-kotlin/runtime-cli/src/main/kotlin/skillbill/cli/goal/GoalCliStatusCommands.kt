@@ -8,12 +8,12 @@ import com.github.ajalt.clikt.parameters.options.multiple
 import com.github.ajalt.clikt.parameters.options.option
 import com.github.ajalt.clikt.parameters.types.int
 import me.tatarka.inject.annotations.Inject
-import skillbill.contracts.issuekey.MAX_ISSUE_KEY_LENGTH
 import skillbill.application.goalrunner.GoalRunnerStatusService
-import skillbill.contracts.issuekey.isWellFormedIssueKey
 import skillbill.cli.kernel.CliRunState
 import skillbill.cli.kernel.DocumentedCliCommand
 import skillbill.cli.model.CliRunInputs
+import skillbill.contracts.issuekey.MAX_ISSUE_KEY_LENGTH
+import skillbill.contracts.issuekey.isWellFormedIssueKey
 import skillbill.error.DatabaseAccessError
 import skillbill.goalrunner.model.ExecutionLiveness
 import skillbill.ports.workflow.gitops.model.DEFAULT_SELECTED_DIFF_MAX_BYTES
@@ -179,7 +179,7 @@ class GoalWatchCommand(
       )
       val refresh = projection.toGoalStatusCliMap(issueKey).withWatchRefresh(refreshCount)
       latestRefresh = refresh
-      consecutiveIdleRefreshes = if (projection?.executionLiveness == ExecutionLiveness.IDLE) {
+      consecutiveIdleRefreshes = if (refresh["execution_liveness"] == ExecutionLiveness.IDLE.wireValue) {
         consecutiveIdleRefreshes + 1
       } else {
         0
