@@ -1,5 +1,6 @@
 package skillbill.ports.work.model
 
+import skillbill.workflow.model.WorkflowStatus
 import java.time.Instant
 
 enum class WorkItemKind(val wireValue: String) {
@@ -18,7 +19,15 @@ enum class WorkItemKind(val wireValue: String) {
  * dispatches on it.
  */
 val LEGACY_FEATURE_TASK_PROSE_WORKFLOW_STATUSES: Set<String> =
-  setOf("pending", "running", "completed", "failed", "abandoned", "blocked", "paused")
+  setOf(
+    WorkflowStatus.PENDING.wireValue,
+    WorkflowStatus.RUNNING.wireValue,
+    WorkflowStatus.COMPLETED.wireValue,
+    WorkflowStatus.FAILED.wireValue,
+    WorkflowStatus.ABANDONED.wireValue,
+    WorkflowStatus.BLOCKED.wireValue,
+    WorkflowStatus.PAUSED.wireValue,
+  )
 
 data class WorkItem(
   val issueKey: String?,

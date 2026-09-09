@@ -102,6 +102,8 @@ object PrincipleEnforcementInventory {
   )
 
   val enforceableRules: List<String> = listOf(
+    "Wire vocabulary and contract-key declarations must be unique, dynamically indexed, and referenced " +
+      "without local token collections or literal payload-key accesses.",
     "Package clustering: loose files in a subpackaged area must not belong to a sibling area cluster.",
     "Production line ceiling: no production Kotlin file may exceed 500 lines without an explicit exemption.",
     "Production logical-type line ceiling: attribute extension files to receiver types and enforce combined totals.",

@@ -6,6 +6,7 @@ import skillbill.error.InvalidWorkflowStateSchemaError
 import skillbill.review.context.model.CodeReviewExecutionMode
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_GOAL_CONTINUATION_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeGoalContinuationArtifact
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeReviewSeverity
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeVerdict
 
 val GOAL_SUBTASK_REVIEW_PASS_VERDICTS: Set<FeatureTaskRuntimeVerdict> = setOf(
@@ -33,7 +34,9 @@ data class GoalSubtaskReviewCompactFinding(
   val blocksAdvance: Boolean get() = severity == GOAL_SUBTASK_REVIEW_BLOCKER_SEVERITY || severity == "major"
 
   init {
-    require(severity in setOf("blocker", "major", "minor", "nit")) { "Invalid review finding severity '$severity'." }
+    require(severity in FeatureTaskRuntimeReviewSeverity.entries.map { it.wireValue }) {
+      "Invalid review finding severity '$severity'."
+    }
     require(label.isNotBlank()) { "GoalSubtaskReviewCompactFinding.label must be non-blank." }
     require(text.isNotBlank()) { "GoalSubtaskReviewCompactFinding.text must be non-blank." }
     findingId?.let { require(it.isNotBlank()) { "GoalSubtaskReviewCompactFinding.findingId must be non-blank." } }

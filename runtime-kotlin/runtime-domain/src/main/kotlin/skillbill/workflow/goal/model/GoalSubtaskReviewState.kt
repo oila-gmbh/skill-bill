@@ -164,8 +164,6 @@ data class GoalSubtaskReviewState(
       unresolvedFindingCount = unresolvedFindingCount,
       findings = findings,
       executedMode = executedMode,
-      // An inline pass carries no delegated commit sequence, so accounting a caller offers anyway is
-      // dropped rather than fabricated into durable state.
       commitFocusedAccounting = commitFocusedAccounting
         ?.takeIf { executedMode != CodeReviewExecutionMode.INLINE },
     )

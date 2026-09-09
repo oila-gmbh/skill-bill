@@ -2124,6 +2124,19 @@ _None — placeholder._
 - `skillbill.workflow.engine.WorkflowEngine.continueDecision` [subtask 4] — workflow-engine continue-decision raw-map seam.
 
 <!-- skill-52-2-inventory:end -->
+
+# Wire vocabulary
+
+Runtime-domain wire-token declarations own closed enum tokens and their aliases. Runtime-contracts
+`*Keys` declarations own durable and wire payload keys; `SharedPayloadKeys` is the shared owner for
+the workflow envelope keys. `ProsePhaseOutputParse` delegates status normalization to
+`SettlementStatus`, while `DecompositionStatus` retains its separate `completed` input alias and
+`complete` output token. `WireVocabularyArchitectureTest` discovers every runtime main source
+through `RuntimeModuleCatalog`, indexes declarations with source locations, rejects same-owner
+duplicates and local vocabulary restatements, and reports the measured baseline-to-final delta.
+Identical spellings in different enums remain separate when their decoding context differs; the
+owner and decoder are recorded together so a lexical match cannot silently change wire behavior.
+
 # Native-agent installation integrity
 
 Native-agent rendering promotes artifacts atomically into the installed cache and records each

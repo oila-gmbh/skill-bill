@@ -1,6 +1,7 @@
 package skillbill.workflow.taskruntime
 
 import skillbill.boundary.OpenBoundaryMap
+import skillbill.contracts.SharedPayloadKeys
 import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_CONTRACT_VERSION
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT
@@ -68,25 +69,26 @@ object ProsePhaseOutputSynthesizer {
   }
 
   private fun stampEnvelope(request: SettlementEnvelopeRequest): Map<String, Any?> {
-    val produced = linkedMapOf<String, Any?>("value" to request.value)
+    val produced = linkedMapOf<String, Any?>(SharedPayloadKeys.VALUE to request.value)
     if (!request.prompt.isNullOrBlank()) {
-      produced["prompt"] = request.prompt
+      produced[SharedPayloadKeys.PROMPT] = request.prompt
     }
     val envelope = linkedMapOf<String, Any?>(
-      "contract_version" to FEATURE_TASK_RUNTIME_CONTRACT_VERSION,
-      "phase_id" to request.phaseId,
-      "status" to request.status,
-      "summary" to request.summary,
-      "produced_outputs" to produced,
+      SharedPayloadKeys.CONTRACT_VERSION to FEATURE_TASK_RUNTIME_CONTRACT_VERSION,
+      SharedPayloadKeys.PHASE_ID to request.phaseId,
+      SharedPayloadKeys.STATUS to request.status,
+      SharedPayloadKeys.SUMMARY to request.summary,
+      SharedPayloadKeys.PRODUCED_OUTPUTS to produced,
+    )
     )
     if (request.phaseId == PHASE_AUDIT) {
       val resolved = requireNotNull(request.verdict?.takeIf { it in AUDIT_VERDICTS }) {
         "audit settlement requires verdict in $AUDIT_VERDICTS."
       }
-      envelope["verdict"] = resolved
+      envelope[SharedPayloadKeys.VERDICT] = resolved
     }
     if ((request.status == "blocked" || request.status == "failed") && !request.failureDisposition.isNullOrBlank()) {
-      envelope["failure_disposition"] = request.failureDisposition
+      envelope[SharedPayloadKeys.FAILURE_DISPOSITION] = request.failureDisposition
     }
     return envelope
   }

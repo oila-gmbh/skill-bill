@@ -147,6 +147,23 @@ class ProsePhaseOutputSynthesizerTest {
   }
 
   @Test
+  fun `historical prose status aliases retain canonical output`() {
+    listOf("complete" to "completed", "block" to "blocked", "fail" to "failed").forEach { (input, output) ->
+      val raw = """
+        {
+          "phase_id": "implement",
+          "status": "$input",
+          "summary": "Applied the plan.",
+          "produced_outputs": { "value": "implementation receipt" }
+        }
+      """.trimIndent()
+
+      val envelope = assertNotNull(ProsePhaseOutputSynthesizer.trySynthesize(raw, "implement"))
+      assertEquals(output, envelope["status"])
+    }
+  }
+
+  @Test
   fun `audit with verdict field synthesizes`() {
     val raw =
       """

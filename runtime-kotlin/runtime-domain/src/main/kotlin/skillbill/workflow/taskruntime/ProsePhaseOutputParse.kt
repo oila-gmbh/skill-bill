@@ -1,15 +1,11 @@
 package skillbill.workflow.taskruntime
 
 import skillbill.contracts.JsonSupport
+import skillbill.contracts.SharedPayloadKeys
 import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_CONTRACT_VERSION
+import skillbill.workflow.taskruntime.model.SettlementStatus
 
 internal object ProsePhaseOutputParse {
-  private val STATUS_TOKENS: Set<String> = setOf("completed", "blocked", "failed")
-  private val STATUS_ALIASES: Map<String, String> = mapOf(
-    "complete" to "completed",
-    "block" to "blocked",
-    "fail" to "failed",
-  )
   private val FENCED_JSON: Regex =
     Regex("```[ \\t]*[A-Za-z0-9_-]*\\r?\\n(.*?)```", RegexOption.DOT_MATCHES_ALL)
 
@@ -27,22 +23,22 @@ internal object ProsePhaseOutputParse {
   }
 
   fun identityCompatible(parsed: Map<String, Any?>, phaseId: String): Boolean {
-    val parsedContractVersion = parsed["contract_version"]?.toString()
+    val parsedContractVersion = parsed[SharedPayloadKeys.CONTRACT_VERSION]?.toString()
     if (parsedContractVersion != null && parsedContractVersion != FEATURE_TASK_RUNTIME_CONTRACT_VERSION) return false
-    val parsedPhase = parsed["phase_id"]?.toString()
+    val parsedPhase = parsed[SharedPayloadKeys.PHASE_ID]?.toString()
     if (parsedPhase != null && parsedPhase != phaseId) return false
-    val parsedStatus = parsed["status"]?.toString()?.trim()?.lowercase()
+    val parsedStatus = parsed[SharedPayloadKeys.STATUS]?.toString()?.trim()?.lowercase()
     return parsedStatus == null || canonicalStatus(parsedStatus) != null
   }
 
   fun recoverStatus(parsed: Map<String, Any?>): String? {
-    val raw = parsed["status"]?.toString()?.trim()?.lowercase().orEmpty()
-    if (raw.isEmpty()) return "completed"
+    val raw = parsed[SharedPayloadKeys.STATUS]?.toString()?.trim()?.lowercase().orEmpty()
+    if (raw.isEmpty()) return SettlementStatus.COMPLETED.wireValue
     return canonicalStatus(raw)
   }
 
   private fun canonicalStatus(lowercased: String): String? =
-    lowercased.takeIf { it in STATUS_TOKENS } ?: STATUS_ALIASES[lowercased]
+    SettlementStatus.fromWire(lowercased)?.wireValue
 }
 
 private fun parseObject(raw: String): Map<String, Any?>? {

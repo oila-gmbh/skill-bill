@@ -1,5 +1,6 @@
 package skillbill.cli.featuretask
 
+import skillbill.workflow.model.DecompositionStatus
 import skillbill.application.featuretask.model.FeatureTaskRuntimeRunReport
 import skillbill.application.featuretask.model.FeatureTaskRuntimeSubtaskOutcome
 
@@ -73,7 +74,8 @@ internal fun Map<String, Any?>.withSubtaskOutcome(outcome: FeatureTaskRuntimeSub
 
 internal fun Map<String, Any?>.runtimeRunExitCode(): Int = if (isTerminalSuccessStatus()) 0 else 1
 
-internal fun Map<String, Any?>.isTerminalSuccessStatus(): Boolean = this["status"] in setOf("complete", "decomposed")
+internal fun Map<String, Any?>.isTerminalSuccessStatus(): Boolean =
+  this["status"] in setOf(DecompositionStatus.COMPLETE.wireValue, "decomposed")
 
 internal fun runtimeRunText(payload: Map<String, Any?>): String = buildString {
   appendLine("feature-task-runtime: ${payload["issue_key"]}")
