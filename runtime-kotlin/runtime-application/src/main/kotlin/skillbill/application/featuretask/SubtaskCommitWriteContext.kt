@@ -83,12 +83,12 @@ internal fun loadSubtaskCommitWriteContext(
 }
 
 internal fun SubtaskCommitWriteContext.ownershipFailure(
-  runLoop: FeatureTaskRuntimeRunLoop,
+  isGoalContinuation: Boolean,
   branch: String,
   identity: FeatureTaskRuntimeSubtaskCommitIdentity,
 ): String? = basicOwnershipFailure(branch)
   ?: durableOwnershipFailure(branch, identity)
-  ?: unownedOwnershipFailure(runLoop, identity)
+  ?: unownedOwnershipFailure(isGoalContinuation, identity)
 
 private fun SubtaskCommitWriteContext.basicOwnershipFailure(branch: String): String? = when {
   !headOk -> "HEAD could not be resolved ($headError)"
@@ -112,7 +112,7 @@ private fun SubtaskCommitWriteContext.durableOwnershipFailure(
 }
 
 private fun SubtaskCommitWriteContext.unownedOwnershipFailure(
-  runLoop: FeatureTaskRuntimeRunLoop,
+  isGoalContinuation: Boolean,
   identity: FeatureTaskRuntimeSubtaskCommitIdentity,
 ): String? {
   val noDurableCommit = ledger?.commitSha == null
@@ -120,13 +120,13 @@ private fun SubtaskCommitWriteContext.unownedOwnershipFailure(
   val identityMatches = identity.matches(headMessage)
   if (!noDurableCommit || !hasHead || identityMatches) return null
   return when {
+    isGoalContinuation && resolvedBranch?.branch == currentBranch.first &&
+      resolvedBranch.reviewBaseSha == headSha -> null
     unpushed ->
       "checked-out HEAD '$headSha' is an unowned unpushed commit and has no matching " +
         "'${identity.trailer}' trailer"
-    headMessage.contains("Skill-Bill-Subtask:") &&
-      !(isGoalContinuationRun(runLoop.request) && resolvedBranch?.reviewBaseSha == headSha) ->
-      "checked-out HEAD '$headSha' carries another subtask trailer"
-    isGoalContinuationRun(runLoop.request) && resolvedBranch?.reviewBaseSha != headSha ->
+    headMessage.contains("Skill-Bill-Subtask:") -> "checked-out HEAD '$headSha' carries another subtask trailer"
+    isGoalContinuation && resolvedBranch?.reviewBaseSha != headSha ->
       "checked-out HEAD '$headSha' is not the durable subtask base " +
         "'${resolvedBranch?.reviewBaseSha ?: "unresolved"}' " +
         "and has no matching '${identity.trailer}' trailer"

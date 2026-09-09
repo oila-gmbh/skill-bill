@@ -24,7 +24,7 @@ class FeatureTaskRuntimeRunLoopCheckpointSubtaskCommitLedger {
       context.failure ?: "subtask commit write context could not be resolved",
       null,
     )
-    context.ownershipFailure(runLoop, branch, identity)?.let {
+    context.ownershipFailure(isGoalContinuationRun(runLoop.request), branch, identity)?.let {
       return reconciliationFailureResult(runLoop, identity, it, null)
     }
     val decision = FeatureTaskRuntimeSubtaskCommitResolver.decide(
