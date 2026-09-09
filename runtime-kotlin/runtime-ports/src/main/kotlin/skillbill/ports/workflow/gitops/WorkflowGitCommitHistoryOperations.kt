@@ -23,4 +23,9 @@ interface WorkflowGitCommitHistoryOperations {
     status = "error",
     error = "This git operations implementation cannot resolve commit '$revision'.",
   )
+
+  fun resolveTree(repoRoot: Path, revision: String): WorkflowGitOperationResult = WorkflowGitOperationResult(
+    status = "error",
+    error = "This git operations implementation cannot resolve tree '$revision'.",
+  )
 }

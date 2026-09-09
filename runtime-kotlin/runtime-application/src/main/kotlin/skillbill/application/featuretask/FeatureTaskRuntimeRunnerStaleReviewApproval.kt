@@ -1,9 +1,9 @@
 package skillbill.application.featuretask
 
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeCheckpointIdentity
 import skillbill.application.featuretask.model.FeatureTaskRuntimeRunRequest
 import skillbill.application.featuretask.model.FeatureTaskRuntimeSubtaskCommitIdentity
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeCheckpointIdentity
 
 private data class StaleReviewApprovalContext(
   val reviewedTarget: String,
@@ -38,14 +38,14 @@ internal fun invalidateStaleGoalReviewApprovalForGoalRuntime(
   var identityReadFailure: String? = null
   if (!context.dirtyRepair && runner.phaseGates.gitOperations.reviewIdentityStillAuthoritative(
       ReviewIdentityAuthorityRequest(
-      request.repoRoot,
-      context.reviewedTarget,
-      context.currentHead,
-      context.reviewedTree,
-      context.currentTree,
-      context.durableTarget,
-      context.identity,
-      onReadFailure = { identityReadFailure = it },
+        request.repoRoot,
+        context.reviewedTarget,
+        context.currentHead,
+        context.reviewedTree,
+        context.currentTree,
+        context.durableTarget,
+        context.identity,
+        onReadFailure = { identityReadFailure = it },
       ),
     )
   ) {
@@ -68,7 +68,7 @@ private fun loadStaleReviewApprovalContext(
     staleApprovalFailure(runner, request, "current HEAD could not be resolved (${head.error})", null)
   }
   val currentHead = head.value.orEmpty().trim()
-  val tree = runner.phaseGates.gitOperations.resolveCommit(request.repoRoot, "$currentHead^{tree}")
+  val tree = runner.phaseGates.gitOperations.resolveTree(request.repoRoot, currentHead)
   if (!tree.ok || tree.value.orEmpty().isBlank()) {
     staleApprovalFailure(runner, request, "current HEAD tree could not be resolved (${tree.error})", null)
   }

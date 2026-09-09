@@ -4,10 +4,10 @@ import skillbill.application.InMemoryRuntimeWorkflowRepository
 import skillbill.application.RuntimeFakeDatabaseSessionFactory
 import skillbill.application.testWorkflowSnapshotValidator
 import skillbill.error.FeatureTaskRuntimeSubtaskCommitReconciliationError
-import skillbill.ports.workflow.gitops.NoopWorkflowGitOperations
 import skillbill.ports.db.DatabaseSessionFactory
 import skillbill.ports.diagnostics.RuntimeDiagnostics
 import skillbill.ports.persistence.UnitOfWork
+import skillbill.ports.workflow.gitops.NoopWorkflowGitOperations
 import java.nio.file.Path
 import java.time.Clock
 import kotlin.test.Test

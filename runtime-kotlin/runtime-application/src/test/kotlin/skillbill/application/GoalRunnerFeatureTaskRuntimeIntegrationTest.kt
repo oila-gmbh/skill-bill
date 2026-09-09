@@ -167,7 +167,7 @@ class GoalRunnerFeatureTaskRuntimeIntegrationTest {
       ),
     )
 
-    assertIs<GoalRunnerRunReport.Completed>(report)
+    assertIs<GoalRunnerRunReport.Completed>(report, report.toString())
     val reviewPrompts = phaseLauncher.requests
       .mapNotNull { it.skillRunRequest.promptOverride }
       .filter { it.contains("Phase: review") }
@@ -220,7 +220,7 @@ class GoalRunnerFeatureTaskRuntimeIntegrationTest {
       ),
     )
 
-    assertIs<GoalRunnerRunReport.Completed>(report)
+    assertIs<GoalRunnerRunReport.Completed>(report, report.toString())
     val launched = phaseLauncher.requests.map {
       phaseIdFromPrompt(requireNotNull(it.skillRunRequest.promptOverride))
     }
@@ -322,8 +322,8 @@ class GoalRunnerFeatureTaskRuntimeIntegrationTest {
       assertIs<GoalRunnerRunReport.Completed>(parity.report)
       parity.runtime.goalChildObservation(parity.childReports.last(), parity.authoritativeOutcome()).also {
         assertEquals(
-          standaloneObservation.copy(reviewComposition = it.reviewComposition),
-          it,
+          standaloneObservation.withoutCommitIdentities(),
+          it.withoutCommitIdentities(),
           "standalone and goal-child observations must match",
         )
         assertReviewCompositionParity(standaloneObservation, it)
@@ -387,7 +387,7 @@ private fun RunnerHarness.goalChildObservation(
         prompt
           .replace(Regex("for issue SKILL-\\d+\\."), "for issue <issue>.")
           .substringAfter("### from: audit\n")
-          .substringBefore("### from:")
+          .substringBefore("### prior_gap_memory")
           .trim()
       },
     reviewComposition = launcher.requests.mapNotNull { it.skillRunRequest.promptOverride }
@@ -515,13 +515,21 @@ private fun standaloneAndGoalChildParity(
     ),
   )
   assertEquals(goalChild.childReports.size, goalChild.continuationRequestCount)
+  val standaloneObservation = standalone.goalChildObservation(standaloneReport)
+  val childObservation = goalChild.runtime.goalChildObservation(
+    goalChild.childReports.last(),
+    goalChild.authoritativeOutcome(),
+  )
+  listOf(standalone to standaloneObservation, goalChild.runtime to childObservation).forEach { (runtime, observation) ->
+    if (observation.terminalReport.status == "complete") {
+      assertEquals(runtime.gitOperations.headCommitShaValue, observation.terminalReport.commitSha)
+      assertEquals(observation.terminalReport, observation.authoritativeOutcome)
+    }
+  }
   assertEquals(
-    standalone.goalChildObservation(standaloneReport).copy(
-      reviewComposition = goalChild.runtime
-        .goalChildObservation(goalChild.childReports.last(), goalChild.authoritativeOutcome()).reviewComposition,
-    ),
-    goalChild.runtime.goalChildObservation(goalChild.childReports.last(), goalChild.authoritativeOutcome()),
-    "standalone and goal-child durable scenario observations must match",
+    standaloneObservation.withoutCommitIdentities(),
+    childObservation.withoutCommitIdentities(),
+    "standalone and goal-child durable behavior must match independently of checkpoint identities",
   )
   assertReviewCompositionParity(
     standalone.goalChildObservation(standaloneReport),
@@ -537,6 +545,14 @@ private fun standaloneAndGoalChildParity(
   }
   return goalChild
 }
+
+private fun GoalChildObservation.withoutCommitIdentities(): GoalChildObservation = copy(
+  persistedOutputs = persistedOutputs.mapValues { (_, output) ->
+    output.replace(Regex("[0-9a-f]{40}"), "<commit>")
+  },
+  terminalReport = terminalReport.copy(commitSha = terminalReport.commitSha?.let { "<commit>" }),
+  authoritativeOutcome = authoritativeOutcome.copy(commitSha = authoritativeOutcome.commitSha?.let { "<commit>" }),
+)
 
 private fun assertReviewCompositionParity(standalone: GoalChildObservation, goalChild: GoalChildObservation) {
   assertEquals(standalone.reviewComposition.size, goalChild.reviewComposition.size)

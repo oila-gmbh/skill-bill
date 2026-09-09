@@ -1,9 +1,9 @@
 package skillbill.application.featuretask
 
 import skillbill.application.featuretask.model.FeatureTaskRuntimeSubtaskCommitIdentity
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeResolvedBranch
 import skillbill.ports.workflow.gitops.commitMessage
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeCheckpointIdentity
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeResolvedBranch
 
 object FeatureTaskRuntimeSubtaskCommitMigrationNormalizer {
   fun reconcile(

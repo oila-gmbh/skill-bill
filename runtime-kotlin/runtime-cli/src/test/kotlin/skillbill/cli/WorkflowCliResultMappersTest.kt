@@ -160,7 +160,7 @@ class WorkflowCliResultMappersTest {
       ).toCliMap(testGoalObservabilityEventValidator)
     }
 
-    assertEquals("", error.fieldPath)
+    assertEquals("contract_version", error.fieldPath)
   }
 
   @Test

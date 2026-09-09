@@ -269,6 +269,8 @@ internal data class PhaseReviewPersistenceArgs(
   val fileManifest: FeatureTaskRuntimePhaseFileManifest,
 )
 
+internal data object CommitPushReaudit : CommitPushFinalisation
+
 internal sealed interface CommitPushFinalisation
 
 data object CommitPushNotApplicable : CommitPushFinalisation

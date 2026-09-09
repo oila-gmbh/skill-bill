@@ -1,14 +1,14 @@
 package skillbill.application.featuretask
 
-import skillbill.ports.workflow.gitops.headCommitMessage
-import kotlin.coroutines.cancellation.CancellationException
 import skillbill.application.featuretask.model.FeatureTaskRuntimeSubtaskCommitIdentity
 import skillbill.error.FeatureTaskRuntimeSubtaskCommitReconciliationError
+import skillbill.ports.workflow.gitops.headCommitMessage
 import skillbill.ports.workflow.gitops.model.WorkflowGitOperationResult
 import skillbill.ports.workflow.gitops.resolveCheckpointRef
 import skillbill.ports.workflow.gitops.updateCheckpointRef
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_CHECKPOINT_REF_NAMESPACE
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeCheckpointIdentity
+import kotlin.coroutines.cancellation.CancellationException
 
 internal fun persistCreatedSubtaskCommitRef(
   runLoop: FeatureTaskRuntimeRunLoop,
@@ -196,7 +196,11 @@ private fun reconcileLedgerHead(request: LedgerHeadReconciliationRequest): Boole
   val current = relevant.lastOrNull { it.commitSha == headSha }
   return if (current != null) {
     runLoop.collaborators.checkpointContinued5.verifyCurrentCheckpointTree(
-      runLoop, current, precedingPhaseId, branch, blockedReason,
+      runLoop,
+      current,
+      precedingPhaseId,
+      branch,
+      blockedReason,
     )
   } else {
     recoverMissingCheckpointIdentity(
@@ -276,7 +280,7 @@ private fun recoverMissingCheckpointIdentity(request: MissingCheckpointIdentityR
   val precedingPhaseId = request.precedingPhaseId
   val branch = request.branch
   val blockedReason = request.blockedReason
-  val tree = runLoop.phaseGates.gitOperations.resolveCommit(runLoop.request.repoRoot, "$headSha^{tree}")
+  val tree = runLoop.phaseGates.gitOperations.resolveTree(runLoop.request.repoRoot, headSha)
   if (!tree.ok || tree.value.orEmpty().isBlank()) {
     return blockLedgerReconciliation(
       runLoop,

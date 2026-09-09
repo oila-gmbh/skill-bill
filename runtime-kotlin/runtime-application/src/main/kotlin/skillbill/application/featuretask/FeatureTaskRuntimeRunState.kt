@@ -143,10 +143,10 @@ class FeatureTaskRuntimeRunState(
   }
 
   fun reopenForChangedRevision() {
-    listOf(
-      FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT,
-      FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW,
-    ).forEach { phaseId ->
+    resetInvalidatedReviewGeneration()
+    transitions.forwardPhaseIds.dropWhile {
+      it != FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT
+    }.forEach { phaseId ->
       reopenForReentry(phaseId)
       outputs.removeAll { it.phaseId == phaseId }
       priorRecords.remove(phaseId)

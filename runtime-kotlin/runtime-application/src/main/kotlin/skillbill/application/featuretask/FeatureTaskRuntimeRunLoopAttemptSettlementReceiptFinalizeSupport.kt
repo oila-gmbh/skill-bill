@@ -1,15 +1,15 @@
 package skillbill.application.featuretask
 
-import skillbill.application.featuretask.model.FeatureTaskRuntimeSubtaskCommitIdentity
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeResolvedBranch
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseRecord
 import skillbill.application.featuretask.model.FeatureTaskRuntimeCommitPushHandoffInvalid
 import skillbill.application.featuretask.model.FeatureTaskRuntimeCommitPushHandoffValid
+import skillbill.application.featuretask.model.FeatureTaskRuntimeSubtaskCommitIdentity
 import skillbill.application.featuretask.model.FeatureTaskRuntimeSubtaskFinalisationBlocked
 import skillbill.application.featuretask.model.FeatureTaskRuntimeSubtaskFinaliseRequest
 import skillbill.application.featuretask.model.FeatureTaskRuntimeSubtaskFinalised
 import skillbill.error.FeatureTaskRuntimeSubtaskCommitReconciliationError
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseRecord
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeResolvedBranch
 import skillbill.workflow.taskruntime.model.NormalizedFeatureTaskRuntimePhaseOutput
 import kotlin.coroutines.cancellation.CancellationException
 
@@ -61,6 +61,7 @@ private fun finaliseApplicableSubtaskCommit(
 private fun handleIdentityFailure(runLoop: FeatureTaskRuntimeRunLoop, reason: String): CommitPushFinalisation {
   if (reason.startsWith("review approval is stale:")) {
     runLoop.collaborators.driveContinued3.reenterAfterChangedRevision(runLoop)?.let { return CommitPushBlocked(it) }
+    return CommitPushReaudit
   }
   return CommitPushBlocked("needs_human: $reason")
 }
@@ -230,6 +231,7 @@ private fun executeFinalisation(
 private fun settleFinalisationBlock(runLoop: FeatureTaskRuntimeRunLoop, reason: String): CommitPushFinalisation {
   if (reason.contains("source changes after review")) {
     runLoop.collaborators.driveContinued3.reenterAfterChangedRevision(runLoop)?.let { return CommitPushBlocked(it) }
+    return CommitPushReaudit
   }
   return CommitPushBlocked(reason)
 }

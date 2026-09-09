@@ -1,11 +1,11 @@
 package skillbill.application.featuretask
 
-import skillbill.ports.workflow.gitops.restoreIndexState
-import skillbill.error.FeatureTaskRuntimeSubtaskCommitReconciliationError
 import me.tatarka.inject.annotations.Inject
 import skillbill.application.featuretask.model.AppendCheckpointIdentityArgs
 import skillbill.application.featuretask.model.FeatureTaskRuntimeSubtaskCommitIdentity
+import skillbill.error.FeatureTaskRuntimeSubtaskCommitReconciliationError
 import skillbill.ports.workflow.gitops.model.WorkflowGitOperationResult
+import skillbill.ports.workflow.gitops.restoreIndexState
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_STANDALONE_SUBTASK_ID
 
 @Inject

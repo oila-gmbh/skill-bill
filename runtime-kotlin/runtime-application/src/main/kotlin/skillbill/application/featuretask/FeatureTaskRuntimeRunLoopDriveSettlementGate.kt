@@ -123,6 +123,8 @@ class FeatureTaskRuntimeRunLoopDriveSettlementGate {
     }
     runLoop.state.advanceReviewGeneration(generation)
     runLoop.state.reopenForChangedRevision()
+    runLoop.session.pendingReentry = null
+    runLoop.session.activeReentry = null
     return null
   }
 
@@ -186,7 +188,10 @@ class FeatureTaskRuntimeRunLoopDriveSettlementGate {
     while (phaseId != null) {
       val settled = runLoop.advance(phaseId)
       val completedPhaseId = settled.completedPhaseId
-      phaseId = if (completedPhaseId != null) {
+      phaseId = if (runLoop.session.reviewReentryPending) {
+        runLoop.session.reviewReentryPending = false
+        FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT
+      } else if (completedPhaseId != null) {
         runLoop.collaborators.driveContinued2.nextPhaseAfter(
           runLoop,
           completedPhaseId,

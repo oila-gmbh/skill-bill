@@ -58,7 +58,9 @@ fun specExclusionRecord(identity: FeatureTaskRuntimeSubtaskCommitIdentity, paths
     "'${identity.issueKey}/${identity.subtaskId}' cause=governed feature specs are workflow input, " +
     "never subtask deliverable output, so they are dropped from the staged set and left dirty locally"
 
-internal fun isGovernedSpecPath(path: String): Boolean = normalizeRepoPath(path).let { it == GOVERNED_SPEC_ROOT.removeSuffix("/") || it.startsWith(GOVERNED_SPEC_ROOT) }
+internal fun isGovernedSpecPath(path: String): Boolean = normalizeRepoPath(path).let {
+  it == GOVERNED_SPEC_ROOT.removeSuffix("/") || it.startsWith(GOVERNED_SPEC_ROOT)
+}
 
 internal fun isBoundaryHistoryPath(
   path: String,

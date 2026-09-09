@@ -97,7 +97,7 @@ class WorkflowMcpResultMappersTest {
       ).toMcpMap(testGoalObservabilityEventValidator)
     }
 
-    assertEquals("", error.fieldPath)
+    assertEquals("contract_version", error.fieldPath)
   }
 
   @Test

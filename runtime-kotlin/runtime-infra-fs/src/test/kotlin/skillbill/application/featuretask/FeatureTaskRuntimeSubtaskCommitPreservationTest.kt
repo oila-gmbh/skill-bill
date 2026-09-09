@@ -182,7 +182,7 @@ class FeatureTaskRuntimeSubtaskCommitPreservationTest {
   }
 
   @Test
-  fun `approval follows only a preserved same-tree amendment on the owned branch`() {
+  fun `approval follows repeated preserved same-tree amendments on the owned branch`() {
     initialize()
     val operations = GitWorkflowGitOperations()
     assertTrue(operations.writeSubtaskCommitPreservingHistory(request(FeatureTaskRuntimeSubtaskCommitCreate)).ok)
@@ -193,48 +193,24 @@ class FeatureTaskRuntimeSubtaskCommitPreservationTest {
         .copy(allowUnchangedIndex = true, message = "reworded\n\n${identity.trailer}"),
     )
     assertTrue(amended.ok, amended.error)
-    val current = git("rev-parse", "HEAD")
-    val record = checkpoint(current, 1)
-    assertTrue(
-      operations.reviewIdentityStillAuthoritative(
-        ReviewIdentityAuthorityRequest(
-        repo,
-        reviewed,
-        current,
-        reviewedTree,
-        reviewedTree,
-        record,
-        identity,
-        ),
-      ),
+    val intermediate = git("rev-parse", "HEAD")
+    val reworded = operations.writeSubtaskCommitPreservingHistory(
+      request(FeatureTaskRuntimeSubtaskCommitAmend(intermediate, 2, false, false))
+        .copy(allowUnchangedIndex = true, message = "final message\n\n${identity.trailer}"),
     )
+    assertTrue(reworded.ok, reworded.error)
+    val current = git("rev-parse", "HEAD")
+    val record = checkpoint(current, 2)
+    val authority =
+      ReviewIdentityAuthorityRequest(repo, reviewed, current, reviewedTree, reviewedTree, record, identity)
+    assertEquals(reviewedTree, operations.resolveTree(repo, current).value.trim())
+    assertFalse(operations.resolveCommit(repo, reviewedTree).ok)
+    assertTrue(operations.reviewIdentityStillAuthoritative(authority))
     assertFalse(
-      operations.reviewIdentityStillAuthoritative(
-        ReviewIdentityAuthorityRequest(
-        repo,
-        reviewed,
-        current,
-        reviewedTree,
-        reviewedTree,
-        record.copy(branch = "foreign"),
-        identity,
-        ),
-      ),
+      operations.reviewIdentityStillAuthoritative(authority.copy(checkpoint = record.copy(branch = "foreign"))),
     )
     git("update-ref", record.checkpointRef, record.parentSha!!)
-    assertFalse(
-      operations.reviewIdentityStillAuthoritative(
-        ReviewIdentityAuthorityRequest(
-        repo,
-        reviewed,
-        current,
-        reviewedTree,
-        reviewedTree,
-        record,
-        identity,
-        ),
-      ),
-    )
+    assertFalse(operations.reviewIdentityStillAuthoritative(authority))
   }
 
   private fun assertForeignContent() {

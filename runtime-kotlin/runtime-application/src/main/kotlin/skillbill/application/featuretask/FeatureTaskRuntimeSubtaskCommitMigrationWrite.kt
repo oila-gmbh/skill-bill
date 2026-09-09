@@ -165,13 +165,13 @@ private fun settleNormalizedCommit(preparation: NormalizationPreparation, replac
 
 private fun replacementTreeFailure(preparation: NormalizationPreparation, replacementSha: String): String? {
   val git = preparation.request.runLoop.phaseGates.gitOperations
-  val replacementTree = git.resolveCommit(
+  val replacementTree = git.resolveTree(
     preparation.request.runLoop.request.repoRoot,
-    "$replacementSha^{tree}",
+    replacementSha,
   )
-  val originalTree = git.resolveCommit(
+  val originalTree = git.resolveTree(
     preparation.request.runLoop.request.repoRoot,
-    "${preparation.request.headSha}^{tree}",
+    preparation.request.headSha,
   )
   val unresolvedTree = !replacementTree.ok || !originalTree.ok
   val changedUntouchedTree = preparation.ownedDirtyPaths.isEmpty() &&

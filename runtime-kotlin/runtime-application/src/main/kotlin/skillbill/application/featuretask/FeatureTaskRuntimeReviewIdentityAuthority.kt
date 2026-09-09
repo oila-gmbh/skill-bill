@@ -59,7 +59,24 @@ private fun WorkflowGitOperations.reviewIdentityReadEvidence(request: ReviewIden
     request.identity.matches(headMessage.value.orEmpty()) &&
     checkpoint.parentSha.orEmpty().trim() == currentParentSha &&
     reviewedParentSha == currentParentSha &&
-    preservedSha == expectedPreservedSha
+    (preservedSha == expectedPreservedSha || preservedRevisionMatches(request, preservedSha, currentParentSha))
+}
+
+private fun WorkflowGitOperations.preservedRevisionMatches(
+  request: ReviewIdentityAuthorityRequest,
+  preservedSha: String,
+  parentSha: String,
+): Boolean {
+  val message = commitMessage(request.repoRoot, preservedSha)
+  val tree = resolveTree(request.repoRoot, preservedSha)
+  val parent = resolveCommit(request.repoRoot, "$preservedSha^")
+  val failed = listOf(message, tree, parent).firstOrNull { !it.ok }
+  if (failed != null) {
+    request.onReadFailure?.invoke("preserved predecessor could not be read (${failed.error})")
+    return false
+  }
+  return request.identity.matches(message.value.orEmpty()) &&
+    tree.value.trim() == request.reviewedTreeSha && parent.value.trim() == parentSha
 }
 
 private fun reviewIdentityReadFailure(

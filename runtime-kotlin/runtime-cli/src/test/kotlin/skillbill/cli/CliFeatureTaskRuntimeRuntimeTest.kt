@@ -211,9 +211,10 @@ class CliFeatureTaskRuntimeModelDirectiveTest {
       fixture.runCommand(extra = listOf("--agent", "codex")),
       fixture.context(directLauncher),
     )
+    val childFixture = runtimeFixture(specFileName = "spec_subtask_5_runtime.md")
     val childLauncher = RecordingPhaseLauncher()
     val child = CliRuntime.run(
-      fixture.runCommand(
+      childFixture.runCommand(
         extra = listOf(
           "--agent",
           "codex",
@@ -224,11 +225,11 @@ class CliFeatureTaskRuntimeModelDirectiveTest {
           "--goal-branch",
           "feat/existing-runtime-branch",
           "--goal-review-base-sha",
-          "0000000000000000000000000000000000000000",
+          childFixture.reviewBaseSha,
           "--suppress-pr",
         ),
       ),
-      fixture.context(childLauncher),
+      childFixture.context(childLauncher).copy(userHome = fixture.tempDir),
     )
 
     assertEquals(0, direct.exitCode, direct.stdout)

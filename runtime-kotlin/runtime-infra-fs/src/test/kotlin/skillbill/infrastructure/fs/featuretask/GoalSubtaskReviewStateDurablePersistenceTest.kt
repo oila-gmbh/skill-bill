@@ -536,6 +536,7 @@ class GoalSubtaskReviewStateDurablePersistenceTest {
       loopId = "review_fix",
       parentSha = fixture.parent,
     )
+    git(fixture.repoRoot, "update-ref", identity.checkpointRef, fixture.parent)
     val recorder = recorderWith(
       state,
       repository,
@@ -625,14 +626,15 @@ class GoalSubtaskReviewStateDurablePersistenceTest {
     val fixture = unreachableOnlyGitFixture()
     val state = deepRemediationState(completedPasses = 1)
       .copy(remediationBaseSha = "f".repeat(40))
-    val prepared = recorderWith(state, goalBranch = "feat/orphan-goal").buildGoalReviewInput(
-      workflowId,
-      realGitOps(),
-      fixture.repoRoot,
-    )
-    val blocked = assertIs<GoalSubtaskReviewInputBlocked>(prepared)
-    assertContains(blocked.reason, "f".repeat(40))
-    assertContains(blocked.reason, "feat/orphan-goal")
+    val blocked = assertFailsWith<FeatureTaskRuntimeSubtaskCommitReconciliationError> {
+      recorderWith(state, goalBranch = "feat/orphan-goal").buildGoalReviewInput(
+        workflowId,
+        realGitOps(),
+        fixture.repoRoot,
+      )
+    }
+    assertContains(blocked.message.orEmpty(), "f".repeat(40))
+    assertContains(blocked.message.orEmpty(), "feat/orphan-goal")
   }
 
   private fun deepRemediationState(completedPasses: Int): GoalSubtaskReviewState {

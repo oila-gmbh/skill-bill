@@ -13,9 +13,9 @@ internal fun FeatureTaskRuntimeRunLoopCheckpointSubtaskCommitLedger.verifyCurren
   branch: String,
   blockedReason: (String, String) -> String,
 ): Boolean {
-  val tree = runLoop.phaseGates.gitOperations.resolveCommit(
+  val tree = runLoop.phaseGates.gitOperations.resolveTree(
     runLoop.request.repoRoot,
-    "${identity.commitSha}^{tree}",
+    identity.commitSha,
   )
   val parent = runLoop.phaseGates.gitOperations.resolveCommit(
     runLoop.request.repoRoot,

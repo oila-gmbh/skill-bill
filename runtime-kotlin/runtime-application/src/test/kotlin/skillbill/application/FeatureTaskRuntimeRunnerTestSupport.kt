@@ -886,8 +886,12 @@ private fun runnerHarnessRequest(
   repoRoot = runtimeConfig.repoRoot,
   goalContinuation = runtimeConfig.goalContinuation?.let { continuation ->
     if (continuation.reviewBaseline?.reviewBaseSha == "0".repeat(40)) {
-      continuation.copy(reviewBaseline = GoalSubtaskReviewBaseline(runtimeConfig.branchSetup.gitOperations.headCommitShaValue))
-    } else continuation
+      continuation.copy(
+        reviewBaseline = GoalSubtaskReviewBaseline(runtimeConfig.branchSetup.gitOperations.headCommitShaValue),
+      )
+    } else {
+      continuation
+    }
   },
   eventSink = sink,
 )
@@ -994,33 +998,7 @@ internal fun runnerHarness(
     ),
   )
   val captured = mutableListOf<FeatureTaskRuntimeRunEvent>()
-  val sink = FeatureTaskRuntimeRunEventSink { event ->
-    if (event is FeatureTaskRuntimeRunEvent.PhaseStarted && event.phaseId == "preplan" &&
-      workflow.goalContinuationRecorder.reviewStateRecorder.reviewState(WORKFLOW_ID) != null
-    ) {
-      val git = runtimeConfig.branchSetup.gitOperations
-      git.clearCommittedWorktree = true
-      if (git.headCommitShaValue.isBlank()) git.headCommitShaValue = "0".repeat(40)
-      if (git.createCommitMessages.isEmpty()) git.localBranchHasUnpushedCommitsValue = false
-    }
-    if (workflow.goalContinuationRecorder.reviewStateRecorder.reviewState(WORKFLOW_ID) != null &&
-      event is FeatureTaskRuntimeRunEvent.PhaseStarted &&
-      event.phaseId == "implement"
-    ) {
-      val git = runtimeConfig.branchSetup.gitOperations
-      git.clearCommittedWorktree = true
-      if (git.createCommitMessages.isEmpty()) git.localBranchHasUnpushedCommitsValue = false
-      val resolved = workflow.recorder.loadResolvedBranch(WORKFLOW_ID)
-      if (resolved != null) {
-        val paths = git.ownedPathsValue.ifEmpty { listOf("src/Foo.kt") }
-        git.ownedPathsValue = paths
-        git.worktreeStatusValue = paths.joinToString("\n") { " M $it" }
-        workflow.recorder.recordResolvedBranch(WORKFLOW_ID, resolved.copy(workflowOwnedPaths = paths))
-      }
-    }
-    captured += event
-    runtimeConfig.eventSink?.emit(event)
-  }
+  val sink = harnessEventSink(runtimeConfig, workflow, captured)
   val runRequest = runnerHarnessRequest(runtimeConfig, agentAssignment, sink)
   val io = RunnerHarnessIo(
     workflow = workflow,
@@ -1031,6 +1009,38 @@ internal fun runnerHarness(
   )
   return RunnerHarness(launcher, io, runner, captured, runRequest, specScratchStore)
 }
+private fun harnessEventSink(
+  runtimeConfig: RuntimeHarnessConfig,
+  workflow: RunnerHarnessWorkflow,
+  captured: MutableList<FeatureTaskRuntimeRunEvent>,
+): FeatureTaskRuntimeRunEventSink = FeatureTaskRuntimeRunEventSink { event ->
+  if (event is FeatureTaskRuntimeRunEvent.PhaseStarted && event.phaseId == "preplan" &&
+    workflow.goalContinuationRecorder.reviewStateRecorder.reviewState(WORKFLOW_ID) != null
+  ) {
+    val git = runtimeConfig.branchSetup.gitOperations
+    git.clearCommittedWorktree = true
+    if (git.headCommitShaValue.isBlank()) git.headCommitShaValue = "0".repeat(40)
+    if (git.createCommitMessages.isEmpty()) git.localBranchHasUnpushedCommitsValue = false
+  }
+  if (workflow.goalContinuationRecorder.reviewStateRecorder.reviewState(WORKFLOW_ID) != null &&
+    event is FeatureTaskRuntimeRunEvent.PhaseStarted &&
+    event.phaseId == "implement"
+  ) {
+    val git = runtimeConfig.branchSetup.gitOperations
+    git.clearCommittedWorktree = true
+    if (git.createCommitMessages.isEmpty()) git.localBranchHasUnpushedCommitsValue = false
+    val resolved = workflow.recorder.loadResolvedBranch(WORKFLOW_ID)
+    if (resolved != null) {
+      val paths = git.ownedPathsValue.ifEmpty { listOf("src/Foo.kt") }
+      git.ownedPathsValue = paths
+      git.worktreeStatusValue = paths.joinToString("\n") { " M $it" }
+      workflow.recorder.recordResolvedBranch(WORKFLOW_ID, resolved.copy(workflowOwnedPaths = paths))
+    }
+  }
+  captured += event
+  runtimeConfig.eventSink?.emit(event)
+}
+
 private data class HarnessRunnerDeps(
   val launcher: RuntimeRecordingLauncher,
   val recorder: FeatureTaskRuntimePhaseRecorder,
@@ -2020,9 +2030,9 @@ internal class RecordingWorkflowGitOperations(
         commitMessages[headCommitShaValue] = replacementMessage ?: headCommitMessageValue
         headCommitMessageValue = replacementMessage ?: headCommitMessageValue
         if (clearCommittedWorktree) {
-        worktreeStatusValue = ""
-        localBranchHasUnpushedCommitsValue = true
-      }
+          worktreeStatusValue = ""
+          localBranchHasUnpushedCommitsValue = true
+        }
         return WorkflowGitOperationResult(status = "ok", value = headCommitShaValue)
       }
 
@@ -2086,7 +2096,10 @@ internal class RecordingWorkflowGitOperations(
     var cursor: String? = descendant
     val visited = mutableSetOf<String>()
     while (cursor != null && cursor != ancestor && visited.add(cursor)) cursor = commitParents[cursor]
-    val reachable = (ancestor == descendant || cursor == ancestor || descendant !in commitParents || !clearCommittedWorktree) &&
+    val reachable = (
+      ancestor == descendant || cursor == ancestor ||
+        descendant !in commitParents || !clearCommittedWorktree
+      ) &&
       (ancestor to descendant) !in nonAncestorPairs
     return WorkflowGitOperationResult(status = "ok", value = if (reachable) "true" else "false")
   }
@@ -2112,6 +2125,9 @@ internal class RecordingWorkflowGitOperations(
     return pushBranchResult ?: WorkflowGitOperationResult(status = "ok", value = branch)
   }
 
+  override fun resolveTree(repoRoot: Path, revision: String): WorkflowGitOperationResult =
+    resolveCommit(repoRoot, "$revision^{tree}")
+
   override fun resolveCommit(repoRoot: Path, revision: String): WorkflowGitOperationResult =
     onResolveCommit?.invoke(revision)
       ?: if (revision.startsWith("origin/")) {
@@ -2126,7 +2142,9 @@ internal class RecordingWorkflowGitOperations(
             revision.endsWith("^{tree}") -> COMMITTED_HEAD_SHA
             revision.endsWith("^") -> if (clearCommittedWorktree) {
               commitParents[revision.removeSuffix("^")] ?: "0".repeat(40)
-            } else COMMITTED_HEAD_SHA
+            } else {
+              COMMITTED_HEAD_SHA
+            }
             revision == "HEAD" || revision == currentBranchValue ->
               if (clearCommittedWorktree) headCommitShaValue else COMMITTED_HEAD_SHA
             else -> revision.takeIf { it.matches(Regex("^[0-9a-fA-F]{40,64}$")) } ?: COMMITTED_HEAD_SHA

@@ -5,6 +5,7 @@ import skillbill.application.featuretask.GoalContinuationStateRecordRequest
 import skillbill.application.featuretask.model.FeatureTaskRuntimePhaseLaunchBriefing
 import skillbill.application.featuretask.model.FeatureTaskRuntimeRunEvent
 import skillbill.application.featuretask.model.FeatureTaskRuntimeRunReport
+import skillbill.application.featuretask.reopenCappedReviewOnChangedDelta
 import skillbill.contracts.JsonSupport
 import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewBaseline
 import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewInput
@@ -176,6 +177,7 @@ private fun seedStaleReviewHarness(tempPrefix: String): Pair<RunnerHarness, Reco
   )
   val harness = inlineGoalContinuationHarness(repoRoot, git, validJsonOutput("commit_push"))
   harness.seedReviewPhase("completed", 1, validJsonOutput("review"), reviewPassNumber = 1)
+  git.worktreeStatusValue = ""
   return harness to git
 }
 
@@ -239,14 +241,7 @@ internal fun assertCappedReviewStaleIgnoresUnreachableRemediationBase() {
   val generationBefore = harness.repository.taskRuntimeArtifacts(WORKFLOW_ID)[
     "feature_task_runtime_review_generation",
   ]
-  harness.runner.run(
-    harness.request().copy(
-      transitionsOverride = FeatureTaskRuntimeTransitionDeclaration(
-        forwardPhaseIds = listOf("preplan"),
-        backwardEdges = emptyList(),
-      ),
-    ),
-  )
+  harness.runner.reopenCappedReviewOnChangedDelta(harness.request())
   val after = requireNotNull(harness.goalContinuationRecorder.reviewStateRecorder.reviewState(WORKFLOW_ID))
   assertEquals(GoalSubtaskReviewDisposition.PAUSED, after.disposition)
   assertEquals("9".repeat(40), after.remediationBaseSha, "staleness must not heal the remediation base")
@@ -274,14 +269,7 @@ internal fun assertCappedReviewStaleReopensWhenImmutableDigestChanged() {
     status = "ok",
     input = GoalSubtaskReviewInput("0".repeat(40), "b".repeat(40)),
   )
-  harness.runner.run(
-    harness.request().copy(
-      transitionsOverride = FeatureTaskRuntimeTransitionDeclaration(
-        forwardPhaseIds = listOf("preplan"),
-        backwardEdges = emptyList(),
-      ),
-    ),
-  )
+  harness.runner.reopenCappedReviewOnChangedDelta(harness.request())
   val after = requireNotNull(harness.goalContinuationRecorder.reviewStateRecorder.reviewState(WORKFLOW_ID))
   assertEquals(GoalSubtaskReviewDisposition.PENDING, after.disposition)
   assertNull(after.remediationBaseSha, "invalidation resets review state; recovery is not the staleness path")

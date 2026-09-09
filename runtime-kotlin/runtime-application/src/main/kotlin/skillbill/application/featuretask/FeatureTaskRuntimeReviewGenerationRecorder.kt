@@ -1,12 +1,12 @@
 package skillbill.application.featuretask
 
-import skillbill.ports.persistence.UnitOfWork
 import skillbill.application.decomposition.decodeArtifacts
 import skillbill.application.subtaskreview.GoalSubtaskReviewSummaryReducer
 import skillbill.application.subtaskreview.reviewRunIdOf
 import skillbill.application.workflow.model.WorkflowFamily
 import skillbill.goalrunner.model.UnaddressedFinding
 import skillbill.ports.db.DatabaseSessionFactory
+import skillbill.ports.persistence.UnitOfWork
 import skillbill.review.model.ReviewFindingVerdict
 import skillbill.workflow.goal.model.GOAL_SUBTASK_REVIEW_RESULTS_ARTIFACT_KEY
 import skillbill.workflow.goal.model.GOAL_SUBTASK_REVIEW_STATE_ARTIFACT_KEY
@@ -27,10 +27,7 @@ class FeatureTaskRuntimeReviewGenerationRecorder(
       persistReviewGenerationInvalidationInTransaction(unitOfWork, workflowId)
     }
 
-  private fun persistReviewGenerationInvalidationInTransaction(
-    unitOfWork: UnitOfWork,
-    workflowId: String,
-  ): Int? {
+  private fun persistReviewGenerationInvalidationInTransaction(unitOfWork: UnitOfWork, workflowId: String): Int? {
     val record = WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, workflowId)
       ?: return null
     val artifacts = decodeArtifacts(record.artifactsJson)

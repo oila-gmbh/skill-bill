@@ -7,7 +7,6 @@ import skillbill.application.featuretask.model.FeatureTaskRuntimeRunReport
 import skillbill.application.featuretask.model.FeatureTaskRuntimeStatusRequest
 import skillbill.ports.diff.DiffResolverPort
 import skillbill.review.context.model.CodeReviewExecutionMode
-import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import skillbill.workflow.taskruntime.model.AUDIT_GAP_PAUSE_DECISION_ABANDON_SUBTASK
 import skillbill.workflow.taskruntime.model.AUDIT_GAP_PAUSE_DECISION_RETRY_FIX
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerAction
@@ -165,10 +164,14 @@ class FeatureTaskRuntimeAuditGapLoopTest {
   // (c) AC2: convergence on the last allowed (2nd) iteration still advances.
   @Test
   fun `m2 pauses when the audit repeats the same criteria`() {
-    val harness = runnerHarness(RuntimeHarnessConfig(
+    val harness = runnerHarness(
+      RuntimeHarnessConfig(
         branchSetup = BranchSetupTestConfig(
           gitOperations = RecordingWorkflowGitOperations().apply { repositoryFingerprintValue = "unchanged" },
-        ),launcher = auditGapLauncher(convergeOnAudit = 3)))
+        ),
+        launcher = auditGapLauncher(convergeOnAudit = 3),
+      ),
+    )
 
     val report = harness.runner.run(harness.request())
 
@@ -184,10 +187,14 @@ class FeatureTaskRuntimeAuditGapLoopTest {
 
   @Test
   fun `m2 audit gaps pause before the warn-threshold crossing`() {
-    val harness = runnerHarness(RuntimeHarnessConfig(
+    val harness = runnerHarness(
+      RuntimeHarnessConfig(
         branchSetup = BranchSetupTestConfig(
           gitOperations = RecordingWorkflowGitOperations().apply { repositoryFingerprintValue = "unchanged" },
-        ),launcher = auditGapLauncher(convergeOnAudit = 5)))
+        ),
+        launcher = auditGapLauncher(convergeOnAudit = 5),
+      ),
+    )
 
     val report = assertIs<FeatureTaskRuntimeRunReport.Paused>(harness.runner.run(harness.request()))
 

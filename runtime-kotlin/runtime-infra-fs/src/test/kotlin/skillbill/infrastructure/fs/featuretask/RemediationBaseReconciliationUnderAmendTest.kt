@@ -1,7 +1,6 @@
 package skillbill.infrastructure.fs.featuretask
 
 import skillbill.application.featuretask.FeatureTaskRuntimeGoalContinuationRecorder
-import skillbill.application.featuretask.model.RemediationBaseBlocked
 import skillbill.application.featuretask.model.RemediationBaseCoherent
 import skillbill.application.workflow.model.WorkflowFamily
 import skillbill.application.workflow.toRecord
@@ -82,7 +81,7 @@ class RemediationBaseReconciliationUnderAmendTest {
     val refusal = assertFailsWith<FeatureTaskRuntimeSubtaskCommitReconciliationError> {
       recorder.remediationReconciler.reconcileRemediationBaseCoherence(workflowId, realGitOps(), fixture.repoRoot)
     }
-    assertContains(refusal.message.orEmpty(), "checkpoint ref could not be read")
+    assertContains(refusal.message.orEmpty(), "resolved to a blank Git object")
     assertEquals(fixture.preRemediationSha, recorder.reviewStateRecorder.reviewState(workflowId)?.remediationBaseSha)
     assertEquals(head, git(fixture.repoRoot, "rev-parse", "HEAD"))
   }
@@ -122,18 +121,18 @@ class RemediationBaseReconciliationUnderAmendTest {
     val state = remediationState(remediationBaseSha = fixture.preRemediationSha)
     val recorder = recorderWith(state, emptyList())
 
-    val blocked = assertIs<RemediationBaseBlocked>(
+    val blocked = assertFailsWith<FeatureTaskRuntimeSubtaskCommitReconciliationError> {
       recorder.remediationReconciler.reconcileRemediationBaseCoherence(
         workflowId,
         gitOpsWithoutBaselineRecovery(),
         fixture.repoRoot,
-      ),
-    )
+      )
+    }
     assertFalse(
-      blocked.operatorGuidance.contains("also failed to resolve"),
-      "a stored base that still resolves must not be reported as unresolvable: ${blocked.operatorGuidance}",
+      blocked.message.orEmpty().contains("also failed to resolve"),
+      "a stored base that still resolves must not be reported as unresolvable: ${blocked.message.orEmpty()}",
     )
-    assertContains(blocked.operatorGuidance, "not reachable from the branch")
+    assertContains(blocked.message.orEmpty(), "baseline recovery requires a git adapter")
   }
 
   @Test

@@ -1,10 +1,10 @@
 package skillbill.application.featuretask
 
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeCheckpointIdentity
 import skillbill.application.featuretask.model.FeatureTaskRuntimeSubtaskCommitIdentity
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeResolvedBranch
 import skillbill.error.FeatureTaskRuntimeSubtaskCommitReconciliationError
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeCheckpointIdentity
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeResolvedBranch
 
 private data class ReviewIdentityContext(
   val target: String,
@@ -77,7 +77,7 @@ private fun loadReviewIdentityContextData(runLoop: FeatureTaskRuntimeRunLoop): R
     refuse("current HEAD could not be resolved while checking review identity (${head.error})")
   }
   val currentHead = head.value.trim()
-  val currentTree = runLoop.phaseGates.gitOperations.resolveCommit(runLoop.request.repoRoot, "$currentHead^{tree}")
+  val currentTree = runLoop.phaseGates.gitOperations.resolveTree(runLoop.request.repoRoot, currentHead)
   if (!currentTree.ok || currentTree.value.orEmpty().isBlank()) {
     refuse("current HEAD tree could not be resolved while checking review identity (${currentTree.error})")
   }
@@ -113,14 +113,14 @@ private fun evaluateReviewIdentity(runLoop: FeatureTaskRuntimeRunLoop, context: 
   var readFailure: String? = null
   val authoritative = runLoop.phaseGates.gitOperations.reviewIdentityStillAuthoritative(
     ReviewIdentityAuthorityRequest(
-    runLoop.request.repoRoot,
-    context.target,
-    context.currentHead,
-    context.reviewedTree,
-    context.currentTree,
-    context.ledger,
-    context.identity,
-    onReadFailure = { readFailure = it },
+      runLoop.request.repoRoot,
+      context.target,
+      context.currentHead,
+      context.reviewedTree,
+      context.currentTree,
+      context.ledger,
+      context.identity,
+      onReadFailure = { readFailure = it },
     ),
   )
   if (authoritative) return null

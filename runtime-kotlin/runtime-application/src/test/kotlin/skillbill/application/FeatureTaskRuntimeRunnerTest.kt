@@ -1315,7 +1315,7 @@ class FeatureTaskRuntimeRemediationGenerationTest {
       git,
       RuntimeRecordingLauncher { request ->
         val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
-        if (phaseId == "implement" || phaseId == "implement_fix") {
+        if (phaseId == "implement") {
           git.worktreeStatusValue = " M src/Foo.kt"
           git.ownedPathsValue = listOf("src/Foo.kt")
         }
@@ -1349,7 +1349,7 @@ class FeatureTaskRuntimeRemediationGenerationTest {
       git,
       RuntimeRecordingLauncher { request ->
         val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
-        if (phaseId == "implement" || phaseId == "implement_fix") {
+        if (phaseId == "implement") {
           git.worktreeStatusValue = " M src/Foo.kt"
           git.ownedPathsValue = listOf("src/Foo.kt")
         }
@@ -2052,7 +2052,8 @@ class FeatureTaskRuntimeGoalContinuationReviewPrepTest {
     )
 
     assertEquals("preplan", blocked.lastIncompletePhase)
-    assertContains(blocked.blockedReason, "review_base_sha must be captured before implementation")
+    assertContains(blocked.blockedReason, "review state for workflow")
+    assertContains(blocked.blockedReason, "is missing")
     assertTrue(
       "Goal-subtask review preparation could not establish the exact durable review scope." !in
         blocked.blockedReason,
@@ -2254,7 +2255,11 @@ class FeatureTaskRuntimeGoalContinuationStaleReviewTest {
     assertContains(blocked.blockedReason, "commit_push_result.message")
     assertTrue(git.pushedBranches.isEmpty(), "a rejected handoff must not push")
     assertTrue(git.leasePushedBranches.isEmpty(), "a rejected handoff must not force-push")
-    assertEquals("1".padStart(40, '0'), git.headCommitShaValue, "a rejected handoff must preserve the reviewed checkpoint")
+    assertEquals(
+      "1".padStart(40, '0'),
+      git.headCommitShaValue,
+      "a rejected handoff must preserve the reviewed checkpoint",
+    )
   }
 
   @Test
@@ -2327,7 +2332,7 @@ class FeatureTaskRuntimeCheckpointScopeTest {
 
     val auditBriefing = requireNotNull(harness.recorder.loadPhaseBriefings(WORKFLOW_ID).orEmpty()["audit"])
     assertContains(auditBriefing.briefingText, "base_ref: ${"0".repeat(40)}")
-    assertContains(auditBriefing.briefingText, "scoped_owned_path_count: 4")
+    assertContains(auditBriefing.briefingText, "scoped_owned_path_count: 3")
     assertFalse(
       auditBriefing.briefingText.contains("- $SPEC_REFERENCE"),
       "the local feature spec is workflow input, not an audit or commit path",
@@ -3939,8 +3944,11 @@ class FeatureTaskRuntimeReconcileOnResumeTest {
     assertEquals(3, identities.size)
     assertEquals(
       identities.associate { identity ->
-        identity.checkpointRef to if (identity.sequenceNumber == 0) COMMITTED_HEAD_SHA
-        else identities[identity.sequenceNumber - 1].commitSha
+        identity.checkpointRef to if (identity.sequenceNumber == 0) {
+          COMMITTED_HEAD_SHA
+        } else {
+          identities[identity.sequenceNumber - 1].commitSha
+        }
       },
       git.checkpointRefs,
     )
@@ -4359,7 +4367,7 @@ class FeatureTaskRuntimeCheckpointHistoryOnResumeTest {
   }
 
   @Test
-  fun `suppress_pr goal-continuation checkpoints every authority boundary and never pushes`() {
+  fun `goal-continuation reaudits repaired source before finalising a suppressed PR child`() {
     val repoRoot = Files.createTempDirectory("skillbill-runtime-goalcont-checkpoint")
     val specPath = repoRoot.resolve(SPEC_REFERENCE)
     Files.createDirectories(specPath.parent)
@@ -4394,14 +4402,18 @@ class FeatureTaskRuntimeCheckpointHistoryOnResumeTest {
     assertIs<FeatureTaskRuntimeRunReport.Completed>(harness.runner.run(harness.request()))
     val checkpointMessages = git.createCommitMessages + git.amendCommitMessages
     assertEquals(
-      3,
+      4,
       checkpointMessages.size,
       "suppress_pr must checkpoint review and remediation authority boundaries",
     )
-    assertEquals(1, git.createCommitMessages.size, "three checkpoints, one subtask commit on the branch")
+    assertEquals(1, git.createCommitMessages.size, "four checkpoints, one subtask commit on the branch")
     assertContains(checkpointMessages[0], "audited implementation checkpoint")
     assertContains(checkpointMessages[1], "remediation checkpoint")
-    assertContains(checkpointMessages[2], "finalised subtask checkpoint")
+    assertContains(checkpointMessages[2], "audited implementation checkpoint")
+    assertContains(checkpointMessages[3], "finalised subtask checkpoint")
+    assertEquals(2, harness.launchOrder().count { it == "audit" })
+    assertEquals(2, harness.launchOrder().count { it == "review" })
+    assertEquals(listOf("feat/existing-runtime-branch"), git.pushedBranches + git.leasePushedBranches)
   }
 
   @Test
