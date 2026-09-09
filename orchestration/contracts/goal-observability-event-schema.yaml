@@ -20,10 +20,19 @@ required:
 properties:
   contract_version:
     type: string
-    const: "0.1"
+    const: "0.2"
     description: >
       Pinned to GOAL_OBSERVABILITY_EVENT_CONTRACT_VERSION. Bump the schema const
       and Kotlin constant together.
+  record_kind:
+    type: string
+    enum:
+      - progress
+      - refusal
+      - migration
+    description: >-
+      Compact durable record category. Refusal records explain a loud-fail boundary and migration
+      records explain quarantine or in-band regeneration; progress is the ordinary liveness event.
   issue_key:
     type: string
     minLength: 1

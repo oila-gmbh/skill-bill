@@ -68,7 +68,7 @@ fun FeatureTaskRuntimeRunLoopRepairReceipt.blockRemediationBaseSha(
   return false
 }
 
-private fun FeatureTaskRuntimeRunLoopRepairReceipt.blockCheckpointAfterIndexMutation(
+private fun blockCheckpointAfterIndexMutation(
   runLoop: FeatureTaskRuntimeRunLoop,
   args: CommitCheckpointArgs,
   error: String,
@@ -89,54 +89,75 @@ private fun FeatureTaskRuntimeRunLoopRepairReceipt.blockCheckpointAfterIndexMuta
 internal fun FeatureTaskRuntimeRunLoopRepairReceipt.commitCheckpoint(
   runLoop: FeatureTaskRuntimeRunLoop,
   args: CommitCheckpointArgs,
+): Boolean = commitCheckpointWithCapturedIndex(runLoop, args)
+
+private fun commitCheckpointWithCapturedIndex(
+  runLoop: FeatureTaskRuntimeRunLoop,
+  args: CommitCheckpointArgs,
 ): Boolean {
-  val precedingPhaseId = args.precedingPhaseId
-  val branch = args.branch
-  val loopId = args.loopId
-  val intent = args.intent
-  val ownedPaths = args.ownedPaths
-  val blockedReason = args.blockedReason
-  val snapshot = runLoop.phaseGates.gitOperations.captureIndexState(runLoop.request.repoRoot, ownedPaths)
+  val snapshot = runLoop.phaseGates.gitOperations.captureIndexState(runLoop.request.repoRoot, args.ownedPaths)
   if (!snapshot.ok) {
     return runLoop.collaborators.checkpointContinued6.blockCheckpoint(
       runLoop,
-      precedingPhaseId,
-      branch,
+      args.precedingPhaseId,
+      args.branch,
       snapshot.error,
-      blockedReason,
+      args.blockedReason,
     )
   }
-  val parentSha = runLoop.phaseGates.gitOperations.headCommitSha(runLoop.request.repoRoot)
-    .takeIf { it.ok }?.value?.trim()?.takeIf(String::isNotBlank)
-  val staged = runLoop.phaseGates.gitOperations.stagePaths(runLoop.request.repoRoot, ownedPaths)
-  if (!staged.ok) {
-    return blockCheckpointAfterIndexMutation(runLoop, args, staged.error, snapshot.value.orEmpty())
+  val staged = runLoop.phaseGates.gitOperations.stagePaths(runLoop.request.repoRoot, args.ownedPaths)
+  return if (!staged.ok) {
+    blockCheckpointAfterIndexMutation(runLoop, args, staged.error, snapshot.value.orEmpty())
+  } else {
+    commitCheckpointAfterStaging(runLoop, args, snapshot.value.orEmpty())
   }
-  val subtaskIdentity = runLoop.collaborators.checkpointContinued4.subtaskCommitIdentity(runLoop)
+}
+
+private fun commitCheckpointAfterStaging(
+  runLoop: FeatureTaskRuntimeRunLoop,
+  args: CommitCheckpointArgs,
+  indexSnapshot: String,
+): Boolean {
+  val identity = runLoop.collaborators.checkpointContinued4.subtaskCommitIdentity(runLoop)
   val message = runLoop.collaborators.checkpointContinued4.checkpointCommitMessage(
     runLoop,
-    CheckpointCommitMessageArgs(
-      branch = branch,
-      phaseId = precedingPhaseId,
-      loopId = loopId,
-      identity = subtaskIdentity,
-      intent = intent,
-    ),
+    CheckpointCommitMessageArgs(args.branch, args.precedingPhaseId, args.loopId, identity, args.intent),
   )
-  val commit = runLoop.collaborators.checkpointContinued5.writeSubtaskCommit(runLoop, branch, message, subtaskIdentity)
-  if (!commit.ok) {
-    return blockCheckpointAfterIndexMutation(runLoop, args, commit.error, snapshot.value.orEmpty())
+  val commit = runLoop.collaborators.checkpointContinued5.writeSubtaskCommit(
+    runLoop,
+    args.branch,
+    message,
+    identity,
+    args.ownedPaths,
+  )
+  if (!commit.ok) return blockCheckpointAfterIndexMutation(runLoop, args, commit.error, indexSnapshot)
+  val commitSha = commit.value.orEmpty().trim()
+  if (commitSha.isBlank()) {
+    return blockCheckpointAfterIndexMutation(
+      runLoop,
+      args,
+      "checkpoint commit returned an empty sha",
+      indexSnapshot,
+    )
   }
+  val parentSha = runLoop.phaseGates.gitOperations.resolveCommit(runLoop.request.repoRoot, "$commitSha^")
+    .takeIf { it.ok }?.value?.trim()?.takeIf(String::isNotBlank)
+    ?: return blockCheckpointAfterIndexMutation(
+      runLoop,
+      args,
+      "checkpoint commit '$commitSha' has no resolvable parent for durable identity",
+      indexSnapshot,
+    )
   return runLoop.collaborators.checkpointContinued5.recordCheckpointIdentity(
     runLoop,
     RecordCheckpointIdentityArgs(
-      precedingPhaseId = precedingPhaseId,
-      branch = branch,
-      loopId = loopId,
-      ownedPaths = ownedPaths,
-      parentSha = parentSha,
-      commitSha = commit.value.orEmpty().trim(),
-      blockedReason = blockedReason,
+      args.precedingPhaseId,
+      args.branch,
+      args.loopId,
+      args.ownedPaths,
+      parentSha,
+      commitSha,
+      args.blockedReason,
     ),
   )
 }

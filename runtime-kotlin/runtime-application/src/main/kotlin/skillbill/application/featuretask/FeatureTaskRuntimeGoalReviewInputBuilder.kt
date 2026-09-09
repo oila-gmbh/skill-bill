@@ -5,6 +5,7 @@ import skillbill.application.featuretask.model.GoalSubtaskReviewInputBlocked
 import skillbill.application.featuretask.model.GoalSubtaskReviewInputPreparation
 import skillbill.application.featuretask.model.GoalSubtaskReviewInputReady
 import skillbill.application.workflow.model.WorkflowFamily
+import skillbill.error.FeatureTaskRuntimeSubtaskCommitReconciliationError
 import skillbill.ports.db.DatabaseSessionFactory
 import skillbill.ports.workflow.gitops.WorkflowGitOperations
 import skillbill.ports.workflow.gitops.buildGoalSubtaskReviewInput
@@ -18,11 +19,15 @@ import skillbill.workflow.goal.model.GOAL_REVIEW_BASE_RECOVERIES_ARTIFACT_KEY
 import skillbill.workflow.goal.model.GOAL_SUBTASK_REVIEW_INPUT_ARTIFACT_KEY
 import skillbill.workflow.goal.model.GOAL_SUBTASK_REVIEW_STATE_ARTIFACT_KEY
 import skillbill.workflow.goal.model.GoalSubtaskReviewState
+import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_CHECKPOINT_IDENTITIES_ARTIFACT_KEY
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeCheckpointIdentity
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeGoalContinuationArtifact
+import skillbill.workflow.taskruntime.model.featureTaskRuntimeCheckpointIdentitiesFromArtifact
 import java.nio.file.Path
+import kotlin.coroutines.cancellation.CancellationException
 
 class FeatureTaskRuntimeGoalReviewInputBuilder(
-  private val database: DatabaseSessionFactory,
+  internal val database: DatabaseSessionFactory,
   private val patcher: FeatureTaskRuntimeGoalContinuationArtifactPatcher,
   private val persistGoalReviewInput: (String, GoalSubtaskReviewInput, String?) -> GoalSubtaskReviewState?,
 ) {
@@ -44,9 +49,27 @@ class FeatureTaskRuntimeGoalReviewInputBuilder(
     repoRoot: Path,
     scope: FeatureTaskRuntimeGoalContinuationRecorder.GoalReviewInputScope,
   ): GoalSubtaskReviewInputPreparation {
-    val durable = loadGoalReviewDurable(workflowId, scope) ?: return GoalSubtaskReviewInputPreparation.MissingState
+    val durable = loadGoalReviewDurableOrThrow(workflowId, scope)
+      ?: return GoalSubtaskReviewInputPreparation.MissingState
+    return buildGoalReviewInputFromDurable(workflowId, gitOperations, repoRoot, scope, durable)
+  }
+
+  private fun buildGoalReviewInputFromDurable(
+    workflowId: String,
+    gitOperations: WorkflowGitOperations,
+    repoRoot: Path,
+    scope: FeatureTaskRuntimeGoalContinuationRecorder.GoalReviewInputScope,
+    durable: Pair<GoalSubtaskReviewState, FeatureTaskRuntimeGoalContinuationArtifact>,
+  ): GoalSubtaskReviewInputPreparation {
     val (state, continuation) = durable
-    val (selectedBaseline, failedField) = selectedGoalReviewBaseline(state, scope)
+    val activeParentSha = activeSubtaskCheckpointParentOrThrow(workflowId, continuation, scope.dbOverride)
+    if (state.completedPassCount == 0 && state.remediationBaseSha == null && activeParentSha == null) {
+      return GoalSubtaskReviewInputBlocked(
+        "Goal-subtask review cannot select its first-pass base: the active subtask checkpoint has no recorded parent " +
+          "SHA. Resume after checkpoint identity reconciliation proves the committed revision pair.",
+      )
+    }
+    val (selectedBaseline, failedField) = selectedGoalReviewBaseline(state, activeParentSha)
     val result = gitOperations.buildGoalSubtaskReviewInput(
       repoRoot,
       selectedBaseline,
@@ -76,6 +99,43 @@ class FeatureTaskRuntimeGoalReviewInputBuilder(
     return GoalSubtaskReviewInputReady(persisted, input)
   }
 
+  private fun loadGoalReviewDurableOrThrow(
+    workflowId: String,
+    scope: FeatureTaskRuntimeGoalContinuationRecorder.GoalReviewInputScope,
+  ): Pair<GoalSubtaskReviewState, FeatureTaskRuntimeGoalContinuationArtifact>? = try {
+    loadGoalReviewDurable(workflowId, scope)
+  } catch (error: CancellationException) {
+    throw error
+  } catch (error: FeatureTaskRuntimeSubtaskCommitReconciliationError) {
+    throw error
+  } catch (error: IllegalStateException) {
+    throw goalReviewInputReconciliationFailure(
+      workflowId,
+      null,
+      "goal-subtask review state could not be read (${error.message.orEmpty()})",
+      error,
+    )
+  }
+
+  private fun activeSubtaskCheckpointParentOrThrow(
+    workflowId: String,
+    continuation: FeatureTaskRuntimeGoalContinuationArtifact,
+    dbOverride: String?,
+  ): String? = try {
+    activeSubtaskCheckpointParent(workflowId, continuation, dbOverride)
+  } catch (error: CancellationException) {
+    throw error
+  } catch (error: FeatureTaskRuntimeSubtaskCommitReconciliationError) {
+    throw error
+  } catch (error: IllegalStateException) {
+    throw goalReviewInputReconciliationFailure(
+      workflowId,
+      continuation,
+      "active subtask checkpoint parent could not be read (${error.message.orEmpty()})",
+      error,
+    )
+  }
+
   internal fun recoverGoalReviewInput(request: GoalReviewInputRecoveryRequest): GoalReviewInputRecovery {
     val failureReason = request.failureReason
     if (failureReason == null ||
@@ -84,33 +144,46 @@ class FeatureTaskRuntimeGoalReviewInputBuilder(
     ) {
       return GoalReviewInputRecovery.Ineligible
     }
-    val exclusions = request.scope.scopedUntrackedExclusions ?: request.state.baselineUntrackedPaths
+    return recoverEligibleGoalReviewInput(request, failureReason)
+  }
+
+  private fun recoverEligibleGoalReviewInput(
+    request: GoalReviewInputRecoveryRequest,
+    failureReason: GoalSubtaskReviewInputFailureReason,
+  ): GoalReviewInputRecovery {
     val recovered = request.execution.gitOperations.recoverGoalSubtaskReviewBaseline(
       request.execution.repoRoot,
       GoalSubtaskReviewBaselineRecoveryRequest(
         unreachableSha = request.failedBaseSha,
         failureReason = failureReason,
-        baselineUntrackedPaths = exclusions,
-        ownedPathspec = request.scope.ownedPathspec,
       ),
       request.continuation.goalBranch,
     )
     if (!recovered.ok) {
-      return GoalReviewInputRecovery.Failed(
-        recovered.error.ifBlank {
-          "Goal-subtask review baseline recovery could not find a reachable base for unreachable sha " +
-            "'${request.failedBaseSha}' on branch '${request.continuation.goalBranch}'."
-        },
+      return failGoalReviewInputRecovery(
+        request.workflowId,
+        request.continuation,
+        "goal-subtask review baseline recovery failed (${recovered.error})",
+        IllegalStateException(recovered.error.ifBlank { "Git baseline recovery failed" }),
       )
     }
-    val recoveredBaseline = requireNotNull(recovered.baseline)
+    val recoveredBaseline = recovered.baseline ?: return failGoalReviewInputRecovery(
+      request.workflowId,
+      request.continuation,
+      "goal-subtask review baseline recovery returned no reachable base",
+      IllegalStateException("Git baseline recovery returned no baseline"),
+    )
     val input = rebuildRecoveredGoalReviewInput(request, recoveredBaseline)
     val persisted = persistRecoveredGoalReviewBaseline(request, recoveredBaseline, input, failureReason)
-    return if (persisted != null) {
-      GoalReviewInputRecovery.Recovered(input)
-    } else {
-      GoalReviewInputRecovery.Ineligible
+    if (persisted == null) {
+      return failGoalReviewInputRecovery(
+        request.workflowId,
+        request.continuation,
+        "goal-subtask review baseline recovery could not persist its replacement state",
+        IllegalStateException("workflow row or review state disappeared while persisting baseline recovery"),
+      )
     }
+    return GoalReviewInputRecovery.Recovered(input)
   }
 
   private fun rebuildRecoveredGoalReviewInput(
@@ -122,12 +195,20 @@ class FeatureTaskRuntimeGoalReviewInputBuilder(
       recoveredBaseline,
       request.continuation.goalBranch,
     )
-    check(rebuilt.ok) {
-      "Recovered goal-subtask review base '${recoveredBaseline.reviewBaseSha}' could not materialize " +
-        "review input after replacing incompatible base '${request.failedBaseSha}': " +
-        rebuilt.error.ifBlank { request.failureMessage }
+    if (!rebuilt.ok) {
+      return failGoalReviewInputRecovery(
+        request.workflowId,
+        request.continuation,
+        "recovered goal-subtask review base '${recoveredBaseline.reviewBaseSha}' could not materialize review input",
+        IllegalStateException(rebuilt.error.ifBlank { request.failureMessage }),
+      )
     }
-    return requireNotNull(rebuilt.input)
+    return rebuilt.input ?: failGoalReviewInputRecovery(
+      request.workflowId,
+      request.continuation,
+      "recovered goal-subtask review input was missing after Git materialization",
+      IllegalStateException("Git review input materialization returned no input"),
+    )
   }
 
   private fun persistRecoveredGoalReviewBaseline(
@@ -182,10 +263,43 @@ class FeatureTaskRuntimeGoalReviewInputBuilder(
     )
     GoalReviewBaseField.REVIEW_BASE -> latest.copy(
       reviewBaseSha = recoveredBaseline.reviewBaseSha,
-      baselineUntrackedPaths = recoveredBaseline.baselineUntrackedPaths.distinct().sorted(),
       reviewInputArtifact = GOAL_SUBTASK_REVIEW_INPUT_ARTIFACT_KEY,
     )
   }
+}
+
+private fun goalReviewInputReconciliationFailure(
+  workflowId: String,
+  continuation: FeatureTaskRuntimeGoalContinuationArtifact?,
+  reason: String,
+  cause: Throwable,
+) = FeatureTaskRuntimeSubtaskCommitReconciliationError(
+  workflowId = workflowId,
+  issueKey = continuation?.issueKey ?: "unknown",
+  subtaskId = continuation?.subtaskId?.toString() ?: "unknown",
+  reason = reason,
+  cause = cause,
+)
+
+private fun FeatureTaskRuntimeGoalReviewInputBuilder.activeSubtaskCheckpointParent(
+  workflowId: String,
+  continuation: FeatureTaskRuntimeGoalContinuationArtifact,
+  dbOverride: String?,
+): String? = database.read(dbOverride) { unitOfWork ->
+  val record = WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, workflowId) ?: return@read null
+  val checkpoints = featureTaskRuntimeCheckpointIdentitiesFromArtifact(
+    decodeArtifacts(record.artifactsJson)[FEATURE_TASK_RUNTIME_CHECKPOINT_IDENTITIES_ARTIFACT_KEY],
+  )
+  checkpoints
+    .filter {
+      it.issueKey == continuation.issueKey &&
+        it.subtaskId == continuation.subtaskId.toString() &&
+        it.loopId == null
+    }
+    .maxByOrNull(FeatureTaskRuntimeCheckpointIdentity::sequenceNumber)
+    ?.parentSha
+    ?.trim()
+    ?.takeIf(String::isNotBlank)
 }
 
 internal data class GoalReviewInputRecoveryRequest(
@@ -202,7 +316,6 @@ internal data class GoalReviewInputRecoveryRequest(
 
 internal sealed interface GoalReviewInputRecovery {
   class Recovered(val input: GoalSubtaskReviewInput) : GoalReviewInputRecovery
-  class Failed(val reason: String) : GoalReviewInputRecovery
   data object Ineligible : GoalReviewInputRecovery
 }
 
@@ -219,16 +332,15 @@ private val recoverableReviewBaseFailures: Set<GoalSubtaskReviewInputFailureReas
 
 internal fun selectedGoalReviewBaseline(
   state: GoalSubtaskReviewState,
-  scope: FeatureTaskRuntimeGoalContinuationRecorder.GoalReviewInputScope,
+  activeParentSha: String? = null,
 ): Pair<GoalSubtaskReviewBaseline, GoalReviewBaseField> {
-  val exclusions = scope.scopedUntrackedExclusions ?: state.baselineUntrackedPaths
-  val remediationBaseline = state.remediationBaseSha
+  val remediationBaseSha = state.remediationBaseSha
     ?.takeIf { state.completedPassCount >= 1 && state.reservedPassNumber == null }
-    ?.let { preFixSha -> GoalSubtaskReviewBaseline(preFixSha, exclusions, scope.ownedPathspec) }
-  return if (remediationBaseline != null) {
-    remediationBaseline to GoalReviewBaseField.REMEDIATION_BASE
+  return if (remediationBaseSha != null) {
+    GoalSubtaskReviewBaseline(remediationBaseSha, allowNonAncestorBase = true) to
+      GoalReviewBaseField.REMEDIATION_BASE
   } else {
-    GoalSubtaskReviewBaseline(state.reviewBaseSha, exclusions, scope.ownedPathspec) to GoalReviewBaseField.REVIEW_BASE
+    GoalSubtaskReviewBaseline(activeParentSha ?: state.reviewBaseSha) to GoalReviewBaseField.REVIEW_BASE
   }
 }
 
@@ -246,8 +358,14 @@ internal fun goalReviewBlockedPreparation(
   recovery: GoalReviewInputRecovery?,
 ): GoalSubtaskReviewInputPreparation = GoalSubtaskReviewInputBlocked(
   when (recovery) {
-    is GoalReviewInputRecovery.Failed -> recovery.reason
     is GoalReviewInputRecovery.Ineligible, null -> result.error
     is GoalReviewInputRecovery.Recovered -> error("blocked preparation requested for recovered input")
   },
 )
+
+private fun failGoalReviewInputRecovery(
+  workflowId: String,
+  continuation: FeatureTaskRuntimeGoalContinuationArtifact,
+  reason: String,
+  cause: Throwable,
+): Nothing = throw goalReviewInputReconciliationFailure(workflowId, continuation, reason, cause)

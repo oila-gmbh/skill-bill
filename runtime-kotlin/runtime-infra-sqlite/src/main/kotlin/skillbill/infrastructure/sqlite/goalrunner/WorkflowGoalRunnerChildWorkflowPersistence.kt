@@ -240,7 +240,6 @@ internal class WorkflowGoalRunnerChildWorkflowPersistence(
     ).toArtifactMap(),
     GOAL_SUBTASK_REVIEW_STATE_ARTIFACT_KEY to GoalSubtaskReviewState.initial(
       reviewBaseSha = setup.reviewBaseline.reviewBaseSha,
-      baselineUntrackedPaths = setup.reviewBaseline.baselineUntrackedPaths,
       codeReviewMode = setup.reviewPolicy.codeReviewMode,
     ).toArtifactMap(),
     "install_sync_result" to mapOf(

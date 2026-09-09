@@ -364,7 +364,7 @@ class ParallelCodeReviewRunnerTest {
       assertContains(request.skillRunRequest.promptOverride.orEmpty(), "bill-code-review mode:inline")
       assertContains(request.skillRunRequest.promptOverride.orEmpty(), "do not launch specialists")
       assertContains(request.skillRunRequest.promptOverride.orEmpty(), "governed generic rubric")
-      assertContains(request.skillRunRequest.promptOverride.orEmpty(), "paths=\"A.kt\"")
+      assertFalse(request.skillRunRequest.promptOverride.orEmpty().contains("A.kt"))
     }
   }
 
@@ -823,6 +823,7 @@ class ParallelCodeReviewSuppliedDiffTest {
       assertTrue(prompt.contains("bill-kotlin-code-review-architecture"))
       assertTrue(prompt.contains("bill-kotlin-code-review-testing"))
       assertFalse(prompt.contains(huge))
+      assertTrue(prompt.length < 20_000)
     }
     // Projected headroom is not unreviewed code: nothing refused a read, segmentation carried every
     // entry, and both workers ran, so the only honest verdict is clean coverage.
@@ -848,14 +849,14 @@ class ParallelCodeReviewSuppliedDiffTest {
     launcher.requests.forEach { request ->
       val prompt = request.skillRunRequest.promptOverride.orEmpty()
       assertContains(prompt, "Resolved execution mode: inline")
-      assertContains(prompt, "Owned paths: \"Child.kt\"")
       assertContains(prompt, "## Assigned bundle:")
-      assertContains(prompt, "\"Child.kt\"")
+      assertContains(prompt, "read_evidence")
+      assertContains(prompt, "request_expansion")
       assertFalse(prompt.contains("+owned change"))
-      assertContains(prompt, "hunk_id:")
-      assertContains(prompt, "content_digest:")
-      assertContains(prompt, "evidence_locator:")
-      assertContains(prompt, "they are not read_evidence arguments and passing one is refused")
+      assertFalse(prompt.contains("Owned paths:"))
+      assertFalse(prompt.contains("hunk_id:"))
+      assertFalse(prompt.contains("content_digest:"))
+      assertFalse(prompt.contains("evidence_locator:"))
       assertFalse(prompt.contains("unexpected branch diff"), "the supplied diff must replace branch resolution")
       assertEquals("bill-code-review-inline", request.skillRunRequest.nativeReviewWorkerName)
     }

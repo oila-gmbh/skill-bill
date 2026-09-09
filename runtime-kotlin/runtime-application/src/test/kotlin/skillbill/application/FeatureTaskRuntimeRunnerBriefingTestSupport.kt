@@ -5,6 +5,7 @@ import skillbill.application.featuretask.GoalContinuationStateRecordRequest
 import skillbill.application.featuretask.model.FeatureTaskRuntimePhaseLaunchBriefing
 import skillbill.application.featuretask.model.FeatureTaskRuntimeRunEvent
 import skillbill.application.featuretask.model.FeatureTaskRuntimeRunReport
+import skillbill.application.featuretask.reopenCappedReviewOnChangedDelta
 import skillbill.contracts.JsonSupport
 import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewBaseline
 import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewInput
@@ -123,7 +124,7 @@ private fun inlineGoalContinuationHarness(
           parentWorkflowId = "wfl-parent",
           codeReviewMode = CodeReviewExecutionMode.INLINE,
         ),
-        reviewBaseline = GoalSubtaskReviewBaseline("0".repeat(40), emptyList()),
+        reviewBaseline = GoalSubtaskReviewBaseline(git.headCommitShaValue),
       ),
     ),
   )
@@ -158,13 +159,10 @@ private fun pausedReviewState(reviewedDeltaDigest: String) = GoalSubtaskReviewSt
   remediationBaseSha = "9".repeat(40),
 )
 
-private fun seedStaleReviewHarness(
-  tempPrefix: String,
-  trackedDelta: String,
-): Pair<RunnerHarness, RecordingWorkflowGitOperations> {
+private fun seedStaleReviewHarness(tempPrefix: String): Pair<RunnerHarness, RecordingWorkflowGitOperations> {
   val repoRoot = Files.createTempDirectory(tempPrefix)
   val git = RecordingWorkflowGitOperations(currentBranchValue = "feat/existing-runtime-branch")
-    .also { it.headCommitShaValue = COMMITTED_HEAD_SHA }
+    .also { it.headCommitShaValue = "0".repeat(40) }
   git.goalReviewBuildResults += GoalSubtaskReviewInputResult(
     status = "error",
     error = "Persisted review base '${"9".repeat(40)}' is not an ancestor of current HEAD.",
@@ -175,12 +173,11 @@ private fun seedStaleReviewHarness(
     input = GoalSubtaskReviewInput(
       reviewBaseSha = "0".repeat(40),
       currentHeadSha = COMMITTED_HEAD_SHA,
-      trackedDelta = trackedDelta,
-      ownedUntrackedPatches = "",
     ),
   )
   val harness = inlineGoalContinuationHarness(repoRoot, git, validJsonOutput("commit_push"))
   harness.seedReviewPhase("completed", 1, validJsonOutput("review"), reviewPassNumber = 1)
+  git.worktreeStatusValue = ""
   return harness to git
 }
 
@@ -232,14 +229,11 @@ internal fun assertNonScopeReviewPrepFailureSurfacesEvidenceStoreCause() {
 internal fun assertCappedReviewStaleIgnoresUnreachableRemediationBase() {
   val (harness, git) = seedStaleReviewHarness(
     "skillbill-runtime-stale-unreachable-remediation",
-    "immutable-delta\n",
   )
   val paused = pausedReviewState(
     GoalSubtaskReviewInput(
       reviewBaseSha = "0".repeat(40),
       currentHeadSha = COMMITTED_HEAD_SHA,
-      trackedDelta = "immutable-delta\n",
-      ownedUntrackedPatches = "",
     ).deltaDigest,
   )
   checkNotNull(harness.goalContinuationRecorder.updateReviewState(WORKFLOW_ID) { paused })
@@ -247,14 +241,7 @@ internal fun assertCappedReviewStaleIgnoresUnreachableRemediationBase() {
   val generationBefore = harness.repository.taskRuntimeArtifacts(WORKFLOW_ID)[
     "feature_task_runtime_review_generation",
   ]
-  harness.runner.run(
-    harness.request().copy(
-      transitionsOverride = FeatureTaskRuntimeTransitionDeclaration(
-        forwardPhaseIds = listOf("preplan"),
-        backwardEdges = emptyList(),
-      ),
-    ),
-  )
+  harness.runner.reopenCappedReviewOnChangedDelta(harness.request())
   val after = requireNotNull(harness.goalContinuationRecorder.reviewStateRecorder.reviewState(WORKFLOW_ID))
   assertEquals(GoalSubtaskReviewDisposition.PAUSED, after.disposition)
   assertEquals("9".repeat(40), after.remediationBaseSha, "staleness must not heal the remediation base")
@@ -268,26 +255,21 @@ internal fun assertCappedReviewStaleIgnoresUnreachableRemediationBase() {
 internal fun assertCappedReviewStaleReopensWhenImmutableDigestChanged() {
   val (harness, git) = seedStaleReviewHarness(
     "skillbill-runtime-stale-changed-immutable",
-    "new-delta\n",
   )
   val paused = pausedReviewState(
     GoalSubtaskReviewInput(
       reviewBaseSha = "0".repeat(40),
       currentHeadSha = COMMITTED_HEAD_SHA,
-      trackedDelta = "old-delta\n",
-      ownedUntrackedPatches = "",
     ).deltaDigest,
   )
   checkNotNull(harness.goalContinuationRecorder.updateReviewState(WORKFLOW_ID) { paused })
   harness.seedRawReviewResults(paused)
-  harness.runner.run(
-    harness.request().copy(
-      transitionsOverride = FeatureTaskRuntimeTransitionDeclaration(
-        forwardPhaseIds = listOf("preplan"),
-        backwardEdges = emptyList(),
-      ),
-    ),
+  git.goalReviewBuildResults.removeLast()
+  git.goalReviewBuildResults += GoalSubtaskReviewInputResult(
+    status = "ok",
+    input = GoalSubtaskReviewInput("0".repeat(40), "b".repeat(40)),
   )
+  harness.runner.reopenCappedReviewOnChangedDelta(harness.request())
   val after = requireNotNull(harness.goalContinuationRecorder.reviewStateRecorder.reviewState(WORKFLOW_ID))
   assertEquals(GoalSubtaskReviewDisposition.PENDING, after.disposition)
   assertNull(after.remediationBaseSha, "invalidation resets review state; recovery is not the staleness path")

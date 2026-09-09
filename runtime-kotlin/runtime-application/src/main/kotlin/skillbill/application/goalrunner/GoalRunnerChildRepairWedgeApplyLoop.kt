@@ -169,7 +169,6 @@ internal data class UnreachableReviewRepairContext(
   val continuation: FeatureTaskRuntimeGoalContinuationArtifact,
   val failedSha: String,
   val replacement: String,
-  val baselineUntrackedPaths: List<String>,
 )
 
 fun unreachableReviewFailedSha(wedgeClass: GoalRunnerWedgeClass, review: GoalSubtaskReviewState): String? =
@@ -205,7 +204,6 @@ internal fun unreachableReviewRepairContext(lookup: UnreachableReviewRepairLooku
     GoalSubtaskReviewBaselineRecoveryRequest(
       unreachableSha = failedSha,
       failureReason = GoalSubtaskReviewInputFailureReason.BASE_NOT_ANCESTOR,
-      baselineUntrackedPaths = review.baselineUntrackedPaths,
     ),
     continuation.goalBranch,
   )
@@ -216,7 +214,6 @@ internal fun unreachableReviewRepairContext(lookup: UnreachableReviewRepairLooku
     continuation = continuation,
     failedSha = failedSha,
     replacement = recoveredBaseline.reviewBaseSha,
-    baselineUntrackedPaths = recoveredBaseline.baselineUntrackedPaths,
   )
 }
 
@@ -226,7 +223,6 @@ internal fun healedUnreachableReviewState(
 ): GoalSubtaskReviewState? = when (wedgeClass) {
   GoalRunnerWedgeClass.UNREACHABLE_REVIEW_BASE -> context.review.copy(
     reviewBaseSha = context.replacement,
-    baselineUntrackedPaths = context.baselineUntrackedPaths,
   )
   GoalRunnerWedgeClass.UNREACHABLE_REMEDIATION_BASE -> context.review.copy(remediationBaseSha = context.replacement)
   GoalRunnerWedgeClass.PHASE_OUTPUT_CONTRACT_INCOMPATIBLE,

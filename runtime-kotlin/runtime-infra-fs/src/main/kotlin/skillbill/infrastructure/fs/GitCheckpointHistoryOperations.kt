@@ -33,6 +33,12 @@ internal object GitCheckpointHistoryOperations : CheckpointHistoryGitOperations 
     return WorkflowGitOperationResult(status = "ok", value = message.value.orEmpty())
   }
 
+  override fun commitMessage(repoRoot: Path, revision: String): WorkflowGitOperationResult {
+    val message = runGitCommand(repoRoot, "log", "-1", "--format=%B", revision.trim())
+    if (!message.ok) return message
+    return WorkflowGitOperationResult(status = "ok", value = message.value.orEmpty())
+  }
+
   override fun updateRef(
     repoRoot: Path,
     namespacePrefix: String,

@@ -226,7 +226,7 @@ class FeatureTaskRuntimeCensusPhaseIoRunnerTest {
           goalBranch = "feat/existing-runtime-branch",
           suppressPr = true,
           parentWorkflowId = "wfl-parent",
-          reviewBaseline = GoalSubtaskReviewBaseline("0".repeat(40), emptyList()),
+          reviewBaseline = GoalSubtaskReviewBaseline("0".repeat(40)),
         ),
         useRealDecompositionPlanner = true,
         reviewDriver = censusReviewDriver(findings),

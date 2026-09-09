@@ -3,7 +3,9 @@ package skillbill.application.featuretask
 import me.tatarka.inject.annotations.Inject
 import skillbill.application.featuretask.model.GoalSubtaskReviewInputPreparation
 import skillbill.application.featuretask.model.GoalSubtaskReviewPassReservation
+import skillbill.application.featuretask.model.RemediationBaseBlocked
 import skillbill.application.featuretask.model.RemediationBaseCoherenceResult
+import skillbill.error.FeatureTaskRuntimeSubtaskCommitReconciliationError
 import skillbill.ports.db.DatabaseSessionFactory
 import skillbill.ports.diagnostics.RuntimeDiagnostics
 import skillbill.ports.workflow.gitops.WorkflowGitOperations
@@ -21,12 +23,13 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeGoalContinuationOu
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeVerdict
 import java.nio.file.Path
 import java.time.Clock
+import kotlin.coroutines.cancellation.CancellationException
 
 @Inject
 class FeatureTaskRuntimeGoalContinuationRecorder(
   private val database: DatabaseSessionFactory,
   workflowSnapshotValidator: WorkflowSnapshotValidator,
-  private val diagnostics: RuntimeDiagnostics,
+  internal val diagnostics: RuntimeDiagnostics,
   private val clock: Clock,
 ) {
   private val engine: WorkflowEngine = WorkflowEngine(workflowSnapshotValidator)
@@ -66,18 +69,29 @@ class FeatureTaskRuntimeGoalContinuationRecorder(
     dbOverride: String? = null,
   ): GoalSubtaskReviewState? = reviewPassRecorder.completeGoalReviewPass(request, dbOverride)
 
-  class GoalReviewInputScope(
-    val dbOverride: String? = null,
-    val scopedUntrackedExclusions: List<String>? = null,
-    val ownedPathspec: List<String> = emptyList(),
-  )
+  class GoalReviewInputScope(val dbOverride: String? = null)
 
   fun buildGoalReviewInput(
     workflowId: String,
     gitOperations: WorkflowGitOperations,
     repoRoot: Path,
     scope: GoalReviewInputScope = GoalReviewInputScope(),
-  ): GoalSubtaskReviewInputPreparation = inputBuilder.buildGoalReviewInput(workflowId, gitOperations, repoRoot, scope)
+  ): GoalSubtaskReviewInputPreparation = runCatching {
+    inputBuilder.buildGoalReviewInput(workflowId, gitOperations, repoRoot, scope)
+  }.getOrElse { error ->
+    if (error is CancellationException) throw error
+    val refusal = error as? FeatureTaskRuntimeSubtaskCommitReconciliationError
+      ?: FeatureTaskRuntimeSubtaskCommitReconciliationError(
+        workflowId = workflowId,
+        issueKey = "unknown",
+        subtaskId = "unknown",
+        reason = "review input could not be reconciled (${error.message}); " +
+          "repair Git or workflow-store access before retrying",
+        cause = error,
+      )
+    diagnostics.warning("record_kind=refusal seam=buildGoalReviewInput cause=${refusal.reason}", refusal)
+    throw refusal
+  }
 }
 
 internal data class GoalContinuationStateRecordRequest(
@@ -124,5 +138,24 @@ fun FeatureTaskRuntimeGoalContinuationRecorder.reconcileRemediationBaseCoherence
   gitOperations: WorkflowGitOperations,
   repoRoot: Path,
   dbOverride: String?,
-): RemediationBaseCoherenceResult =
+): RemediationBaseCoherenceResult = try {
   remediationReconciler.reconcileRemediationBaseCoherence(workflowId, gitOperations, repoRoot, dbOverride)
+} catch (error: CancellationException) {
+  throw error
+} catch (error: IllegalStateException) {
+  val reconciliationError = FeatureTaskRuntimeSubtaskCommitReconciliationError(
+    workflowId = workflowId,
+    issueKey = "unknown",
+    subtaskId = "unknown",
+    reason = "remediation-base reconciliation could not complete (${error.message.orEmpty()}); operator decision: " +
+      "repair the workflow store or checkpoint refs before resuming",
+    cause = error,
+  )
+  diagnostics.warning(
+    "record_kind=refusal seam=FeatureTaskRuntimeGoalContinuationRecorder.reconcileRemediationBaseCoherence " +
+      "value_used='$workflowId' value_expected=durable remediation-base reconciliation " +
+      "cause=${reconciliationError.reason}",
+    reconciliationError,
+  )
+  RemediationBaseBlocked(reconciliationError.message.orEmpty())
+}

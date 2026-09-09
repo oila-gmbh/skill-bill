@@ -12,15 +12,22 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeReviewPassSequence
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeVerdict
 import skillbill.workflow.taskruntime.model.featureTaskRuntimeFoldRepairLedger
 
+data class GoalSubtaskReviewRevision(
+  val commitFocusedAccounting: GoalSubtaskCommitFocusedAccounting? = null,
+  val reviewedRevision: GoalSubtaskReviewedRevision? = null,
+)
+
 data class GoalSubtaskReviewState(
   val reviewBaseSha: String,
-  val baselineUntrackedPaths: List<String>,
+  val baselineUntrackedPaths: List<String> = emptyList(),
   val codeReviewMode: CodeReviewExecutionMode,
   val reservedPassNumber: Int? = null,
   val completedPassCount: Int = 0,
   val disposition: GoalSubtaskReviewDisposition = GoalSubtaskReviewDisposition.PENDING,
   val reviewInputArtifact: String? = null,
   val reviewedDeltaDigest: String? = null,
+  val reviewedTargetSha: String? = null,
+  val reviewedTreeSha: String? = null,
   val passResults: List<GoalSubtaskReviewPassResult> = emptyList(),
   val emittedPassCount: Int = 0,
   val blockerDispositions: List<GoalSubtaskBlockerDisposition> = emptyList(),
@@ -35,8 +42,8 @@ data class GoalSubtaskReviewState(
   init {
     require(contractVersion == GOAL_SUBTASK_REVIEW_STATE_CONTRACT_VERSION) {
       "Unsupported goal review state contract '$contractVersion'. " +
-        "Records written before $GOAL_SUBTASK_REVIEW_STATE_CONTRACT_VERSION carry a two-pass " +
-        "remediation ceiling, are rejected, and must be regenerated."
+        "Records written before $GOAL_SUBTASK_REVIEW_STATE_CONTRACT_VERSION pin a worktree review " +
+        "baseline and carry no reviewed commit identity, are rejected, and must be regenerated."
     }
     resolvedTier?.let { tier ->
       require(tier != CodeReviewExecutionMode.AUTO) {
@@ -49,6 +56,13 @@ data class GoalSubtaskReviewState(
     remediationBaseSha?.let { sha ->
       require(GIT_COMMIT_SHA.matches(sha)) {
         "Goal remediation base SHA must be a 40- or 64-character lowercase commit SHA."
+      }
+    }
+    listOf("reviewed target" to reviewedTargetSha, "reviewed tree" to reviewedTreeSha).forEach { (label, sha) ->
+      sha?.let {
+        require(GIT_COMMIT_SHA.matches(it)) {
+          "Goal $label SHA must be a 40- or 64-character lowercase object SHA."
+        }
       }
     }
     require(baselineUntrackedPaths.all(String::isNotBlank)) { "Baseline untracked paths must be non-blank." }
@@ -130,9 +144,10 @@ data class GoalSubtaskReviewState(
     unresolvedFindingCount: Int,
     findings: List<GoalSubtaskReviewCompactFinding>,
     blockerDispositions: List<GoalSubtaskBlockerDisposition> = emptyList(),
-    /** Supplied only by a delegated pass over a real commit sequence; inline passes omit it. */
-    commitFocusedAccounting: GoalSubtaskCommitFocusedAccounting? = null,
+    revision: GoalSubtaskReviewRevision = GoalSubtaskReviewRevision(),
   ): GoalSubtaskReviewState {
+    val commitFocusedAccounting = revision.commitFocusedAccounting
+    val reviewedRevision = revision.reviewedRevision
     val passNumber = reservedPassNumber
       ?: reviewStateError("reserved_pass_number", "must be present before completing a review pass.")
     require(
@@ -158,12 +173,20 @@ data class GoalSubtaskReviewState(
       reservedPassNumber = null,
       completedPassCount = passNumber,
       disposition = GoalSubtaskReviewDisposition.PENDING,
+      reviewedTargetSha = reviewedRevision?.targetSha ?: reviewedTargetSha,
+      reviewedTreeSha = reviewedRevision?.treeSha ?: reviewedTreeSha,
       passResults = passResults + result,
       blockerDispositions = if (disposedPass) blockerDispositions else this.blockerDispositions,
       operatorDecision = null,
       operatorRetryRounds = 0,
     )
   }
+
+  fun approvalCovers(revision: GoalSubtaskReviewedRevision): Boolean =
+    reviewedTargetSha == revision.targetSha && reviewedTreeSha == revision.treeSha
+
+  fun approvalInvalidatedBy(revision: GoalSubtaskReviewedRevision): Boolean =
+    reviewedTargetSha != null && reviewedTreeSha != null && !approvalCovers(revision)
 
   val pausedForOperatorDecision: Boolean get() = disposition == GoalSubtaskReviewDisposition.PAUSED
 
@@ -191,7 +214,6 @@ data class GoalSubtaskReviewState(
   fun toArtifactMap(): Map<String, Any?> = linkedMapOf<String, Any?>(
     "contract_version" to contractVersion,
     "review_base_sha" to reviewBaseSha,
-    "baseline_untracked_paths" to baselineUntrackedPaths,
     "code_review_mode" to codeReviewMode.wireValue,
     "completed_pass_count" to completedPassCount,
     "disposition" to disposition.wireValue,
@@ -202,6 +224,8 @@ data class GoalSubtaskReviewState(
     reservedPassNumber?.let { put("reserved_pass_number", it) }
     reviewInputArtifact?.let { put("review_input_artifact", it) }
     reviewedDeltaDigest?.let { put("reviewed_delta_digest", it) }
+    reviewedTargetSha?.let { put("reviewed_target_sha", it) }
+    reviewedTreeSha?.let { put("reviewed_tree_sha", it) }
     operatorDecision?.let { put("operator_decision", it.wireValue) }
     if (operatorRetryRounds > 0) put("operator_retry_rounds", operatorRetryRounds)
     resolvedTier?.let { put("resolved_tier", it.wireValue) }
@@ -215,7 +239,7 @@ data class GoalSubtaskReviewState(
   companion object {
     fun initial(
       reviewBaseSha: String,
-      baselineUntrackedPaths: Collection<String>,
+      baselineUntrackedPaths: Collection<String> = emptyList(),
       codeReviewMode: CodeReviewExecutionMode,
     ): GoalSubtaskReviewState = GoalSubtaskReviewState(
       reviewBaseSha = reviewBaseSha,
@@ -231,7 +255,8 @@ data class GoalSubtaskReviewState(
       raw.requireOnlyReviewStateKeys(
         setOf(
           "contract_version", "review_base_sha", "baseline_untracked_paths", "code_review_mode", "reserved_pass_number",
-          "completed_pass_count", "disposition", "review_input_artifact", "reviewed_delta_digest", "pass_results",
+          "completed_pass_count", "disposition", "review_input_artifact", "reviewed_delta_digest",
+          "reviewed_target_sha", "reviewed_tree_sha", "pass_results",
           "emitted_pass_count", "blocker_dispositions", "operator_decision", "operator_retry_rounds",
           "resolved_tier", "deciding_rule",
           "remediation_base_sha",
@@ -243,13 +268,14 @@ data class GoalSubtaskReviewState(
         GoalSubtaskReviewState(
           contractVersion = raw.requireReviewStateString("contract_version", sourceLabel),
           reviewBaseSha = raw.requireReviewStateString("review_base_sha", sourceLabel),
-          baselineUntrackedPaths = raw.requireReviewStateList("baseline_untracked_paths", sourceLabel)
-            .mapIndexed { index, value ->
+          baselineUntrackedPaths = raw.optionalReviewStateList("baseline_untracked_paths", sourceLabel)
+            ?.mapIndexed { index, value ->
               value as? String ?: reviewStateError(
                 "$sourceLabel.baseline_untracked_paths[$index]",
                 "must be a string.",
               )
-            },
+            }
+            .orEmpty(),
           codeReviewMode = CodeReviewExecutionMode.fromWire(
             raw.requireReviewStateString("code_review_mode", sourceLabel),
           ),
@@ -258,6 +284,8 @@ data class GoalSubtaskReviewState(
           disposition = GoalSubtaskReviewDisposition.fromWire(raw.requireReviewStateString("disposition", sourceLabel)),
           reviewInputArtifact = raw.optionalReviewStateString("review_input_artifact", sourceLabel),
           reviewedDeltaDigest = raw.optionalReviewStateString("reviewed_delta_digest", sourceLabel),
+          reviewedTargetSha = raw.optionalReviewStateString("reviewed_target_sha", sourceLabel),
+          reviewedTreeSha = raw.optionalReviewStateString("reviewed_tree_sha", sourceLabel),
           passResults = decodePassResults(raw, sourceLabel),
           emittedPassCount = raw.requireReviewStateInt("emitted_pass_count", sourceLabel),
           blockerDispositions = decodeBlockerDispositions(raw, sourceLabel),
@@ -315,6 +343,14 @@ data class GoalSubtaskReviewState(
 
 internal fun blocksAdvance(unresolvedFindingCount: Int, findings: List<GoalSubtaskReviewCompactFinding>): Boolean =
   unresolvedFindingCount > 0 && (findings.isEmpty() || findings.any(GoalSubtaskReviewCompactFinding::blocksAdvance))
+
+data class GoalSubtaskReviewedRevision(val targetSha: String, val treeSha: String) {
+  init {
+    require(GIT_COMMIT_SHA.matches(targetSha) && GIT_COMMIT_SHA.matches(treeSha)) {
+      "A reviewed revision needs 40- or 64-character lowercase target and tree SHAs."
+    }
+  }
+}
 
 private val GIT_COMMIT_SHA = Regex("^[0-9a-f]{40}(?:[0-9a-f]{24})?$")
 

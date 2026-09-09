@@ -11,6 +11,7 @@ import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_WORKER_OWNERSHIP_CONTRA
 import skillbill.db.core.DatabaseRuntime
 import skillbill.di.RuntimeComponent
 import skillbill.di.create
+import skillbill.infrastructure.fs.JdkFeatureTaskRuntimeWorkerSupervisor
 import skillbill.install.model.InstallAgent
 import skillbill.ports.agentrun.AgentRunLauncher
 import skillbill.ports.agentrun.ExecutableLookup
@@ -19,6 +20,7 @@ import skillbill.ports.agentrun.model.AgentRunLaunchOutcome
 import skillbill.ports.agentrun.model.AgentRunLaunchRequest
 import skillbill.ports.agentrun.model.AgentRunOutputStream
 import skillbill.ports.agentrun.model.SkillRunRequest
+import skillbill.ports.diagnostics.NoopRuntimeDiagnostics
 import skillbill.ports.goalrunner.runner.GoalPullRequestPort
 import skillbill.ports.goalrunner.runner.model.GoalPullRequestRequest
 import skillbill.ports.goalrunner.runner.model.GoalPullRequestResult
@@ -78,23 +80,25 @@ internal fun startRunningRuntimeGoalChild(fixture: GoalCliFixture): String {
 }
 
 internal fun seedLiveWorkerLease(fixture: GoalCliFixture, workflowId: String) {
+  val process = JdkFeatureTaskRuntimeWorkerSupervisor(NoopRuntimeDiagnostics).currentProcess()
   DatabaseRuntime.ensureDatabase(fixture.dbPath).use { connection ->
     connection.prepareStatement(
       """
       INSERT OR REPLACE INTO feature_task_runtime_worker_leases (
         workflow_id, contract_version, generation, owner_token, host_identity, boot_identity,
         pid, process_birth_token, lease_state, heartbeat_at, expires_at, phase_id, phase_attempt
-      ) VALUES (?, ?, 1, ?, ?, ?, 1234, ?, 'active', ?, ?, 'implement', 1)
+      ) VALUES (?, ?, 1, ?, ?, ?, ?, ?, 'active', ?, ?, 'implement', 1)
       """.trimIndent(),
     ).use { statement ->
       statement.setString(1, workflowId)
       statement.setString(2, FEATURE_TASK_RUNTIME_WORKER_OWNERSHIP_CONTRACT_VERSION)
       statement.setString(3, "owner-token-cli-watch")
-      statement.setString(4, "test-host")
-      statement.setString(5, "test-boot")
-      statement.setString(6, "birth-1234")
-      statement.setString(7, "2999-01-01T00:00:00Z")
-      statement.setString(8, "2999-01-01T00:01:00Z")
+      statement.setString(4, process.hostIdentity)
+      statement.setString(5, process.bootIdentity)
+      statement.setLong(6, process.pid)
+      statement.setString(7, process.processBirthToken)
+      statement.setString(8, "2999-01-01T00:00:00Z")
+      statement.setString(9, "2999-01-01T00:01:00Z")
       statement.executeUpdate()
     }
   }
@@ -574,6 +578,9 @@ internal object GoalTestWorkflowGitOperations :
     override fun stagePaths(repoRoot: Path, paths: List<String>): WorkflowGitOperationResult =
       WorkflowGitOperationResult(status = "ok", value = "")
 
+    override fun unstagePaths(repoRoot: Path, paths: List<String>): WorkflowGitOperationResult =
+      WorkflowGitOperationResult(status = "ok", value = "")
+
     override fun captureIndexState(repoRoot: Path, paths: List<String>): WorkflowGitOperationResult =
       WorkflowGitOperationResult(status = "ok", value = "")
 
@@ -604,7 +611,7 @@ internal object GoalTestWorkflowGitOperations :
       override fun captureBaseline(repoRoot: Path, expectedBranch: String): GoalSubtaskReviewBaselineResult =
         GoalSubtaskReviewBaselineResult(
           status = "ok",
-          baseline = GoalSubtaskReviewBaseline("0".repeat(40), emptyList()),
+          baseline = GoalSubtaskReviewBaseline("0".repeat(40)),
         )
 
       override fun buildInput(repoRoot: Path, baseline: GoalSubtaskReviewBaseline, expectedBranch: String): Nothing =

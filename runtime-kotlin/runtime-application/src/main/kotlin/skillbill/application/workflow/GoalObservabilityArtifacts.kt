@@ -7,6 +7,7 @@ import skillbill.workflow.goal.GoalObservabilityEventValidator
 import skillbill.workflow.goal.model.GOAL_OBSERVABILITY_LATEST_EVENT_ARTIFACT_KEY
 import skillbill.workflow.goal.model.GOAL_OBSERVABILITY_RUN_HISTORY_ARTIFACT_KEY
 import skillbill.workflow.goal.model.GoalObservabilityEvent
+import skillbill.workflow.goal.model.GoalObservabilityRecordKind
 import skillbill.workflow.goal.model.goalObservabilityHistoryFromArtifacts
 
 object GoalObservabilityArtifacts {
@@ -32,6 +33,7 @@ object GoalObservabilityArtifacts {
   ): Map<String, Any?> = patchForEvent(
     artifacts = input.artifacts,
     event = GoalObservabilityEvent(
+      recordKind = GoalObservabilityRecordKind.fromWire(input.request.recordKind),
       issueKey = input.request.issueKey,
       subtaskId = input.request.subtaskId,
       workflowId = input.request.workflowId,

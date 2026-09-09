@@ -21,10 +21,7 @@ internal object NoopGoalSubtaskReviewGitOperations : GoalSubtaskReviewGitOperati
     } else {
       GoalSubtaskReviewBaselineResult(
         status = "ok",
-        baseline = GoalSubtaskReviewBaseline(
-          reviewBaseSha = "0".repeat(NOOP_REVIEW_BASE_SHA_LENGTH),
-          baselineUntrackedPaths = emptyList(),
-        ),
+        baseline = GoalSubtaskReviewBaseline(reviewBaseSha = "0".repeat(NOOP_REVIEW_BASE_SHA_LENGTH)),
       )
     }
   }
@@ -40,8 +37,7 @@ internal object NoopGoalSubtaskReviewGitOperations : GoalSubtaskReviewGitOperati
       input = GoalSubtaskReviewInput(
         reviewBaseSha = baseline.reviewBaseSha,
         currentHeadSha = baseline.reviewBaseSha,
-        trackedDelta = "",
-        ownedUntrackedPatches = "",
+        reviewedTreeSha = "0".repeat(NOOP_REVIEW_BASE_SHA_LENGTH),
       ),
     )
   }

@@ -73,18 +73,13 @@ fun isFeatureSpecPathForIssue(path: String, issueKey: String): Boolean {
   return issueDirectory == key || issueDirectory.startsWith("$key-")
 }
 
-fun reconcileCheckpointPathInventory(
-  repoRoot: Path,
-  issueKey: String,
-  specReference: String,
-  paths: List<String>,
-): List<String> {
+fun reconcileCheckpointPathInventory(repoRoot: Path, specReference: String, paths: List<String>): List<String> {
   val specPath = Path.of(specReference)
     .let { path -> if (path.isAbsolute) repoRoot.relativize(path) else path }
     .normalize()
     .toString()
   return paths.filterNot { path ->
-    path == specPath || isFeatureSpecPathForIssue(path, issueKey)
+    path == specPath || isGovernedSpecPath(path) || isRuntimePrivatePath(path)
   }.distinct()
 }
 
@@ -138,6 +133,7 @@ class FeatureTaskRuntimeRunLoop internal constructor(
   )
 
   init {
+    session.resolvedBranch = recorder.loadResolvedBranch(request.workflowId, request.dbPathOverride)?.branch
     session.pendingReentry = collaborators.drive.resumedReentry(this)
     session.activeReentry = session.pendingReentry
   }

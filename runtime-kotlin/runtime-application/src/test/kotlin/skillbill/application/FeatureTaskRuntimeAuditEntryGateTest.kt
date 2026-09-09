@@ -426,7 +426,7 @@ class FeatureTaskRuntimeAuditEntryGateTest {
             goalBranch = "feat/goal-branch",
             suppressPr = true,
             parentWorkflowId = "wfl-parent",
-            reviewBaseline = GoalSubtaskReviewBaseline("0".repeat(40), emptyList()),
+            reviewBaseline = GoalSubtaskReviewBaseline("0".repeat(40)),
           ),
         ),
       ).request(),

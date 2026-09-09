@@ -1,3 +1,12 @@
+## [2026-09-08] SKILL-235 subtask 1 — Commit-based subtask review
+Areas: runtime-kotlin/{runtime-application/{featuretask,review,reviewevidence,goalrunner},runtime-domain, runtime-infra-fs, runtime-ports}, docs, orchestration/contracts, platform-packs/generic/code-review, skills
+- Added a runtime-owned one-commit boundary before each goal-child review, with exact base/target/tree identity and ownership-aware amendment/retry handling. reusable
+- Review launch now carries immutable Git coordinates and bounded configuration; reviewers retrieve committed content on demand instead of receiving expanded worktree paths and hunks. reusable
+- Finalization, interruption recovery, migration, approval invalidation, checkpoint preservation, and exclusion rules now share the same identity and reconciliation policy.
+- Limitation: provider-bound prompt-growth coverage and focused real-Git recovery coverage remain follow-up validation/review work.
+Feature flag: N/A
+Acceptance criteria: 9/9 implemented
+
 ## [2026-09-04] SKILL-232 subtask 1 — Unused private/internal deletion pass
 Areas: runtime-kotlin/{runtime-application/{featuretask,goalrunner,work},runtime-domain/review/context/model,runtime-infra-fs/{infrastructure/fs,install/nativeagent,launcher/mcp,scaffold/platformpack},runtime-infra-sqlite/{db/workflow,infrastructure/sqlite/goalrunner},runtime-core/architecture/baselines}
 - Deleted 15 confirmed-unused `internal` declarations plus the eight-symbol cascade inside `GoalSubtaskReviewDeletionElision.kt`; 6 insertions, 243 deletions, no observable behavior change.

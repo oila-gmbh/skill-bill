@@ -15,9 +15,9 @@ class FeatureTaskRuntimeAuditWorktreeEvidenceTest {
       assertContains(evidenceInstructions, "current working-tree contents")
       assertContains(evidenceInstructions, "staged, unstaged, and untracked")
       assertContains(evidenceInstructions, "head_ref is the last committed revision")
-      assertContains(evidenceInstructions, "Read the current files at scoped_owned_paths")
-      assertContains(evidenceInstructions, "git diff <base_ref> -- <scoped paths>")
-      assertContains(evidenceInstructions, "read owned untracked files directly")
+      assertContains(evidenceInstructions, "Discover the changed paths yourself")
+      assertContains(evidenceInstructions, "git diff --name-status <base_ref>")
+      assertContains(evidenceInstructions, "read those current files, including deletions")
       assertContains(evidenceInstructions, "git show <head_ref>:<path> alone is not current-state evidence")
       assertFalse(evidenceInstructions.contains("the diff over base_ref/head_ref plus"))
     }

@@ -203,7 +203,7 @@ object FeatureTaskRuntimeCheckpointIdentitySchemaPaths {
  * Pins the reference-only projection (store path plus file/hunk index) delivered to audit, review,
  * and every review lane for one repository checkpoint.
  */
-const val FEATURE_TASK_RUNTIME_SHARED_EVIDENCE_PROJECTION_CONTRACT_VERSION: String = "0.1"
+const val FEATURE_TASK_RUNTIME_SHARED_EVIDENCE_PROJECTION_CONTRACT_VERSION: String = "0.2"
 
 const val FEATURE_TASK_RUNTIME_BUILD_RECEIPT_CONTRACT_VERSION: String = "0.1"
 

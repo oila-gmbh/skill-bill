@@ -119,7 +119,9 @@ private fun FeatureTaskRuntimeRunLoopOutputPersistence.composeLaunchPrompt(
       codeReviewMode = executedTier,
       reviewPassNumber = passNumber,
       goalSubtaskReviewInput = run.goalReviewInput,
-      baselineUntrackedPaths = resolvedBranchRecord?.baselineUntrackedPaths.orEmpty(),
+      baselineUntrackedPaths = resolvedBranchRecord?.baselineUntrackedPaths
+        ?.takeUnless { isGoalContinuationRun(run.request) }
+        .orEmpty(),
       resolvedReviewTier = depthResolution?.let { executedTier },
       reviewDecidingRule = depthResolution?.decidingRule,
       repairLedger = handoff.repairLedger,

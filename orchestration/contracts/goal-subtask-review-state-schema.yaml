@@ -11,7 +11,6 @@ additionalProperties: false
 required:
   - contract_version
   - review_base_sha
-  - baseline_untracked_paths
   - code_review_mode
   - completed_pass_count
   - disposition
@@ -20,11 +19,20 @@ required:
 properties:
   contract_version:
     type: string
-    const: "0.6"
+    const: "0.7"
   review_base_sha:
+    description: >
+      Base revision of the pass-one review pair: the parent of the active subtask commit. Review
+      evaluates diff(review_base_sha -> reviewed_target_sha) over committed objects, never
+      origin/main, a merge base, accumulated branch history, or the working tree.
     type: string
     pattern: "^[0-9a-f]{40}([0-9a-f]{24})?$"
   baseline_untracked_paths:
+    description: >
+      Decode-only legacy field. Goal children reviewed a dirty worktree before 0.7 and needed a
+      baseline untracked inventory to bound it; a committed revision pair carries no untracked
+      state, so the field is neither written nor consumed and survives only so pre-0.7 records
+      quarantine and regenerate rather than failing to parse at all.
     type: array
     items:
       type: string
@@ -96,10 +104,24 @@ properties:
     minLength: 1
   reviewed_delta_digest:
     description: >
-      Digest of the exact base-to-current delta the latest review pass judged. A capped
-      disposition is authoritative only while this digest still matches the working tree.
+      Digest of the exact revision pair the latest review pass judged, taken over its base sha,
+      target sha, and reviewed tree sha. A capped disposition is authoritative only while this
+      digest still matches the current pair.
     type: string
     pattern: "^[0-9a-f]{64}$"
+  reviewed_target_sha:
+    description: >
+      The exact commit the latest settled pass evaluated. An approval authorizes this commit and
+      no other, so a later build or validation code repair that amends the subtask commit changes
+      this sha and invalidates the approval.
+    type: string
+    pattern: "^[0-9a-f]{40}([0-9a-f]{24})?$"
+  reviewed_tree_sha:
+    description: >
+      Tree identity of reviewed_target_sha. A message-only amend leaves this unchanged and carries
+      the approval forward; any content change moves it and re-enters the required gates.
+    type: string
+    pattern: "^[0-9a-f]{40}([0-9a-f]{24})?$"
   repair_receipts:
     description: >
       Ordered implement_fix repair receipts keyed by remediation round number. Additive and
@@ -302,7 +324,15 @@ properties:
     type: integer
     minimum: 0
 x-coherence-checks:
-  - review_base_sha and baseline_untracked_paths are immutable after initial child creation.
+  - >
+    review_base_sha is the parent of the active subtask commit and is immutable once that commit
+    exists; it is repointed only by baseline recovery for a genuinely unreachable base, never by a
+    child-creation worktree snapshot and never to widen the pass-one scope.
+  - >
+    reviewed_target_sha and reviewed_tree_sha are present exactly on a settled pass and together
+    bind an approval to one revision: a prior verdict is authoritative only while both still match
+    the current subtask commit.
+  - baseline_untracked_paths is decode-only legacy and is never written by 0.7 or later.
   - reserved_pass_number is completed_pass_count + 1 for any positive pass number and prevents a crash/resume from resetting accounting or allocating a second pass.
   - pass_results is ordered by pass_number and has exactly completed_pass_count entries.
   - When present, pass one executed_mode is the resolution of code_review_mode (auto resolves to delegated) and every pass from two onward is inline.
@@ -312,5 +342,5 @@ x-coherence-checks:
   - commit_focused_accounting is present exactly for a delegated pass over a real commit sequence; an inline or non-commit pass omits it rather than fabricating a sequence identity.
   - focused_commit_count and skipped_commit_count sum to commit_count, and a lane named in incomplete_lanes is non-clean coverage that the integration pass never compensates for.
   - integration_terminal_outcome records the integration pass's own boundary, distinct from every lane disposition, so a resume can tell "lanes done, integration pending" from "everything done".
-  - reviewed_delta_digest records what the latest pass judged; a review_cap_reached disposition whose digest no longer matches the current delta is stale and the child reopens a fresh review generation rather than replaying it.
+  - reviewed_delta_digest records what the latest pass judged; a review_cap_reached disposition whose digest no longer matches the current revision pair is stale and the child reopens a fresh review generation rather than replaying it.
   - repair_receipts is additive and omitted when empty so records written before the key still decode; upsert is keyed by round_number so a crash-resume cannot append a duplicate.

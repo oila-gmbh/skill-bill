@@ -129,6 +129,26 @@ class GoalSubtaskReviewStateTest {
   }
 
   @Test
+  fun `settled approval is tied to the reviewed target and tree`() {
+    val revision = GoalSubtaskReviewedRevision("b".repeat(40), "c".repeat(40))
+    val settled = GoalSubtaskReviewState.initial(
+      reviewBaseSha = "a".repeat(40),
+      codeReviewMode = CodeReviewExecutionMode.INLINE,
+    ).reserveNextPass().completeReservedPass(
+      verdict = FeatureTaskRuntimeVerdict.APPROVED,
+      unresolvedFindingCount = 0,
+      findings = emptyList(),
+      revision = GoalSubtaskReviewRevision(reviewedRevision = revision),
+    )
+    val decoded = GoalSubtaskReviewState.fromArtifactMap(settled.toArtifactMap())
+
+    assertTrue(decoded.approvalCovers(revision))
+    assertTrue(decoded.approvalInvalidatedBy(revision.copy(treeSha = "d".repeat(40))))
+    assertEquals(revision.targetSha, decoded.reviewedTargetSha)
+    assertEquals(revision.treeSha, decoded.reviewedTreeSha)
+  }
+
+  @Test
   fun `pass one reservation survives serialization and resume`() {
     val reserved = GoalSubtaskReviewState.initial(
       reviewBaseSha = "7".repeat(40),

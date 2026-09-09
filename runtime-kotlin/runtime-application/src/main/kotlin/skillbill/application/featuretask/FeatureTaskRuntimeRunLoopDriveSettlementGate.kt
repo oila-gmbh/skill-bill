@@ -1,6 +1,7 @@
 package skillbill.application.featuretask
 
 import me.tatarka.inject.annotations.Inject
+import skillbill.error.FeatureTaskRuntimeSubtaskCommitReconciliationError
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import skillbill.workflow.taskruntime.model.AUDIT_GAP_PAUSE_DECISION_ABANDON_SUBTASK
 import skillbill.workflow.taskruntime.model.AUDIT_GAP_PAUSE_DECISION_RETRY_FIX
@@ -41,10 +42,40 @@ class FeatureTaskRuntimeRunLoopDriveSettlementGate {
     ) {
       return
     }
-    val generation = checkNotNull(
-      runLoop.recorder.persistReviewGenerationInvalidation(runLoop.request.workflowId, runLoop.request.dbPathOverride),
-    ) {
-      "Could not durably invalidate legacy review evidence for workflow '${runLoop.request.workflowId}'."
+    val generation = runCatching {
+      runLoop.recorder.persistReviewGenerationInvalidation(
+        runLoop.request.workflowId,
+        runLoop.request.dbPathOverride,
+      )
+    }.getOrElse { error ->
+      val reconciliationError = FeatureTaskRuntimeSubtaskCommitReconciliationError(
+        workflowId = runLoop.request.workflowId,
+        issueKey = runLoop.request.issueKey,
+        subtaskId = runLoop.request.goalContinuation?.subtaskId?.toString() ?: "unknown",
+        reason = "legacy review invalidation could not be persisted (${error.message.orEmpty()})",
+        cause = error,
+      )
+      runLoop.diagnostics.warning(
+        "record_kind=refusal seam=FeatureTaskRuntimeRunLoopDriveSettlementGate.invalidateReviewGenerationIfNeeded " +
+          "value_used='${runLoop.request.workflowId}' value_expected=durable review invalidation " +
+          "cause=${reconciliationError.reason}",
+        reconciliationError,
+      )
+      throw reconciliationError
+    } ?: run {
+      val reconciliationError = FeatureTaskRuntimeSubtaskCommitReconciliationError(
+        workflowId = runLoop.request.workflowId,
+        issueKey = runLoop.request.issueKey,
+        subtaskId = runLoop.request.goalContinuation?.subtaskId?.toString() ?: "unknown",
+        reason = "legacy review invalidation found no workflow row",
+      )
+      runLoop.diagnostics.warning(
+        "record_kind=refusal seam=FeatureTaskRuntimeRunLoopDriveSettlementGate.invalidateReviewGenerationIfNeeded " +
+          "value_used='missing workflow row' value_expected=durable review invalidation " +
+          "cause=${reconciliationError.reason}",
+        reconciliationError,
+      )
+      throw reconciliationError
     }
     runLoop.state.advanceReviewGeneration(generation)
     runLoop.state.resetInvalidatedReviewGeneration()
@@ -52,6 +83,49 @@ class FeatureTaskRuntimeRunLoopDriveSettlementGate {
       runLoop.session.pendingReentry = null
       runLoop.session.activeReentry = null
     }
+  }
+
+  fun reenterAfterChangedRevision(runLoop: FeatureTaskRuntimeRunLoop): String? {
+    val generation = runCatching {
+      runLoop.recorder.persistReviewGenerationInvalidation(
+        runLoop.request.workflowId,
+        runLoop.request.dbPathOverride,
+      )
+    }.getOrElse { error ->
+      val reconciliationError = FeatureTaskRuntimeSubtaskCommitReconciliationError(
+        workflowId = runLoop.request.workflowId,
+        issueKey = runLoop.request.issueKey,
+        subtaskId = runLoop.request.goalContinuation?.subtaskId?.toString() ?: "unknown",
+        reason = "changed revision re-entry could not be persisted (${error.message.orEmpty()})",
+        cause = error,
+      )
+      runLoop.diagnostics.warning(
+        "record_kind=refusal seam=FeatureTaskRuntimeRunLoopDriveSettlementGate.reenterAfterChangedRevision " +
+          "value_used='changed review revision' value_expected=durable audit and review re-entry " +
+          "cause=${reconciliationError.reason}",
+        reconciliationError,
+      )
+      return "needs_human: ${reconciliationError.message.orEmpty()} Repair the workflow store before resuming."
+    } ?: run {
+      val reconciliationError = FeatureTaskRuntimeSubtaskCommitReconciliationError(
+        workflowId = runLoop.request.workflowId,
+        issueKey = runLoop.request.issueKey,
+        subtaskId = runLoop.request.goalContinuation?.subtaskId?.toString() ?: "unknown",
+        reason = "changed revision re-entry could not be persisted because the workflow row was absent",
+      )
+      runLoop.diagnostics.warning(
+        "record_kind=refusal seam=FeatureTaskRuntimeRunLoopDriveSettlementGate.reenterAfterChangedRevision " +
+          "value_used='missing workflow row' value_expected=durable audit and review re-entry " +
+          "cause=${reconciliationError.reason}",
+        reconciliationError,
+      )
+      return "needs_human: ${reconciliationError.message.orEmpty()}"
+    }
+    runLoop.state.advanceReviewGeneration(generation)
+    runLoop.state.reopenForChangedRevision()
+    runLoop.session.pendingReentry = null
+    runLoop.session.activeReentry = null
+    return null
   }
 
   fun loadMigratedAuditGapPause(runLoop: FeatureTaskRuntimeRunLoop): FeatureTaskRuntimeAuditGapPause? =
@@ -114,7 +188,10 @@ class FeatureTaskRuntimeRunLoopDriveSettlementGate {
     while (phaseId != null) {
       val settled = runLoop.advance(phaseId)
       val completedPhaseId = settled.completedPhaseId
-      phaseId = if (completedPhaseId != null) {
+      phaseId = if (runLoop.session.reviewReentryPending) {
+        runLoop.session.reviewReentryPending = false
+        FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT
+      } else if (completedPhaseId != null) {
         runLoop.collaborators.driveContinued2.nextPhaseAfter(
           runLoop,
           completedPhaseId,

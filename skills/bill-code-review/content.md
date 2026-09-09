@@ -86,6 +86,8 @@ branch scope. Without a commit target, pass the caller's scope normally.
 
 ## Invoke the driver
 
+Feature-task and goal-child review receives an immutable committed revision pair. Read the base and target content on demand through the governed `read_evidence` and `request_expansion` broker tools, or bounded and paged Git reads. Do not expect inline path inventories, hunk catalogs, or diff bodies in the launch prompt; routing and coverage metadata remain runtime-private.
+
 Do not resolve scope, classify diff signals, name rubrics, sequence commits,
 account budgets, merge lanes, or launch workers in this session. Invoke the
 runtime driver once and present what it returns:

@@ -151,7 +151,6 @@ class FeatureTaskRuntimeRunLoopOutputVerificationStructuralRepair {
       run = run,
       persistedOwnedPaths = resolvedBranchRecord?.workflowOwnedPaths,
       baselineOwnedPaths = resolvedBranchRecord?.baselineOwnedPaths
-        ?: goalReviewState?.baselineUntrackedPaths
         ?: resolvedBranchRecord?.baselineUntrackedPaths.orEmpty(),
       revisions = revisions,
     ) ?: return null
@@ -200,7 +199,6 @@ class FeatureTaskRuntimeRunLoopOutputVerificationStructuralRepair {
     }
     val inventory = reconcileCheckpointPathInventory(
       repoRoot = run.request.repoRoot,
-      issueKey = run.request.issueKey,
       specReference = run.request.runInvariants.specReference,
       paths = (discovered + committedPaths).distinct(),
     ).sorted()

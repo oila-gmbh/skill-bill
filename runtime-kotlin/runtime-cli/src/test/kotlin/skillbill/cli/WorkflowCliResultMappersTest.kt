@@ -160,7 +160,7 @@ class WorkflowCliResultMappersTest {
       ).toCliMap(testGoalObservabilityEventValidator)
     }
 
-    assertEquals("", error.fieldPath)
+    assertEquals("contract_version", error.fieldPath)
   }
 
   @Test
@@ -290,7 +290,7 @@ class WorkflowCliResultMappersTest {
   )
 
   private fun snapshotWithObservabilityEvent(): Map<String, Any?> = mapOf(
-    "contract_version" to "0.1",
+    "contract_version" to "0.2",
     "issue_key" to "SKILL-61",
     "subtask_id" to 1,
     "workflow_phase" to "implement",

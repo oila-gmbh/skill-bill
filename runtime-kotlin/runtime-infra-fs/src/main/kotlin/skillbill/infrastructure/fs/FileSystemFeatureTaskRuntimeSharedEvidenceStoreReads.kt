@@ -12,6 +12,7 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeSharedEvidenceArti
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeSharedEvidenceDiffPayloadRef
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeSharedEvidenceFileEntry
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeSharedEvidenceHunkEntry
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeSharedReviewEvidenceReference
 import java.io.IOException
 import java.nio.file.Files
 import java.nio.file.Path
@@ -86,15 +87,23 @@ private fun resolutionOf(
   val contractVersion = stored.envelope.path("contract_version").asText("").ifBlank {
     FEATURE_TASK_RUNTIME_SHARED_EVIDENCE_PROJECTION_CONTRACT_VERSION
   }
+  val indexedArtifact = FeatureTaskRuntimeSharedEvidenceArtifact(
+    fingerprint = stored.recorded,
+    baseRef = baseRef,
+    headRef = headRef,
+    files = files,
+    hunks = hunks,
+    diffPayload = stored.payloadRef,
+  )
   val projection = linkedMapOf<String, Any?>(
     "contract_version" to contractVersion,
     "workflow_id" to context.workflowId,
     "repository_checkpoint_fingerprint" to stored.recorded,
     "store_path" to context.storePath,
-    "file_hunk_index" to files.map { file ->
-      val hunkCount = hunks.count { it.path == file.path }
-      "${file.changeKind} ${file.path} hunks=$hunkCount"
-    },
+    "changed_file_count" to files.size,
+    "changed_hunk_count" to hunks.size,
+    "file_hunk_index_digest" to
+      FeatureTaskRuntimeSharedReviewEvidenceReference.fileHunkIndexDigest(indexedArtifact),
   ).apply {
     baseRef?.takeIf { it.isNotBlank() }?.let { put("base_ref", it) }
     headRef?.takeIf { it.isNotBlank() }?.let { put("head_ref", it) }
@@ -114,14 +123,7 @@ private fun resolutionOf(
     )
   }
   FeatureTaskRuntimeSharedEvidenceResolution(
-    artifact = FeatureTaskRuntimeSharedEvidenceArtifact(
-      fingerprint = stored.recorded,
-      baseRef = baseRef,
-      headRef = headRef,
-      files = files,
-      hunks = hunks,
-      diffPayload = stored.payloadRef,
-    ),
+    artifact = indexedArtifact,
     diffPayload = stored.payloadText,
   )
 } catch (error: IllegalArgumentException) {

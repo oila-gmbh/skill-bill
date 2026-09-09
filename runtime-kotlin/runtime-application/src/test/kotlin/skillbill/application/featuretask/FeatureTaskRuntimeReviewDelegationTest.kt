@@ -35,8 +35,8 @@ import kotlin.test.assertTrue
 
 class FeatureTaskRuntimeReviewDelegationTest {
   @Test
-  fun `child-owned review resolves worktree-from-base without a supplied diff blob`() {
-    val input = reviewInput(trackedDelta = "scope-fingerprint:abc\n")
+  fun `child-owned review uses the immutable commit range without a supplied diff blob`() {
+    val input = reviewInput()
     val request = mappedRequest(
       input = input,
       agents = FeatureTaskRuntimeReviewDriverAgents("codex"),
@@ -44,7 +44,7 @@ class FeatureTaskRuntimeReviewDelegationTest {
     )
 
     assertEquals(null, request.suppliedDiff)
-    assertEquals(ParallelReviewScope.WORKTREE_FROM_BASE, request.scope)
+    assertEquals(ParallelReviewScope.BRANCH, request.scope)
     assertEquals(input.reviewBaseSha, request.baseRevision)
     assertEquals(input.currentHeadSha, request.headRevision)
     assertEquals(CodeReviewExecutionMode.INLINE, request.codeReviewMode)
@@ -53,31 +53,15 @@ class FeatureTaskRuntimeReviewDelegationTest {
   }
 
   @Test
-  fun `durable baseline-untracked inventory maps to driver excluded paths`() {
+  fun `explicit empty child-owned range still uses branch scope without a supplied diff`() {
     val request = mappedRequest(
-      pass = FeatureTaskRuntimeReviewDriverPass(1, CodeReviewExecutionMode.INLINE, "rvw-191-baseline"),
-      workspace = FeatureTaskRuntimeReviewDriverWorkspace(
-        repoRoot = Path.of("/tmp/repo"),
-        timeout = null,
-        agentAddonSelection = HydratedAgentAddonSelection(),
-        baselineUntrackedPaths = listOf("z-before.tmp", "a-before.tmp"),
-      ),
-    )
-
-    assertEquals(listOf("a-before.tmp", "z-before.tmp"), request.baselineUntrackedPolicy.excludedPaths)
-    assertEquals(emptyList(), request.baselineUntrackedPolicy.includedPaths)
-  }
-
-  @Test
-  fun `explicit empty child-owned fingerprint still resolves worktree-from-base without a supplied diff`() {
-    val request = mappedRequest(
-      input = reviewInput(trackedDelta = ""),
+      input = reviewInput(),
       agents = FeatureTaskRuntimeReviewDriverAgents("codex"),
       pass = FeatureTaskRuntimeReviewDriverPass(1, CodeReviewExecutionMode.INLINE, "rvw-191-empty"),
     )
 
     assertEquals(null, request.suppliedDiff)
-    assertEquals(ParallelReviewScope.WORKTREE_FROM_BASE, request.scope)
+    assertEquals(ParallelReviewScope.BRANCH, request.scope)
     assertEquals(CodeReviewExecutionMode.INLINE, request.resolvedTier)
   }
 
@@ -203,7 +187,7 @@ class FeatureTaskRuntimeReviewDelegationTest {
     )
     val delta = diffForPaths("src/Main.kt")
     val mapped = mappedRequest(
-      input = reviewInput(trackedDelta = delta),
+      input = reviewInput(),
       agents = FeatureTaskRuntimeReviewDriverAgents("codex"),
       pass = FeatureTaskRuntimeReviewDriverPass(1, CodeReviewExecutionMode.INLINE, "parity-mapper"),
       workspace = FeatureTaskRuntimeReviewDriverWorkspace(
@@ -250,15 +234,9 @@ class FeatureTaskRuntimeReviewDelegationTest {
     runInvariants: FeatureTaskRuntimeRunInvariants = invariants(),
   ) = FeatureTaskRuntimeReviewDriverMapper.request(input, runInvariants, agents, pass, workspace)
 
-  private fun reviewInput(
-    base: String = "a".repeat(40),
-    head: String = "b".repeat(40),
-    trackedDelta: String = "delta",
-  ) = GoalSubtaskReviewInput(
+  private fun reviewInput(base: String = "a".repeat(40), head: String = "b".repeat(40)) = GoalSubtaskReviewInput(
     reviewBaseSha = base,
     currentHeadSha = head,
-    trackedDelta = trackedDelta,
-    ownedUntrackedPatches = "",
   )
 
   private fun invariants(mode: CodeReviewExecutionMode = CodeReviewExecutionMode.INLINE) =

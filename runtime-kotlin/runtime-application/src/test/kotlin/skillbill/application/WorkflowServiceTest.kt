@@ -1603,7 +1603,7 @@ class WorkflowGoalStatusProjectionTest {
 
   private fun staleObservabilityArtifact(): Map<String, Any?> = mapOf(
     "goal_observability_latest_event" to mapOf(
-      "contract_version" to "0.1",
+      "contract_version" to "0.2",
       "issue_key" to "SKILL-52.1",
       "subtask_id" to 1,
       "workflow_id" to "wfl-stale",
@@ -2605,7 +2605,7 @@ class WorkflowGoalRunnerProgressStoreTest {
         workflowId = "wfl-child",
         artifactsPatch = mapOf(
           "goal_observability_latest_event" to mapOf(
-            "contract_version" to "0.1",
+            "contract_version" to "0.2",
             "issue_key" to "SKILL-61",
           ),
           GoalProgressEvent(
@@ -3754,7 +3754,7 @@ class GoalChildPlanningHydrationTransactionIntegrationTest {
         normalizedIssueKey = "SKILL-128",
         repositoryIdentity = REPOSITORY_IDENTITY,
         governedSpecPath = descriptor.governedSubSpecPath,
-        reviewBaseline = GoalSubtaskReviewBaseline("0".repeat(40), emptyList()),
+        reviewBaseline = GoalSubtaskReviewBaseline("0".repeat(40)),
         reviewPolicy = GoalRunnerReviewPolicy(CodeReviewExecutionMode.INLINE),
         planningHydration = GoalChildPlanningHydrationRequest(identity(), provenance(), descriptor),
       )

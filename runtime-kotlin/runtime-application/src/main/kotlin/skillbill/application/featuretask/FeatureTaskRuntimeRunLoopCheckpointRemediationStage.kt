@@ -17,50 +17,24 @@ class FeatureTaskRuntimeRunLoopCheckpointRemediationStage {
   ): Boolean {
     val branch = runLoop.session.resolvedBranch
     if (branch == null || FeatureTaskRuntimeBranchSetup.protectedBranchName(branch) != null) {
-      return true
+      return unavailableBranchResult(runLoop, precedingPhaseId, branch, blockedReason)
     }
-    val head = runLoop.phaseGates.gitOperations.currentBranch(runLoop.request.repoRoot)
-    if (!head.ok || head.value.trim() != branch.trim()) {
-      return true
+    if (remediationCheckpointOffBranch(runLoop, branch)) {
+      return unavailableCheckedOutBranchResult(runLoop, precedingPhaseId, branch, blockedReason)
     }
-    val scope = runLoop.collaborators.checkpoint.resolveCheckpointScope(
-      runLoop,
-      precedingPhaseId,
-      branch,
-      blockedReason,
-    ) ?: return false
-    return when (scope) {
-      is FeatureTaskRuntimeCheckpointDecision.Skip -> true
-      is FeatureTaskRuntimeCheckpointDecision.Block -> {
-        runLoop.collaborators.planningBranch.blockAt(runLoop, precedingPhaseId, scope.reason)
-        false
-      }
-      is FeatureTaskRuntimeCheckpointDecision.Stage -> {
-        if (scope.adoptedPaths.isNotEmpty()) {
-          runCatching {
-            runLoop.diagnostics.warning(adoptionWarning(branch, scope.adoptedPaths))
-          }
-        }
-        runLoop.collaborators.repairReceipt.commitCheckpoint(
-          runLoop,
-          CommitCheckpointArgs(
-            precedingPhaseId = precedingPhaseId,
-            branch = branch,
-            loopId = loopId,
-            intent = intent,
-            ownedPaths = scope.ownedPaths,
-            blockedReason = blockedReason,
-          ),
-        )
-      }
+    if (!FeatureTaskRuntimeSubtaskCommitMigrationNormalizer.reconcile(
+        runLoop,
+        precedingPhaseId,
+        branch,
+        blockedReason,
+      )
+    ) {
+      return false
     }
+    return establishCheckpointScope(
+      CheckpointScopeEstablishmentRequest(runLoop, precedingPhaseId, branch, loopId, intent, blockedReason),
+    )
   }
-
-  /**
-   * Resolves what this checkpoint may stage. Returns null when a git read failed and the phase was
-   * already blocked; an unmeasurable inventory can never degrade into "owns nothing", because a
-   * checkpoint reading that would skip silently and leave the phase's work uncommitted.
-   */
 
   fun remediationCheckpointSkippable(runLoop: FeatureTaskRuntimeRunLoop): Boolean {
     val branch = runLoop.session.resolvedBranch
@@ -169,4 +143,110 @@ class FeatureTaskRuntimeRunLoopCheckpointRemediationStage {
       message = message,
     )
   }
+}
+
+private fun unavailableBranchResult(
+  runLoop: FeatureTaskRuntimeRunLoop,
+  precedingPhaseId: String,
+  branch: String?,
+  blockedReason: (String, String) -> String,
+): Boolean = if (isGoalContinuationRun(runLoop.request)) {
+  runLoop.collaborators.checkpointContinued6.blockCheckpoint(
+    runLoop,
+    precedingPhaseId,
+    branch.orEmpty(),
+    "the goal child has no resolved, unprotected checked-out branch for its subtask commit",
+    blockedReason,
+  )
+} else {
+  true
+}
+
+private fun unavailableCheckedOutBranchResult(
+  runLoop: FeatureTaskRuntimeRunLoop,
+  precedingPhaseId: String,
+  branch: String,
+  blockedReason: (String, String) -> String,
+): Boolean = if (isGoalContinuationRun(runLoop.request)) {
+  runLoop.collaborators.checkpointContinued6.blockCheckpoint(
+    runLoop,
+    precedingPhaseId,
+    branch,
+    "the resolved goal child branch is not the checked-out branch; refusing an unowned commit",
+    blockedReason,
+  )
+} else {
+  true
+}
+
+private data class CheckpointScopeEstablishmentRequest(
+  val runLoop: FeatureTaskRuntimeRunLoop,
+  val precedingPhaseId: String,
+  val branch: String,
+  val loopId: String?,
+  val intent: String,
+  val blockedReason: (String, String) -> String,
+)
+
+private fun establishCheckpointScope(request: CheckpointScopeEstablishmentRequest): Boolean {
+  val runLoop = request.runLoop
+  val scope = runLoop.collaborators.checkpoint.resolveCheckpointScope(
+    runLoop,
+    request.precedingPhaseId,
+    request.branch,
+    request.blockedReason,
+  ) ?: return false
+  return when (scope) {
+    is FeatureTaskRuntimeCheckpointDecision.Skip -> runLoop.collaborators.checkpointContinued5.reconcileBeforeReview(
+      runLoop,
+      request.precedingPhaseId,
+      request.branch,
+      request.blockedReason,
+    )
+    is FeatureTaskRuntimeCheckpointDecision.Block -> {
+      runLoop.collaborators.planningBranch.blockAt(runLoop, request.precedingPhaseId, scope.reason)
+      false
+    }
+    is FeatureTaskRuntimeCheckpointDecision.Stage -> commitCheckpointScope(
+      CommitCheckpointScopeRequest(
+        runLoop,
+        request.precedingPhaseId,
+        request.branch,
+        request.loopId,
+        request.intent,
+        scope,
+        request.blockedReason,
+      ),
+    )
+  }
+}
+
+private data class CommitCheckpointScopeRequest(
+  val runLoop: FeatureTaskRuntimeRunLoop,
+  val precedingPhaseId: String,
+  val branch: String,
+  val loopId: String?,
+  val intent: String,
+  val scope: FeatureTaskRuntimeCheckpointDecision.Stage,
+  val blockedReason: (String, String) -> String,
+)
+
+private fun commitCheckpointScope(request: CommitCheckpointScopeRequest): Boolean {
+  val runLoop = request.runLoop
+  val branch = request.branch
+  val scope = request.scope
+  if (scope.adoptedPaths.isNotEmpty()) {
+    runCatching { runLoop.diagnostics.warning(adoptionWarning(branch, scope.adoptedPaths)) }
+  }
+  return runLoop.collaborators.repairReceipt.commitCheckpoint(
+    runLoop,
+    CommitCheckpointArgs(
+      precedingPhaseId = request.precedingPhaseId,
+      branch = branch,
+      loopId = request.loopId,
+      intent = request.intent,
+      ownedPaths = scope.ownedPaths,
+      blockedReason = request.blockedReason,
+    ),
+  )
 }

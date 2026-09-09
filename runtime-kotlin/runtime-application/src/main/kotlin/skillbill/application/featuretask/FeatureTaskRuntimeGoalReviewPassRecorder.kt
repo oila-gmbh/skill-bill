@@ -18,7 +18,9 @@ import skillbill.workflow.goal.model.GOAL_SUBTASK_REVIEW_INPUT_ARTIFACT_KEY
 import skillbill.workflow.goal.model.GOAL_SUBTASK_REVIEW_RESULTS_ARTIFACT_KEY
 import skillbill.workflow.goal.model.GOAL_SUBTASK_REVIEW_STATE_ARTIFACT_KEY
 import skillbill.workflow.goal.model.GoalSubtaskBlockerDisposition
+import skillbill.workflow.goal.model.GoalSubtaskReviewRevision
 import skillbill.workflow.goal.model.GoalSubtaskReviewState
+import skillbill.workflow.goal.model.GoalSubtaskReviewedRevision
 
 class FeatureTaskRuntimeGoalReviewPassRecorder(
   private val database: DatabaseSessionFactory,
@@ -63,11 +65,7 @@ class FeatureTaskRuntimeGoalReviewPassRecorder(
     }
     val updated = state.copy(
       reviewInputArtifact = GOAL_SUBTASK_REVIEW_INPUT_ARTIFACT_KEY,
-      reviewedDeltaDigest = if (input.reviewBaseSha == state.reviewBaseSha) {
-        input.deltaDigest
-      } else {
-        state.reviewedDeltaDigest
-      },
+      reviewedDeltaDigest = input.deltaDigest,
     )
     patcher.save(
       record,
@@ -111,7 +109,10 @@ class FeatureTaskRuntimeGoalReviewPassRecorder(
       request.unresolvedFindingCount,
       request.findings,
       loaded.dispositions,
-      request.commitFocusedAccounting,
+      GoalSubtaskReviewRevision(
+        commitFocusedAccounting = request.commitFocusedAccounting,
+        reviewedRevision = loaded.reviewedRevision,
+      ),
     )
     persistGoalReviewPassWrite(unitOfWork, loaded, request, completed)
     completed
@@ -134,6 +135,7 @@ class FeatureTaskRuntimeGoalReviewPassRecorder(
     val ledgerFindings: List<UnaddressedFinding>,
     val supersededFindings: List<UnaddressedFinding>,
     val dispositions: List<GoalSubtaskBlockerDisposition>,
+    val reviewedRevision: GoalSubtaskReviewedRevision?,
   )
 
   private fun loadGoalReviewPassWrite(
@@ -168,6 +170,7 @@ class FeatureTaskRuntimeGoalReviewPassRecorder(
       ledgerFindings = ledgerFindings,
       supersededFindings = supersededFindings,
       dispositions = dispositions,
+      reviewedRevision = reviewedRevisionFrom(artifacts),
     )
   }
 
@@ -195,4 +198,11 @@ class FeatureTaskRuntimeGoalReviewPassRecorder(
       ),
     )
   }
+}
+
+private fun reviewedRevisionFrom(artifacts: Map<String, Any?>): GoalSubtaskReviewedRevision? {
+  val input = artifacts[GOAL_SUBTASK_REVIEW_INPUT_ARTIFACT_KEY] as? Map<*, *> ?: return null
+  val target = input["current_head_sha"] as? String ?: return null
+  val tree = input["reviewed_tree_sha"] as? String ?: return null
+  return runCatching { GoalSubtaskReviewedRevision(target, tree) }.getOrNull()
 }

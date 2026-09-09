@@ -2,6 +2,7 @@ package skillbill.application
 
 import skillbill.application.featuretask.FeatureTaskRuntimeCrashLiveness
 import skillbill.application.featuretask.FeatureTaskRuntimeCrashReconciler
+import skillbill.error.FeatureTaskRuntimeSubtaskCommitReconciliationError
 import skillbill.ports.diagnostics.NoopRuntimeDiagnostics
 import skillbill.ports.featuretask.model.FeatureTaskRuntimeWorkerLeaseState
 import skillbill.ports.featuretask.model.FeatureTaskRuntimeWorkerOwnership
@@ -16,6 +17,7 @@ import skillbill.ports.workflow.model.WorkflowStateRecord
 import java.time.Duration
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
@@ -105,7 +107,7 @@ class FeatureTaskRuntimeCrashReconcilerTest {
   }
 
   @Test
-  fun `an unexpected fault is counted under a distinct reason class and not as a reconciliation`() {
+  fun `an unexpected reconciliation fault fails with its typed cause and preserves worker state`() {
     val repository = crashCandidateRepository()
     val faultingSupervisor = object : FeatureTaskRuntimeWorkerSupervisor {
       override fun currentProcess() = FeatureTaskRuntimeProcessIdentity("h", "b", 1, "birth")
@@ -127,10 +129,8 @@ class FeatureTaskRuntimeCrashReconcilerTest {
       testHarnessClock,
     )
 
-    val result = reconciler.reconcile(null)
-
-    assertEquals(0, result.reconciledCount)
-    assertEquals(mapOf("reconcile_fault" to 1), result.reasonClassCounts)
+    val result = assertFailsWith<FeatureTaskRuntimeSubtaskCommitReconciliationError> { reconciler.reconcile(null) }
+    assertEquals("probe blew up", result.cause?.message)
     assertEquals("running", repository.getFeatureTaskRuntimeWorkflow(WORKFLOW_ID)?.workflowStatus)
   }
 

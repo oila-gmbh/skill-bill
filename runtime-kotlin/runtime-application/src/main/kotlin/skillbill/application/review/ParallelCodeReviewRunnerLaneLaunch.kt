@@ -67,10 +67,15 @@ internal class ParallelCodeReviewRunnerLaneLaunch(
       agentId = args.agentId,
       selected = selected,
       prompt = ParallelCodeReviewRunnerParentPrompt.build(
-        selected,
-        args.routedManifests,
-        args.resolvedMode,
-        args.agentId,
+        ParallelCodeReviewParentPromptRequest(
+          selected = selected,
+          routedManifests = args.routedManifests,
+          resolvedMode = args.resolvedMode,
+          agentId = args.agentId,
+          baseRevision = args.request.baseRevision,
+          headRevision = args.request.headRevision,
+          specPath = args.request.specPath,
+        ),
       ),
       bundleState = parallelCodeReviewAggregateBundleCompletion(bundleStates),
     )

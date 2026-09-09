@@ -7,6 +7,7 @@ import skillbill.application.featuretask.model.FeatureTaskRuntimeRunRequest
 import skillbill.application.featuretask.model.RemediationBaseBlocked
 import skillbill.application.featuretask.model.RemediationBaseCoherent
 import skillbill.error.FeatureTaskRuntimeOperatorDecisionRejectedError
+import skillbill.error.FeatureTaskRuntimeSubtaskCommitReconciliationError
 import skillbill.workflow.decomposition.model.SpecSource
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeTransitionDeclaration
 
@@ -39,6 +40,7 @@ fun FeatureTaskRuntimeRunner.driveExecutePreparedRunLoop(
   observability: FeatureTaskRuntimeRunObservability,
   phaseTokenAccumulator: MutableMap<String, Pair<Int, Int>>,
 ): FeatureTaskRuntimeRunReport {
+  invalidateStaleGoalReviewApproval(runRequest)
   reopenCappedReviewOnChangedDelta(runRequest)
   if (isGoalContinuationRun(runRequest)) {
     when (
@@ -90,6 +92,34 @@ fun FeatureTaskRuntimeRunner.driveExecutePreparedRunLoop(
   }
   loop.drive()
   return loop.report()
+}
+
+private fun FeatureTaskRuntimeRunner.invalidateStaleGoalReviewApproval(request: FeatureTaskRuntimeRunRequest) {
+  if (isGoalContinuationRun(request)) invalidateStaleGoalReviewApprovalForGoal(request)
+}
+
+private fun FeatureTaskRuntimeRunner.invalidateStaleGoalReviewApprovalForGoal(request: FeatureTaskRuntimeRunRequest) {
+  invalidateStaleGoalReviewApprovalForGoalRuntime(this, request)
+}
+
+internal fun FeatureTaskRuntimeRunner.staleApprovalReconciliationFailure(
+  request: FeatureTaskRuntimeRunRequest,
+  reason: String,
+  cause: Throwable?,
+): FeatureTaskRuntimeSubtaskCommitReconciliationError {
+  val error = FeatureTaskRuntimeSubtaskCommitReconciliationError(
+    workflowId = request.workflowId,
+    issueKey = request.issueKey,
+    subtaskId = request.goalContinuation?.subtaskId?.toString() ?: "unknown",
+    reason = reason,
+    cause = cause,
+  )
+  runnerDiagnostics.warning(
+    "record_kind=refusal seam=FeatureTaskRuntimeRunner.invalidateStaleGoalReviewApproval " +
+      "value_used='${request.workflowId}' value_expected=durable stale-approval evidence cause=${error.reason}",
+    error,
+  )
+  return error
 }
 
 fun FeatureTaskRuntimeRunner.finalizeExecutePreparedRunReport(

@@ -5,11 +5,11 @@ import skillbill.application.featuretask.featureTaskRuntimeParseRepairReceiptOrN
 import skillbill.application.featuretask.model.GoalSubtaskReviewInputBlocked
 import skillbill.application.featuretask.model.GoalSubtaskReviewInputReady
 import skillbill.application.featuretask.model.GoalSubtaskReviewPassInFlight
-import skillbill.application.featuretask.model.RemediationBaseBlocked
 import skillbill.application.featuretask.model.RemediationBaseCoherent
 import skillbill.application.workflow.model.WorkflowFamily
 import skillbill.application.workflow.toRecord
 import skillbill.contracts.JsonSupport
+import skillbill.error.FeatureTaskRuntimeSubtaskCommitReconciliationError
 import skillbill.infrastructure.fs.GitWorkflowGitOperations
 import skillbill.ports.diagnostics.NoopRuntimeDiagnostics
 import skillbill.ports.workflow.gitops.WorkflowGitOperations
@@ -43,17 +43,12 @@ import java.time.Clock
 import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertIs
 import kotlin.test.assertNotEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
-
-/**
- * AC-014 and AC-016: the pause data is only useful if it survives the process that wrote it. These
- * drive the real recorder against a workflow store and read the state back, rather than asserting on
- * objects the test constructs itself.
- */
 class GoalSubtaskReviewStateDurablePersistenceTest {
   private val workflowId = "wftr-skill142-1"
 
@@ -81,7 +76,7 @@ class GoalSubtaskReviewStateDurablePersistenceTest {
 
     val reloaded = assertNotNull(recorder.reviewStateRecorder.reviewState(workflowId))
     assertEquals("a".repeat(40), reloaded.reviewBaseSha, "review_base_sha is immutable across the pause.")
-    assertEquals(listOf("scratch/untracked.txt"), reloaded.baselineUntrackedPaths)
+    assertEquals(emptyList(), reloaded.baselineUntrackedPaths)
     assertEquals(1, reloaded.completedPassCount)
     assertNull(reloaded.reservedPassNumber, "A consumed pass must never be re-reserved by a plain resume.")
   }
@@ -303,10 +298,9 @@ class GoalSubtaskReviewStateDurablePersistenceTest {
   }
 
   @Test
-  fun `unreachable remediation base recovers and persists the ancestor with evidence`() {
+  fun `preserved non-ancestor remediation revision is reviewed without rewriting its base`() {
     val fixture = skill15GitFixture()
     val orphaned = fixture.orphanedBase
-    val parent = fixture.parent
     val state = deepRemediationState(completedPasses = 1)
       .copy(remediationBaseSha = orphaned)
     val repository = FeatureTaskGitIntegrationWorkflowRepository()
@@ -320,19 +314,9 @@ class GoalSubtaskReviewStateDurablePersistenceTest {
 
     assertIs<GoalSubtaskReviewInputReady>(prepared, prepared.toString())
     val reloaded = assertNotNull(recorder.reviewStateRecorder.reviewState(workflowId))
-    assertEquals(parent, reloaded.remediationBaseSha, "durable remediation_base_sha must repoint to the ancestor")
-    assertEquals("a".repeat(40), reloaded.reviewBaseSha, "immutable review base must stay untouched")
-    val artifacts = repository.taskRuntimeArtifacts(workflowId)
-    val evidence = requireNotNull(
-      JsonSupport.anyToStringAnyMapList(artifacts[GOAL_REVIEW_BASE_RECOVERIES_ARTIFACT_KEY]),
-    )
-    val entry = evidence.single()
-    assertEquals(orphaned, entry["original_sha"])
-    assertEquals(parent, entry["replacement_sha"])
-    assertEquals("remediation_base_sha", entry["repointed_field"])
-    assertEquals("base_not_ancestor", entry["failure_reason"])
-    assertContains(entry["failure_message"].toString(), orphaned)
-    assertEquals("feat/skill-15", entry["goal_branch"])
+    assertEquals(orphaned, reloaded.remediationBaseSha)
+    assertEquals(orphaned, assertIs<GoalSubtaskReviewInputReady>(prepared).input.reviewBaseSha)
+    assertNull(repository.taskRuntimeArtifacts(workflowId)[GOAL_REVIEW_BASE_RECOVERIES_ARTIFACT_KEY])
   }
 
   @Test
@@ -353,7 +337,7 @@ class GoalSubtaskReviewStateDurablePersistenceTest {
       baselineUntrackedPaths = emptyList(),
       codeReviewMode = CodeReviewExecutionMode.INLINE,
     ).reserveNextPass()
-    assertIs<GoalSubtaskReviewInputReady>(
+    assertIs<GoalSubtaskReviewInputBlocked>(
       recorderWith(zeroPassState, goalBranch = "feat/skill-15").buildGoalReviewInput(
         workflowId,
         realGitOps(),
@@ -361,7 +345,10 @@ class GoalSubtaskReviewStateDurablePersistenceTest {
       ),
     )
 
-    val paused = remediationState.copy(disposition = GoalSubtaskReviewDisposition.PAUSED)
+    val paused = remediationState.copy(
+      disposition = GoalSubtaskReviewDisposition.PAUSED,
+      remediationBaseSha = "f".repeat(40),
+    )
     assertIs<GoalSubtaskReviewInputBlocked>(
       recorderWith(paused, goalBranch = "feat/skill-15").buildGoalReviewInput(
         workflowId,
@@ -372,7 +359,7 @@ class GoalSubtaskReviewStateDurablePersistenceTest {
 
     val capped = deepRemediationState(completedPasses = 1).copy(
       disposition = GoalSubtaskReviewDisposition.REVIEW_CAP_REACHED,
-      remediationBaseSha = fixture.orphanedBase,
+      remediationBaseSha = "f".repeat(40),
       passResults = listOf(
         GoalSubtaskReviewPassResult(
           passNumber = 1,
@@ -409,7 +396,7 @@ class GoalSubtaskReviewStateDurablePersistenceTest {
       recorder.buildGoalReviewInput(workflowId, git, fixture.repoRoot),
     )
 
-    assertEquals(first.input.reviewText, second.input.reviewText)
+    assertEquals(first.input, second.input)
     assertEquals(first.input.deltaDigest, second.input.deltaDigest)
     assertNull(
       repository.taskRuntimeArtifacts(workflowId)[GOAL_REVIEW_BASE_RECOVERIES_ARTIFACT_KEY],
@@ -456,28 +443,20 @@ class GoalSubtaskReviewStateDurablePersistenceTest {
     val repository = FeatureTaskGitIntegrationWorkflowRepository()
     val recorder = recorderWith(state, repository, goalBranch = "feat/skill-15")
 
-    val blocked = assertIs<RemediationBaseBlocked>(
+    val blocked = assertFailsWith<FeatureTaskRuntimeSubtaskCommitReconciliationError> {
       recorder.remediationReconciler.reconcileRemediationBaseCoherence(
         workflowId,
         gitOpsWithoutBaselineRecovery(),
         fixture.repoRoot,
-      ),
-    )
-
-    assertContains(blocked.operatorGuidance, "feat/skill-15")
+      )
+    }
+    assertContains(blocked.message.orEmpty(), "baseline recovery failed")
     assertEquals(fixture.orphanedBase, recorder.reviewStateRecorder.reviewState(workflowId)?.remediationBaseSha)
-    assertNotEquals(head, recorder.reviewStateRecorder.reviewState(workflowId)?.remediationBaseSha)
-    val evidence = requireNotNull(
-      JsonSupport.anyToStringAnyMapList(
-        repository.taskRuntimeArtifacts(workflowId)[GOAL_REVIEW_BASE_RECOVERIES_ARTIFACT_KEY],
-      ),
-    )
-    assertEquals("reconciliation_blocked", evidence.single()["failure_reason"])
+    assertEquals(head, git(fixture.repoRoot, "rev-parse", "HEAD"))
   }
 
   @Test
   fun `resume coherence heals committed-but-unrecorded remediation checkpoint to the identity sha`() {
-    // Crash window: remediation checkpoint committed and identity recorded, base still the parent.
     val fixture = committedUnrecordedFixture()
     val state = deepRemediationState(completedPasses = 1)
       .reserveNextPass()
@@ -538,8 +517,6 @@ class GoalSubtaskReviewStateDurablePersistenceTest {
 
   @Test
   fun `resume coherence keeps a Skip-recorded descendant tip ahead of the review_fix identity`() {
-    // AC-006: identity R is still on the branch; stored H is a later Skip-recorded tip (descendant of
-    // R). Pre-fix resume replaced H with R because identity != stored; post-fix must keep H.
     val fixture = skipRecordedDescendantFixture()
     val state = deepRemediationState(completedPasses = 1)
       .copy(remediationBaseSha = fixture.skipRecordedTip)
@@ -559,6 +536,7 @@ class GoalSubtaskReviewStateDurablePersistenceTest {
       loopId = "review_fix",
       parentSha = fixture.parent,
     )
+    git(fixture.repoRoot, "update-ref", identity.checkpointRef, fixture.parent)
     val recorder = recorderWith(
       state,
       repository,
@@ -647,15 +625,16 @@ class GoalSubtaskReviewStateDurablePersistenceTest {
   fun `recovery that cannot find a reachable base blocks naming the sha and branch`() {
     val fixture = unreachableOnlyGitFixture()
     val state = deepRemediationState(completedPasses = 1)
-      .copy(remediationBaseSha = fixture.unreachable)
-    val prepared = recorderWith(state, goalBranch = "feat/orphan-goal").buildGoalReviewInput(
-      workflowId,
-      realGitOps(),
-      fixture.repoRoot,
-    )
-    val blocked = assertIs<GoalSubtaskReviewInputBlocked>(prepared)
-    assertContains(blocked.reason, fixture.unreachable)
-    assertContains(blocked.reason, "feat/orphan-goal")
+      .copy(remediationBaseSha = "f".repeat(40))
+    val blocked = assertFailsWith<FeatureTaskRuntimeSubtaskCommitReconciliationError> {
+      recorderWith(state, goalBranch = "feat/orphan-goal").buildGoalReviewInput(
+        workflowId,
+        realGitOps(),
+        fixture.repoRoot,
+      )
+    }
+    assertContains(blocked.message.orEmpty(), "f".repeat(40))
+    assertContains(blocked.message.orEmpty(), "feat/orphan-goal")
   }
 
   private fun deepRemediationState(completedPasses: Int): GoalSubtaskReviewState {

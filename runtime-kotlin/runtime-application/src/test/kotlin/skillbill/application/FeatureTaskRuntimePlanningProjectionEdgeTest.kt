@@ -171,7 +171,9 @@ class FeatureTaskRuntimePlanningProjectionEdgeTest {
       checkpointFingerprint = "fp",
       baseRef = "base",
       headRef = "head",
-      fileHunkIndex = listOf("modified a.kt hunks=1"),
+      changedFileCount = 1,
+      changedHunkCount = 1,
+      fileHunkIndexDigest = "0".repeat(64),
     )
     val projectionName = FeatureTaskRuntimePhaseWorkflowDefinition.SHARED_REVIEW_EVIDENCE_PROJECTION_NAME
 

@@ -13,7 +13,6 @@ import skillbill.application.featuretask.model.RemediationReconciliationCoherent
 import skillbill.application.featuretask.model.RemediationReconciliationHeal
 import skillbill.application.workflow.model.WorkflowFamily
 import skillbill.error.InvalidFeatureTaskRuntimeCheckpointIdentityVersionError
-import skillbill.error.InvalidGoalSubtaskReviewStateSchemaError
 import skillbill.ports.db.DatabaseSessionFactory
 import skillbill.ports.workflow.gitops.WorkflowGitOperations
 import skillbill.workflow.goal.model.GOAL_REVIEW_BASE_RECOVERIES_ARTIFACT_KEY
@@ -85,18 +84,17 @@ class FeatureTaskRuntimeRemediationBaseReconciler(
 
   private fun readRemediationSnapshot(workflowId: String, dbOverride: String?): RemediationReconcileSnapshot? =
     database.read(dbOverride) { unitOfWork ->
-      val record = WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, workflowId) ?: return@read null
+      val record = WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, workflowId)
+        ?: error("workflow row '$workflowId' is missing")
       val artifacts = decodeArtifacts(record.artifactsJson)
-      runCatching {
-        val state = reviewStateFromArtifacts(artifacts) ?: return@read null
-        val continuation = continuationFromArtifacts(artifacts) ?: return@read null
-        val checkpoints = featureTaskRuntimeCheckpointIdentitiesFromArtifact(
-          artifacts[FEATURE_TASK_RUNTIME_CHECKPOINT_IDENTITIES_ARTIFACT_KEY],
-        )
-        RemediationReconcileSnapshot(state, continuation, checkpoints)
-      }.getOrElse { error ->
-        if (error is InvalidGoalSubtaskReviewStateSchemaError) return@read null else throw error
-      }
+      val state = reviewStateFromArtifacts(artifacts)
+        ?: error("review state for workflow '$workflowId' is missing")
+      val continuation = continuationFromArtifacts(artifacts)
+        ?: error("continuation for workflow '$workflowId' is missing")
+      val checkpoints = featureTaskRuntimeCheckpointIdentitiesFromArtifact(
+        artifacts[FEATURE_TASK_RUNTIME_CHECKPOINT_IDENTITIES_ARTIFACT_KEY],
+      )
+      RemediationReconcileSnapshot(state, continuation, checkpoints)
     }
 
   internal fun appendRemediationRollbackDegradationEvidence(
@@ -192,7 +190,6 @@ internal fun FeatureTaskRuntimeRemediationBaseReconciler.applyRemediationReconci
     RemediationReconciliationBlocked -> {
       val recovered = recoveredRemediationBaseSha(
         stored = stored,
-        state = state,
         continuation = continuation,
         gitOperations = request.gitOperations,
         repoRoot = request.repoRoot,
@@ -341,11 +338,10 @@ internal fun FeatureTaskRuntimeRemediationBaseReconciler.remediationBaseReconcil
   failedRef: String?,
   storedSha: String?,
   storedResolves: Boolean,
-): String =
-  "Remediation base reconciliation blocked for workflow '$workflowId' on branch " +
-    "'${continuation.goalBranch}': ${remediationBlockedDetail(failedRef, storedSha, storedResolves)}. " +
-    "Run `skill-bill goal repair ${continuation.issueKey} --subtask ${continuation.subtaskId} " +
-    "--apply` to repoint or clear the unreachable remediation base, then resume the goal child."
+): String = "Remediation base reconciliation blocked for workflow '$workflowId' on branch " +
+  "'${continuation.goalBranch}': ${remediationBlockedDetail(failedRef, storedSha, storedResolves)}. " +
+  "Run `skill-bill goal repair ${continuation.issueKey} --subtask ${continuation.subtaskId} " +
+  "--apply` to repoint or clear the unreachable remediation base, then resume the goal child."
 
 private fun remediationBlockedDetail(failedRef: String?, storedSha: String?, storedResolves: Boolean): String {
   val storedDetail = when {
@@ -370,7 +366,8 @@ internal fun FeatureTaskRuntimeRemediationBaseReconciler.appendRemediationBaseRe
   dbOverride: String?,
 ) {
   database.transaction(dbOverride) { unitOfWork ->
-    val record = WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, workflowId) ?: return@transaction
+    val record = WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, workflowId)
+      ?: error("workflow row '$workflowId' is missing while recording remediation evidence")
     val artifacts = decodeArtifacts(record.artifactsJson)
     val evidenceEntry = remediationBaseRecoveryEvidenceEntry(recovery, signal)
     val priorEvidence = (artifacts[GOAL_REVIEW_BASE_RECOVERIES_ARTIFACT_KEY] as? List<*>).orEmpty()

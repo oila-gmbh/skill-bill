@@ -24,6 +24,7 @@ class FeatureTaskRuntimeRunLoopDriveTerminalOutcome {
     reason: String?,
   ): PhaseSettlement = when {
     runLoop.session.decomposed != null -> PhaseSettlement.stop()
+    runLoop.session.reviewReentryPending -> PhaseSettlement.stop()
     runLoop.session.recordRejectionSettlementPending -> {
       runLoop.session.recordRejectionSettlementPending = false
       PhaseSettlement.completed(phaseId, FeatureTaskRuntimeVerdict.RECORD_REJECTED)

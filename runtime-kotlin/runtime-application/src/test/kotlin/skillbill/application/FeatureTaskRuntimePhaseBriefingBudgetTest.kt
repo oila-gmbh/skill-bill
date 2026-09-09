@@ -195,7 +195,9 @@ class FeatureTaskRuntimePhaseBriefingBudgetTest {
       checkpointFingerprint = "fp",
       baseRef = "base",
       headRef = "head",
-      fileHunkIndex = (1..8).map { "modified f$it.kt hunks=$hunksPerFile" },
+      changedFileCount = 8,
+      changedHunkCount = 8 * hunksPerFile,
+      fileHunkIndexDigest = "0".repeat(64),
     )
 
     fun projectionBytes(phaseId: String, hunksPerFile: Int): Int {
@@ -222,7 +224,7 @@ class FeatureTaskRuntimePhaseBriefingBudgetTest {
       )
       assertFalse(briefing.briefingText.contains("@@"), "diff hunk bodies must not reach the briefing")
       assertFalse(briefing.briefingText.contains("+val "), "diff bytes must not reach the briefing")
-      val marker = "file_hunk_index:"
+      val marker = "changed_file_count:"
       val start = briefing.briefingText.indexOf(marker)
       assertTrue(start >= 0, "shared evidence projection must render for $phaseId")
       return briefing.briefingText.substring(start).toByteArray(Charsets.UTF_8).size

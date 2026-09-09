@@ -1,6 +1,7 @@
 package skillbill.application.featuretask
 
 import me.tatarka.inject.annotations.Inject
+import skillbill.error.FeatureTaskRuntimeSubtaskCommitReconciliationError
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeCheckpointIdentity
 
@@ -40,7 +41,11 @@ class FeatureTaskRuntimeRunLoopCheckpointRemediationRollback {
     )
     if (recorded) return true
     if (commitSha != null) {
-      rollbackRemediationCheckpointCommit(runLoop, commitSha, parentSha, identityRecorded = true)
+      runCatching {
+        rollbackRemediationCheckpointCommit(runLoop, commitSha, parentSha, identityRecorded = true)
+      }.onFailure { error ->
+        if (error !is FeatureTaskRuntimeSubtaskCommitReconciliationError) throw error
+      }
     }
     return false
   }
@@ -58,7 +63,14 @@ class FeatureTaskRuntimeRunLoopCheckpointRemediationRollback {
   ) {
     val normalizedCommit = commitSha.trim()
     val head = runLoop.phaseGates.gitOperations.headCommitSha(runLoop.request.repoRoot)
-    if (!head.ok || head.value.trim() != normalizedCommit) return
+    if (!head.ok) {
+      throw rollbackReconciliationError(
+        runLoop,
+        "rollback HEAD could not be read (${head.error}); operator decision: repair Git access before resuming",
+        null,
+      )
+    }
+    if (head.value.trim() != normalizedCommit) return
     val identities = runLoop.collaborators.checkpointContinued4.checkpointIdentitiesForRollback(
       runLoop,
       normalizedCommit,
@@ -89,15 +101,30 @@ class FeatureTaskRuntimeRunLoopCheckpointRemediationRollback {
     valueExpected: String,
     cause: String,
   ) {
-    runLoop.goalContinuationRecorder.appendRemediationRollbackDegradationEvidence(
-      workflowId = runLoop.request.workflowId,
-      signal = RemediationDegradationSignal(
-        seam = seam,
-        valueUsed = valueUsed,
-        valueExpected = valueExpected,
-        cause = cause,
-      ),
-      dbOverride = runLoop.request.dbPathOverride,
+    val recorded = runCatching {
+      runLoop.goalContinuationRecorder.appendRemediationRollbackDegradationEvidence(
+        workflowId = runLoop.request.workflowId,
+        signal = RemediationDegradationSignal(
+          seam = seam,
+          valueUsed = valueUsed,
+          valueExpected = valueExpected,
+          cause = cause,
+        ),
+        dbOverride = runLoop.request.dbPathOverride,
+      )
+    }
+    if (recorded.isFailure) {
+      throw rollbackReconciliationError(
+        runLoop,
+        "rollback degradation could not be recorded (${recorded.exceptionOrNull()?.message.orEmpty()}); " +
+          "operator decision: repair the workflow store before resuming",
+        recorded.exceptionOrNull(),
+      )
+    }
+    throw rollbackReconciliationError(
+      runLoop,
+      "$seam failed: $cause; operator decision: repair Git state before resuming",
+      null,
     )
   }
 
@@ -155,6 +182,29 @@ class FeatureTaskRuntimeRunLoopCheckpointRemediationRollback {
       )
     }
     return predecessorSha
+  }
+
+  private fun rollbackReconciliationError(
+    runLoop: FeatureTaskRuntimeRunLoop,
+    reason: String,
+    cause: Throwable?,
+  ): FeatureTaskRuntimeSubtaskCommitReconciliationError {
+    val error = FeatureTaskRuntimeSubtaskCommitReconciliationError(
+      workflowId = runLoop.request.workflowId,
+      issueKey = runLoop.request.issueKey,
+      subtaskId = runLoop.request.goalContinuation?.subtaskId?.toString() ?: "unknown",
+      reason = reason,
+      cause = cause,
+    )
+    runCatching {
+      runLoop.diagnostics.warning(
+        "record_kind=refusal seam=FeatureTaskRuntimeRunLoopCheckpointRemediationRollback " +
+          "value_used='${runLoop.request.workflowId}' value_expected=fail-closed remediation rollback " +
+          "cause=${error.reason}",
+        error,
+      )
+    }
+    return error
   }
 
   /**

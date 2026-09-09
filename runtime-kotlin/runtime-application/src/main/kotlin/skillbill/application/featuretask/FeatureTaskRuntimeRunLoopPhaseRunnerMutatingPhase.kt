@@ -8,6 +8,7 @@ import skillbill.application.featuretask.model.GoalSubtaskReviewPassCarryForward
 import skillbill.application.featuretask.model.GoalSubtaskReviewPassInFlight
 import skillbill.application.featuretask.model.GoalSubtaskReviewPassReservation
 import skillbill.application.featuretask.model.GoalSubtaskReviewPassReserved
+import skillbill.error.FeatureTaskRuntimeSubtaskCommitReconciliationError
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFailureDisposition
 
 @Inject
@@ -50,17 +51,12 @@ class FeatureTaskRuntimeRunLoopPhaseRunnerMutatingPhase {
     run: PhaseRun,
     observability: FeatureTaskRuntimeRunObservability,
   ): GoalReviewRunPreparation = runCatching {
-    val resolved = runLoop.recorder.loadResolvedBranch(run.request.workflowId, run.request.dbPathOverride)
     runLoop.goalContinuationRecorder.buildGoalReviewInput(
       workflowId = run.request.workflowId,
       gitOperations = runLoop.phaseGates.gitOperations,
       repoRoot = run.request.repoRoot,
       scope = FeatureTaskRuntimeGoalContinuationRecorder.GoalReviewInputScope(
         dbOverride = run.request.dbPathOverride,
-        scopedUntrackedExclusions = resolved?.let {
-          runLoop.collaborators.phaseRunnerContinued1.scopedReviewUntrackedExclusions(runLoop, it)
-        },
-        ownedPathspec = resolved?.workflowOwnedPaths.orEmpty(),
       ),
     )
   }.fold(
@@ -82,11 +78,26 @@ class FeatureTaskRuntimeRunLoopPhaseRunnerMutatingPhase {
       }
     },
     onFailure = { error ->
+      val reconciliationError = error as? FeatureTaskRuntimeSubtaskCommitReconciliationError
+        ?: FeatureTaskRuntimeSubtaskCommitReconciliationError(
+          workflowId = run.request.workflowId,
+          issueKey = run.request.issueKey,
+          subtaskId = run.request.goalContinuation?.subtaskId?.toString() ?: "unknown",
+          reason = "Goal-subtask review input reads could not be reconciled (${error.message.orEmpty()}); " +
+            "operator decision: repair the workflow store or checkpoint refs before resuming",
+          cause = error,
+        )
+      runLoop.diagnostics.warning(
+        "record_kind=refusal seam=FeatureTaskRuntimeRunLoopPhaseRunnerMutatingPhase.buildGoalReviewRun " +
+          "value_used='review input' value_expected=durable committed review baseline " +
+          "cause=${reconciliationError.reason}",
+        reconciliationError,
+      )
       blockedGoalReviewRun(
         runLoop,
         run,
         observability,
-        goalReviewPreparationFailure("input persistence", error),
+        reconciliationError.message.orEmpty(),
         goalReviewPreparationDisposition(error),
       )
     },

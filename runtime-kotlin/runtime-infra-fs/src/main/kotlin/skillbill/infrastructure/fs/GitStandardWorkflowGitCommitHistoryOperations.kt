@@ -21,4 +21,7 @@ internal object GitStandardWorkflowGitCommitHistoryOperations : WorkflowGitCommi
 
   override fun resolveCommit(repoRoot: Path, revision: String): WorkflowGitOperationResult =
     gitResolveCommit(repoRoot, revision)
+
+  override fun resolveTree(repoRoot: Path, revision: String): WorkflowGitOperationResult =
+    runGitCommand(repoRoot, "rev-parse", "--verify", "--end-of-options", "${revision.trim()}^{tree}")
 }

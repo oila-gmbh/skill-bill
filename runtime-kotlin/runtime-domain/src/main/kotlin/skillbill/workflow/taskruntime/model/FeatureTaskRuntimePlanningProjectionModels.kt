@@ -2,6 +2,7 @@
 package skillbill.workflow.taskruntime.model
 
 import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_PLANNING_PROJECTIONS_CONTRACT_VERSION
+import java.security.MessageDigest
 
 object FeatureTaskRuntimePlanningProjectionContract {
   const val SHARED_REVIEW_EVIDENCE_ID: String = "feature_task_runtime.shared_review_evidence"
@@ -37,7 +38,9 @@ data class FeatureTaskRuntimeSharedReviewEvidenceReference(
   val checkpointFingerprint: String,
   val baseRef: String?,
   val headRef: String?,
-  val fileHunkIndex: List<String>,
+  val changedFileCount: Int,
+  val changedHunkCount: Int,
+  val fileHunkIndexDigest: String,
 ) {
   init {
     require(storePath.isNotBlank()) {
@@ -48,9 +51,13 @@ data class FeatureTaskRuntimeSharedReviewEvidenceReference(
       "FeatureTaskRuntimeSharedReviewEvidenceReference.checkpointFingerprint must be non-blank; the " +
         "fingerprint is the artifact's only reuse key."
     }
-    require(fileHunkIndex.size <= FEATURE_TASK_RUNTIME_CHANGED_PATH_MAX_COUNT) {
-      "FeatureTaskRuntimeSharedReviewEvidenceReference.fileHunkIndex allows at most " +
-        "$FEATURE_TASK_RUNTIME_CHANGED_PATH_MAX_COUNT entries, had ${fileHunkIndex.size}."
+    require(changedFileCount >= 0 && changedHunkCount >= 0) {
+      "FeatureTaskRuntimeSharedReviewEvidenceReference index counts must be non-negative, had " +
+        "files=$changedFileCount hunks=$changedHunkCount."
+    }
+    require(fileHunkIndexDigest.matches(FILE_HUNK_INDEX_DIGEST_PATTERN)) {
+      "FeatureTaskRuntimeSharedReviewEvidenceReference.fileHunkIndexDigest must be a lowercase " +
+        "SHA-256 hex digest, had '$fileHunkIndexDigest'."
     }
   }
 
@@ -76,8 +83,16 @@ data class FeatureTaskRuntimeSharedReviewEvidenceReference(
       FeatureTaskRuntimeHandoffProjectionField(FIELD_HEAD_REF, FeatureTaskRuntimeHandoffProjectionValue.Text(it))
     },
     FeatureTaskRuntimeHandoffProjectionField(
-      name = FIELD_FILE_HUNK_INDEX,
-      value = FeatureTaskRuntimeHandoffProjectionValue.TextList(fileHunkIndex),
+      name = FIELD_CHANGED_FILE_COUNT,
+      value = FeatureTaskRuntimeHandoffProjectionValue.Text(changedFileCount.toString()),
+    ),
+    FeatureTaskRuntimeHandoffProjectionField(
+      name = FIELD_CHANGED_HUNK_COUNT,
+      value = FeatureTaskRuntimeHandoffProjectionValue.Text(changedHunkCount.toString()),
+    ),
+    FeatureTaskRuntimeHandoffProjectionField(
+      name = FIELD_FILE_HUNK_INDEX_DIGEST,
+      value = FeatureTaskRuntimeHandoffProjectionValue.Text(fileHunkIndexDigest),
     ),
   )
 
@@ -86,37 +101,46 @@ data class FeatureTaskRuntimeSharedReviewEvidenceReference(
     const val FIELD_CHECKPOINT_FINGERPRINT: String = "checkpoint_fingerprint"
     const val FIELD_BASE_REF: String = "base_ref"
     const val FIELD_HEAD_REF: String = "head_ref"
-    const val FIELD_FILE_HUNK_INDEX: String = "file_hunk_index"
+    const val FIELD_CHANGED_FILE_COUNT: String = "changed_file_count"
+    const val FIELD_CHANGED_HUNK_COUNT: String = "changed_hunk_count"
+    const val FIELD_FILE_HUNK_INDEX_DIGEST: String = "file_hunk_index_digest"
+
+    private val FILE_HUNK_INDEX_DIGEST_PATTERN = Regex("^[0-9a-f]{64}$")
 
     val DECLARED_FIELD_NAMES: List<String> = listOf(
       FIELD_STORE_PATH,
       FIELD_CHECKPOINT_FINGERPRINT,
       FIELD_BASE_REF,
       FIELD_HEAD_REF,
-      FIELD_FILE_HUNK_INDEX,
+      FIELD_CHANGED_FILE_COUNT,
+      FIELD_CHANGED_HUNK_COUNT,
+      FIELD_FILE_HUNK_INDEX_DIGEST,
     )
 
     fun of(
       storePath: String,
       artifact: FeatureTaskRuntimeSharedEvidenceArtifact,
-    ): FeatureTaskRuntimeSharedReviewEvidenceReference {
+    ): FeatureTaskRuntimeSharedReviewEvidenceReference = FeatureTaskRuntimeSharedReviewEvidenceReference(
+      storePath = storePath,
+      checkpointFingerprint = artifact.fingerprint,
+      baseRef = artifact.baseRef?.takeIf(String::isNotBlank),
+      headRef = artifact.headRef?.takeIf(String::isNotBlank),
+      changedFileCount = artifact.files.size,
+      changedHunkCount = artifact.hunks.size,
+      fileHunkIndexDigest = fileHunkIndexDigest(artifact),
+    )
+
+    fun fileHunkIndexDigest(artifact: FeatureTaskRuntimeSharedEvidenceArtifact): String {
       val hunkCounts = artifact.hunks.groupingBy { it.path }.eachCount()
-      val entries = artifact.files.map { file ->
-        "${file.changeKind} ${file.path} hunks=${hunkCounts[file.path] ?: 0}"
-      }
-      val bounded = if (entries.size <= FEATURE_TASK_RUNTIME_CHANGED_PATH_MAX_COUNT) {
-        entries
-      } else {
-        entries.take(FEATURE_TASK_RUNTIME_CHANGED_PATH_MAX_COUNT - 1) +
-          "omitted ${entries.size - (FEATURE_TASK_RUNTIME_CHANGED_PATH_MAX_COUNT - 1)} further changed files"
-      }
-      return FeatureTaskRuntimeSharedReviewEvidenceReference(
-        storePath = storePath,
-        checkpointFingerprint = artifact.fingerprint,
-        baseRef = artifact.baseRef?.takeIf(String::isNotBlank),
-        headRef = artifact.headRef?.takeIf(String::isNotBlank),
-        fileHunkIndex = bounded,
-      )
+      val digest = MessageDigest.getInstance("SHA-256")
+      artifact.files
+        .map { file -> "${file.changeKind} ${file.path} hunks=${hunkCounts[file.path] ?: 0}" }
+        .sorted()
+        .forEach { entry ->
+          digest.update(entry.toByteArray())
+          digest.update(0)
+        }
+      return digest.digest().joinToString("") { byte -> "%02x".format(byte) }
     }
   }
 }

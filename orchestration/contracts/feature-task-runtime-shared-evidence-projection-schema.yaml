@@ -1,9 +1,9 @@
 # Feature-task-runtime shared evidence projection schema (canonical source of truth).
 #
-# This file describes the bounded reference projection delivered to audit, review, and every
-# review lane for one repository checkpoint. The projection names a store path and a file/hunk
-# index only: it never carries inlined diff bytes, so the planning-projection budget stays
-# independent of branch diff size.
+# This file describes the fixed-size reference projection delivered to audit, review, and every
+# review lane for one repository checkpoint. The projection names a store path and content-free
+# index measurements only: it carries neither inlined diff bytes nor one entry per changed file,
+# so the planning-projection budget stays constant in branch diff size.
 #
 # Why this exists:
 #
@@ -32,8 +32,8 @@ $id: "https://skill-bill.dev/contracts/feature-task-runtime-shared-evidence-proj
 title: "Feature-task-runtime shared evidence projection"
 description: >-
   Strict reference-only projection for checkpoint-keyed shared review evidence: workflow id,
-  repository checkpoint fingerprint, store path, and bounded file/hunk index. No property may
-  accept inlined diff content.
+  repository checkpoint fingerprint, store path, and content-free index measurements. No property
+  may accept inlined diff content or a per-file catalog.
 type: object
 additionalProperties: false
 required:
@@ -41,11 +41,13 @@ required:
   - workflow_id
   - repository_checkpoint_fingerprint
   - store_path
-  - file_hunk_index
+  - changed_file_count
+  - changed_hunk_count
+  - file_hunk_index_digest
 properties:
   contract_version:
     type: string
-    const: "0.1"
+    const: "0.2"
   workflow_id:
     type: string
     minLength: 1
@@ -71,19 +73,33 @@ properties:
     minLength: 1
     maxLength: 4096
     pattern: ".*\\S.*"
-  file_hunk_index:
-    type: array
-    items:
-      type: string
-      minLength: 1
-      maxLength: 4096
-      pattern: ".*\\S.*"
+  changed_file_count:
+    description: >-
+      How many files the artifact indexes. A count instead of a catalog: a lane reads the file
+      list from the store path when it needs the paths themselves.
+    type: integer
+    minimum: 0
+  changed_hunk_count:
+    description: How many hunks the artifact indexes across all files.
+    type: integer
+    minimum: 0
+  file_hunk_index_digest:
+    description: >-
+      SHA-256 over the artifact's canonical file/hunk index. Two readers can prove they are
+      looking at the same index without either rendering it.
+    type: string
+    pattern: "^[0-9a-f]{64}$"
 
 x-coherence-checks:
   - id: reference-not-bytes
     description: >-
       No property accepts inlined diff content. Diff bytes live only under the store path named by
       store_path; the projection budget therefore stays independent of branch diff size.
+  - id: fixed-size-rendering
+    description: >-
+      No property grows with the number of changed files or hunks. Records written before 0.2
+      carried a file_hunk_index array of up to 512 entries; additionalProperties:false now rejects
+      them, and the runtime re-derives the artifact rather than serving a legacy projection.
   - id: checkpoint-keying
     description: >-
       repository_checkpoint_fingerprint is the only reuse key and must equal the fingerprint the

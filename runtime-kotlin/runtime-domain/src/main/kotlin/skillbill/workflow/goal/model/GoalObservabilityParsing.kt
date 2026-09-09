@@ -41,6 +41,9 @@ fun goalObservabilityEventFromArtifact(
   eventMap.requireOnlyKeys(GOAL_OBSERVABILITY_EVENT_KEYS, sourceLabel)
   return GoalObservabilityEvent(
     contractVersion = eventMap.requiredContractVersion(sourceLabel),
+    recordKind = eventMap["record_kind"]?.let {
+      it as? String ?: throw invalidGoalObservabilityEvent(sourceLabel, "record_kind", "field must be a string.")
+    }?.let(GoalObservabilityRecordKind::fromWire) ?: GoalObservabilityRecordKind.PROGRESS,
     issueKey = eventMap.requiredString("issue_key", sourceLabel),
     subtaskId = eventMap.requiredPositiveInt("subtask_id", sourceLabel),
     workflowId = eventMap.optionalString("workflow_id"),
@@ -112,6 +115,7 @@ private fun Map<*, *>.toFileDiffStat(sourceLabel: String): GoalObservabilityFile
 
 private val GOAL_OBSERVABILITY_EVENT_KEYS = setOf(
   "contract_version",
+  "record_kind",
   "issue_key",
   "subtask_id",
   "workflow_id",

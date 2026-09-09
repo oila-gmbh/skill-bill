@@ -290,8 +290,6 @@ class FeatureTaskRuntimeRemediationPassPromptTest {
 private val REVIEW_INPUT = GoalSubtaskReviewInput(
   reviewBaseSha = "a".repeat(40),
   currentHeadSha = "b".repeat(40),
-  trackedDelta = "diff --git a/A.kt b/A.kt",
-  ownedUntrackedPatches = "",
 )
 
 private fun reviewBriefing() = FeatureTaskRuntimePhaseBriefingAssembler.assemble(

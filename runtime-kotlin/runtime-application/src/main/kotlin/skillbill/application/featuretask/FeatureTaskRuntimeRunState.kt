@@ -58,22 +58,6 @@ class FeatureTaskRuntimeRunState(
       .filterNot { it.phaseId in gateInvalidatedPhases }
       .toMutableList()
 
-  fun validatedRecordToOutput(record: FeatureTaskRuntimePhaseRecord): FeatureTaskRuntimePhaseOutput? =
-    record.outputArtifact?.let { artifact ->
-      val accepted = try {
-        outputValidator.validatePhaseOutput(artifact, record.phaseId).requireAcceptedOutput(record.phaseId)
-      } catch (error: InvalidFeatureTaskRuntimePhaseOutputSchemaError) {
-        if (record.status == STATUS_COMPLETED) throw error
-        return@let null
-      }
-      FeatureTaskRuntimePhaseOutput(
-        phaseId = record.phaseId,
-        iteration = record.attemptCount,
-        payload = accepted.normalizedOutput.canonicalJson,
-        normalizedOutput = accepted.normalizedOutput,
-        repairEvidence = record.repairEvidence ?: accepted.repairEvidence,
-      )
-    }
   val priorRecords: MutableSet<String> = initialRecords.keys.toMutableSet()
   val phasesLaunchedThisProcess: MutableSet<String> = mutableSetOf()
   private val initialReviewRecord = initialRecords[FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW]
@@ -158,6 +142,21 @@ class FeatureTaskRuntimeRunState(
     fixLoopBudgetBaseByPhase[phaseId] = maxOf(nextIteration(phaseId) - 1, 0)
   }
 
+  fun reopenForChangedRevision() {
+    resetInvalidatedReviewGeneration()
+    transitions.forwardPhaseIds.dropWhile {
+      it != FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT
+    }.forEach { phaseId ->
+      reopenForReentry(phaseId)
+      outputs.removeAll { it.phaseId == phaseId }
+      priorRecords.remove(phaseId)
+      blockedRecords.remove(phaseId)
+    }
+    inFlightReentries.remove(FeatureTaskRuntimePhaseWorkflowDefinition.REVIEW_FIX_LOOP_ID)
+    edgeIterationByLoop.remove(FeatureTaskRuntimePhaseWorkflowDefinition.REVIEW_FIX_LOOP_ID)
+    liveClaimedLoops.remove(FeatureTaskRuntimePhaseWorkflowDefinition.REVIEW_FIX_LOOP_ID)
+  }
+
   fun invalidateProducerOutput(phaseId: String) {
     completed.remove(phaseId)
     outputs.removeAll { it.phaseId == phaseId }
@@ -177,4 +176,22 @@ class FeatureTaskRuntimeRunState(
 
   fun completedPhaseIds(): List<String> =
     FeatureTaskRuntimePhaseWorkflowDefinition.definition.stepIds.filter { it in completed }
+}
+
+internal fun FeatureTaskRuntimeRunState.validatedRecordToOutput(
+  record: FeatureTaskRuntimePhaseRecord,
+): FeatureTaskRuntimePhaseOutput? = record.outputArtifact?.let { artifact ->
+  val accepted = try {
+    outputValidator.validatePhaseOutput(artifact, record.phaseId).requireAcceptedOutput(record.phaseId)
+  } catch (error: InvalidFeatureTaskRuntimePhaseOutputSchemaError) {
+    if (record.status == STATUS_COMPLETED) throw error
+    return@let null
+  }
+  FeatureTaskRuntimePhaseOutput(
+    phaseId = record.phaseId,
+    iteration = record.attemptCount,
+    payload = accepted.normalizedOutput.canonicalJson,
+    normalizedOutput = accepted.normalizedOutput,
+    repairEvidence = record.repairEvidence ?: accepted.repairEvidence,
+  )
 }

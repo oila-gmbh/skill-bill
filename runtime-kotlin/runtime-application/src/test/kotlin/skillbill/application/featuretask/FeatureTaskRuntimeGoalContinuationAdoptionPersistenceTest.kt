@@ -193,7 +193,7 @@ class FeatureTaskRuntimeGoalContinuationAdoptionPersistenceTest {
       codeReviewMode = CodeReviewExecutionMode.INLINE,
       validationDepth = validationDepth,
       qualityGateSelection = qualityGateSelection,
-      reviewBaseline = GoalSubtaskReviewBaseline(baselineSha, emptyList()),
+      reviewBaseline = GoalSubtaskReviewBaseline(baselineSha),
     ),
   )
 

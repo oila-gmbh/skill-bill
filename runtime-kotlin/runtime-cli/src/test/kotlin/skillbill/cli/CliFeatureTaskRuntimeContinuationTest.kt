@@ -94,7 +94,7 @@ class CliFeatureTaskRuntimeContinuationTest {
       "--goal-branch",
       "feat/existing-runtime-branch",
       "--goal-review-base-sha",
-      "0000000000000000000000000000000000000000",
+      fixture.reviewBaseSha,
       "--suppress-pr",
     )
 
@@ -157,7 +157,7 @@ class CliFeatureTaskRuntimeContinuationTest {
       "--goal-branch",
       "feat/existing-runtime-branch",
       "--goal-review-base-sha",
-      "0000000000000000000000000000000000000000",
+      fixture.reviewBaseSha,
       "--suppress-pr",
     )
 
@@ -213,7 +213,7 @@ class CliFeatureTaskRuntimeContinuationTest {
           "--goal-branch",
           "feat/pre-created-runtime-branch",
           "--goal-review-base-sha",
-          "0000000000000000000000000000000000000000",
+          goalFixture.reviewBaseSha,
           "--goal-parent-workflow-id",
           "wftr-parent",
           "--suppress-pr",

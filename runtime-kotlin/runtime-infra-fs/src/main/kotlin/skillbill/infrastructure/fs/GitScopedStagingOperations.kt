@@ -39,6 +39,16 @@ internal object GitScopedStagingOperations : ScopedStagingGitOperations {
     return WorkflowGitOperationResult(status = "ok", value = "")
   }
 
+  override fun unstagePaths(repoRoot: Path, paths: List<String>): WorkflowGitOperationResult {
+    val normalized = paths.filter(String::isNotBlank).distinct()
+    if (normalized.isEmpty()) return WorkflowGitOperationResult(status = "ok", value = "")
+    normalized.chunked(PATHSPEC_BATCH_SIZE).forEach { batch ->
+      val reset = runGitCommand(repoRoot, listOf("reset", "HEAD", "--") + batch)
+      if (!reset.ok) return reset
+    }
+    return WorkflowGitOperationResult(status = "ok", value = "")
+  }
+
   override fun captureIndexState(repoRoot: Path, paths: List<String>): WorkflowGitOperationResult {
     val normalized = paths.filter(String::isNotBlank).distinct()
     if (normalized.isEmpty()) return WorkflowGitOperationResult(status = "ok", value = "")
@@ -158,21 +168,21 @@ internal object GitScopedStagingOperations : ScopedStagingGitOperations {
     }
     return WorkflowGitOperationResult(status = "ok", value = ignored.joinToString(GIT_NUL.toString()))
   }
+}
 
-  private fun parseCheckIgnore(result: GitProcessResult): WorkflowGitOperationResult = when {
-    result.timedOut -> WorkflowGitOperationResult(
-      status = "error",
-      error = gitTimedOutError(listOf("check-ignore", "-z", "--stdin")),
-    )
-    result.readFailure != null -> WorkflowGitOperationResult(
-      status = "error",
-      error = result.readFailure.message.orEmpty(),
-    )
-    result.exitCode == 0 -> WorkflowGitOperationResult(status = "ok", value = result.output)
-    result.exitCode == 1 -> WorkflowGitOperationResult(status = "ok", value = "")
-    else -> WorkflowGitOperationResult(
-      status = "error",
-      error = "git check-ignore failed with exit code ${result.exitCode}: ${result.output}",
-    )
-  }
+private fun parseCheckIgnore(result: GitProcessResult): WorkflowGitOperationResult = when {
+  result.timedOut -> WorkflowGitOperationResult(
+    status = "error",
+    error = gitTimedOutError(listOf("check-ignore", "-z", "--stdin")),
+  )
+  result.readFailure != null -> WorkflowGitOperationResult(
+    status = "error",
+    error = result.readFailure.message.orEmpty(),
+  )
+  result.exitCode == 0 -> WorkflowGitOperationResult(status = "ok", value = result.output)
+  result.exitCode == 1 -> WorkflowGitOperationResult(status = "ok", value = "")
+  else -> WorkflowGitOperationResult(
+    status = "error",
+    error = "git check-ignore failed with exit code ${result.exitCode}: ${result.output}",
+  )
 }
