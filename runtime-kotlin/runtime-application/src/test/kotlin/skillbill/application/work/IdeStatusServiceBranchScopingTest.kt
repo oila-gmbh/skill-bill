@@ -114,7 +114,7 @@ class IdeStatusServiceBranchScopingTest {
         },
       ),
       outcomeStore = object : GoalRunnerWorkflowOutcomeStore by EmptyOutcomeStore {
-        override fun progress(workflowId: String, dbPathOverride: String?): GoalRunnerWorkflowProgress? =
+        override fun progress(workflowId: String): GoalRunnerWorkflowProgress? =
           staleProgress.takeIf { workflowId == "w-child" }
       },
     ).status(IdeStatusRequest(repoRoot = fixture.toString(), observedAt = ideStatusObservedAt))

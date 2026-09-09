@@ -1,6 +1,8 @@
 package skillbill.application.featuretask
 
 import skillbill.error.InvalidFeatureTaskRuntimePhaseOutputSchemaError
+import skillbill.workflow.model.WorkflowStepStatus
+import skillbill.workflow.model.workflowStepStatus
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseOutputValidator
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerAction
@@ -71,13 +73,15 @@ class FeatureTaskRuntimeRunState(
     initialRecords.mapValues { (_, record) -> record.attemptCount }.toMutableMap()
 
   val blockedRecords: MutableMap<String, String> = initialRecords
-    .filterValues { it.status == STATUS_BLOCKED && it.resolvedAgentId != BRANCH_SETUP_AGENT_ID }
-    .mapValues { (_, record) -> record.blockedReason.orEmpty() }
+    .filterValues {
+      it.status.workflowStepStatus() == WorkflowStepStatus.BLOCKED && it.resolvedAgentId != BRANCH_SETUP_AGENT_ID
+    }    .mapValues { (_, record) -> record.blockedReason.orEmpty() }
     .toMutableMap()
 
   val branchSetupBlockedPhases: MutableSet<String> = initialRecords
-    .filterValues { it.status == STATUS_BLOCKED && it.resolvedAgentId == BRANCH_SETUP_AGENT_ID }
-    .keys
+    .filterValues {
+      it.status.workflowStepStatus() == WorkflowStepStatus.BLOCKED && it.resolvedAgentId == BRANCH_SETUP_AGENT_ID
+    }    .keys
     .toMutableSet()
 
   val edgeIterationByLoop: MutableMap<String, Int> = (

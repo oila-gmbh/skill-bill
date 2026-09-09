@@ -160,6 +160,7 @@ class ClaudeAgentRunCommandBuilder(
     mcpIsolation = true,
     configFormat = McpRegistrationOperations.configFormatFor(InstallAgent.CLAUDE),
   ),
+  private val databasePath: Path? = null,
 ) : AgentRunCommandBuilder {
   override val agent: InstallAgent = InstallAgent.CLAUDE
   override val outputDecoder: AgentRunOutputDecoder = AgentRunOutputDecoder.CLAUDE_JSON
@@ -169,7 +170,7 @@ class ClaudeAgentRunCommandBuilder(
     requireProcessLaunch(request, reviewIsolation)
     requireGovernedReviewLaunch(request, agent, governedReviewLaunchCapability)
     val streaming = request.streamProviderOutput || request.streamOutputForLiveness
-    return goalContinuationCommand(request, agent) ?: AgentRunCommand(
+    return goalContinuationCommand(request, agent, databasePath) ?: AgentRunCommand(
       command = buildList {
         add("claude")
         add("--print")
@@ -225,6 +226,7 @@ class CodexAgentRunCommandBuilder(
     mcpIsolation = true,
     configFormat = McpRegistrationOperations.configFormatFor(InstallAgent.CODEX),
   ),
+  private val databasePath: Path? = null,
 ) : AgentRunCommandBuilder {
   override val agent: InstallAgent = InstallAgent.CODEX
   override val outputDecoder: AgentRunOutputDecoder = AgentRunOutputDecoder.CODEX_JSONL
@@ -234,7 +236,7 @@ class CodexAgentRunCommandBuilder(
   override fun build(request: SkillRunRequest): AgentRunCommand {
     requireProcessLaunch(request, reviewIsolation)
     requireGovernedReviewLaunch(request, agent, governedReviewLaunchCapability)
-    return goalContinuationCommand(request, agent) ?: AgentRunCommand(
+    return goalContinuationCommand(request, agent, databasePath) ?: AgentRunCommand(
       command = buildList {
         add("codex")
         add("exec")

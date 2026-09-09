@@ -85,8 +85,8 @@ internal fun readSelectedDiffHunks(
     val failure = readFailure
     val parsed = parser.result()
     when {
-      failure != null -> SelectedDiffReadResult(status = "error", error = failure.message.orEmpty())
-      !parsed.truncated && process.exitValue() != 0 ->
+      failure != null ->
+        SelectedDiffReadResult(status = WorkflowGitOperationStatus.ERROR, error = failure.message.orEmpty())      !parsed.truncated && process.exitValue() != 0 ->
         SelectedDiffReadResult(status = "error", error = errorOutput.toString().trim())
       else -> SelectedDiffReadResult(status = "ok", hunks = parsed)
     }

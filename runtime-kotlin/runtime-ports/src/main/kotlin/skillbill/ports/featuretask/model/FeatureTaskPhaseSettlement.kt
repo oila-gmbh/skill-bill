@@ -20,15 +20,15 @@ data class FeatureTaskPhaseSettlement(
 sealed interface FeatureTaskPhaseSettlementKind {
   val wireValue: String
 
-  data object COMPLETE : FeatureTaskPhaseSettlementKind {
+  data object Complete : FeatureTaskPhaseSettlementKind {
     override val wireValue: String = "complete"
   }
 
-  data object BLOCK : FeatureTaskPhaseSettlementKind {
+  data object Block : FeatureTaskPhaseSettlementKind {
     override val wireValue: String = "block"
   }
 
-  data object AUDIT_SETTLE : FeatureTaskPhaseSettlementKind {
+  data object AuditSettle : FeatureTaskPhaseSettlementKind {
     override val wireValue: String = "audit_settle"
   }
 
@@ -39,10 +39,22 @@ sealed interface FeatureTaskPhaseSettlementKind {
   }
 
   companion object {
+    @Deprecated("Renamed to Complete", ReplaceWith("FeatureTaskPhaseSettlementKind.Complete"))
+    val COMPLETE: FeatureTaskPhaseSettlementKind
+      get() = Complete
+
+    @Deprecated("Renamed to Block", ReplaceWith("FeatureTaskPhaseSettlementKind.Block"))
+    val BLOCK: FeatureTaskPhaseSettlementKind
+      get() = Block
+
+    @Deprecated("Renamed to AuditSettle", ReplaceWith("FeatureTaskPhaseSettlementKind.AuditSettle"))
+    val AUDIT_SETTLE: FeatureTaskPhaseSettlementKind
+      get() = AuditSettle
+
     fun fromWire(value: String): FeatureTaskPhaseSettlementKind = when (value) {
-      COMPLETE.wireValue -> COMPLETE
-      BLOCK.wireValue -> BLOCK
-      AUDIT_SETTLE.wireValue -> AUDIT_SETTLE
+      Complete.wireValue -> Complete
+      Block.wireValue -> Block
+      AuditSettle.wireValue -> AuditSettle
       else -> Unknown(value)
     }
   }

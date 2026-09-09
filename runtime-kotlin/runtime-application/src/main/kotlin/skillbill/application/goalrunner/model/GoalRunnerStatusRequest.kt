@@ -9,7 +9,6 @@ data class GoalRunnerStatusRequest(
   val issueKey: String,
   val invokedAgentId: String? = null,
   val configuredAgentOverrideId: String? = null,
-  val dbPathOverride: String? = null,
   val repoRoot: Path? = null,
   val includeDiffStat: Boolean = false,
   val selectedDiffHunkPaths: List<String> = emptyList(),

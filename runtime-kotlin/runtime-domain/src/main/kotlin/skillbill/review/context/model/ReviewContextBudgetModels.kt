@@ -77,7 +77,7 @@ sealed interface ReviewBudgetOutcome {
 class ReviewContextBudgetExceededException(
   val outcome: ReviewContextBudgetExceeded,
 ) : RuntimeException(
-  "${outcome.type}: ${outcome.budgetKind} ${outcome.observedValue} > ${outcome.configuredLimit}",
+  "${outcome.type}: ${outcome.budgetKind.wireValue} ${outcome.observedValue} > ${outcome.configuredLimit}",
 )
 
 /**

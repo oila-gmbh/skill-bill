@@ -144,8 +144,9 @@ private fun recoveredBaselineSnapshot(
     goalReviewGitValue(repoRoot, "merge-base", unreachableSha, currentHead)
       ?.trim()
       ?.takeIf(String::isNotBlank)
-      ?.takeIf { runGitCommand(repoRoot, "merge-base", "--is-ancestor", it, currentHead).ok }
-  }
+      ?.takeIf {
+        runGitCommand(repoRoot, "merge-base", "--is-ancestor", it, currentHead) is WorkflowGitOperationResult.Ok
+      }  }
   val branchBase = head?.takeIf { nearestAncestor == null }?.let { currentHead ->
     listOf("origin/main", "main")
       .filter { runGitCommand(repoRoot, "rev-parse", "--verify", "--quiet", it).ok }
@@ -154,8 +155,10 @@ private fun recoveredBaselineSnapshot(
         goalReviewGitValue(repoRoot, "merge-base", candidate, currentHead)
           ?.trim()
           ?.takeIf(String::isNotBlank)
-          ?.takeIf { runGitCommand(repoRoot, "merge-base", "--is-ancestor", it, currentHead).ok }
-      }
+          ?.takeIf {
+            runGitCommand(repoRoot, "merge-base", "--is-ancestor", it, currentHead) is
+              WorkflowGitOperationResult.Ok
+          }      }
   }
   val base = nearestAncestor ?: branchBase
   val error = when {

@@ -42,7 +42,6 @@ data class ProducerOutputQueryArgs(
   val phaseId: String,
   val attempt: Int,
   val agentId: String,
-  val dbOverride: String?,
   val generation: Int,
 )
 
@@ -57,5 +56,4 @@ data class AppendCheckpointIdentityArgs(
   val parentSha: String?,
   val ownedPaths: List<String>,
   val commitSha: String,
-  val dbOverride: String?,
 )

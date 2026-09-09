@@ -7,18 +7,15 @@ class GoalRunnerValidationQualityPendingState(
   private val manifestStore: GoalRunnerManifestStore,
 ) {
   private var parentWorkflowId: String = ""
-  private var dbPathOverride: String? = null
-
-  fun bind(parentWorkflowId: String, dbPathOverride: String?) {
+  fun bind(parentWorkflowId: String) {
     this.parentWorkflowId = parentWorkflowId
-    this.dbPathOverride = dbPathOverride
   }
 
-  private fun control(): GoalRunnerControlState = manifestStore.controlState(parentWorkflowId, dbPathOverride)
+  private fun control(): GoalRunnerControlState = manifestStore.controlState(parentWorkflowId)
 
   private fun update(transform: (GoalRunnerControlState) -> GoalRunnerControlState) {
     val current = control()
-    manifestStore.persistControlState(parentWorkflowId, transform(current), dbPathOverride)
+    manifestStore.persistControlState(parentWorkflowId, transform(current))
   }
 
   fun validationQualityRetryCount(subtaskId: Int): Int = control().validationQualityRetriesBySubtask[subtaskId] ?: 0

@@ -20,7 +20,6 @@ class AgentRunServiceRuntimeComponentTest {
     val tempDir = Files.createTempDirectory("skillbill-agent-run-component")
     val service = RuntimeComponent::class.create(
       RuntimeContext(
-        dbPathOverride = tempDir.resolve("metrics.db").toString(),
         environment = emptyMap(),
         userHome = tempDir,
       ),

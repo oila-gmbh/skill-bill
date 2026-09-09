@@ -15,7 +15,6 @@ import skillbill.application.workflow.WorkflowService
 import skillbill.cli.kernel.DocumentedCliCommand
 import skillbill.cli.kernel.drainTelemetryOnCompletion
 import skillbill.cli.kernel.invokingAgentResolutionHelp
-import skillbill.cli.model.CliRunInputs
 import skillbill.cli.model.DEFAULT_GOAL_MAX_WALL_CLOCK_MINUTES
 import skillbill.ports.featurespec.model.FeatureSpecPathResolveInput
 import skillbill.ports.featurespec.model.FeatureSpecPathResolveResult
@@ -117,13 +116,11 @@ abstract class FeatureTaskRuntimePhaseAgentCommand(
 
   protected fun resolveRunWorkflowId(
     workflowService: WorkflowService,
-    inputs: CliRunInputs,
     issueKey: String,
     specPath: String,
     repoRoot: String,
   ): String = explicitWorkflowId?.takeIf(String::isNotBlank)
     ?: workflowService.openRuntimeWorkflowId(
-      inputs,
       issueKey,
       specPath,
       repoRoot,
@@ -145,7 +142,7 @@ abstract class FeatureTaskRuntimePhaseAgentCommand(
     val goalContinuation = parseGoalContinuationContext(requestedReviewMode, deps.inputs.environment)
     val prepared = prepareRuntimeRun(deps)
     val resolvedWorkflowId = workflowId()
-    val report = deps.workerCoordinator.runOwned(resolvedWorkflowId, deps.inputs.dbPathOverride) {
+    val report = deps.workerCoordinator.runOwned(resolvedWorkflowId) {
       deps.runner.run(
         FeatureTaskRuntimeRunRequest(
           issueKey = issueKey,
@@ -160,7 +157,6 @@ abstract class FeatureTaskRuntimePhaseAgentCommand(
           modelAssignment = prepared.modelAssignment,
           compactionSettings = prepared.compactionSettings,
           environment = deps.inputs.environment,
-          dbPathOverride = deps.inputs.dbPathOverride,
           repoRoot = prepared.repoRoot,
           timeout = maxWallClockMinutes.takeIf { it > 0 }?.minutes,
           requestedCodeReviewMode = requestedReviewMode,
@@ -173,7 +169,7 @@ abstract class FeatureTaskRuntimePhaseAgentCommand(
     }
     val payload = report.toRuntimeRunCliMap()
     state.completeText(runtimeRunText(payload), payload, exitCode = payload.runtimeRunExitCode())
-    drainTelemetryOnCompletion(deps.telemetryService, deps.inputs.dbPathOverride, deps.diagnostics)
+    drainTelemetryOnCompletion(deps.telemetryService, deps.diagnostics)
   }
 
   internal fun resolveSpecPath(
@@ -243,7 +239,7 @@ class FeatureTaskRuntimeRunCommand(
       deps = deps,
       issueKey = runIssueKey,
       specPath = runSpecPath,
-      workflowId = { resolveRunWorkflowId(workflowService, deps.inputs, runIssueKey, runSpecPath, repoRoot ?: ".") },
+      workflowId = { resolveRunWorkflowId(workflowService, runIssueKey, runSpecPath, repoRoot ?: ".") },
     )
   }
 }
@@ -270,7 +266,7 @@ class FeatureTaskRuntimeExplicitRunCommand(
       deps = deps,
       issueKey = issueKey,
       specPath = runSpecPath,
-      workflowId = { resolveRunWorkflowId(workflowService, deps.inputs, issueKey, runSpecPath, repoRoot ?: ".") },
+      workflowId = { resolveRunWorkflowId(workflowService, issueKey, runSpecPath, repoRoot ?: ".") },
     )
   }
 }

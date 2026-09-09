@@ -13,6 +13,7 @@ class CursorAgentRunCommandBuilder(
     mcpIsolation = true,
     configFormat = McpRegistrationOperations.configFormatFor(InstallAgent.CURSOR),
   ),
+  private val databasePath: Path? = null,
 ) : AgentRunCommandBuilder {
   override val agent: InstallAgent = InstallAgent.CURSOR
   override val outputDecoder: AgentRunOutputDecoder = AgentRunOutputDecoder.CURSOR_STREAM_JSON
@@ -34,7 +35,7 @@ class CursorAgentRunCommandBuilder(
     val isReviewLaunch = request.reviewEvidenceBroker != null
     val reviewLaunchDirectory = request.reviewEvidenceEndpoint?.descriptor?.mcpConfigPath?.parent
 
-    return goalContinuationCommand(request, agent) ?: AgentRunCommand(
+    return goalContinuationCommand(request, agent, databasePath) ?: AgentRunCommand(
       command = buildCursorCommand(
         request,
         isReviewLaunch,

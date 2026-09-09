@@ -24,7 +24,6 @@ data class GoalPreflightRequest(
   val agentOverrideId: String? = null,
   val requestedReviewMode: CodeReviewExecutionMode? = null,
   val requestedAgentAddonSlugs: List<String> = emptyList(),
-  val dbPathOverride: String? = null,
   val userHome: Path = Path.of("."),
   val environment: Map<String, String> = emptyMap(),
 )

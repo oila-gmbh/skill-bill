@@ -21,6 +21,8 @@ import skillbill.review.context.model.CodeReviewExecutionMode
 import skillbill.workflow.decomposition.model.DecompositionManifest
 import skillbill.workflow.decomposition.model.DecompositionSubtask
 import skillbill.workflow.decomposition.model.SpecSource.LINEAR
+import skillbill.workflow.model.DecompositionStatus
+import skillbill.workflow.model.decompositionStatus
 import java.nio.file.Path
 
 class GoalPreflightGateBlockBuilder(
@@ -37,7 +39,7 @@ class GoalPreflightGateBlockBuilder(
   ): HydratedAgentAddonSelection {
     val persisted = parentWorkflowId
       ?.takeIf(String::isNotBlank)
-      ?.let { manifestStore.reviewPolicy(it, request.dbPathOverride)?.agentAddonSelection }
+      ?.let { manifestStore.reviewPolicy(it)?.agentAddonSelection }
     if (request.requestedAgentAddonSlugs.isNotEmpty()) {
       if (persisted != null && persisted.entries.map { it.slug } != request.requestedAgentAddonSlugs) {
         throw InvalidAgentAddonSelectionError(
@@ -74,7 +76,7 @@ class GoalPreflightGateBlockBuilder(
   ): GoalPreflightGateBlock {
     val durablePolicy = parentWorkflowId
       ?.takeIf(String::isNotBlank)
-      ?.let { manifestStore.reviewPolicy(it, request.dbPathOverride) }
+      ?.let { manifestStore.reviewPolicy(it) }
     val mismatch = durablePolicy?.let {
       goalRunnerReviewPolicyMismatch(
         parentWorkflowId = parentWorkflowId.orEmpty(),

@@ -10,13 +10,10 @@ import skillbill.application.scaffold.InstallAgentService
 import skillbill.cli.kernel.CliRunState
 import skillbill.cli.kernel.DocumentedCliCommand
 import skillbill.cli.model.CliRunInputs
-import skillbill.di.RuntimeComponent
-import skillbill.di.create
 import skillbill.error.SkillBillRuntimeException
 import skillbill.install.model.InstallAgent
 import skillbill.install.model.InstallAgentSelection
 import skillbill.install.model.InstallAgentSelectionMode
-import skillbill.install.model.InstallPlan
 import skillbill.install.model.InstallPlanRequest
 import skillbill.install.model.InstallTelemetryLevel
 import skillbill.install.model.InstallationTargetPaths
@@ -29,8 +26,7 @@ import skillbill.install.model.SharedInstallSelection
 import skillbill.install.model.WindowsSymlinkDecision
 import skillbill.install.model.WindowsSymlinkPreflight
 import skillbill.install.model.WindowsSymlinkPreflightState
-import skillbill.model.RuntimeContext
-import skillbill.ports.install.reconcile.model.InstallReconcileApplyRequest
+import skillbill.model.toPathimport skillbill.ports.install.reconcile.model.InstallReconcileApplyRequest
 import skillbill.ports.install.reconcile.model.InstallReconcileRequest
 import skillbill.ports.install.selection.InstallSelectionPersistencePort
 import skillbill.ports.install.selection.model.ReadLatestSuccessfulInstallSelectionRequest
@@ -159,26 +155,19 @@ class InstallApplyCommand(
   private val state: CliRunState,
   private val inputs: CliRunInputs,
   private val installService: InstallService,
+  private val telemetryLevelMutator: TelemetryLevelMutator,
 ) : InstallRequestCommand("apply", "Apply a governed Skill Bill install through the shared runtime contract.") {
   override fun run() {
     if (state.refuseInstallMutationDuringGoalContinuation(inputs, "apply")) {
       return
     }
     val plan = installService.planInstall(toRequest(inputs))
-    val result = installService.applyInstall(plan, telemetryLevelMutator(plan))
+    val result = installService.applyInstall(plan, telemetryLevelMutator)
     state.complete(
       installApplyPayload(plan, result, installService),
       format,
       exitCode = if (result.failures.isEmpty()) 0 else 1,
     )
-  }
-
-  private fun telemetryLevelMutator(plan: InstallPlan): TelemetryLevelMutator {
-    val reboundContext = RuntimeContext(
-      dbPathOverride = inputs.dbPathOverride,
-      userHome = plan.request.home,
-    )
-    return RuntimeComponent::class.create(reboundContext).telemetryLevelMutator
   }
 }
 

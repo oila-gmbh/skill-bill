@@ -10,7 +10,6 @@ data class RejectedOutputDiagnosticDegradeRequest(
   val attempt: Int,
   val repairTurn: Int?,
   val generation: Int,
-  val dbOverride: String?,
 )
 
 data class RejectedOutputDiagnosticPersistRequest(
@@ -21,6 +20,5 @@ data class RejectedOutputDiagnosticPersistRequest(
   val attempt: Int,
   val repairTurn: Int?,
   val generation: Int,
-  val dbOverride: String?,
   val failureClass: FeatureTaskRuntimeDiagnosticFailureClass,
 )

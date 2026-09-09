@@ -37,8 +37,7 @@ internal object ProsePhaseOutputParse {
     return canonicalStatus(raw)
   }
 
-  private fun canonicalStatus(lowercased: String): String? =
-    SettlementStatus.fromWire(lowercased)?.wireValue
+  private fun canonicalStatus(lowercased: String): String? = SettlementStatus.fromWire(lowercased)?.wireValue
 }
 
 private fun parseObject(raw: String): Map<String, Any?>? {

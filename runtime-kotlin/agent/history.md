@@ -1,3 +1,14 @@
+## [2026-09-11] SKILL-233 subtask 6 — Runtime-context database resolution
+Areas: runtime-kotlin/{runtime-infra-sqlite,runtime-ports,runtime-application,runtime-cli,runtime-core,runtime-mcp,runtime-infra-fs,runtime-domain,agent,ARCHITECTURE.md}
+- Database session APIs resolve the path once from bound `RuntimeContext`; `DatabaseRuntime` keeps a resolving entry point (`openDb`, `openReadDb`, `openReadDbIfPresent`) that delegates to an `*At(dbPath)` overload, so path resolution and open semantics — missing-database bootstrap, schemaless failure, read-only setup, transactions, closure — stay separable. reusable
+- Removed `dbOverride` and `dbPathOverride` plumbing from `runtime-application` and `runtime-ports` signatures while keeping `--db` parsing in `CliRuntime` and default/explicit path behavior across bridges, DI, services, callers, and tests. reusable
+- `RuntimeContext.dbPathOverride` is the one carrier below the CLI: `CliRuntime` merges the Clikt `--db` flag with `CliRuntimeContext.dbPathOverride`, and `SQLiteDatabaseSessionFactory` resolves that value once through a `by lazy` field reused by reads, writes, and transactions. Surviving `dbOverride` names are only the Clikt option, the `--db` echo `GoalCliCommands` hands to `GoalRunPresenter`, and an allowlist fixture string in `InjectConstructorDefaultsArchitectureTest`. reusable
+- Pattern: bind runtime context at composition and resolve persistence paths at the database boundary; do not hide missing context with constructor defaults. reusable
+- Partial migrations of this shape hide in the read paths: after the write and transaction paths took `openDbAt(resolveDbPath())`, `openReadDb` and `SQLiteDatabaseSessionFactory.read` still went through the resolving entry point and resolved a second time. When splitting a resolve-and-open API, audit every opener — including `readIfPresent` — against the `*At` overload, not just the ones the change touched first. reusable
+- Limitation: the CLI flag name, database schema, identifiers, statuses, and vocabulary are unchanged.
+Feature flag: N/A
+Acceptance criteria: 4/4 implemented
+
 ## [2026-09-09] SKILL-233 subtask 4 — Status types and Git results
 Areas: runtime-kotlin/{runtime-application/{featuretask,goalrunner/planning,telemetry,telemetry/sync,workflow},runtime-domain/{goalrunner,telemetry,workflow/taskruntime},runtime-ports/{featuretask,scaffold/repo},runtime-infra-{fs,sqlite},runtime-cli/scaffold,runtime-core/telemetry,agent,ARCHITECTURE.md}
 - Replaced ambiguous phase, settlement, worker-ownership, liveness, telemetry-sync, repair-ledger, scaffold-validation, and Git-operation outcomes with typed status/result models; callers now preserve failure identity across runtime, CLI, filesystem, and SQLite seams. reusable

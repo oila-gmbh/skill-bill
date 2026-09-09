@@ -14,7 +14,6 @@ import skillbill.ports.workflow.model.FeatureTaskRouteScope
 import java.nio.file.Path
 
 internal fun WorkflowService.openRuntimeWorkflowId(
-  inputs: CliRunInputs,
   issueKey: String?,
   specPath: String,
   repoRoot: String,
@@ -25,7 +24,6 @@ internal fun WorkflowService.openRuntimeWorkflowId(
       kind = WorkflowFamilyKind.TASK_RUNTIME,
       sessionId = "",
       currentStepId = null,
-      dbOverride = inputs.dbPathOverride,
       issueKey = requireNotNull(issueKey),
       repositoryIdentity = repositoryIdentity(Path.of(repoRoot)),
       governedSpecPath = governedSpecPath(Path.of(repoRoot), Path.of(specPath)),

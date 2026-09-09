@@ -112,8 +112,9 @@ class GitCheckpointHistoryOperationsTest {
     val sha = head()
     val ref = "${CHECKPOINT_PREFIX}subtask-1/städte-checkpoint"
 
-    assertTrue(GitCheckpointHistoryOperations.updateRef(repo, CHECKPOINT_PREFIX, ref, sha).ok)
-    assertEquals(sha, GitCheckpointHistoryOperations.resolveRef(repo, CHECKPOINT_PREFIX, ref).value.trim())
+    assertTrue(
+      GitCheckpointHistoryOperations.updateRef(repo, CHECKPOINT_PREFIX, ref, sha) is WorkflowGitOperationResult.Ok,
+    )    assertEquals(sha, GitCheckpointHistoryOperations.resolveRef(repo, CHECKPOINT_PREFIX, ref).value.trim())
     assertEquals(mapOf(ref to sha), listedRefs())
 
     assertTrue(GitCheckpointHistoryOperations.deleteRef(repo, CHECKPOINT_PREFIX, ref).ok)
@@ -123,8 +124,10 @@ class GitCheckpointHistoryOperationsTest {
     )
     assertEquals(emptyMap(), listedRefs())
     val absent = GitCheckpointHistoryOperations.resolveRef(repo, CHECKPOINT_PREFIX, ref)
-    assertTrue(absent.ok, "an absent ref must resolve ok so callers can tell it from a failed lookup")
-    assertEquals("", absent.value.trim())
+    assertTrue(
+      absent is WorkflowGitOperationResult.Ok,
+      "an absent ref must resolve ok so callers can tell it from a failed lookup",
+    )    assertEquals("", absent.value.trim())
   }
 
   // A namespace escape would move or delete a real branch ref, destroying delivered work.
@@ -156,8 +159,10 @@ class GitCheckpointHistoryOperationsTest {
   fun `a pre-amend ref keeps the discarded commit reachable while git log never lists it`() {
     val preAmend = head()
     val ref = "${CHECKPOINT_PREFIX}SKILL-190/3/0"
-    assertTrue(GitCheckpointHistoryOperations.updateRef(repo, CHECKPOINT_PREFIX, ref, preAmend).ok)
-    write("owned/Base.kt", "amended\n")
+    assertTrue(
+      GitCheckpointHistoryOperations.updateRef(repo, CHECKPOINT_PREFIX, ref, preAmend) is
+        WorkflowGitOperationResult.Ok,
+    )    write("owned/Base.kt", "amended\n")
     git("add", "--", "owned/Base.kt")
 
     assertTrue(GitCheckpointHistoryOperations.amendHeadCommit(repo, preAmend).ok)

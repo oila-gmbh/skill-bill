@@ -157,7 +157,7 @@ fun FeatureTaskRuntimeRunObservability.emitSafely(event: FeatureTaskRuntimeRunEv
 }
 
 fun FeatureTaskRuntimeRunObservability.appendLedger(ledgerRequest: FeatureTaskRuntimePhaseLedgerRequest) {
-  observabilityRecorder.appendLedgerEntry(ledgerRequest, observabilityRequest.dbPathOverride)
+  observabilityRecorder.appendLedgerEntry(ledgerRequest)
 }
 
 val FeatureTaskRuntimeRunObservability.observabilityRecorder get() = recorder

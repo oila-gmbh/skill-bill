@@ -8,7 +8,6 @@ data class GoalRunnerResetRequest(
   val preservePlanning: Boolean = false,
   val subtaskId: Int? = null,
   val deleteChildWorkflow: Boolean = false,
-  val dbPathOverride: String? = null,
   val repoRoot: Path? = null,
 ) {
   init {

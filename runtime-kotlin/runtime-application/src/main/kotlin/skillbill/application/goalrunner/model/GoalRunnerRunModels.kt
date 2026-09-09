@@ -1,6 +1,7 @@
 package skillbill.application.goalrunner.model
 
 import skillbill.agentaddon.model.HydratedAgentAddonSelection
+import skillbill.goalrunner.model.GoalPullRequestStatus
 import skillbill.ports.agentrun.model.AgentRunOutputSink
 import skillbill.review.context.model.CodeReviewExecutionMode
 import skillbill.workflow.goal.model.GoalSubtaskReviewCompactFinding
@@ -13,7 +14,6 @@ data class GoalRunnerRunRequest(
   val repoRoot: Path,
   val invokedAgentId: String,
   val configuredAgentOverrideId: String? = null,
-  val dbPathOverride: String? = null,
   val timeout: Duration? = null,
   val progressIdleTimeout: Duration? = null,
   val planningBudget: Duration? = DEFAULT_GOAL_PLANNING_BUDGET,

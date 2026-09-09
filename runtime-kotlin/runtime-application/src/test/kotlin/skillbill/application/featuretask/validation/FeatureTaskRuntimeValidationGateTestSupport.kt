@@ -15,10 +15,7 @@ import skillbill.ports.config.model.ReadRepoLocalConfigResult
 import skillbill.ports.diagnostics.NoopRuntimeDiagnostics
 import skillbill.ports.diagnostics.RuntimeDiagnostics
 import skillbill.ports.validation.ValidationGateRunner
-import skillbill.ports.validation.model.ValidationGateCacheMode
-import skillbill.ports.validation.model.ValidationGateFinding
-import skillbill.ports.validation.model.ValidationGateRunOutcome
-import skillbill.ports.validation.model.ValidationGateRunRequest
+import skillbill.ports.validation.model.ValidationGateFindingimport skillbill.ports.validation.model.ValidationGateRunRequest
 import skillbill.ports.validation.model.ValidationGateRunResult
 import skillbill.scaffold.model.DeclaredFiles
 import skillbill.scaffold.model.PlatformManifest
@@ -35,6 +32,8 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFeatureSize
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutput
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRunInvariants
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeValidationGateProgress
+import skillbill.workflow.taskruntime.model.ValidationGateCacheMode
+import skillbill.workflow.taskruntime.model.ValidationGateRunOutcome
 import java.nio.file.Path
 
 internal val validationGateTestRepoRoot: Path = Path.of(".").toAbsolutePath().normalize()
@@ -85,7 +84,7 @@ internal fun coordinator(
 ): FeatureTaskRuntimeValidationGateCoordinator = FeatureTaskRuntimeValidationGateCoordinator(
   resolver,
   runner,
-  FeatureTaskRuntimeValidationGateProgressStore(ValidationGateProgressStore { _, p, _ -> progress += p }),
+  FeatureTaskRuntimeValidationGateProgressStore(ValidationGateProgressStore { _, p -> progress += p }),
   repoLocalConfig(gradleWrapper),
   diagnostics,
 )
@@ -115,12 +114,12 @@ internal class RecordingProgressStore(
 ) : ValidationGateProgressStore {
   private var loaded: FeatureTaskRuntimeValidationGateProgress? = initial
 
-  override fun persist(workflowId: String, progress: FeatureTaskRuntimeValidationGateProgress, dbOverride: String?) {
+  override fun persist(workflowId: String, progress: FeatureTaskRuntimeValidationGateProgress) {
     recorded += progress
     loaded = progress
   }
 
-  override fun load(workflowId: String, dbOverride: String?): FeatureTaskRuntimeValidationGateProgress? = loaded
+  override fun load(workflowId: String): FeatureTaskRuntimeValidationGateProgress? = loaded
 }
 
 internal fun repoLocalConfig(gradleWrapper: String? = null): RepoLocalConfigPort = object : RepoLocalConfigPort {

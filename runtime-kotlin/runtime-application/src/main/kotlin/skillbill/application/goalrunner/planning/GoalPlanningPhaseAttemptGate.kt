@@ -6,7 +6,8 @@ import skillbill.application.goalrunner.planning.model.GoalPlanningSweepOutcome
 import skillbill.error.InvalidFeatureTaskRuntimePhaseOutputSchemaError
 import skillbill.goalrunner.model.GoalRunnerStopReason
 import skillbill.ports.time.model.RuntimeWaitResult
-import skillbill.workflow.taskruntime.model.AcceptedFeatureTaskRuntimePhaseOutput
+import skillbill.workflow.model.WorkflowStepStatus
+import skillbill.workflow.model.workflowStepStatusimport skillbill.workflow.taskruntime.model.AcceptedFeatureTaskRuntimePhaseOutput
 import skillbill.workflow.taskruntime.model.requireAcceptedOutput
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.ZERO
@@ -104,7 +105,7 @@ internal fun DefaultGoalPlanningSweep.planningPauseOutcome(
   phaseId: String,
   pauseReason: String? = null,
 ): GoalPlanningPhaseProduction.Stopped? {
-  val controls = manifestStore.controlState(shared.parentWorkflowId, shared.dbPathOverride)
+  val controls = manifestStore.controlState(shared.parentWorkflowId)
   if (!controls.requiresPauseBoundary(shared.manifest)) return null
   val reason = pauseReason?.let { " (reason=$it)" }.orEmpty()
   return GoalPlanningPhaseProduction.Stopped(

@@ -26,7 +26,13 @@ import skillbill.ports.workflow.gitops.ScopedStagingGitOperations
 import skillbill.ports.workflow.gitops.ScopedStagingGitOperationsProvider
 import skillbill.ports.workflow.gitops.WorkflowGitOperations
 import skillbill.ports.workflow.gitops.model.WorkflowGitOperationResult
-import java.nio.file.Files
+import skillbill.ports.workflow.gitops.model.WorkflowGitOperationStatus
+import skillbill.ports.workflow.gitops.model.WorkflowSelectedDiffHunksRequest
+import skillbill.ports.workflow.gitops.model.WorkflowSelectedDiffHunksResult
+import skillbill.ports.workflow.gitops.model.WorkflowWorktreeActivityResult
+import skillbill.workflow.goal.model.GoalObservabilityChangedFileSummary
+import skillbill.workflow.goal.model.GoalObservabilityDiffStat
+import skillbill.workflow.goal.model.GoalObservabilitySelectedDiffHunksimport java.nio.file.Files
 import java.nio.file.Path
 import java.sql.DriverManager
 import java.util.concurrent.CopyOnWriteArrayList
@@ -492,9 +498,24 @@ internal class FakeRuntimeGitOperations(
   ScopedStagingGitOperationsProvider {
   override val repositoryOwnedPathsOperations: RepositoryOwnedPathsGitOperations = git.repositoryOwnedPathsOperations
   override val repositoryFingerprintOperations: RepositoryFingerprintGitOperations = TestRepositoryFingerprintOperations
-  override val checkpointHistoryOperations = git.checkpointHistoryOperations
-  override val scopedStagingOperations: ScopedStagingGitOperations = git.scopedStagingOperations
-  override val goalSubtaskReviewOperations: GoalSubtaskReviewGitOperations = git.goalSubtaskReviewOperations
+
+  override val scopedStagingOperations: ScopedStagingGitOperations = object : ScopedStagingGitOperations {
+    override fun stagePaths(repoRoot: Path, paths: List<String>): WorkflowGitOperationResult =
+      WorkflowGitOperationResult.Ok(value = "")
+
+    override fun captureIndexState(repoRoot: Path, paths: List<String>): WorkflowGitOperationResult =
+      WorkflowGitOperationResult.Ok(value = "")
+
+    override fun restoreIndexState(repoRoot: Path, paths: List<String>, snapshot: String): WorkflowGitOperationResult =
+      WorkflowGitOperationResult.Ok(value = "")
+
+    override fun stagedPaths(repoRoot: Path): WorkflowGitOperationResult = WorkflowGitOperationResult.Ok(value = "")
+
+    override fun pathContentIdentities(repoRoot: Path, paths: List<String>): WorkflowGitOperationResult =
+      WorkflowGitOperationResult.Ok(
+        value = paths.joinToString(separator = "\u0000") { path -> "identity\t$path" },
+      )
+  }
   val checkoutBranches: MutableList<String> = mutableListOf()
   private var committed = false
 
@@ -537,8 +558,14 @@ internal class FakeRuntimeGitOperations(
     WorkflowGitOperationResult(status = "ok", value = branch)
 
   override fun pushBranchWithLease(repoRoot: Path, branch: String): WorkflowGitOperationResult =
-    WorkflowGitOperationResult(status = "ok", value = branch)
+    WorkflowGitOperationResult.Ok(value = branch)
 
+  override fun headCommitSha(repoRoot: Path): WorkflowGitOperationResult = WorkflowGitOperationResult.Ok(value = "")
+
+  override fun resolveCommit(repoRoot: Path, revision: String): WorkflowGitOperationResult =
+    WorkflowGitOperationResult.Ok(
+      value = revision.takeIf { it.matches(Regex("^[0-9a-fA-F]{40,64}$")) } ?: "1".repeat(40),
+    )
   override fun validateBranchBase(
     repoRoot: Path,
     branch: String,

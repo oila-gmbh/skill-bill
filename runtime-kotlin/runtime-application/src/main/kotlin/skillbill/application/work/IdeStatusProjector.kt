@@ -34,7 +34,6 @@ internal data class IdeStatusProjectionContext(
   val unitOfWork: UnitOfWork,
   val repositoryIdentity: String,
   val observedAt: Instant,
-  val dbOverride: String?,
   val repoRoot: Path,
 )
 
@@ -73,7 +72,6 @@ class IdeStatusProjector(
     val projection = goalRunnerStatusService.status(
       GoalRunnerStatusRequest(
         issueKey = issueKey,
-        dbPathOverride = context.dbOverride,
         repoRoot = context.repoRoot,
       ),
     )
@@ -92,7 +90,7 @@ class IdeStatusProjector(
       it.state != GoalPlanningStatusState.PREPARED && !preliminaryLifecycle.isSettled()
     }
     val freshness = IdeStatusFreshnessClassifier.classify(candidate.updatedAt, context.observedAt)
-    val childContext = childOptionalContext(projection?.currentChildWorkflowId, preliminaryLifecycle, context)
+    val childContext = childOptionalContext(projection?.currentChildWorkflowId, preliminaryLifecycle)
     val lifecycle = goalLifecycleForOperatorBlock(preliminaryLifecycle, childContext)
     val childPhaseStep = childContext.currentPhaseId
       ?.takeIf { it.isNotBlank() && planningStep == null && lifecycle != IdeStatusLifecycleState.TERMINAL }
@@ -191,7 +189,6 @@ class IdeStatusProjector(
   private fun childOptionalContext(
     childWorkflowId: String?,
     lifecycle: IdeStatusLifecycleState,
-    context: IdeStatusProjectionContext,
   ): ChildOptionalContext {
     if (lifecycle == IdeStatusLifecycleState.TERMINAL) return ChildOptionalContext.EMPTY
     val workflowId = childWorkflowId?.takeIf(String::isNotBlank) ?: return ChildOptionalContext.EMPTY
@@ -199,7 +196,7 @@ class IdeStatusProjector(
       "the child's durable status could not be read."
     val status = try {
       featureTaskRuntimeStatusService.status(
-        FeatureTaskRuntimeStatusRequest(workflowId = workflowId, dbPathOverride = context.dbOverride),
+        FeatureTaskRuntimeStatusRequest(workflowId = workflowId),
       )
     } catch (error: ShellContentContractException) {
       diagnostics.warning(degraded, error)
@@ -224,7 +221,6 @@ class IdeStatusProjector(
     val status = featureTaskRuntimeStatusService.status(
       FeatureTaskRuntimeStatusRequest(
         workflowId = candidate.workflowId,
-        dbPathOverride = context.dbOverride,
       ),
     )
     val stepId = status?.currentPhaseId?.takeIf(String::isNotBlank)

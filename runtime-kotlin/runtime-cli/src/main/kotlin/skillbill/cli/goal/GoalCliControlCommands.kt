@@ -32,7 +32,6 @@ class GoalPauseCommand(
   override fun run() {
     val result = goalRunnerStatusService.pause(
       issueKey,
-      inputs.dbPathOverride,
       repoRoot?.let(Path::of)?.toAbsolutePath()?.normalize() ?: inputs.repositoryRoot,
     )
     val payload = result.toGoalPauseCliMap()
@@ -52,7 +51,6 @@ class GoalStopCommand(
   override fun run() {
     val result = goalRunnerStatusService.stop(
       issueKey,
-      inputs.dbPathOverride,
       repoRoot?.let(Path::of)?.toAbsolutePath()?.normalize() ?: inputs.repositoryRoot,
     )
     val payload = result.toGoalStopCliMap()
@@ -72,7 +70,6 @@ class GoalResumeCommand(
   override fun run() {
     val result = goalRunnerStatusService.resume(
       issueKey,
-      inputs.dbPathOverride,
       repoRoot?.let(Path::of)?.toAbsolutePath()?.normalize() ?: inputs.repositoryRoot,
     )
     val payload = result.toGoalResumeCliMap()
@@ -140,7 +137,6 @@ class GoalResetCommand(
         preservePlanning = preservePlanning,
         subtaskId = subtaskId,
         deleteChildWorkflow = deleteChildWorkflow,
-        dbPathOverride = inputs.dbPathOverride,
         repoRoot = repoRoot?.let(Path::of)?.toAbsolutePath()?.normalize() ?: inputs.repositoryRoot,
       ),
     )
@@ -150,7 +146,7 @@ class GoalResetCommand(
 
   private fun emitHardResetAcceptanceWarning() {
     if (!hard) return
-    val discardedAcceptances = goalRunnerStatusService.hardResetPreflight(issueKey, inputs.dbPathOverride)
+    val discardedAcceptances = goalRunnerStatusService.hardResetPreflight(issueKey)
     if (discardedAcceptances.isNotEmpty()) {
       inputs.liveStdout(hardResetAcceptanceWarning(issueKey, discardedAcceptances))
     }
@@ -187,7 +183,6 @@ class GoalReplanCommand(
       GoalRunnerReplanRequest(
         issueKey = issueKey,
         subtaskId = subtaskId,
-        dbPathOverride = inputs.dbPathOverride,
         repoRoot = repoRoot?.let(Path::of) ?: inputs.repositoryRoot,
         includeSharedPreplan = includeSharedPreplan,
       ),
@@ -226,7 +221,6 @@ class GoalAcceptCommand(
         subtaskId = subtaskId,
         commitSha = commit,
         reason = reason,
-        dbPathOverride = inputs.dbPathOverride,
         repoRoot = repoRoot?.let(Path::of) ?: inputs.repositoryRoot,
         restoreAfterHardReset = restoreAfterHardReset,
       ),
@@ -271,7 +265,6 @@ class GoalRepairCommand(
         issueKey = issueKey,
         apply = apply,
         subtaskId = subtaskId,
-        dbPathOverride = inputs.dbPathOverride,
         repoRoot = repoRoot?.let(Path::of) ?: inputs.repositoryRoot,
       ),
     )
@@ -314,7 +307,6 @@ class GoalOperatorDecisionCommand(
         issueKey = issueKey,
         subtaskId = subtaskId,
         decision = parsed,
-        dbPathOverride = inputs.dbPathOverride,
         repoRoot = repoRoot?.let(Path::of) ?: inputs.repositoryRoot,
       ),
     )

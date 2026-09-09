@@ -9,6 +9,7 @@ import skillbill.application.workflow.model.CheckoutAndValidateBranchRequest
 import skillbill.application.workflow.model.GoalContinuationOutcome
 import skillbill.application.workflow.model.WorkflowContinueResult
 import skillbill.ports.workflow.gitops.WorkflowGitOperations
+import skillbill.ports.workflow.gitops.model.WorkflowGitOperationResult
 import skillbill.workflow.decomposition.DecompositionManifestValidator
 import skillbill.workflow.decomposition.model.DecompositionContinuationSelection
 import skillbill.workflow.decomposition.model.DecompositionManifest
@@ -98,8 +99,8 @@ fun WorkflowEngine.checkoutAndValidateBranch(request: CheckoutAndValidateBranchR
       branchPlan.branch,
       branchPlan.baseBranch,
     )
-    errorResult = checkout.takeUnless { it.ok }?.let { blockedBranchStartResult(it.error) }
-    if (errorResult == null && branchPlan.validateBase) {
+    errorResult = checkout.takeUnless { it is WorkflowGitOperationResult.Ok }
+      ?.let { blockedBranchStartResult(it.error) }    if (errorResult == null && branchPlan.validateBase) {
       errorResult = request.gitOperations.validateBranchBase(
         request.repoRootProvider(),
         branchPlan.branch,

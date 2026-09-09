@@ -6,6 +6,9 @@ import skillbill.application.featuretask.model.FeatureTaskRuntimeRunRequest
 import skillbill.application.featuretask.model.FeatureTaskRuntimeSubtaskOutcome
 import skillbill.contracts.JsonSupport
 import skillbill.ports.workflow.gitops.WorkflowGitOperations
+import skillbill.ports.workflow.gitops.model.WorkflowGitOperationResult
+import skillbill.workflow.model.WorkflowStepStatus
+import skillbill.workflow.model.workflowStepStatus
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_STATUS_BLOCKED
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerAction
@@ -90,12 +93,11 @@ internal data class SubtaskAgentAttribution(
 internal fun agentAttributionFromPhaseState(
   recorder: FeatureTaskRuntimePhaseRecorder,
   workflowId: String,
-  dbOverride: String? = null,
 ): SubtaskAgentAttribution {
-  val ledger = recorder.loadPhaseLedger(workflowId, dbOverride)
+  val ledger = recorder.loadPhaseLedger(workflowId)
     .orEmpty()
     .sortedBy { it.sequenceNumber }
-  val records = recorder.loadPhaseRecords(workflowId, dbOverride).orEmpty()
+  val records = recorder.loadPhaseRecords(workflowId).orEmpty()
 
   val participating = LinkedHashSet<String>()
   ledger.forEach { entry ->
@@ -140,7 +142,7 @@ fun commitShaFromPhaseRecords(
   recorder: FeatureTaskRuntimePhaseRecorder,
   request: FeatureTaskRuntimeRunRequest,
 ): String? {
-  val commitOutput = recorder.loadPhaseRecords(request.workflowId, request.dbPathOverride)
+  val commitOutput = recorder.loadPhaseRecords(request.workflowId)
     .orEmpty()[FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_COMMIT_PUSH]
     ?.outputArtifact
   val payload = commitOutput

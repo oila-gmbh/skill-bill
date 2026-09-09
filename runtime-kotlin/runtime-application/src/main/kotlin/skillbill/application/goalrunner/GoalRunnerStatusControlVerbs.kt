@@ -24,19 +24,18 @@ class GoalRunnerStatusControlVerbs(
   private val workerSupervisor: FeatureTaskRuntimeWorkerSupervisor,
   private val repositoryEnclosingRootPort: RepositoryEnclosingRootPort,
 ) {
-  fun pause(issueKey: String, dbPathOverride: String?, repoRoot: Path): GoalRunnerPauseResult {
-    val loaded = manifestStore.loadByIssueKey(issueKey, dbPathOverride, repoRoot)
+  fun pause(issueKey: String, repoRoot: Path): GoalRunnerPauseResult {
+    val loaded = manifestStore.loadByIssueKey(issueKey, repoRoot)
       ?: return GoalRunnerPauseResult(issueKey = issueKey, status = "not_found")
     val repositoryIdentity = goalRepositoryIdentity(repoRoot, repositoryEnclosingRootPort)
-    manifestStore.bindRepositoryIdentity(loaded.parentWorkflowId, repositoryIdentity, dbPathOverride)
-    val control = manifestStore.requestPause(loaded.parentWorkflowId, dbPathOverride)
+    manifestStore.bindRepositoryIdentity(loaded.parentWorkflowId, repositoryIdentity)
+    val control = manifestStore.requestPause(loaded.parentWorkflowId)
       ?: return GoalRunnerPauseResult(issueKey = issueKey, status = "not_found")
     val effectiveControl = if (
       control.requiresPauseBoundary(loaded.manifest) && loaded.manifest.isAtUnlaunchedBoundary()
     ) {
       manifestStore.pauseAtBoundary(
         loaded.copy(controlState = control),
-        dbPathOverride,
       ).controlState
     } else {
       control
@@ -51,13 +50,12 @@ class GoalRunnerStatusControlVerbs(
     )
   }
 
-  fun stop(issueKey: String, dbPathOverride: String?, repoRoot: Path): GoalRunnerStopVerbResult {
-    val loaded = manifestStore.loadByIssueKey(issueKey, dbPathOverride, repoRoot)
+  fun stop(issueKey: String, repoRoot: Path): GoalRunnerStopVerbResult {
+    val loaded = manifestStore.loadByIssueKey(issueKey, repoRoot)
       ?: return GoalRunnerStopVerbResult(issueKey = issueKey, status = GoalRunnerStopStatus.NOT_FOUND)
     manifestStore.bindRepositoryIdentity(
       loaded.parentWorkflowId,
       goalRepositoryIdentity(repoRoot, repositoryEnclosingRootPort),
-      dbPathOverride,
     )
     val alreadyStopped = loaded.controlState.paused &&
       loaded.controlState.pauseReason == GOAL_PAUSE_REASON_OPERATOR_STOP
@@ -66,7 +64,6 @@ class GoalRunnerStatusControlVerbs(
       reason = GOAL_PAUSE_REASON_OPERATOR_STOP,
       pausedAt = clock.instant().toString(),
       overwriteExistingReason = true,
-      dbPathOverride = dbPathOverride,
     ) ?: return GoalRunnerStopVerbResult(issueKey = issueKey, status = GoalRunnerStopStatus.NOT_FOUND)
 
     fun outcome(status: GoalRunnerStopStatus, terminationAttempted: Boolean = false) = GoalRunnerStopVerbResult(
@@ -78,7 +75,7 @@ class GoalRunnerStatusControlVerbs(
       terminationAttempted = terminationAttempted,
     )
 
-    val lease = manifestStore.executionLease(loaded.parentWorkflowId, dbPathOverride)
+    val lease = manifestStore.executionLease(loaded.parentWorkflowId)
     val noLiveLease = if (alreadyStopped) GoalRunnerStopStatus.ALREADY_STOPPED else GoalRunnerStopStatus.NO_LIVE_LEASE
     if (lease == null) return outcome(noLiveLease)
     val ownership = lease.asWorkerOwnership(loaded.parentWorkflowId)
@@ -92,7 +89,6 @@ class GoalRunnerStatusControlVerbs(
             parentWorkflowId = loaded.parentWorkflowId,
             ownerToken = lease.ownerToken,
             generation = lease.generation,
-            dbPathOverride = dbPathOverride,
           )
           outcome(noLiveLease)
         }
@@ -104,15 +100,14 @@ class GoalRunnerStatusControlVerbs(
     }.getOrElse { outcome(GoalRunnerStopStatus.STOPPED, terminationAttempted = true) }
   }
 
-  fun resume(issueKey: String, dbPathOverride: String?, repoRoot: Path): GoalRunnerResumeResult {
-    val loaded = manifestStore.loadByIssueKey(issueKey, dbPathOverride, repoRoot)
+  fun resume(issueKey: String, repoRoot: Path): GoalRunnerResumeResult {
+    val loaded = manifestStore.loadByIssueKey(issueKey, repoRoot)
       ?: return GoalRunnerResumeResult(issueKey = issueKey, status = "not_found")
     manifestStore.bindRepositoryIdentity(
       loaded.parentWorkflowId,
       goalRepositoryIdentity(repoRoot, repositoryEnclosingRootPort),
-      dbPathOverride,
     )
-    val before = manifestStore.controlState(loaded.parentWorkflowId, dbPathOverride)
+    val before = manifestStore.controlState(loaded.parentWorkflowId)
     if (!before.paused && !before.pauseRequested) {
       return GoalRunnerResumeResult(
         issueKey = issueKey,
@@ -120,7 +115,7 @@ class GoalRunnerStatusControlVerbs(
         status = "not_paused",
       )
     }
-    manifestStore.resume(loaded.parentWorkflowId, dbPathOverride)
+    manifestStore.resume(loaded.parentWorkflowId)
       ?: return GoalRunnerResumeResult(issueKey = issueKey, status = "not_found")
     return GoalRunnerResumeResult(
       issueKey = issueKey,

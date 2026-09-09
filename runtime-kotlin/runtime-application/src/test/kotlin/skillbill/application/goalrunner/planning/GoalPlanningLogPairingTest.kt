@@ -1,7 +1,7 @@
 package skillbill.application.goalrunner.planning
 
 import skillbill.application.RecordingOutcomeStore
-import skillbill.application.goalrunner.planning.model.GoalPlanningLogRequest
+import skillbill.application.goalrunner.planning.model.GoalPlanningAttemptOutcomeimport skillbill.application.goalrunner.planning.model.GoalPlanningLogRequest
 import skillbill.application.manifest
 import skillbill.application.testHarnessClock
 import skillbill.goalrunner.model.GoalRunnerExecutionLease
@@ -99,49 +99,38 @@ class GoalPlanningLogPairingTest {
   )
 }
 
-private object StubManifestStore : GoalRunnerManifestStore {
-  override fun loadByIssueKey(issueKey: String, dbPathOverride: String?, repoRoot: Path?) =
-    GoalRunnerManifestState(PARENT_WORKFLOW_ID, "/fake/metrics.db", manifest(subtaskCount = 3))
+private object StubManifestStore : GoalRunnerManifestStoreDefaults() {
+  override fun loadByIssueKey(issueKey: String, repoRoot: Path?) =    GoalRunnerManifestState(PARENT_WORKFLOW_ID, "/fake/metrics.db", manifest(subtaskCount = 3))
 
-  override fun save(state: GoalRunnerManifestState, dbPathOverride: String?) = state
+  override fun save(state: GoalRunnerManifestState) = state
 
   override fun acquireExecutionLease(
     parentWorkflowId: String,
     lease: GoalRunnerExecutionLease,
     expectedOwnerToken: String?,
-    dbPathOverride: String?,
   ): Boolean = true
 
-  override fun heartbeatExecutionLease(
-    parentWorkflowId: String,
-    lease: GoalRunnerExecutionLease,
-    dbPathOverride: String?,
-  ): Boolean = true
+  override fun heartbeatExecutionLease(parentWorkflowId: String, lease: GoalRunnerExecutionLease): Boolean = true
 
-  override fun releaseExecutionLease(
-    parentWorkflowId: String,
-    ownerToken: String,
-    generation: Long,
-    dbPathOverride: String?,
-  ): Boolean = true
+  override fun releaseExecutionLease(parentWorkflowId: String, ownerToken: String, generation: Long): Boolean = true
 }
 
 private class StubOutcomeStore(private val events: List<Map<String, Any?>>) :
   GoalRunnerWorkflowOutcomeStore by RecordingOutcomeStore() {
-  override fun progressEvents(workflowId: String, dbPathOverride: String?) = events
+  override fun progressEvents(workflowId: String) = events
 }
 
 /** Rejection metadata is a separate read the log degrades past; refusing it keeps these on pairing. */
 private object UnreadableDatabase : DatabaseSessionFactory {
-  override fun resolveDbPath(dbOverride: String?): Path = Path.of("/fake/metrics.db")
+  override fun resolveDbPath(): Path = Path.of("/fake/metrics.db")
 
-  override fun databaseExists(dbOverride: String?): Boolean = false
+  override fun databaseExists(): Boolean = false
 
-  override fun <T> read(dbOverride: String?, block: (UnitOfWork) -> T): T = unsupported()
+  override fun <T> read(block: (UnitOfWork) -> T): T = unsupported()
 
-  override fun <T> transaction(dbOverride: String?, block: (UnitOfWork) -> T): T = unsupported()
+  override fun <T> transaction(block: (UnitOfWork) -> T): T = unsupported()
 
-  override fun <T> selfManagedWrite(dbOverride: String?, block: (UnitOfWork) -> T): T = unsupported()
+  override fun <T> selfManagedWrite(block: (UnitOfWork) -> T): T = unsupported()
 
   private fun unsupported(): Nothing = throw UnsupportedOperationException("no database in this test")
 }

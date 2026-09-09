@@ -56,7 +56,7 @@ class TelemetryLevelMutationServiceTest {
       configStore = configStore,
     )
 
-    val result = service.setLevel("off", dbOverride = null)
+    val result = service.setLevel("off")
 
     assertEquals(listOf("transaction"), database.calls)
     assertEquals(1, result.clearedEvents)
@@ -75,7 +75,7 @@ class TelemetryLevelMutationServiceTest {
       configStore = FakeMutationTelemetryConfigStore(),
     )
 
-    val result = service.setLevel("anonymous", dbOverride = null)
+    val result = service.setLevel("anonymous")
 
     assertEquals(listOf("transaction"), database.calls)
     assertEquals(2, result.clearedEvents, "full-level payloads must not survive a downgrade")
@@ -93,7 +93,7 @@ class TelemetryLevelMutationServiceTest {
         configStore = FakeMutationTelemetryConfigStore(),
       )
 
-      val result = service.setLevel(next, dbOverride = null)
+      val result = service.setLevel(next)
 
       assertEquals(emptyList<String>(), database.calls, "$current to $next must not open a clearing transaction")
       assertEquals(0, result.clearedEvents)
@@ -110,7 +110,7 @@ class TelemetryLevelMutationServiceTest {
       configStore = FakeMutationTelemetryConfigStore(),
     )
 
-    assertEquals(1, service.setLevel("anonymous", dbOverride = null).clearedEvents)
+    assertEquals(1, service.setLevel("anonymous").clearedEvents)
     assertEquals(0, outboxRepository.pendingCount())
   }
 
@@ -269,18 +269,18 @@ private class FakeTelemetryDatabaseSessionFactory(
   val calls = mutableListOf<String>()
   private val dbPath = Path.of("/fake/metrics.db")
 
-  override fun resolveDbPath(dbOverride: String?): Path = dbPath
+  override fun resolveDbPath(): Path = dbPath
 
-  override fun databaseExists(dbOverride: String?): Boolean = true
+  override fun databaseExists(): Boolean = true
 
-  override fun <T> read(dbOverride: String?, block: (UnitOfWork) -> T): T {
+  override fun <T> read(block: (UnitOfWork) -> T): T {
     calls += "read"
     return block(fakeUnitOfWork())
   }
 
-  override fun <T> selfManagedWrite(dbOverride: String?, block: (UnitOfWork) -> T): T = transaction(dbOverride, block)
+  override fun <T> selfManagedWrite(block: (UnitOfWork) -> T): T = transaction(block)
 
-  override fun <T> transaction(dbOverride: String?, block: (UnitOfWork) -> T): T {
+  override fun <T> transaction(block: (UnitOfWork) -> T): T {
     calls += "transaction"
     return block(fakeUnitOfWork())
   }

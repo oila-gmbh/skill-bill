@@ -11,7 +11,8 @@ data class ScaffoldValidateResult(
 
 enum class ScaffoldValidationMode(val wireValue: String) {
   REPOSITORY("repo"),
-  SELECTED("selected");
+  SELECTED("selected"),
+  ;
 
   companion object {
     fun fromWire(value: String): ScaffoldValidationMode? = entries.firstOrNull { it.wireValue == value }
@@ -20,7 +21,8 @@ enum class ScaffoldValidationMode(val wireValue: String) {
 
 enum class ScaffoldValidationStatus(val wireValue: String) {
   PASS("pass"),
-  FAIL("fail");
+  FAIL("fail"),
+  ;
 
   companion object {
     fun fromWire(value: String): ScaffoldValidationStatus? = entries.firstOrNull { it.wireValue == value }

@@ -1,7 +1,6 @@
 package skillbill.application.goalrunner
 
 import me.tatarka.inject.annotations.Inject
-import skillbill.application.goalrunner.model.GoalRunnerRunRequest
 import skillbill.goalrunner.GoalRunnerWorkerSubtaskRequestParser
 import skillbill.goalrunner.GoalRunnerWorkerSubtaskScheduler
 import skillbill.goalrunner.model.GoalRunnerReconciledOutcome
@@ -23,13 +22,12 @@ public class GoalRunnerWorkerRequestHandler(
     state: GoalRunnerManifestState,
     launchOutcome: AgentRunLaunchOutcome,
     subtaskId: Int,
-    request: GoalRunnerRunRequest,
   ): GoalRunnerWorkerRequestHandlingResult {
     val output = launchOutcome.workerOutput()
     return if (output == null) {
       GoalRunnerWorkerRequestHandlingResult(state)
     } else {
-      handleOutput(state, output, subtaskId, request)
+      handleOutput(state, output, subtaskId)
     }
   }
 
@@ -37,7 +35,6 @@ public class GoalRunnerWorkerRequestHandler(
     state: GoalRunnerManifestState,
     output: WorkerLaunchOutput,
     subtaskId: Int,
-    request: GoalRunnerRunRequest,
   ): GoalRunnerWorkerRequestHandlingResult {
     val parsed = GoalRunnerWorkerSubtaskRequestParser.parse(
       stdout = output.stdout,
@@ -47,7 +44,7 @@ public class GoalRunnerWorkerRequestHandler(
     return if (parsed.isEmpty()) {
       GoalRunnerWorkerRequestHandlingResult(state)
     } else {
-      persistParsedOutcomes(state, parsed, subtaskId, request)
+      persistParsedOutcomes(state, parsed, subtaskId)
     }
   }
 
@@ -55,7 +52,6 @@ public class GoalRunnerWorkerRequestHandler(
     state: GoalRunnerManifestState,
     parsed: List<GoalRunnerWorkerSubtaskRequestOutcome>,
     subtaskId: Int,
-    request: GoalRunnerRunRequest,
   ): GoalRunnerWorkerRequestHandlingResult {
     val scheduled = GoalRunnerWorkerSubtaskScheduler.scheduleQueuedRequests(state.manifest, parsed)
     val workflowId = state.manifest.workflowIdFor(subtaskId)
@@ -64,7 +60,6 @@ public class GoalRunnerWorkerRequestHandler(
         outcomeStore.recordWorkerSubtaskRequestOutcomes(
           workflowId = it,
           outcomes = scheduled.outcomes,
-          dbPathOverride = request.dbPathOverride,
         )
       }.getOrDefault(false)
     } ?: false
@@ -77,7 +72,7 @@ public class GoalRunnerWorkerRequestHandler(
     val saved = if (scheduled.manifest == state.manifest) {
       state
     } else {
-      manifestStore.save(state.copy(manifest = scheduled.manifest), request.dbPathOverride)
+      manifestStore.save(state.copy(manifest = scheduled.manifest))
     }
     return GoalRunnerWorkerRequestHandlingResult(
       state = saved,

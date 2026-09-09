@@ -1,7 +1,10 @@
-package skillbill.workflow.taskruntime.model
+package skillbill.goalrunner.model
 
 import skillbill.boundary.OpenBoundaryMap
-
+import skillbill.workflow.taskruntime.model.optionalStringField
+import skillbill.workflow.taskruntime.model.optionalStringListField
+import skillbill.workflow.taskruntime.model.requireIntField
+import skillbill.workflow.taskruntime.model.requireStringField
 data class FeatureTaskRuntimeGoalContinuationOutcome(
   val issueKey: String,
   val subtaskId: Int,
@@ -54,10 +57,3 @@ data class FeatureTaskRuntimeGoalContinuationOutcome(
       )
   }
 }
-
-/**
- * Durable per-phase launch briefing store. The assembled briefing is persisted, keyed
- * by phase id, before the phase agent is launched, so it is a durable handoff a consumer
- * reads rather than dead computation. Each entry is the latest briefing for that phase.
- */
-const val FEATURE_TASK_RUNTIME_PHASE_BRIEFINGS_ARTIFACT_KEY: String = "feature_task_runtime_phase_briefings"

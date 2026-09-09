@@ -84,6 +84,5 @@ class GoalRunnerDirectRuntimeContinuationTest {
     issueKey = "SKILL-56",
     repoRoot = Path.of("/tmp/skillbill-goal-runner"),
     invokedAgentId = "claude",
-    dbPathOverride = "/tmp/skillbill-goal-runner/metrics.db",
   )
 }

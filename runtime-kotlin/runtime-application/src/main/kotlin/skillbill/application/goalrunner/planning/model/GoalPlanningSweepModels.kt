@@ -123,7 +123,6 @@ data class GoalPlanningEmptyTurnEvidence(
 data class GoalPlanningRejectionRecord(
   val parentWorkflowId: String,
   val issueKey: String,
-  val dbPathOverride: String?,
   val phaseId: String,
   val subtaskId: Int,
   val attempt: Int,
@@ -184,5 +183,4 @@ data class GoalPlanningStatusAlignRequest(
   val issueKey: String,
   val manifest: DecompositionManifest,
   val repoRoot: Path,
-  val dbPathOverride: String?,
 )

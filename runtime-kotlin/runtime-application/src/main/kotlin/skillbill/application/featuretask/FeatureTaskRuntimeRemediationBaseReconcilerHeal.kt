@@ -27,11 +27,8 @@ internal fun remediationBaseHealReason(
 internal fun FeatureTaskRuntimeRemediationBaseReconciler.persistHealedRemediationBaseState(
   request: PersistHealedRemediationBaseRequest,
 ): GoalSubtaskReviewState? {
-  val head = request.gitOperations.headCommitSha(request.repoRoot)
-  if (!head.ok || head.value.isBlank()) throw remediationGitFailure("HEAD could not be read (${head.error})")
-  val headSha = head.value.trim()
-  return database.transaction(request.dbOverride) { unitOfWork ->
-    val record = WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, request.workflowId)
+  val headSha = request.gitOperations.headCommitSha(request.repoRoot).value.orEmpty().trim()
+  return database.transaction { unitOfWork ->    val record = WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, request.workflowId)
       ?: throw remediationGitFailure(
         "workflow row '${request.workflowId}' could not be read while persisting remediation state",
       )

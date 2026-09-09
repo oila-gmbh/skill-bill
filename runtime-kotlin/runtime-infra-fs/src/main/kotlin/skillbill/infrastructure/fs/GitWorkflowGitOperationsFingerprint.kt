@@ -4,6 +4,7 @@ import skillbill.ports.workflow.gitops.RepositoryFingerprintGitOperations
 import skillbill.ports.workflow.gitops.RuntimePhaseFileManifestGitOperations
 import skillbill.ports.workflow.gitops.SuppressionEvidenceGitOperations
 import skillbill.ports.workflow.gitops.model.WorkflowGitOperationResult
+import skillbill.ports.workflow.gitops.model.WorkflowGitOperationStatus
 import skillbill.ports.workflow.gitops.model.WorkflowScopedPathContent
 import skillbill.ports.workflow.gitops.model.WorkflowScopedPathContentsResult
 import skillbill.ports.workflow.gitops.model.WorkflowSelectedDiffHunksRequest
@@ -279,8 +280,11 @@ internal fun combinedDiffStat(repoRoot: Path): GoalObservabilityDiffStat {
 
 internal fun runCatchingDiffStat(repoRoot: Path, vararg args: String): GoalObservabilityDiffStat {
   val result = runGitForActivity(repoRoot, args.toList())
-  return if (result.ok) parseDiffStat(result.value) else GoalObservabilityDiffStat(0, 0, 0)
-}
+  return if (result is WorkflowGitOperationResult.Ok) {
+    parseDiffStat(result.value)
+  } else {
+    GoalObservabilityDiffStat(0, 0, 0)
+  }}
 
 internal fun parseChangedFileSummary(statusOutput: String): GoalObservabilityChangedFileSummary {
   var added = 0

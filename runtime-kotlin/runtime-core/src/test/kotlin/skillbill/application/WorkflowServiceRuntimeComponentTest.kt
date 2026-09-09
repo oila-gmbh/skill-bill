@@ -16,7 +16,6 @@ class WorkflowServiceRuntimeComponentTest {
   @Test
   fun `runtime component workflow service writes decomposition projection through configured file store`() {
     val tempDir = Files.createTempDirectory("skillbill-component-decomposition")
-    val dbPath = tempDir.resolve("metrics.db")
     val parentSpec = tempDir.resolve(".feature-specs/SKILL-51-demo/spec.md")
     val subtaskSpec = parentSpec.parent.resolve("spec_subtask_1_foundation.md")
     Files.createDirectories(parentSpec.parent)
@@ -24,12 +23,11 @@ class WorkflowServiceRuntimeComponentTest {
     val service =
       RuntimeComponent::class.create(
         RuntimeContext(
-          dbPathOverride = dbPath.toString(),
           environment = emptyMap(),
           userHome = tempDir,
         ),
       ).workflowService
-    val opened = service.openTestFeatureTask(WorkflowFamilyKind.TASK_RUNTIME, sessionId = "ftr-001", dbOverride = null)
+    val opened = service.openTestFeatureTask(WorkflowFamilyKind.TASK_RUNTIME, sessionId = "ftr-001")
     val workflowId =
       (opened as WorkflowOpenResultOk).workflowId
 
@@ -43,7 +41,6 @@ class WorkflowServiceRuntimeComponentTest {
           stepUpdates = listOf(mapOf("step_id" to "plan", "status" to "completed", "attempt_count" to 1)),
           artifactsPatch = decompositionPlanPatch(parentSpec, subtaskSpec),
         ),
-        dbOverride = null,
       )
 
     val manifest = parentSpec.parent.resolve("decomposition-manifest.yaml")

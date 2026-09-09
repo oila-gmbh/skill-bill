@@ -193,8 +193,10 @@ class GitScopedStagingOperationsTest {
     val foreignEntryBefore = indexSnapshot()["foreign/Staged.kt"]
     assertTrue(GitScopedStagingOperations.stagePaths(repo, owned).ok)
 
-    assertTrue(GitScopedStagingOperations.restoreIndexState(repo, owned, snapshot.value.orEmpty()).ok)
-
+    assertTrue(
+      GitScopedStagingOperations.restoreIndexState(repo, owned, snapshot.value.orEmpty()) is
+        WorkflowGitOperationResult.Ok,
+    )
     assertEquals(foreignEntryBefore, indexSnapshot()["foreign/Staged.kt"])
   }
 

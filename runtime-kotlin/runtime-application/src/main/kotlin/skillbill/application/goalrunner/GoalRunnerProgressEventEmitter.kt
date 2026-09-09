@@ -1,6 +1,5 @@
 package skillbill.application.goalrunner
 
-import skillbill.application.goalrunner.model.GoalRunnerRunRequest
 import skillbill.ports.agentrun.model.AgentRunProgressEmission
 import skillbill.ports.agentrun.model.AgentRunProgressEmitter
 import skillbill.ports.diagnostics.RuntimeDiagnostics
@@ -11,7 +10,6 @@ import java.time.Clock
 
 class GoalRunnerProgressEventEmitter(
   private val outcomeStore: GoalRunnerWorkflowOutcomeStore,
-  private val request: GoalRunnerRunRequest,
   private val resolveWorkflowId: () -> String?,
   watermarkSeed: Int?,
   private val clock: Clock,
@@ -40,7 +38,6 @@ class GoalRunnerProgressEventEmitter(
     runCatching {
       outcomeStore.recordProgressEvent(
         GoalRunnerProgressEventRecordRequest(workflowId = workflowId, event = event),
-        request.dbPathOverride,
       )
     }
       .onFailure { error -> logBestEffortFailure(emission, workflowId, error) }

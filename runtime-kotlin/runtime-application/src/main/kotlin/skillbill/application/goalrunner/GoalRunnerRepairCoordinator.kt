@@ -26,12 +26,11 @@ class GoalRunnerRepairCoordinator(
 ) {
   fun repair(request: GoalRunnerRepairRequest): GoalRunnerRepairResult {
     val repoRoot = request.repoRoot ?: repositoryRoot.path
-    val loaded = manifestStore.loadByIssueKey(request.issueKey, request.dbPathOverride, repoRoot)
+    val loaded = manifestStore.loadByIssueKey(request.issueKey, repoRoot)
       ?: return notFound(request.issueKey)
     manifestStore.bindRepositoryIdentity(
       loaded.parentWorkflowId,
       goalRepositoryIdentity(repoRoot, repositoryEnclosingRootPort),
-      request.dbPathOverride,
     )
     val children = loaded.manifest.subtasks
       .filter { request.subtaskId == null || it.id == request.subtaskId }
@@ -44,7 +43,6 @@ class GoalRunnerRepairCoordinator(
           subtaskId = subtask.id,
           subtasks = loaded.manifest.subtasks,
           repoRoot = repoRoot,
-          dbPathOverride = request.dbPathOverride,
         ),
       )
     }
@@ -135,7 +133,7 @@ class GoalRunnerRepairCoordinator(
     val applied = mutableListOf<GoalRunnerAppliedRepair>()
     for (diagnosis in wedged) {
       val workflowId = diagnosis.workflowId ?: continue
-      if (childWorkerLeaseLive(workflowId, request.dbPathOverride)) {
+      if (childWorkerLeaseLive(workflowId)) {
         return GoalRunnerRepairResult(
           issueKey = request.issueKey,
           status = GoalRunnerRepairStatus.LIVE_LEASE_REFUSED,
@@ -154,7 +152,6 @@ class GoalRunnerRepairCoordinator(
           subtaskId = diagnosis.subtaskId,
           wedgeClasses = diagnosis.wedges.map { it.wedgeClass },
           repoRoot = repoRoot,
-          dbPathOverride = request.dbPathOverride,
         ),
       )
       applied += repairResult.repairs
@@ -168,8 +165,8 @@ class GoalRunnerRepairCoordinator(
     )
   }
 
-  private fun childWorkerLeaseLive(workflowId: String, dbPathOverride: String?): Boolean {
-    val ownership = runCatching { phaseRecorder.workerOwnership(workflowId, dbPathOverride) }.getOrNull()
+  private fun childWorkerLeaseLive(workflowId: String): Boolean {
+    val ownership = runCatching { phaseRecorder.workerOwnership(workflowId) }.getOrNull()
       ?: return false
     return when (workerSupervisor.inspect(ownership)) {
       FeatureTaskRuntimeProcessInspection.ExactLive -> true

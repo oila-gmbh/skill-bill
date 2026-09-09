@@ -2,6 +2,7 @@ package skillbill.application.goalrunner.planning
 
 import me.tatarka.inject.annotations.Inject
 import skillbill.application.diagnostics.RejectedOutputDiagnosticService
+import skillbill.application.goalrunner.planning.model.GoalPlanningAttemptOutcome
 import skillbill.application.goalrunner.planning.model.GoalPlanningLog
 import skillbill.application.goalrunner.planning.model.GoalPlanningLogAttempt
 import skillbill.application.goalrunner.planning.model.GoalPlanningLogRequest
@@ -21,7 +22,6 @@ private const val OPERATION_PHASE_INDEX = 0
 private const val OPERATION_SUBTASK_INDEX = 1
 private const val OPERATION_LITERAL_INDEX = 2
 private const val OPERATION_ATTEMPT_INDEX = 3
-private const val OUTCOME_IN_FLIGHT = "in_flight"
 
 @Inject
 class GoalPlanningLogService(
@@ -33,13 +33,13 @@ class GoalPlanningLogService(
 ) {
   fun log(request: GoalPlanningLogRequest): GoalPlanningLog {
     val parentWorkflowId = manifestStore
-      .readByIssueKey(request.issueKey, request.dbPathOverride, request.repoRoot)
+      .readByIssueKey(request.issueKey, request.repoRoot)
       ?.parentWorkflowId
       ?: return GoalPlanningLog(request.issueKey, null)
 
-    val events = outcomeStore.progressEvents(parentWorkflowId, request.dbPathOverride)
+    val events = outcomeStore.progressEvents(parentWorkflowId)
       .filter { event -> event["workflow_phase"] == GOAL_PLANNING_WORKFLOW_PHASE }
-    val rejections = readRejections(parentWorkflowId, request.dbPathOverride)
+    val rejections = readRejections(parentWorkflowId)
 
     val attempts = assembleAttempts(events, rejections)
       .filter { attempt -> request.subtaskId == null || attempt.subtaskId == request.subtaskId }
@@ -57,11 +57,8 @@ class GoalPlanningLogService(
    * which is not enumerable from the store, so the whole workflow's diagnostics are read once and
    * joined in memory rather than issued as one query per observed phase.
    */
-  private fun readRejections(
-    parentWorkflowId: String,
-    dbPathOverride: String?,
-  ): Map<String, RejectedOutputDiagnostic> = runCatching {
-    database.transaction(dbPathOverride) { unitOfWork ->
+  private fun readRejections(parentWorkflowId: String): Map<String, RejectedOutputDiagnostic> = runCatching {
+    database.transaction { unitOfWork ->
       val repository = unitOfWork.rejectedOutputDiagnostics ?: return@transaction emptyList()
       val permissions = unitOfWork.rejectedOutputDiagnosticPermissions ?: return@transaction emptyList()
       RejectedOutputDiagnosticService(repository, permissions, diagnosticMetadataValidator, clock = clock)
@@ -120,7 +117,8 @@ class GoalPlanningLogService(
 
         GoalProgressEventKind.PHASE_STARTED,
         GoalProgressEventKind.PHASE_COMPLETED,
-        GoalProgressEventKind.OPERATION_HEARTBEAT -> Unit
+        GoalProgressEventKind.OPERATION_HEARTBEAT,
+        -> Unit
       }
     }
 

@@ -18,11 +18,11 @@ class SQLiteDatabaseSessionFactoryTypedFailureTest {
   @Test
   fun `read surfaces the typed error rather than a jdbc exception at the ports boundary`() {
     val tempDir = Files.createTempDirectory("skillbill-typed-read")
-    val database = SQLiteDatabaseSessionFactory(EnvironmentContext(userHome = tempDir))
     val unopenable = unopenableDatabasePath(tempDir)
+    val database = boundDatabase(tempDir, unopenable)
 
     val error = assertFailsWith<DatabaseAccessError> {
-      database.read(unopenable.toString()) { it.workflowStates }
+      database.read { it.workflowStates }
     }
 
     assertEquals(unopenable.toAbsolutePath().normalize().toString(), error.dbPath)
@@ -37,10 +37,10 @@ class SQLiteDatabaseSessionFactoryTypedFailureTest {
     DriverManager.getConnection("jdbc:sqlite:$schemaless").use { connection ->
       connection.createStatement().use { it.execute("CREATE TABLE placeholder (id INTEGER PRIMARY KEY)") }
     }
-    val database = SQLiteDatabaseSessionFactory(EnvironmentContext(userHome = tempDir))
+    val database = boundDatabase(tempDir, schemaless)
 
     val error = assertFailsWith<DatabaseAccessError> {
-      database.read(schemaless.toString()) { it.workflowStates.getFeatureTaskExecutionIdentity("missing") }
+      database.read { it.workflowStates.getFeatureTaskExecutionIdentity("missing") }
     }
 
     assertEquals(DatabaseAccessOperation.READ, error.operation)
@@ -53,11 +53,11 @@ class SQLiteDatabaseSessionFactoryTypedFailureTest {
   fun `a non-sqlite failure raised inside the read block propagates unchanged`() {
     val tempDir = Files.createTempDirectory("skillbill-typed-read-passthrough")
     val dbPath = tempDir.resolve("metrics.db")
-    val database = SQLiteDatabaseSessionFactory(EnvironmentContext(userHome = tempDir))
-    database.transaction(dbPath.toString()) { }
+    val database = boundDatabase(tempDir, dbPath)
+    database.transaction { }
 
     assertFailsWith<IllegalStateException> {
-      database.read(dbPath.toString()) { error("unrelated failure") }
+      database.read { error("unrelated failure") }
     }
   }
 
@@ -65,11 +65,11 @@ class SQLiteDatabaseSessionFactoryTypedFailureTest {
   fun `a failing read block releases its snapshot instead of leaving a stuck transaction`() {
     val tempDir = Files.createTempDirectory("skillbill-typed-read-snapshot-release")
     val dbPath = tempDir.resolve("metrics.db")
-    val database = SQLiteDatabaseSessionFactory(EnvironmentContext(userHome = tempDir))
-    database.transaction(dbPath.toString()) { }
+    val database = boundDatabase(tempDir, dbPath)
+    database.transaction { }
 
     assertFailsWith<IllegalStateException> {
-      database.read(dbPath.toString()) { unitOfWork ->
+      database.read { unitOfWork ->
         unitOfWork.workflowStates.getFeatureTaskExecutionIdentity("missing")
         error("boom")
       }
@@ -77,18 +77,18 @@ class SQLiteDatabaseSessionFactoryTypedFailureTest {
 
     // Both a later read and a later writer succeed, proving the deferred snapshot was rolled back rather
     // than left open by the failing block.
-    database.read(dbPath.toString()) { it.workflowStates.getFeatureTaskExecutionIdentity("missing") }
-    database.transaction(dbPath.toString()) { }
+    database.read { it.workflowStates.getFeatureTaskExecutionIdentity("missing") }
+    database.transaction { }
   }
 
   @Test
   fun `transaction surfaces the typed error rather than a jdbc exception at the ports boundary`() {
     val tempDir = Files.createTempDirectory("skillbill-typed-transaction")
-    val database = SQLiteDatabaseSessionFactory(EnvironmentContext(userHome = tempDir))
     val unopenable = unopenableDatabasePath(tempDir)
+    val database = boundDatabase(tempDir, unopenable)
 
     val thrown = runCatching {
-      database.transaction(unopenable.toString()) { it.workflowStates }
+      database.transaction { it.workflowStates }
     }.exceptionOrNull()
 
     assertFalse(thrown is SQLiteException, "raw JDBC exception crossed the ports boundary: $thrown")
@@ -99,16 +99,24 @@ class SQLiteDatabaseSessionFactoryTypedFailureTest {
   fun `a failure raised inside a transaction block still rolls back and propagates`() {
     val tempDir = Files.createTempDirectory("skillbill-typed-rollback")
     val dbPath = tempDir.resolve("metrics.db")
-    val database = SQLiteDatabaseSessionFactory(EnvironmentContext(userHome = tempDir))
+    val database = boundDatabase(tempDir, dbPath)
 
     assertFailsWith<IllegalStateException> {
-      database.transaction(dbPath.toString()) { error("force rollback") }
+      database.transaction { error("force rollback") }
     }
 
     // A rolled-back transaction leaves the database usable, proving ROLLBACK ran rather than a stuck BEGIN.
-    database.transaction(dbPath.toString()) { }
+    database.transaction { }
   }
 
   private fun unopenableDatabasePath(tempDir: Path): Path =
     tempDir.resolve("unopenable.db").also { it.createDirectories() }
+
+  private fun boundDatabase(tempDir: Path, dbPath: Path): SQLiteDatabaseSessionFactory = SQLiteDatabaseSessionFactory(
+    EnvironmentContext(
+      dbPathOverride = dbPath.toString(),
+      environment = emptyMap(),
+      userHome = tempDir,
+    ),
+  )
 }

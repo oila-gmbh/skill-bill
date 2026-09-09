@@ -65,7 +65,7 @@ class ImportReviewCommand(
   private val format by formatOption()
 
   override fun run() {
-    state.complete(service.importReview(input, inputs.dbPathOverride).toCliMap(), format)
+    state.complete(service.importReview(input).toCliMap(), format)
   }
 }
 
@@ -84,7 +84,7 @@ class RecordFeedbackCommand(
   private val format by formatOption()
 
   override fun run() {
-    state.complete(service.recordFeedback(runId, event, findings, note, inputs.dbPathOverride).toCliMap(), format)
+    state.complete(service.recordFeedback(runId, event, findings, note).toCliMap(), format)
   }
 }
 
@@ -107,7 +107,7 @@ class TriageCommand(
   private val format by formatOption()
 
   override fun run() {
-    val result = service.triage(runId, decisions, listOnly, inputs.dbPathOverride)
+    val result = service.triage(runId, decisions, listOnly)
     val payload = result.toCliMap()
     when {
       format == CliFormat.JSON -> state.complete(payload, format)
@@ -133,7 +133,7 @@ class ReviewStatsCommand(
   private val format by formatOption()
 
   override fun run() {
-    state.complete(service.reviewStats(runId, inputs.dbPathOverride).toCliMap(), format)
+    state.complete(service.reviewStats(runId).toCliMap(), format)
   }
 }
 
@@ -158,7 +158,7 @@ class PruneReviewSnapshotsCommand(
   private val format by formatOption()
 
   override fun run() {
-    val result = service.prune(confirm, inputs.dbPathOverride)
+    val result = service.prune(confirm)
     val payload = result.toCliMap()
     if (format == CliFormat.JSON) {
       state.complete(payload, format)
@@ -177,7 +177,7 @@ class FeatureVerifyStatsCommand(
   private val format by formatOption()
 
   override fun run() {
-    state.complete(service.featureVerifyStats(inputs.dbPathOverride).toCliMap(), format)
+    state.complete(service.featureVerifyStats().toCliMap(), format)
   }
 }
 
@@ -190,7 +190,7 @@ class FeatureTaskStatsCommand(
   private val format by formatOption()
 
   override fun run() {
-    state.complete(service.featureTaskRuntimeStats(inputs.dbPathOverride).toCliMap(), format)
+    state.complete(service.featureTaskRuntimeStats().toCliMap(), format)
   }
 }
 
@@ -212,7 +212,7 @@ class FeatureTaskRuntimeStatsCommand(
       "runtime-stats is a deprecated alias for feature-task-stats. " +
         "Use feature-task-stats; behavior is unchanged.\n",
     )
-    state.complete(service.featureTaskRuntimeStats(inputs.dbPathOverride).toCliMap(), format)
+    state.complete(service.featureTaskRuntimeStats().toCliMap(), format)
   }
 }
 
@@ -225,7 +225,7 @@ class GoalStatsCommand(
   private val format by formatOption()
 
   override fun run() {
-    state.complete(service.goalStats(inputs.dbPathOverride).toCliMap(), format)
+    state.complete(service.goalStats().toCliMap(), format)
   }
 }
 

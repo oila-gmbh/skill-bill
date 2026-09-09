@@ -107,6 +107,7 @@ import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewBaselineResult
 import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewInput
 import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewInputResult
 import skillbill.ports.workflow.gitops.model.WorkflowGitOperationResult
+import skillbill.ports.workflow.gitops.model.WorkflowGitOperationStatus
 import skillbill.ports.workflow.gitops.model.WorkflowSelectedDiffHunksRequest
 import skillbill.ports.workflow.gitops.model.WorkflowSelectedDiffHunksResult
 import skillbill.ports.workflow.gitops.model.WorkflowWorktreeActivityResult
@@ -696,7 +697,6 @@ class GoalRunnerTest {
     issueKey = "SKILL-56",
     repoRoot = Path.of("/tmp/skillbill-goal-runner"),
     invokedAgentId = "claude",
-    dbPathOverride = "/tmp/skillbill-goal-runner/metrics.db",
   )
 }
 
@@ -773,7 +773,6 @@ class GoalRunnerValidationDepthTest {
     issueKey = "SKILL-56",
     repoRoot = Path.of("/tmp/skillbill-goal-runner"),
     invokedAgentId = "claude",
-    dbPathOverride = "/tmp/skillbill-goal-runner/metrics.db",
   )
 }
 
@@ -852,7 +851,6 @@ class GoalRunnerQualityGateSelectionTest {
     issueKey = "SKILL-56",
     repoRoot = Path.of("/tmp/skillbill-goal-runner"),
     invokedAgentId = "claude",
-    dbPathOverride = "/tmp/skillbill-goal-runner/metrics.db",
   )
 }
 
@@ -1360,7 +1358,6 @@ class GoalRunnerLinearScratchFinalizeTest {
     issueKey = "SKILL-56",
     repoRoot = repoRoot,
     invokedAgentId = "claude",
-    dbPathOverride = null,
   )
 }
 
@@ -1403,7 +1400,6 @@ class GoalRunnerReviewPolicyPersistenceTest {
     issueKey = "SKILL-56",
     repoRoot = Path.of("/tmp/skillbill-goal-runner"),
     invokedAgentId = "claude",
-    dbPathOverride = "/tmp/skillbill-goal-runner/metrics.db",
   )
 }
 
@@ -1524,7 +1520,6 @@ class GoalRunnerPauseLaunchBoundaryTest {
     issueKey = "SKILL-56",
     repoRoot = Path.of("/tmp/skillbill-goal-runner"),
     invokedAgentId = "claude",
-    dbPathOverride = "/tmp/skillbill-goal-runner/metrics.db",
   )
 }
 
@@ -1560,7 +1555,6 @@ class GoalRunnerHandoffTest {
         issueKey = "SKILL-56",
         repoRoot = Path.of("/tmp/skillbill-goal-runner"),
         invokedAgentId = "claude",
-        dbPathOverride = "/tmp/skillbill-goal-runner/metrics.db",
       ),
     )
 
@@ -1671,7 +1665,6 @@ class GoalRunnerNoTerminalOutcomeDiagnosisTest {
     issueKey = "SKILL-56",
     repoRoot = Path.of("/tmp/skillbill-goal-runner"),
     invokedAgentId = "claude",
-    dbPathOverride = "/tmp/skillbill-goal-runner/metrics.db",
   )
 }
 
@@ -1718,9 +1711,7 @@ private class CommitAllRecordingGitOperations(
     override fun restoreIndexState(repoRoot: Path, paths: List<String>, snapshot: String): WorkflowGitOperationResult =
       WorkflowGitOperationResult(status = "ok", value = "")
 
-    override fun stagedPaths(repoRoot: Path): WorkflowGitOperationResult =
-      WorkflowGitOperationResult(status = "ok", value = "")
-
+    override fun stagedPaths(repoRoot: Path): WorkflowGitOperationResult = WorkflowGitOperationResult.Ok(value = "")
     override fun pathContentIdentities(repoRoot: Path, paths: List<String>): WorkflowGitOperationResult =
       WorkflowGitOperationResult(status = "ok", value = "")
   }
@@ -1999,7 +1990,7 @@ class GoalRunnerStatusProjectionTest {
     assertEquals("resume", store.manifest.currentSubtaskIntent.action)
     assertEquals("pending", store.manifest.subtasks.single().status)
     assertEquals(0, store.saveCount)
-    assertEquals("SKILL-56" to null, outcomes.lastAuthoritativeOutcomeRequest)
+    assertEquals("SKILL-56", outcomes.lastAuthoritativeOutcomeRequest)
     assertEquals(null, outcomes.lastReconcileRequest)
   }
 
@@ -2413,7 +2404,6 @@ class GoalRunnerPauseStatusTest {
 
     val result = service.pause(
       issueKey = "SKILL-56",
-      dbPathOverride = null,
       repoRoot = Path.of("/tmp/skillbill-goal-runner"),
     )
 
@@ -2438,7 +2428,6 @@ class GoalRunnerPauseStatusTest {
 
     val result = service.resume(
       issueKey = "SKILL-56",
-      dbPathOverride = null,
       repoRoot = Path.of("/tmp/skillbill-goal-runner"),
     )
 
@@ -2461,7 +2450,6 @@ class GoalRunnerPauseStatusTest {
 
     val result = service.resume(
       issueKey = "SKILL-56",
-      dbPathOverride = null,
       repoRoot = Path.of("/tmp/skillbill-goal-runner"),
     )
 
@@ -2662,7 +2650,6 @@ class GoalRunnerObservabilityTest {
     issueKey = "SKILL-56",
     repoRoot = Path.of("/tmp/skillbill-goal-runner"),
     invokedAgentId = "claude",
-    dbPathOverride = "/tmp/skillbill-goal-runner/metrics.db",
   )
 }
 
@@ -2889,7 +2876,6 @@ class GoalRunnerAcceptResetTest {
         emptySet(),
         GoalRunnerReconcileGate(allowInactiveReconciliation = true, requireStalenessEvidence = false),
         null,
-        null,
       ),
       outcomes.lastReconcileRequest,
     )
@@ -3023,8 +3009,8 @@ class GoalRunnerAcceptResetTest {
     val database = GoalTestPlanningDatabase()
     val store = InMemoryGoalManifestStore(
       manifest = manifest(subtaskCount = 2),
-      hardReset = { state, dbPathOverride ->
-        database.transaction(dbPathOverride) { unitOfWork ->
+      hardReset = { state ->
+        database.transaction { unitOfWork ->
           unitOfWork.goalPlanningPreparations.deleteByGoal(state.parentWorkflowId)
           unitOfWork.workflowStates.deleteGoalChildWorkflowsByParent(state.parentWorkflowId)
         }
@@ -3042,7 +3028,6 @@ class GoalRunnerAcceptResetTest {
       GoalRunnerResetRequest(
         issueKey = "SKILL-56",
         hard = true,
-        dbPathOverride = "/tmp/skillbill-goal-runner/metrics.db",
         repoRoot = Path.of("/tmp/skillbill-goal-runner"),
       ),
     )
@@ -3050,7 +3035,6 @@ class GoalRunnerAcceptResetTest {
     requireNotNull(reset)
     assertEquals(listOf("wfl-parent"), database.deletedParentGoalIds)
     assertEquals(listOf("wfl-parent"), database.deletedChildWorkflowParentIds)
-    assertEquals(listOf<String?>("/tmp/skillbill-goal-runner/metrics.db"), database.transactionDbOverrides)
     assertEquals(listOf("pending", "pending"), store.manifest.subtasks.map(DecompositionSubtask::status))
   }
 
@@ -3072,17 +3056,17 @@ class GoalRunnerAcceptResetTest {
     val service = acceptingStatusService(store)
     assertEquals(
       listOf(GoalRunnerAcceptedSubtask(1, acceptedSha, "reviewed; ship it", acceptedAt)),
-      service.hardResetPreflight("SKILL-56", null),
+      service.hardResetPreflight("SKILL-56"),
     )
     service.reset(GoalRunnerResetRequest(issueKey = "SKILL-56", hard = true, repoRoot = Path.of(".")))
-    assertEquals(emptyList(), service.hardResetPreflight("SKILL-56", null))
+    assertEquals(emptyList(), service.hardResetPreflight("SKILL-56"))
     assertIs<GoalRunnerAcceptResult.Rejected>(service.accept(acceptRequest(acceptedSha)))
     val restored = assertIs<GoalRunnerAcceptResult.Accepted>(
       service.accept(acceptRequest(acceptedSha, restoreAfterHardReset = true)),
     )
     assertEquals(
       listOf(GoalRunnerAcceptedSubtask(1, acceptedSha, "reviewed; ship it", restored.acceptedAt)),
-      service.hardResetPreflight("SKILL-56", null),
+      service.hardResetPreflight("SKILL-56"),
     )
   }
 
@@ -3149,7 +3133,6 @@ class GoalRunnerAcceptResetTest {
     issueKey = "SKILL-56",
     repoRoot = Path.of("/tmp/skillbill-goal-runner"),
     invokedAgentId = "claude",
-    dbPathOverride = "/tmp/skillbill-goal-runner/metrics.db",
   )
 }
 
@@ -3181,7 +3164,6 @@ class GoalRunnerManifestReconciliationTest {
         issueKey = "SKILL-56",
         repoRoot = Path.of("/tmp/skillbill-goal-runner"),
         invokedAgentId = "claude",
-        dbPathOverride = "/tmp/skillbill-goal-runner/metrics.db",
       ),
     )
 
@@ -3195,7 +3177,7 @@ class GoalRunnerManifestReconciliationTest {
 
 internal class InMemoryGoalManifestStore(
   manifest: DecompositionManifest,
-  private val hardReset: ((GoalRunnerManifestState, String?) -> Unit)? = null,
+  private val hardReset: ((GoalRunnerManifestState) -> Unit)? = null,
   private val projectionSaved: (() -> Unit)? = null,
   initialControlState: GoalRunnerControlState = GoalRunnerControlState(),
 ) : GoalRunnerManifestStore {
@@ -3217,42 +3199,33 @@ internal class InMemoryGoalManifestStore(
   var acceptances: Map<Int, GoalRunnerOutOfBandAcceptance> = emptyMap()
     private set
 
-  override fun loadByIssueKey(issueKey: String, dbPathOverride: String?, repoRoot: Path?): GoalRunnerManifestState? =
-    GoalRunnerManifestState(
-      parentWorkflowId = "wfl-parent",
-      dbPath = dbPathOverride.orEmpty().ifBlank { "/tmp/skillbill-goal-runner/metrics.db" },
-      manifest = manifest,
-    ).takeIf { manifest.issueKey == issueKey }
+  override fun loadByIssueKey(issueKey: String, repoRoot: Path?): GoalRunnerManifestState? = GoalRunnerManifestState(
+    parentWorkflowId = "wfl-parent",
+    dbPath = "/tmp/skillbill-goal-runner/metrics.db",
+    manifest = manifest,
+  ).takeIf { manifest.issueKey == issueKey }
 
-  override fun save(state: GoalRunnerManifestState, dbPathOverride: String?): GoalRunnerManifestState {
+  override fun save(state: GoalRunnerManifestState): GoalRunnerManifestState {
     saveCount += 1
     projectionSaved?.invoke()
     manifest = state.manifest
-    return state.copy(dbPath = dbPathOverride ?: state.dbPath, manifest = manifest)
+    return state.copy(manifest = manifest)
   }
 
-  override fun saveRuntimeState(state: GoalRunnerManifestState, dbPathOverride: String?): GoalRunnerManifestState {
+  override fun saveRuntimeState(state: GoalRunnerManifestState): GoalRunnerManifestState {
     runtimeStateSaveCount += 1
     manifest = state.manifest
-    return state.copy(dbPath = dbPathOverride ?: state.dbPath, manifest = manifest)
+    return state.copy(manifest = manifest)
   }
 
-  override fun controlState(parentWorkflowId: String, dbPathOverride: String?): GoalRunnerControlState = controlState
+  override fun controlState(parentWorkflowId: String): GoalRunnerControlState = controlState
 
-  override fun persistControlState(
-    parentWorkflowId: String,
-    state: GoalRunnerControlState,
-    dbPathOverride: String?,
-  ): GoalRunnerControlState {
+  override fun persistControlState(parentWorkflowId: String, state: GoalRunnerControlState): GoalRunnerControlState {
     controlState = state
     return controlState
   }
 
-  override fun bindRepositoryIdentity(
-    parentWorkflowId: String,
-    repositoryIdentity: String,
-    dbPathOverride: String?,
-  ): GoalRunnerControlState {
+  override fun bindRepositoryIdentity(parentWorkflowId: String, repositoryIdentity: String): GoalRunnerControlState {
     require(controlState.repositoryIdentity == null || controlState.repositoryIdentity == repositoryIdentity) {
       "Goal parent '$parentWorkflowId' belongs to another repository."
     }
@@ -3262,30 +3235,19 @@ internal class InMemoryGoalManifestStore(
     return controlState
   }
 
-  override fun executionLease(parentWorkflowId: String, dbPathOverride: String?): GoalRunnerExecutionLease? =
-    executionLeaseForTest
+  override fun executionLease(parentWorkflowId: String): GoalRunnerExecutionLease? = executionLeaseForTest
 
   override fun acquireExecutionLease(
     parentWorkflowId: String,
     lease: GoalRunnerExecutionLease,
     expectedOwnerToken: String?,
-    dbPathOverride: String?,
   ): Boolean = true
 
-  override fun heartbeatExecutionLease(
-    parentWorkflowId: String,
-    lease: GoalRunnerExecutionLease,
-    dbPathOverride: String?,
-  ): Boolean = true
+  override fun heartbeatExecutionLease(parentWorkflowId: String, lease: GoalRunnerExecutionLease): Boolean = true
 
-  override fun releaseExecutionLease(
-    parentWorkflowId: String,
-    ownerToken: String,
-    generation: Long,
-    dbPathOverride: String?,
-  ): Boolean = true
+  override fun releaseExecutionLease(parentWorkflowId: String, ownerToken: String, generation: Long): Boolean = true
 
-  override fun requestPause(parentWorkflowId: String, dbPathOverride: String?): GoalRunnerControlState {
+  override fun requestPause(parentWorkflowId: String): GoalRunnerControlState {
     controlState = controlState.copy(
       pauseRequested = true,
       pauseReason = controlState.pauseReason ?: "operator_request",
@@ -3293,11 +3255,7 @@ internal class InMemoryGoalManifestStore(
     return controlState
   }
 
-  override fun authorizeSubtaskLaunch(
-    state: GoalRunnerManifestState,
-    subtaskId: Int,
-    dbPathOverride: String?,
-  ): GoalRunnerLaunchAuthorization {
+  override fun authorizeSubtaskLaunch(state: GoalRunnerManifestState, subtaskId: Int): GoalRunnerLaunchAuthorization {
     val spawnAuthorization = object : AgentRunSpawnAuthorization {
       override fun <T> withAuthorization(spawn: () -> T): T {
         beforeLaunchAuthorization?.invoke(subtaskId)
@@ -3314,23 +3272,14 @@ internal class InMemoryGoalManifestStore(
     )
   }
 
-  override fun reviewPolicy(parentWorkflowId: String, dbPathOverride: String?): GoalRunnerReviewPolicy? =
-    persistedReviewPolicy
+  override fun reviewPolicy(parentWorkflowId: String): GoalRunnerReviewPolicy? = persistedReviewPolicy
 
-  override fun persistReviewPolicy(
-    parentWorkflowId: String,
-    policy: GoalRunnerReviewPolicy,
-    dbPathOverride: String?,
-  ): GoalRunnerReviewPolicy {
+  override fun persistReviewPolicy(parentWorkflowId: String, policy: GoalRunnerReviewPolicy): GoalRunnerReviewPolicy {
     persistedReviewPolicy = policy
     return policy
   }
 
-  override fun persistStopAfterSubtask(
-    parentWorkflowId: String,
-    subtaskId: Int,
-    dbPathOverride: String?,
-  ): GoalRunnerControlState {
+  override fun persistStopAfterSubtask(parentWorkflowId: String, subtaskId: Int): GoalRunnerControlState {
     controlState = controlState.copy(stopAfterSubtaskId = controlState.stopAfterSubtaskId ?: subtaskId)
     return controlState
   }
@@ -3342,7 +3291,7 @@ internal class InMemoryGoalManifestStore(
     )
   }
 
-  override fun pauseAtBoundary(state: GoalRunnerManifestState, dbPathOverride: String?): GoalRunnerManifestState {
+  override fun pauseAtBoundary(state: GoalRunnerManifestState): GoalRunnerManifestState {
     val targetReached = controlState.stopAfterSubtaskId?.let { targetId ->
       state.manifest.subtasks.any { it.id == targetId && it.status == "complete" }
     } == true && !controlState.stopAfterConsumed
@@ -3367,7 +3316,7 @@ internal class InMemoryGoalManifestStore(
     return state.copy(controlState = controlState)
   }
 
-  override fun resume(parentWorkflowId: String, dbPathOverride: String?): GoalRunnerManifestState {
+  override fun resume(parentWorkflowId: String): GoalRunnerManifestState {
     controlState = controlState.copy(
       pauseRequested = false,
       pauseConsumed = false,
@@ -3375,13 +3324,12 @@ internal class InMemoryGoalManifestStore(
       pauseReason = null,
       pausedAt = null,
     )
-    return loadByIssueKey(manifest.issueKey, dbPathOverride, null)!!.copy(controlState = controlState)
+    return loadByIssueKey(manifest.issueKey, null)!!.copy(controlState = controlState)
   }
 
   override fun saveCompletedSubtaskAtBoundary(
     state: GoalRunnerManifestState,
     subtaskId: Int,
-    dbPathOverride: String?,
   ): GoalRunnerCompletionPersistenceResult {
     runtimeStateSaveCount += 1
     manifest = state.manifest
@@ -3408,22 +3356,17 @@ internal class InMemoryGoalManifestStore(
     )
   }
 
-  override fun saveHardReset(
-    state: GoalRunnerManifestState,
-    dbPathOverride: String?,
-    preservePlanning: Boolean,
-  ): GoalRunnerManifestState {
-    hardReset?.invoke(state, dbPathOverride)
+  override fun saveHardReset(state: GoalRunnerManifestState, preservePlanning: Boolean): GoalRunnerManifestState {
+    hardReset?.invoke(state)
     acceptances = emptyMap()
     controlState = GoalRunnerControlState()
-    return save(state, dbPathOverride)
+    return save(state)
   }
 
   override fun deleteIncompatibleChildWorkflow(
     state: GoalRunnerManifestState,
     subtaskId: Int,
     workflowId: String,
-    dbPathOverride: String?,
   ): GoalRunnerManifestState {
     val recovered = state.copy(
       manifest = state.manifest.copy(
@@ -3444,7 +3387,7 @@ internal class InMemoryGoalManifestStore(
         },
       ),
     )
-    return save(recovered, dbPathOverride)
+    return save(recovered)
   }
 
   var plannedSubtaskIds: MutableSet<Int> = mutableSetOf()
@@ -3461,7 +3404,6 @@ internal class InMemoryGoalManifestStore(
     orderedSubtaskIds: List<Int>,
     blockedSubtaskId: Int?,
     blockedReason: String?,
-    dbPathOverride: String?,
   ): GoalPlanningStatusSnapshot {
     val plannedIds = plannedSubtaskIds.sorted()
     val firstMissing = orderedSubtaskIds.firstOrNull { it !in plannedIds }
@@ -3492,13 +3434,12 @@ internal class InMemoryGoalManifestStore(
     )
   }
 
-  override fun sharedPreplanPayloadSha256(parentWorkflowId: String, dbPathOverride: String?): String? =
+  override fun sharedPreplanPayloadSha256(parentWorkflowId: String): String? =
     sharedPreplanPayloadSha256ForTest.takeIf { sharedPreplanPrepared }
 
   override fun saveScopedReplan(
     state: GoalRunnerManifestState,
     subtaskId: Int,
-    dbPathOverride: String?,
     options: GoalRunnerScopedReplanOptions,
   ): GoalRunnerScopedReplanWriteResult {
     scopedReplanCount += 1
@@ -3540,7 +3481,7 @@ internal class InMemoryGoalManifestStore(
       cascadedIds = emptyList()
       deleted = if (plannedSubtaskIds.remove(subtaskId)) 1 else 0
     }
-    val saved = save(state, dbPathOverride)
+    val saved = save(state)
     return GoalRunnerScopedReplanWriteResult(
       state = saved,
       deletedPlanCount = deleted,
@@ -3556,21 +3497,16 @@ internal class InMemoryGoalManifestStore(
   override fun saveNewChildWorkflow(
     state: GoalRunnerManifestState,
     setup: GoalRunnerChildWorkflowSetup,
-    dbPathOverride: String?,
   ): GoalRunnerManifestState {
     newChildWorkflowSetups += setup
-    return save(state, dbPathOverride)
+    return save(state)
   }
 
-  override fun outOfBandAcceptances(
-    parentWorkflowId: String,
-    dbPathOverride: String?,
-  ): Map<Int, GoalRunnerOutOfBandAcceptance> = acceptances
+  override fun outOfBandAcceptances(parentWorkflowId: String): Map<Int, GoalRunnerOutOfBandAcceptance> = acceptances
 
   override fun persistOutOfBandAcceptance(
     parentWorkflowId: String,
     acceptance: GoalRunnerOutOfBandAcceptance,
-    dbPathOverride: String?,
   ): GoalRunnerOutOfBandAcceptance {
     acceptedParentWorkflowIds += parentWorkflowId
     acceptances = acceptances + (acceptance.subtaskId to acceptance)
@@ -3622,7 +3558,6 @@ class GoalRunnerLedgerRecorderSeedingTest {
     issueKey = "SKILL-56",
     repoRoot = Path.of("/tmp/skillbill-goal-runner"),
     invokedAgentId = "claude",
-    dbPathOverride = "/tmp/skillbill-goal-runner/metrics.db",
   )
 }
 
@@ -3638,7 +3573,6 @@ class GoalRunnerProgressEventEmitterTest {
     val outcomes = RecordingOutcomeStore()
     val emitter = GoalRunnerProgressEventEmitter(
       outcomeStore = outcomes,
-      request = emitterRunRequest(),
       resolveWorkflowId = { "wfl-child" },
       watermarkSeed = null,
       clock = testHarnessClock,
@@ -3674,7 +3608,6 @@ class GoalRunnerProgressEventEmitterTest {
     val outcomes = RecordingOutcomeStore()
     val emitter = GoalRunnerProgressEventEmitter(
       outcomeStore = outcomes,
-      request = emitterRunRequest(),
       resolveWorkflowId = { "wfl-child" },
       watermarkSeed = 41,
       clock = testHarnessClock,
@@ -3693,7 +3626,6 @@ class GoalRunnerProgressEventEmitterTest {
     var workflowId: String? = null
     val emitter = GoalRunnerProgressEventEmitter(
       outcomeStore = outcomes,
-      request = emitterRunRequest(),
       resolveWorkflowId = { workflowId },
       watermarkSeed = null,
       clock = testHarnessClock,
@@ -3715,7 +3647,6 @@ class GoalRunnerProgressEventEmitterTest {
     val outcomes = RecordingOutcomeStore().apply { throwOnProgressEventRecord = true }
     val emitter = GoalRunnerProgressEventEmitter(
       outcomeStore = outcomes,
-      request = emitterRunRequest(),
       resolveWorkflowId = { "wfl-child" },
       watermarkSeed = null,
       clock = testHarnessClock,
@@ -3736,13 +3667,6 @@ class GoalRunnerProgressEventEmitterTest {
     operationKind = "long_child_run",
     expectedLong = true,
     outcome = outcome,
-  )
-
-  private fun emitterRunRequest(): GoalRunnerRunRequest = GoalRunnerRunRequest(
-    issueKey = "SKILL-56",
-    repoRoot = Path.of("/tmp/skillbill-goal-runner"),
-    invokedAgentId = "claude",
-    dbPathOverride = "/tmp/skillbill-goal-runner/metrics.db",
   )
 }
 
@@ -3901,7 +3825,6 @@ class GoalRunnerLaunchReconcilerWiringTest {
     issueKey = "SKILL-56",
     repoRoot = Path.of("/tmp/skillbill-goal-runner"),
     invokedAgentId = "claude",
-    dbPathOverride = "/tmp/skillbill-goal-runner/metrics.db",
   )
 }
 
@@ -3923,7 +3846,7 @@ internal class RecordingOutcomeStore : GoalRunnerWorkflowOutcomeStore {
   var workerSubtaskRequestOutcomeRecordResult: Boolean = true
   var throwOnWorkerSubtaskRequestOutcomeRecord: Boolean = false
   var lastReconcileRequest: ReconcileRequest? = null
-  var lastAuthoritativeOutcomeRequest: Pair<String, String?>? = null
+  var lastAuthoritativeOutcomeRequest: String? = null
 
   operator fun set(workflowId: String, outcome: GoalRunnerStoredOutcome) {
     outcomes[workflowId] = outcome
@@ -3941,15 +3864,12 @@ internal class RecordingOutcomeStore : GoalRunnerWorkflowOutcomeStore {
     )
   }
 
-  override fun goalSubtaskReviewState(workflowId: String, dbPathOverride: String?): GoalSubtaskReviewState? =
-    reviewStates[workflowId]
+  override fun goalSubtaskReviewState(workflowId: String): GoalSubtaskReviewState? = reviewStates[workflowId]
 
-  override fun unemittedGoalReviewPasses(
-    workflowId: String,
-    dbPathOverride: String?,
-  ): List<GoalSubtaskReviewPassResult> = unemittedReviewPasses[workflowId].orEmpty()
+  override fun unemittedGoalReviewPasses(workflowId: String): List<GoalSubtaskReviewPassResult> =
+    unemittedReviewPasses[workflowId].orEmpty()
 
-  override fun acknowledgeGoalReviewPass(workflowId: String, passNumber: Int, dbPathOverride: String?): Boolean {
+  override fun acknowledgeGoalReviewPass(workflowId: String, passNumber: Int): Boolean {
     val remaining = unemittedReviewPasses[workflowId].orEmpty()
     if (remaining.firstOrNull()?.passNumber != passNumber) return false
     acknowledgedReviewPasses += workflowId to passNumber
@@ -3962,30 +3882,24 @@ internal class RecordingOutcomeStore : GoalRunnerWorkflowOutcomeStore {
     activeWorkflowIds: Set<String>,
     gate: GoalRunnerReconcileGate,
     repoRoot: Path?,
-    dbPathOverride: String?,
   ): Map<Int, GoalRunnerStoredOutcome> {
-    lastReconcileRequest = ReconcileRequest(issueKey, activeWorkflowIds, gate, repoRoot, dbPathOverride)
+    lastReconcileRequest = ReconcileRequest(issueKey, activeWorkflowIds, gate, repoRoot)
     return authoritativeOutcomesBySubtask.toMap()
   }
 
-  override fun authoritativeOutcomes(issueKey: String, dbPathOverride: String?): Map<Int, GoalRunnerStoredOutcome> {
-    lastAuthoritativeOutcomeRequest = issueKey to dbPathOverride
+  override fun authoritativeOutcomes(issueKey: String): Map<Int, GoalRunnerStoredOutcome> {
+    lastAuthoritativeOutcomeRequest = issueKey
     return authoritativeOutcomesBySubtask.toMap()
   }
 
-  override fun terminalOutcome(
-    workflowId: String,
-    issueKey: String,
-    subtaskId: Int,
-    dbPathOverride: String?,
-  ): GoalRunnerStoredOutcome? = outcomes[workflowId]
+  override fun terminalOutcome(workflowId: String, issueKey: String, subtaskId: Int): GoalRunnerStoredOutcome? =
+    outcomes[workflowId]
 
   override fun recoverAndPersistTerminalOutcome(
     workflowId: String,
     issueKey: String,
     subtaskId: Int,
     repoRoot: Path,
-    dbPathOverride: String?,
   ): GoalRunnerStoredOutcome? = outcomes[workflowId]
 
   override fun recoverMissingResultPrefixOutput(
@@ -3993,14 +3907,12 @@ internal class RecordingOutcomeStore : GoalRunnerWorkflowOutcomeStore {
     issueKey: String,
     subtaskId: Int,
     output: Map<String, Any?>,
-    dbPathOverride: String?,
   ): GoalRunnerStoredOutcome? {
     recoveredMissingResultPrefixOutputs += RecoveredMissingResultPrefixOutput(
       workflowId = workflowId,
       issueKey = issueKey,
       subtaskId = subtaskId,
       output = output,
-      dbPathOverride = dbPathOverride,
     )
     return outcomes[workflowId]
   }
@@ -4010,7 +3922,6 @@ internal class RecordingOutcomeStore : GoalRunnerWorkflowOutcomeStore {
     blockedReason: String,
     lastResumableStep: String,
     supervisionEvent: GoalRunnerSupervisionEvent?,
-    dbPathOverride: String?,
   ): String {
     blockedWorkflows += BlockedWorkflow(workflowId, blockedReason, lastResumableStep, supervisionEvent)
     return "implement"
@@ -4020,25 +3931,21 @@ internal class RecordingOutcomeStore : GoalRunnerWorkflowOutcomeStore {
     workflowId: String,
     preferredPhaseId: String,
     reason: String,
-    dbPathOverride: String?,
   ): Boolean {
     reopenBlockedPhaseCalls += ReopenBlockedPhaseCall(workflowId, preferredPhaseId, reason)
     return true
   }
 
-  override fun progress(workflowId: String, dbPathOverride: String?): GoalRunnerWorkflowProgress? {
+  override fun progress(workflowId: String): GoalRunnerWorkflowProgress? {
     if (throwOnProgress) {
       error("progress read failed")
     }
     return progresses[workflowId]
   }
 
-  override fun progressEvents(workflowId: String, dbPathOverride: String?): List<Map<String, Any?>> = emptyList()
+  override fun progressEvents(workflowId: String): List<Map<String, Any?>> = emptyList()
 
-  override fun recordObservabilityEvent(
-    request: GoalRunnerObservabilityRecordRequest,
-    dbPathOverride: String?,
-  ): Boolean {
+  override fun recordObservabilityEvent(request: GoalRunnerObservabilityRecordRequest): Boolean {
     if (throwOnObservabilityRecord) {
       error("observability persistence failed")
     }
@@ -4049,7 +3956,6 @@ internal class RecordingOutcomeStore : GoalRunnerWorkflowOutcomeStore {
   override fun recordWorkerSubtaskRequestOutcomes(
     workflowId: String,
     outcomes: List<GoalRunnerWorkerSubtaskRequestOutcome>,
-    dbPathOverride: String?,
   ): Boolean {
     if (throwOnWorkerSubtaskRequestOutcomeRecord) {
       error("worker subtask request outcome persistence failed")
@@ -4065,7 +3971,7 @@ internal class RecordingOutcomeStore : GoalRunnerWorkflowOutcomeStore {
   val attemptLedgerRecords: MutableList<GoalRunnerAttemptLedgerRecordRequest> = mutableListOf()
   var throwOnProgressEventRecord: Boolean = false
 
-  override fun recordProgressEvent(request: GoalRunnerProgressEventRecordRequest, dbPathOverride: String?): Boolean {
+  override fun recordProgressEvent(request: GoalRunnerProgressEventRecordRequest): Boolean {
     if (throwOnProgressEventRecord) {
       error("progress event persistence failed")
     }
@@ -4073,22 +3979,16 @@ internal class RecordingOutcomeStore : GoalRunnerWorkflowOutcomeStore {
     return true
   }
 
-  override fun recordAttemptLedgerEntry(
-    request: GoalRunnerAttemptLedgerRecordRequest,
-    dbPathOverride: String?,
-  ): Boolean {
+  override fun recordAttemptLedgerEntry(request: GoalRunnerAttemptLedgerRecordRequest): Boolean {
     attemptLedgerRecords += request
     return true
   }
 
   var ledgerSequenceWatermarks: GoalRunnerLedgerSequenceWatermarks = GoalRunnerLedgerSequenceWatermarks()
 
-  override fun ledgerSequenceWatermarks(
-    issueKey: String,
-    dbPathOverride: String?,
-  ): GoalRunnerLedgerSequenceWatermarks = ledgerSequenceWatermarks
+  override fun ledgerSequenceWatermarks(issueKey: String): GoalRunnerLedgerSequenceWatermarks = ledgerSequenceWatermarks
 
-  override fun childWorkflowLoopIterations(workflowId: String, dbPathOverride: String?): Map<String, Int> = emptyMap()
+  override fun childWorkflowLoopIterations(workflowId: String): Map<String, Int> = emptyMap()
 }
 
 internal data class BlockedWorkflow(
@@ -4109,7 +4009,6 @@ internal data class RecoveredMissingResultPrefixOutput(
   val issueKey: String,
   val subtaskId: Int,
   val output: Map<String, Any?>,
-  val dbPathOverride: String?,
 )
 
 internal data class ReconcileRequest(
@@ -4117,7 +4016,6 @@ internal data class ReconcileRequest(
   val activeWorkflowIds: Set<String>,
   val gate: GoalRunnerReconcileGate,
   val repoRoot: Path?,
-  val dbPathOverride: String?,
 )
 
 internal data class WorkerSubtaskRequestOutcomeRecord(
@@ -4158,9 +4056,7 @@ private class FixedBranchGitOperations(
   override fun branchExists(repoRoot: Path, branch: String): WorkflowGitOperationResult =
     WorkflowGitOperationResult(status = "ok", value = "true")
 
-  override fun currentBranch(repoRoot: Path): WorkflowGitOperationResult =
-    WorkflowGitOperationResult(status = "ok", value = branch)
-
+  override fun currentBranch(repoRoot: Path): WorkflowGitOperationResult = WorkflowGitOperationResult.Ok(value = branch)
   override fun createCommit(repoRoot: Path, message: String): WorkflowGitOperationResult =
     WorkflowGitOperationResult(status = "ok", value = "sha-test")
 
@@ -4173,9 +4069,7 @@ private class FixedBranchGitOperations(
     expectedBaseBranch: String,
   ): WorkflowGitOperationResult = WorkflowGitOperationResult(status = "ok", value = expectedBaseBranch)
 
-  override fun worktreeStatus(repoRoot: Path): WorkflowGitOperationResult =
-    WorkflowGitOperationResult(status = "ok", value = "")
-
+  override fun worktreeStatus(repoRoot: Path): WorkflowGitOperationResult = WorkflowGitOperationResult.Ok(value = "")
   override fun worktreeActivity(repoRoot: Path): WorkflowWorktreeActivityResult =
     WorkflowWorktreeActivityResult(status = "ok")
 
@@ -4208,9 +4102,7 @@ private object StatusDiffGitOperations : WorkflowGitOperations {
   override fun branchExists(repoRoot: Path, branch: String): WorkflowGitOperationResult =
     WorkflowGitOperationResult(status = "ok", value = "true")
 
-  override fun currentBranch(repoRoot: Path): WorkflowGitOperationResult =
-    WorkflowGitOperationResult(status = "ok", value = "main")
-
+  override fun currentBranch(repoRoot: Path): WorkflowGitOperationResult = WorkflowGitOperationResult.Ok(value = "main")
   override fun createCommit(repoRoot: Path, message: String): WorkflowGitOperationResult =
     WorkflowGitOperationResult(status = "ok", value = "sha-test")
 
@@ -4223,9 +4115,7 @@ private object StatusDiffGitOperations : WorkflowGitOperations {
     expectedBaseBranch: String,
   ): WorkflowGitOperationResult = WorkflowGitOperationResult(status = "ok", value = expectedBaseBranch)
 
-  override fun worktreeStatus(repoRoot: Path): WorkflowGitOperationResult =
-    WorkflowGitOperationResult(status = "ok", value = "")
-
+  override fun worktreeStatus(repoRoot: Path): WorkflowGitOperationResult = WorkflowGitOperationResult.Ok(value = "")
   override fun worktreeActivity(repoRoot: Path): WorkflowWorktreeActivityResult = WorkflowWorktreeActivityResult(
     status = "ok",
     diffStat = GoalObservabilityDiffStat(filesChanged = 2, insertions = 5, deletions = 1),
@@ -4274,9 +4164,7 @@ private class RecordingGitOperations(
       ?: WorkflowGitOperationResult(status = "ok", value = expectedBaseBranch)
   }
 
-  override fun worktreeStatus(repoRoot: Path): WorkflowGitOperationResult =
-    WorkflowGitOperationResult(status = "ok", value = "")
-
+  override fun worktreeStatus(repoRoot: Path): WorkflowGitOperationResult = WorkflowGitOperationResult.Ok(value = "")
   override fun worktreeActivity(repoRoot: Path): WorkflowWorktreeActivityResult =
     WorkflowWorktreeActivityResult(status = "ok")
 
@@ -4612,15 +4500,15 @@ private class GoalStatusSeedableDatabase(
 ) : DatabaseSessionFactory {
   private val dbPath = Path.of("/fake/goal-status-phase-ledger.db")
 
-  override fun resolveDbPath(dbOverride: String?): Path = dbPath
+  override fun resolveDbPath(): Path = dbPath
 
-  override fun databaseExists(dbOverride: String?): Boolean = true
+  override fun databaseExists(): Boolean = true
 
-  override fun <T> read(dbOverride: String?, block: (UnitOfWork) -> T): T = block(unitOfWork())
+  override fun <T> read(block: (UnitOfWork) -> T): T = block(unitOfWork())
 
-  override fun <T> selfManagedWrite(dbOverride: String?, block: (UnitOfWork) -> T): T = transaction(dbOverride, block)
+  override fun <T> selfManagedWrite(block: (UnitOfWork) -> T): T = transaction(block)
 
-  override fun <T> transaction(dbOverride: String?, block: (UnitOfWork) -> T): T = block(unitOfWork())
+  override fun <T> transaction(block: (UnitOfWork) -> T): T = block(unitOfWork())
 
   private fun unitOfWork(): UnitOfWork = object : UnitOfWork {
     override val dbPath: Path = this@GoalStatusSeedableDatabase.dbPath
@@ -4700,15 +4588,15 @@ private object GoalTestNoopSnapshotValidator : WorkflowSnapshotValidator {
 private object GoalTestEmptyDatabase : DatabaseSessionFactory {
   private val dbPath = Path.of("/fake/goal-test-metrics.db")
 
-  override fun resolveDbPath(dbOverride: String?): Path = dbPath
+  override fun resolveDbPath(): Path = dbPath
 
-  override fun databaseExists(dbOverride: String?): Boolean = true
+  override fun databaseExists(): Boolean = true
 
-  override fun <T> read(dbOverride: String?, block: (UnitOfWork) -> T): T = block(unitOfWork())
+  override fun <T> read(block: (UnitOfWork) -> T): T = block(unitOfWork())
 
-  override fun <T> selfManagedWrite(dbOverride: String?, block: (UnitOfWork) -> T): T = transaction(dbOverride, block)
+  override fun <T> selfManagedWrite(block: (UnitOfWork) -> T): T = transaction(block)
 
-  override fun <T> transaction(dbOverride: String?, block: (UnitOfWork) -> T): T = block(unitOfWork())
+  override fun <T> transaction(block: (UnitOfWork) -> T): T = block(unitOfWork())
 
   private fun unitOfWork(): UnitOfWork = object : UnitOfWork {
     override val dbPath: Path = this@GoalTestEmptyDatabase.dbPath
@@ -4728,7 +4616,6 @@ private class GoalTestPlanningDatabase : DatabaseSessionFactory {
   private val dbPath = Path.of("/fake/goal-test-planning.db")
   val deletedParentGoalIds = mutableListOf<String>()
   val deletedChildWorkflowParentIds = mutableListOf<String>()
-  val transactionDbOverrides = mutableListOf<String?>()
   private val planningRepository = object : GoalPlanningPreparationRepository by
   EmptyGoalPlanningPreparationRepository {
     override fun deleteByGoal(parentGoalWorkflowId: String): Int {
@@ -4737,13 +4624,12 @@ private class GoalTestPlanningDatabase : DatabaseSessionFactory {
     }
   }
 
-  override fun resolveDbPath(dbOverride: String?): Path = dbPath
-  override fun databaseExists(dbOverride: String?): Boolean = true
-  override fun <T> read(dbOverride: String?, block: (UnitOfWork) -> T): T = block(unitOfWork())
-  override fun <T> selfManagedWrite(dbOverride: String?, block: (UnitOfWork) -> T): T = transaction(dbOverride, block)
+  override fun resolveDbPath(): Path = dbPath
+  override fun databaseExists(): Boolean = true
+  override fun <T> read(block: (UnitOfWork) -> T): T = block(unitOfWork())
+  override fun <T> selfManagedWrite(block: (UnitOfWork) -> T): T = transaction(block)
 
-  override fun <T> transaction(dbOverride: String?, block: (UnitOfWork) -> T): T {
-    transactionDbOverrides += dbOverride
+  override fun <T> transaction(block: (UnitOfWork) -> T): T {
     return block(unitOfWork())
   }
 
@@ -4795,7 +4681,6 @@ class GoalRunnerValidationQualityRetryTest {
     issueKey = "SKILL-56",
     repoRoot = Path.of("/tmp/skillbill-goal-runner"),
     invokedAgentId = "claude",
-    dbPathOverride = "/tmp/skillbill-goal-runner/metrics.db",
   )
 
   @Test
@@ -4855,7 +4740,6 @@ class GoalRunnerUnaddressedFindingsSummaryTest {
       issueKey = "SKILL-56",
       repoRoot = Path.of("/tmp/skillbill-goal-runner"),
       invokedAgentId = "claude",
-      dbPathOverride = "/tmp/skillbill-goal-runner/metrics.db",
     )
     val completed = assertIs<GoalRunnerRunReport.Completed>(runner.run(request))
 
@@ -4901,7 +4785,6 @@ class GoalRunnerUnaddressedFindingsSummaryTest {
       issueKey = "SKILL-56",
       repoRoot = Path.of("/tmp/skillbill-goal-runner"),
       invokedAgentId = "claude",
-      dbPathOverride = "/tmp/skillbill-goal-runner/metrics.db",
     )
     val completed = assertIs<GoalRunnerRunReport.Completed>(runner.run(request))
 
@@ -4947,6 +4830,5 @@ class GoalRunnerOperatorBlockedResumeTest {
     issueKey = "SKILL-56",
     repoRoot = Path.of("/tmp/skillbill-goal-runner"),
     invokedAgentId = "claude",
-    dbPathOverride = "/tmp/skillbill-goal-runner/metrics.db",
   )
 }

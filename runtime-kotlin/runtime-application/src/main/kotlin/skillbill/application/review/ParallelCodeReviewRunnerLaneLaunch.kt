@@ -17,7 +17,7 @@ import skillbill.ports.review.model.ReviewEvidenceSource
 import skillbill.ports.review.model.ReviewLaneAccounting
 import skillbill.ports.review.model.ReviewLaunchAgentStagingRequest
 import skillbill.review.context.model.ResolvedReviewExecutionMode
-import skillbill.review.context.model.ReviewBudgetEvaluator
+import skillbill.review.context.model.ReviewAccountingTerminalOutcomeimport skillbill.review.context.model.ReviewBudgetEvaluator
 import skillbill.review.context.model.ReviewContextBudgetExceededException
 import skillbill.review.context.model.ReviewContextBudgetPolicy
 import skillbill.review.context.model.ReviewContextPacket
@@ -188,7 +188,14 @@ internal class ParallelCodeReviewRunnerLaneLaunch(
         )
       }
     return runCatching {
-      ParallelCodeReviewGovernedEvidenceBind.Bound(
+      val onEvidenceRead = request.activityWorkflowId?.takeIf(String::isNotBlank)?.let { workflowId ->
+        {
+          activityStampWriter.recordEvidenceRead(
+            workflowId = workflowId,
+            parentWorkflowId = request.activityParentWorkflowId,
+          )
+        }
+      }      ParallelCodeReviewGovernedEvidenceBind.Bound(
         broker,
         protocol,
         governedEvidenceEndpointBinder.bind(broker.accounting().lane, protocol, evidenceReadCallback(request)),

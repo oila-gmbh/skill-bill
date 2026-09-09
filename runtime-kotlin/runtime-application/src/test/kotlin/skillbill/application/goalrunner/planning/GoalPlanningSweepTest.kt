@@ -824,7 +824,7 @@ class GoalPlanningSweepPromptTest {
   fun `refresh refuses while execution liveness is live`() {
     val harness = sweepHarness(
       SweepHarnessConfig(
-        refreshLiveness = GoalPlanningRefreshLiveness { _, _ -> ExecutionLiveness.LIVE },
+        refreshLiveness = GoalPlanningRefreshLiveness { _ -> ExecutionLiveness.LIVE },
       ),
     ) { phase, _, _ -> validPhaseOutcome(phase) }
     val state = harness.stateFor(manifest(subtaskCount = 1))
@@ -850,7 +850,7 @@ class GoalPlanningSweepPromptTest {
   fun `refresh refuses while execution liveness is unknown`() {
     val harness = sweepHarness(
       SweepHarnessConfig(
-        refreshLiveness = GoalPlanningRefreshLiveness { _, _ -> ExecutionLiveness.UNKNOWN },
+        refreshLiveness = GoalPlanningRefreshLiveness { _ -> ExecutionLiveness.UNKNOWN },
       ),
     ) { phase, _, _ -> validPhaseOutcome(phase) }
     val state = harness.stateFor(manifest(subtaskCount = 1))
@@ -1717,7 +1717,6 @@ class GoalPlanningSweepRejectionTest {
       issueKey = "SKILL-56",
       repoRoot = Files.createTempDirectory("goal-planning-sweep"),
       invokedAgentId = "claude",
-      dbPathOverride = "/fake/goal-planning-sweep-preparations.db",
     )
 
     val outcome = sweep.prepare(state, request)
@@ -2897,17 +2896,17 @@ private class InMemoryPreparationDatabase(
   val repository = InMemoryPreparationRepository(markPreparedThrows, planCheckpointThrows)
   private val dbPath = Path.of("/fake/goal-planning-sweep-preparations.db")
 
-  override fun resolveDbPath(dbOverride: String?): Path = dbPath
-  override fun databaseExists(dbOverride: String?): Boolean = true
+  override fun resolveDbPath(): Path = dbPath
+  override fun databaseExists(): Boolean = true
 
   @Synchronized
-  override fun <T> read(dbOverride: String?, block: (UnitOfWork) -> T): T = block(unitOfWork())
+  override fun <T> read(block: (UnitOfWork) -> T): T = block(unitOfWork())
 
   @Synchronized
-  override fun <T> selfManagedWrite(dbOverride: String?, block: (UnitOfWork) -> T): T = transaction(dbOverride, block)
+  override fun <T> selfManagedWrite(block: (UnitOfWork) -> T): T = transaction(block)
 
   @Synchronized
-  override fun <T> transaction(dbOverride: String?, block: (UnitOfWork) -> T): T = block(unitOfWork())
+  override fun <T> transaction(block: (UnitOfWork) -> T): T = block(unitOfWork())
 
   private fun unitOfWork(): UnitOfWork = object : UnitOfWork {
     override val dbPath: Path = this@InMemoryPreparationDatabase.dbPath
@@ -2931,11 +2930,11 @@ private data class SweepFixtures(
   val manifestFileStore: CountingManifestFileStore,
   val invariantsSource: FakeInvariantsSource,
   val repoRoot: Path,
-  val dbOverride: String,
+  val databasePath: String,
 ) {
   fun stateFor(manifest: DecompositionManifest): GoalRunnerManifestState = GoalRunnerManifestState(
     parentWorkflowId = "wfl-parent",
-    dbPath = dbOverride,
+    dbPath = databasePath,
     manifest = manifest,
   )
 
@@ -2943,7 +2942,6 @@ private data class SweepFixtures(
     issueKey = "SKILL-56",
     repoRoot = repoRoot,
     invokedAgentId = "claude",
-    dbPathOverride = dbOverride,
     outputSink = outputSink,
   )
 
@@ -2972,7 +2970,7 @@ private fun sharedSweepFixtures(
     manifestFileStore = CountingManifestFileStore(),
     invariantsSource = FakeInvariantsSource(),
     repoRoot = Files.createTempDirectory("goal-planning-sweep"),
-    dbOverride = "/fake/goal-planning-sweep-preparations.db",
+    databasePath = database.resolveDbPath().toString(),
   )
 }
 
@@ -3115,33 +3113,22 @@ private class RecordingRuntimeTimingPort(
 private class MutablePauseGoalPlanningManifestStore : GoalRunnerManifestStore {
   var pauseRequested: Boolean = false
 
-  override fun loadByIssueKey(issueKey: String, dbPathOverride: String?, repoRoot: Path?): GoalRunnerManifestState? =
-    null
+  override fun loadByIssueKey(issueKey: String, repoRoot: Path?): GoalRunnerManifestState? = null
 
-  override fun save(state: GoalRunnerManifestState, dbPathOverride: String?): GoalRunnerManifestState = state
+  override fun save(state: GoalRunnerManifestState): GoalRunnerManifestState = state
 
-  override fun controlState(parentWorkflowId: String, dbPathOverride: String?): GoalRunnerControlState =
+  override fun controlState(parentWorkflowId: String): GoalRunnerControlState =
     GoalRunnerControlState(pauseRequested = pauseRequested)
 
   override fun acquireExecutionLease(
     parentWorkflowId: String,
     lease: GoalRunnerExecutionLease,
     expectedOwnerToken: String?,
-    dbPathOverride: String?,
   ): Boolean = true
 
-  override fun heartbeatExecutionLease(
-    parentWorkflowId: String,
-    lease: GoalRunnerExecutionLease,
-    dbPathOverride: String?,
-  ): Boolean = true
+  override fun heartbeatExecutionLease(parentWorkflowId: String, lease: GoalRunnerExecutionLease): Boolean = true
 
-  override fun releaseExecutionLease(
-    parentWorkflowId: String,
-    ownerToken: String,
-    generation: Long,
-    dbPathOverride: String?,
-  ): Boolean = true
+  override fun releaseExecutionLease(parentWorkflowId: String, ownerToken: String, generation: Long): Boolean = true
 }
 
 internal const val FIXTURE_HEADING_ID = "runtime-kotlin/agent/history.md#0-000000000000"
@@ -3170,31 +3157,19 @@ private val fakeContextDiscovery = object : GoalPlanningContextDiscovery {
     )
 }
 
-private object NoopGoalPlanningManifestStore : GoalRunnerManifestStore {
-  override fun loadByIssueKey(issueKey: String, dbPathOverride: String?, repoRoot: Path?): GoalRunnerManifestState? =
-    null
-
-  override fun save(state: GoalRunnerManifestState, dbPathOverride: String?): GoalRunnerManifestState = state
+private object NoopGoalPlanningManifestStore : GoalRunnerManifestStoreDefaults() {
+  override fun loadByIssueKey(issueKey: String, repoRoot: Path?): GoalRunnerManifestState? = null
+  override fun save(state: GoalRunnerManifestState): GoalRunnerManifestState = state
 
   override fun acquireExecutionLease(
     parentWorkflowId: String,
     lease: GoalRunnerExecutionLease,
     expectedOwnerToken: String?,
-    dbPathOverride: String?,
   ): Boolean = true
 
-  override fun heartbeatExecutionLease(
-    parentWorkflowId: String,
-    lease: GoalRunnerExecutionLease,
-    dbPathOverride: String?,
-  ): Boolean = true
+  override fun heartbeatExecutionLease(parentWorkflowId: String, lease: GoalRunnerExecutionLease): Boolean = true
 
-  override fun releaseExecutionLease(
-    parentWorkflowId: String,
-    ownerToken: String,
-    generation: Long,
-    dbPathOverride: String?,
-  ): Boolean = true
+  override fun releaseExecutionLease(parentWorkflowId: String, ownerToken: String, generation: Long): Boolean = true
 }
 
 private class TrackingPlanningAuthorization : AgentRunSpawnAuthorization {
@@ -3216,34 +3191,21 @@ private class TrackingPlanningAuthorization : AgentRunSpawnAuthorization {
 
 private class AuthorizingGoalPlanningManifestStore(
   private val authorization: AgentRunSpawnAuthorization,
-) : GoalRunnerManifestStore {
-  override fun loadByIssueKey(issueKey: String, dbPathOverride: String?, repoRoot: Path?): GoalRunnerManifestState? =
-    null
-
-  override fun save(state: GoalRunnerManifestState, dbPathOverride: String?): GoalRunnerManifestState = state
+) : GoalRunnerManifestStoreDefaults() {
+  override fun loadByIssueKey(issueKey: String, repoRoot: Path?): GoalRunnerManifestState? = null
+  override fun save(state: GoalRunnerManifestState): GoalRunnerManifestState = state
 
   override fun acquireExecutionLease(
     parentWorkflowId: String,
     lease: GoalRunnerExecutionLease,
     expectedOwnerToken: String?,
-    dbPathOverride: String?,
   ): Boolean = true
 
-  override fun heartbeatExecutionLease(
-    parentWorkflowId: String,
-    lease: GoalRunnerExecutionLease,
-    dbPathOverride: String?,
-  ): Boolean = true
+  override fun heartbeatExecutionLease(parentWorkflowId: String, lease: GoalRunnerExecutionLease): Boolean = true
 
-  override fun releaseExecutionLease(
-    parentWorkflowId: String,
-    ownerToken: String,
-    generation: Long,
-    dbPathOverride: String?,
-  ): Boolean = true
+  override fun releaseExecutionLease(parentWorkflowId: String, ownerToken: String, generation: Long): Boolean = true
 
-  override fun authorizePlanningLaunch(parentWorkflowId: String, dbPathOverride: String?): AgentRunSpawnAuthorization =
-    authorization
+  override fun authorizePlanningLaunch(parentWorkflowId: String): AgentRunSpawnAuthorization = authorization
 }
 
 private class CountingContextDiscovery : GoalPlanningContextDiscovery {

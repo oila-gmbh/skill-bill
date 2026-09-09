@@ -82,8 +82,8 @@ class FeatureTaskRuntimeBuildGateCoordinatorCycleTest {
       ValidationGateResolver { emptyList() },
       ScriptedGateRunner(emptyList()),
       FeatureTaskRuntimeBuildGateProgressStore(
-        persist = { _, _, _ -> },
-        load = { _, _ -> null },
+        persist = { _, _ -> },
+        load = { _ -> null },
       ),
       repoLocalConfig(),
       NoopRuntimeDiagnostics,
@@ -185,8 +185,8 @@ class FeatureTaskRuntimeBuildGateCoordinatorCycleTest {
     resolver,
     runner,
     FeatureTaskRuntimeBuildGateProgressStore(
-      persist = { _, progress, _ -> progressStore.persist("", progress, null) },
-      load = { _, _ -> progressStore.load("", null) },
+      persist = { _, progress -> progressStore.persist("", progress) },
+      load = { _ -> progressStore.load("") },
     ),
     repoLocalConfig(),
     NoopRuntimeDiagnostics,

@@ -154,7 +154,7 @@ class ProsePhaseOutputSynthesizerTest {
           "phase_id": "implement",
           "status": "$input",
           "summary": "Applied the plan.",
-          "produced_outputs": { "value": "implementation receipt" }
+          "produced_outputs": [ { "name": "implementation_receipt", "value": "implementation receipt" } ]
         }
       """.trimIndent()
 

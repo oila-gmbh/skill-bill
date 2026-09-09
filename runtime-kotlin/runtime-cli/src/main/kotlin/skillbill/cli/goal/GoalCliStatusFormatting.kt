@@ -34,7 +34,6 @@ internal fun CliRunInputs.goalStatusRequest(options: GoalStatusCliRequestOptions
     issueKey = options.issueKey,
     invokedAgentId = detectInvokingAgentId(options.agent, environment),
     configuredAgentOverrideId = options.agentOverride,
-    dbPathOverride = dbPathOverride,
     repoRoot = options.repoRoot?.let(Path::of)
       ?.let { root ->
         if (options.monitorOnly) {

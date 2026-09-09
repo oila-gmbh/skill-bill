@@ -9,16 +9,25 @@ import skillbill.ports.agentrun.ExecutableLookup
 import skillbill.ports.agentrun.model.AgentRunLaunchOutcome
 import skillbill.ports.agentrun.model.AgentRunLaunchRequest
 import skillbill.ports.agentrun.model.UnsupportedAgentRunLaunch
+import skillbill.ports.db.DatabaseSessionFactory
+import java.nio.file.Path
 
 class FileSystemAgentRunLauncher internal constructor(
   processRunner: AgentRunProcessRunner,
   executableLookup: ExecutableLookup = PathExecutableLookup(),
+  databasePath: Path? = null,
 ) : AgentRunLauncher {
   @Inject
-  constructor(processRunner: JvmAgentRunProcessRunner) : this(processRunner as AgentRunProcessRunner)
+  constructor(
+    processRunner: JvmAgentRunProcessRunner,
+    databaseSessionFactory: DatabaseSessionFactory,
+  ) : this(
+    processRunner = processRunner as AgentRunProcessRunner,
+    databasePath = databaseSessionFactory.resolveDbPath(),
+  )
 
   private val adapters: Map<InstallAgent, AgentRunAdapter> =
-    headlessAgentRunAdapters(processRunner, executableLookup)
+    headlessAgentRunAdapters(processRunner, executableLookup, databasePath)
 
   override fun launch(request: AgentRunLaunchRequest): AgentRunLaunchOutcome {
     val agent = InstallAgent.fromNormalizedId(request.agentId)

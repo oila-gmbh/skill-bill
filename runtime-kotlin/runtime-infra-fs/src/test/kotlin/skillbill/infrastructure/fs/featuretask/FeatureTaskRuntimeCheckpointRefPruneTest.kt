@@ -10,7 +10,7 @@ import skillbill.infrastructure.fs.GitWorkflowGitOperations
 import skillbill.ports.workflow.gitops.WorkflowGitOperations
 import skillbill.ports.workflow.gitops.deleteCheckpointRef
 import skillbill.ports.workflow.gitops.listCheckpointRefs
-import skillbill.ports.workflow.gitops.updateCheckpointRef
+import skillbill.ports.workflow.gitops.model.WorkflowGitOperationResultimport skillbill.ports.workflow.gitops.updateCheckpointRef
 import skillbill.workflow.decomposition.model.CurrentSubtaskIntent
 import skillbill.workflow.decomposition.model.DecompositionManifest
 import skillbill.workflow.decomposition.model.DecompositionSubtask
@@ -97,8 +97,10 @@ class FeatureTaskRuntimeCheckpointRefPruneTest {
     val refs = (0 until 3).map { sequence ->
       featureTaskRuntimeCheckpointRefName(issueKey, subtaskId, sequence)
     }
-    assertTrue(git.deleteCheckpointRef(repo, FEATURE_TASK_RUNTIME_CHECKPOINT_REF_NAMESPACE, refs[0]).ok)
-    val request = FeatureTaskRuntimeCheckpointRefPruneRequest(
+    assertTrue(
+      git.deleteCheckpointRef(repo, FEATURE_TASK_RUNTIME_CHECKPOINT_REF_NAMESPACE, refs[0]) is
+        WorkflowGitOperationResult.Ok,
+    )    val request = FeatureTaskRuntimeCheckpointRefPruneRequest(
       issueKey = issueKey,
       subtaskId = subtaskId,
       manifestCommitSha = head(),
@@ -237,8 +239,10 @@ class FeatureTaskRuntimeCheckpointRefPruneTest {
     val sha = head()
     repeat(count) { sequence ->
       val ref = featureTaskRuntimeCheckpointRefName(issueKey, subtaskId, sequence)
-      assertTrue(git.updateCheckpointRef(repo, FEATURE_TASK_RUNTIME_CHECKPOINT_REF_NAMESPACE, ref, sha).ok)
-    }
+      assertTrue(
+        git.updateCheckpointRef(repo, FEATURE_TASK_RUNTIME_CHECKPOINT_REF_NAMESPACE, ref, sha) is
+          WorkflowGitOperationResult.Ok,
+      )    }
   }
 
   private fun listedRefCount(issueKey: String, subtaskId: String): Int = parseCheckpointRefListing(

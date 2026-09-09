@@ -17,7 +17,7 @@ internal fun produceSharedPreplan(
   provenance: GoalPlanningContractProvenance,
 ): Result<SharedGoalPreplanCheckpoint> =
   produceSharedPreplanCheckpoint(sweep, shared, request, provenance).mapCatching { produced ->
-    produced.also { sweep.checkpoint.recheckpointSharedPreplan(it, shared.dbPathOverride) }
+    produced.also { sweep.checkpoint.recheckpointSharedPreplan(it) }
   }
 
 internal fun produceSharedPreplanCheckpoint(
@@ -130,7 +130,6 @@ internal fun gatherSharedContext(
     parentSpec = parentSpec,
     parentSpecHash = parentSpecHash,
     decompositionManifestHash = decompositionManifestHash,
-    dbPathOverride = request.dbPathOverride,
     repoRoot = canonicalRepository,
     invokedAgentId = request.invokedAgentId,
     configuredAgentOverrideId = request.configuredAgentOverrideId,

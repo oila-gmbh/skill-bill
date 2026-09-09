@@ -410,9 +410,12 @@ internal fun parallelAccountingSummary(outcomes: ParallelReviewLaneRunResult): R
     ReviewAccountingInput(
       lane = "parallel-agent-${index + 1}",
       assignmentDigest = sha256HexUtf8("parallel-agent-${index + 1}"),
-      children = outcome.specialistAccounting.ifEmpty { listOfNotNull(outcome.accounting) }.map { it.toInput() },
-      terminalOutcome = parallelReviewLaneTerminalOutcome(outcome),
-      bundleCompositionDigest = outcome.bundleCompositionDigest,
+      children = outcome.specialistAccounting.map { it.toInput() },
+      terminalOutcome = requireNotNull(
+        ReviewAccountingTerminalOutcome.fromWire(parallelReviewLaneTerminalOutcome(outcome)),
+      ) {
+        "Unknown parallel review terminal outcome."
+      },      bundleCompositionDigest = outcome.bundleCompositionDigest,
       segmentAccounting = outcome.segmentAccounting,
       unreviewedSegmentIds = outcome.unreviewedSegmentIds,
     )

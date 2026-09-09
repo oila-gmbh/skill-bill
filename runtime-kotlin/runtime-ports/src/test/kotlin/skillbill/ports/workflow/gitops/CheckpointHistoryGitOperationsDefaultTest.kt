@@ -14,10 +14,14 @@ class CheckpointHistoryGitOperationsDefaultTest {
     val operations: WorkflowGitOperations = NoopWorkflowGitOperations
     val prefix = "refs/skill-bill/checkpoints/"
 
-    assertFalse(operations.amendHeadCommit(repoRoot, "0".repeat(40)).ok)
-    assertFalse(operations.updateCheckpointRef(repoRoot, prefix, "${prefix}subtask-1", "0".repeat(40)).ok)
-    assertFalse(operations.resolveCheckpointRef(repoRoot, prefix, "${prefix}subtask-1").ok)
-    assertFalse(operations.listCheckpointRefs(repoRoot, prefix).ok)
-    assertFalse(operations.deleteCheckpointRef(repoRoot, prefix, "${prefix}subtask-1").ok)
-  }
+    assertFalse(operations.amendHeadCommit(repoRoot, "0".repeat(40)) is WorkflowGitOperationResult.Ok)
+    assertFalse(
+      operations.updateCheckpointRef(repoRoot, prefix, "${prefix}subtask-1", "0".repeat(40)) is
+        WorkflowGitOperationResult.Ok,
+    )
+    assertFalse(
+      operations.resolveCheckpointRef(repoRoot, prefix, "${prefix}subtask-1") is WorkflowGitOperationResult.Ok,
+    )
+    assertFalse(operations.listCheckpointRefs(repoRoot, prefix) is WorkflowGitOperationResult.Ok)
+    assertFalse(operations.deleteCheckpointRef(repoRoot, prefix, "${prefix}subtask-1") is WorkflowGitOperationResult.Ok)  }
 }

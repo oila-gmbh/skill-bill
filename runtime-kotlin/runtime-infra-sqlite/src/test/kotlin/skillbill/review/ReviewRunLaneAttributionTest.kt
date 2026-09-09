@@ -5,9 +5,11 @@ import skillbill.infrastructure.sqlite.review.ensureTerminalReviewState
 import skillbill.infrastructure.sqlite.review.fetchReviewRunLanes
 import skillbill.infrastructure.sqlite.review.queryReviewLaneEffectiveness
 import skillbill.infrastructure.sqlite.review.recordFindingLaneAttribution
+import skillbill.review.context.model.ReviewLaneReviewDisposition
 import skillbill.review.model.ImportedFinding
 import skillbill.review.model.ImportedReview
-import skillbill.review.model.ReviewRunLane
+import skillbill.review.model.ReviewExecutionMode
+import skillbill.review.model.ReviewLaneResolutionStateimport skillbill.review.model.ReviewRunLane
 import skillbill.tempDbConnection
 import java.sql.Connection
 import kotlin.test.Test
@@ -130,8 +132,7 @@ class ReviewRunLaneAttributionTest {
       assertEquals("inline", summary.executionMode)
       assertEquals(2, fetchReviewRunLanes(connection, RUN_ID).size, "A zero-findings run still records its lanes.")
 
-      ensureTerminalReviewState(connection, RUN_ID, "delegated")
-      assertEquals(finishedAt, ReviewRuntime.fetchReviewSummary(connection, RUN_ID).reviewFinishedAt)
+      ensureTerminalReviewState(connection, RUN_ID, ReviewExecutionMode.DELEGATED)      assertEquals(finishedAt, ReviewRuntime.fetchReviewSummary(connection, RUN_ID).reviewFinishedAt)
     }
   }
 
@@ -156,8 +157,7 @@ class ReviewRunLaneAttributionTest {
     routedSkill = "bill-kmp-code-review",
     detectedScope = "unstaged changes",
     detectedStack = "kmp",
-    executionMode = "inline",
-    specialistReviews = listOf("bill-kmp-code-review-architecture", "bill-kotlin-code-review-testing"),
+    executionMode = ReviewExecutionMode.INLINE,    specialistReviews = listOf("bill-kmp-code-review-architecture", "bill-kotlin-code-review-testing"),
     findings = listOf(
       ImportedFinding(
         findingId = "F-001",

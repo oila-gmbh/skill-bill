@@ -386,7 +386,6 @@ class GoalRunnerTelemetryTest {
     issueKey = "SKILL-56",
     repoRoot = Path.of("/tmp/skillbill-goal-runner"),
     invokedAgentId = "claude",
-    dbPathOverride = "/tmp/skillbill-goal-runner/metrics.db",
     eventSink = GoalRunnerEventSink { eventSink(it) },
   )
 
@@ -411,22 +410,22 @@ private class RecordingGoalLifecycleTelemetryEmitter(
   val finished: MutableList<GoalFinishedRequest> = mutableListOf()
   val issueFinished: MutableList<GoalIssueFinishedRequest> = mutableListOf()
 
-  override fun goalStarted(request: GoalStartedRequest, dbOverride: String?) {
+  override fun goalStarted(request: GoalStartedRequest) {
     if (TelemetryEvent.STARTED in failOn) throw TelemetryWriteFailure(TelemetryEvent.STARTED)
     started += request
   }
 
-  override fun goalSubtaskFinished(request: GoalSubtaskFinishedRequest, dbOverride: String?) {
+  override fun goalSubtaskFinished(request: GoalSubtaskFinishedRequest) {
     if (TelemetryEvent.SUBTASK_FINISHED in failOn) throw TelemetryWriteFailure(TelemetryEvent.SUBTASK_FINISHED)
     subtaskFinished += request
   }
 
-  override fun goalFinished(request: GoalFinishedRequest, dbOverride: String?) {
+  override fun goalFinished(request: GoalFinishedRequest) {
     if (TelemetryEvent.FINISHED in failOn) throw TelemetryWriteFailure(TelemetryEvent.FINISHED)
     finished += request
   }
 
-  override fun goalIssueFinished(request: GoalIssueFinishedRequest, dbOverride: String?) {
+  override fun goalIssueFinished(request: GoalIssueFinishedRequest) {
     issueFinished += request
   }
 }

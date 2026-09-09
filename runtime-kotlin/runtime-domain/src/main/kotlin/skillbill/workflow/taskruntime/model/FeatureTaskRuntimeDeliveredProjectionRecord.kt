@@ -47,7 +47,7 @@ data class FeatureTaskRuntimeDeliveredProjectionRecord(
     "source_producer_iterations" to sourceProducerIterations.map {
       mapOf("phase_id" to it.phaseId, "iteration" to it.iteration)
     },
-    "repository_checkpoint" to mapOf("fingerprint" to repositoryCheckpointFingerprint),
+    REPOSITORY_CHECKPOINT_FIELD to mapOf("fingerprint" to repositoryCheckpointFingerprint),
     "handoff_envelope" to envelope.toEnvelopeMap(),
   )
 
@@ -110,9 +110,8 @@ data class FeatureTaskRuntimeDeliveredProjectionRecord(
       raw: Map<String, Any?>,
       record: FeatureTaskRuntimeDeliveredProjectionRecord,
     ) {
-      val checkpoint = JsonSupport.anyToStringAnyMap(raw["repository_checkpoint"])
-        ?: missing("repository_checkpoint")
-      val persistedFingerprint = checkpoint["fingerprint"] as? String ?: missing("repository_checkpoint.fingerprint")
+      val checkpoint = JsonCodec.anyToStringAnyMap(raw[REPOSITORY_CHECKPOINT_FIELD])
+        ?: missing(REPOSITORY_CHECKPOINT_FIELD)      val persistedFingerprint = checkpoint["fingerprint"] as? String ?: missing("repository_checkpoint.fingerprint")
       if (persistedFingerprint != record.repositoryCheckpointFingerprint) {
         throw InvalidWorkflowStateSchemaError(
           "Feature-task-runtime delivered projection checkpoint identity does not match its validated envelope; " +
@@ -129,7 +128,7 @@ data class FeatureTaskRuntimeDeliveredProjectionRecord(
         "consumer_phase_id",
         "consumer_delivery_iteration",
         "source_producer_iterations",
-        "repository_checkpoint",
+        REPOSITORY_CHECKPOINT_FIELD,
         "handoff_envelope",
       )
       val unexpected = raw.keys - expected

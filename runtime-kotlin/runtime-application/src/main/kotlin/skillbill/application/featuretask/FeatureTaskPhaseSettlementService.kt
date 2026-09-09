@@ -43,7 +43,6 @@ class FeatureTaskPhaseSettlementService(
         attempt = request.attempt,
         kind = KIND_COMPLETE,
         envelope = envelope,
-        dbPathOverride = request.dbPathOverride,
       ),
     )
   }
@@ -70,7 +69,6 @@ class FeatureTaskPhaseSettlementService(
         attempt = request.attempt,
         kind = KIND_BLOCK,
         envelope = envelope,
-        dbPathOverride = request.dbPathOverride,
       ),
     )
   }
@@ -96,25 +94,18 @@ class FeatureTaskPhaseSettlementService(
         attempt = request.attempt,
         kind = KIND_AUDIT_SETTLE,
         envelope = envelope,
-        dbPathOverride = request.dbPathOverride,
       ),
     )
   }
 
   @OpenBoundaryMap("Durable MCP phase-settlement envelope wire map for gate consumption")
-  fun findEnvelope(
-    workflowId: String,
-    phaseId: String,
-    attempt: Int,
-    dbPathOverride: String? = null,
-  ): Map<String, Any?>? {
-    val settlement = repository.find(workflowId, phaseId, attempt, dbPathOverride) ?: return null
-    return JsonSupport.parseObjectOrNull(settlement.envelopeJson)
-      ?.let { JsonSupport.anyToStringAnyMap(JsonSupport.jsonElementToValue(it)) }
-  }
+  fun findEnvelope(workflowId: String, phaseId: String, attempt: Int): Map<String, Any?>? {
+    val settlement = repository.find(workflowId, phaseId, attempt) ?: return null
+    return JsonCodec.parseObjectOrNull(settlement.envelopeJson)
+      ?.let { JsonCodec.anyToStringAnyMap(JsonCodec.jsonElementToValue(it)) }  }
 
-  fun clear(workflowId: String, phaseId: String, attempt: Int, dbPathOverride: String? = null): Boolean =
-    repository.delete(workflowId, phaseId, attempt, dbPathOverride)
+  fun clear(workflowId: String, phaseId: String, attempt: Int): Boolean =
+    repository.delete(workflowId, phaseId, attempt)
 
   private fun persist(request: PersistRequest): Map<String, Any?> {
     val envelopeJson = JsonSupport.mapToJsonString(request.envelope)
@@ -127,7 +118,6 @@ class FeatureTaskPhaseSettlementService(
         envelopeJson = envelopeJson,
         recordedAt = clock.instant().toString(),
       ),
-      dbPathOverride = request.dbPathOverride,
     )
     return linkedMapOf(
       "status" to "ok",
@@ -154,13 +144,12 @@ class FeatureTaskPhaseSettlementService(
     val attempt: Int,
     val kind: FeatureTaskPhaseSettlementKind,
     val envelope: Map<String, Any?>,
-    val dbPathOverride: String?,
   )
 
   companion object {
-    val KIND_COMPLETE: FeatureTaskPhaseSettlementKind = FeatureTaskPhaseSettlementKind.COMPLETE
-    val KIND_BLOCK: FeatureTaskPhaseSettlementKind = FeatureTaskPhaseSettlementKind.BLOCK
-    val KIND_AUDIT_SETTLE: FeatureTaskPhaseSettlementKind = FeatureTaskPhaseSettlementKind.AUDIT_SETTLE
+    val KIND_COMPLETE: FeatureTaskPhaseSettlementKind = FeatureTaskPhaseSettlementKind.Complete
+    val KIND_BLOCK: FeatureTaskPhaseSettlementKind = FeatureTaskPhaseSettlementKind.Block
+    val KIND_AUDIT_SETTLE: FeatureTaskPhaseSettlementKind = FeatureTaskPhaseSettlementKind.AuditSettle
     private const val SUMMARY_MAX_CHARS: Int = 240
     private const val SUMMARY_ELLIPSIS_PREFIX: Int = 237
   }

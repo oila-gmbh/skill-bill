@@ -41,7 +41,6 @@ class GoalRunnerReplanTest {
       persistOutOfBandAcceptance(
         "wfl-parent",
         GoalRunnerOutOfBandAcceptance(1, "sha-1", "landed outside", "2026-07-27T11:00:00Z"),
-        null,
       )
       seedIdleLease()
     }
@@ -248,7 +247,6 @@ class GoalRunnerReplanTest {
       persistOutOfBandAcceptance(
         "wfl-parent",
         GoalRunnerOutOfBandAcceptance(1, "abc1234", "shipped by hand", "2026-07-27T11:00:00Z"),
-        null,
       )
       seedIdleLease()
     }
@@ -291,7 +289,6 @@ class GoalRunnerReplanTest {
       persistOutOfBandAcceptance(
         "wfl-parent",
         GoalRunnerOutOfBandAcceptance(1, "sha-1", "landed outside", "2026-07-27T11:00:00Z"),
-        null,
       )
       seedIdleLease()
     }

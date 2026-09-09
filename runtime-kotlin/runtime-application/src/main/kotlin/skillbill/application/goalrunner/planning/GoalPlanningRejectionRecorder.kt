@@ -31,7 +31,6 @@ class DurableGoalPlanningRejectionRecorder(
           model = "unspecified",
           rawResponse = record.rawEvidence.encodeToByteArray(),
         ),
-        record.dbPathOverride,
       )
     }
   }

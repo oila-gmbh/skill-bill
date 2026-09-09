@@ -8,7 +8,8 @@ import skillbill.workflow.engine.WorkflowEngine
 import skillbill.workflow.engine.model.WorkflowStateSnapshot
 import skillbill.workflow.engine.model.WorkflowUpdateAcknowledgementView
 import skillbill.workflow.engine.model.WorkflowUpdateInput
-import java.time.OffsetDateTime
+import skillbill.workflow.engine.model.isTerminalStatus
+import skillbill.workflow.model.workflowStatusimport java.time.OffsetDateTime
 import java.time.ZoneOffset
 
 class WorkflowServiceFeatureTaskAbandon(

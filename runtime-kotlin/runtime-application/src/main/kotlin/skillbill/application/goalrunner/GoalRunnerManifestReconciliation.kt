@@ -15,14 +15,12 @@ import java.nio.file.Path
 
 fun reconcileGoalManifest(
   manifest: DecompositionManifest,
-  dbPathOverride: String?,
   authoritativeOutcomes: Map<Int, GoalRunnerStoredOutcome>,
   acceptances: Map<Int, GoalRunnerOutOfBandAcceptance>,
   outcomeStore: GoalRunnerWorkflowOutcomeStore,
 ): DecompositionManifest {
   val context = GoalManifestReconciliationContext(
     issueKey = manifest.issueKey,
-    dbPathOverride = dbPathOverride,
     authoritativeOutcomes = authoritativeOutcomes,
     acceptances = acceptances,
     outcomeStore = outcomeStore,
@@ -57,7 +55,6 @@ fun pruneEligibleCheckpointRefsForManifest(
 
 private data class GoalManifestReconciliationContext(
   val issueKey: String,
-  val dbPathOverride: String?,
   val authoritativeOutcomes: Map<Int, GoalRunnerStoredOutcome>,
   val acceptances: Map<Int, GoalRunnerOutOfBandAcceptance>,
   val outcomeStore: GoalRunnerWorkflowOutcomeStore,
@@ -81,8 +78,7 @@ private data class GoalManifestReconciliationContext(
     val staleRetryOutcome = workflowId != null &&
       outcome?.workflowId == workflowId &&
       outcome.status != GoalRunnerTerminalStatus.COMPLETE &&
-      outcomeStore.progress(workflowId, dbPathOverride)?.workflowStatus == "running"
-    return if (staleRetryOutcome) {
+      outcomeStore.progress(workflowId)?.workflowStatus == WorkflowStatus.RUNNING    return if (staleRetryOutcome) {
       subtask.copy(status = "in_progress", blockedReason = null)
     } else if (outcome == null || shouldPreserveCompletedSubtask(subtask, outcome)) {
       subtask
@@ -107,7 +103,6 @@ private data class GoalManifestReconciliationContext(
         workflowId = workflowId,
         issueKey = issueKey,
         subtaskId = subtask.id,
-        dbPathOverride = dbPathOverride,
       )
 }
 

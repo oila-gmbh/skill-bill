@@ -7,6 +7,8 @@ import skillbill.ports.diagnostics.RuntimeDiagnostics
 import skillbill.ports.goalrunner.runner.GoalRunnerSubtaskLauncher
 import skillbill.workflow.decomposition.model.SpecSource
 import skillbill.workflow.goal.model.GoalSubtaskOperatorDecision
+import skillbill.workflow.model.WorkflowStepStatus
+import skillbill.workflow.model.workflowStepStatus
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseOutputValidator
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeProducerIteration
@@ -124,9 +126,8 @@ class FeatureTaskRuntimeRunLoop internal constructor(
   val buildGateCoordinator get() = phaseGates.buildGateCoordinator
 
   internal val session = FeatureTaskRuntimeRunLoopSession(
-    operatorBlockRetry = dependencies.recorder
-      .loadOperatorBlockRetry(context.request.workflowId, context.request.dbPathOverride)
-      ?.takeIf { retry ->
+    operatorBlockRetry = recorder
+      .loadOperatorBlockRetry(request.workflowId)      ?.takeIf { retry ->
         context.state.recordFor(retry.phaseId)?.status.let { status -> status == null || status == "pending" }
       },
     initialPendingReentry = null,
@@ -177,7 +178,7 @@ class FeatureTaskRuntimeRunLoop internal constructor(
   // ordering gate, then the resume cap guard, then the goal review-pass reconciliation.
   fun report(): FeatureTaskRuntimeRunReport {
     val branch = session.resolvedBranch
-      ?: recorder.loadResolvedBranch(request.workflowId, request.dbPathOverride)?.branch
+      ?: recorder.loadResolvedBranch(request.workflowId)?.branch
     return session.decomposed ?: session.paused?.let { report ->
       if (report.resolvedBranch == null && branch != null) report.copy(resolvedBranch = branch) else report
     } ?: session.blocked?.let { report ->
@@ -192,7 +193,7 @@ class FeatureTaskRuntimeRunLoop internal constructor(
   }
 
   fun applyOperatorDecision(decision: GoalSubtaskOperatorDecision): String? {
-    val auditGapPause = recorder.loadAuditGapPause(request.workflowId, request.dbPathOverride)
+    val auditGapPause = recorder.loadAuditGapPause(request.workflowId)
     if (auditGapPause != null) {
       return collaborators.planningBranch.applyAuditGapPauseDecision(this, auditGapPause, decision)
     }

@@ -87,27 +87,27 @@ class GoalRunnerStatusService(deps: GoalRunnerStatusServiceDeps) {
   )
 
   fun status(request: GoalRunnerStatusRequest): GoalRunnerStatusProjection? {
-    return manifestStore.readByIssueKey(request.issueKey, request.dbPathOverride, request.repoRoot)
+    return manifestStore.readByIssueKey(request.issueKey, request.repoRoot)
       ?.let { loadedState -> projectionAssembler.project(loadedState, request) }
   }
 
   fun statusRefresh(request: GoalRunnerStatusRequest): GoalRunnerStatusProjection? = status(request)
 
-  fun pause(issueKey: String, dbPathOverride: String?, repoRoot: Path? = null): GoalRunnerPauseResult =
-    controlVerbs.pause(issueKey, dbPathOverride, effectiveGoalRepoRoot(repoRoot, repositoryRoot))
+  fun pause(issueKey: String, repoRoot: Path? = null): GoalRunnerPauseResult =
+    controlVerbs.pause(issueKey, effectiveGoalRepoRoot(repoRoot, repositoryRoot))
 
-  fun stop(issueKey: String, dbPathOverride: String?, repoRoot: Path? = null): GoalRunnerStopVerbResult =
-    controlVerbs.stop(issueKey, dbPathOverride, effectiveGoalRepoRoot(repoRoot, repositoryRoot))
+  fun stop(issueKey: String, repoRoot: Path? = null): GoalRunnerStopVerbResult =
+    controlVerbs.stop(issueKey, effectiveGoalRepoRoot(repoRoot, repositoryRoot))
 
-  fun resume(issueKey: String, dbPathOverride: String?, repoRoot: Path? = null): GoalRunnerResumeResult =
-    controlVerbs.resume(issueKey, dbPathOverride, effectiveGoalRepoRoot(repoRoot, repositoryRoot))
+  fun resume(issueKey: String, repoRoot: Path? = null): GoalRunnerResumeResult =
+    controlVerbs.resume(issueKey, effectiveGoalRepoRoot(repoRoot, repositoryRoot))
 
   fun reset(request: GoalRunnerResetRequest): GoalRunnerResetResult? = resetReplanCoordinator.reset(request)
 
   fun replan(request: GoalRunnerReplanRequest): GoalRunnerReplanResult? = resetReplanCoordinator.replan(request)
 
-  fun hardResetPreflight(issueKey: String, dbPathOverride: String?): List<GoalRunnerAcceptedSubtask> =
-    resetReplanCoordinator.hardResetPreflight(issueKey, dbPathOverride)
+  fun hardResetPreflight(issueKey: String): List<GoalRunnerAcceptedSubtask> =
+    resetReplanCoordinator.hardResetPreflight(issueKey)
 
   fun repair(request: GoalRunnerRepairRequest): GoalRunnerRepairResult = repairCoordinator.repair(request)
 

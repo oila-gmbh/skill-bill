@@ -175,7 +175,7 @@ private class RecordingTelemetryLevelMutator(
 ) : TelemetryLevelMutator {
   val levels = mutableListOf<String>()
 
-  override fun setLevel(level: String, dbOverride: String?): TelemetryLevelMutationResult {
+  override fun setLevel(level: String): TelemetryLevelMutationResult {
     levels += level
     return TelemetryLevelMutationResult(
       settings = TelemetrySettings(

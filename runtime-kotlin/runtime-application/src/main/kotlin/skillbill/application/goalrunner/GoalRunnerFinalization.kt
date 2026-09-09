@@ -16,7 +16,8 @@ import skillbill.goalrunner.model.UnaddressedFindingsLedger
 import skillbill.ports.goalrunner.runner.model.GoalPullRequestResult
 import skillbill.ports.goalrunner.runner.model.GoalRunnerManifestState
 import skillbill.ports.goalrunner.runner.model.GoalRunnerReconcileGate
-import skillbill.ports.workflow.gitops.stagePaths
+import skillbill.ports.workflow.gitops.model.WorkflowGitOperationResult
+import skillbill.ports.workflow.gitops.model.recordsNothingToCommitimport skillbill.ports.workflow.gitops.stagePaths
 import skillbill.workflow.decomposition.model.DecompositionExecutionModel
 import skillbill.workflow.decomposition.model.DecompositionManifest
 import skillbill.workflow.decomposition.model.SpecSource
@@ -43,7 +44,7 @@ public class GoalRunnerFinalization(
     ledger: GoalRunnerLedgerRecorder,
   ): GoalRunnerRunReport {
     reconcileBeforeFinalization(state, request, ledger)
-    val finalState = manifestStore.save(state, request.dbPathOverride)
+    val finalState = manifestStore.save(state)
     commitAllRemainingWorktree(finalState.manifest, request)?.let { reason ->
       return stopped(
         StoppedReportArgs(
@@ -57,7 +58,7 @@ public class GoalRunnerFinalization(
         ),
       )
     }
-    val findingsLedger = resolveFindingsLedger(finalState.manifest.issueKey, request.dbPathOverride)
+    val findingsLedger = resolveFindingsLedger(finalState.manifest.issueKey)
     val result = pullRequestPort.open(finalState.manifest.toPullRequestRequest(request.repoRoot))
     return when (result) {
       is GoalPullRequestResult.Opened -> {
@@ -154,7 +155,6 @@ fun GoalRunnerFinalization.reconcileBeforeFinalization(
     activeWorkflowIds = emptySet(),
     gate = GoalRunnerReconcileGate(requireStalenessEvidence = true),
     repoRoot = request.repoRoot,
-    dbPathOverride = request.dbPathOverride,
   )
   state.manifest.subtasks
     .lastOrNull { subtask -> !subtask.workflowId.isNullOrBlank() }
@@ -165,7 +165,7 @@ fun GoalRunnerFinalization.reconcileBeforeFinalization(
           action = GoalAttemptLedgerAction.FINAL_RECONCILED_OUTCOME,
           issueKey = state.manifest.issueKey,
           subtaskId = subtask.id,
-          progress = subtask.workflowId?.let { progressReader.safeProgress(it, request) },
+          progress = subtask.workflowId?.let { progressReader.safeProgress(it) },
           finalReconciledResult = "goal_finalize status=${state.manifest.status}",
         ),
       )
@@ -310,13 +310,10 @@ fun GoalRunnerFinalization.deleteGoalSpecScratchOnSuccess(
     }
 }
 
-fun GoalRunnerFinalization.resolveFindingsLedger(
-  issueKey: String,
-  dbPathOverride: String?,
-): UnaddressedFindingsLedger? {
+fun GoalRunnerFinalization.resolveFindingsLedger(issueKey: String): UnaddressedFindingsLedger? {
   val service = unaddressedFindingsLedgerService ?: return null
   return try {
-    service.ledger(issueKey, dbPathOverride)
+    service.ledger(issueKey)
   } catch (_: UnaddressedFindingsLedgerAbsentError) {
     UnaddressedFindingsLedger(issueKey, emptyList())
   } catch (_: InvalidUnaddressedFindingsLedgerSchemaError) {

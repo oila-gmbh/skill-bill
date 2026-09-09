@@ -28,7 +28,7 @@ internal class GoalRunnerGoalLoop(
     var currentPlanning = args.planning
     var terminalReport: GoalRunnerRunReport? = preflightPolicyBlockedReport(state, args.request, args.ledger)
     while (terminalReport == null) {
-      val pause = pauseBoundary.pauseBeforeLaunch(state, args.request)
+      val pause = pauseBoundary.pauseBeforeLaunch(state)
       if (pause != null) {
         state = pause.state
         terminalReport = pause.report
@@ -130,7 +130,6 @@ internal class GoalRunnerGoalLoop(
     val attempted = args.attempted
     val saved = manifestStore.save(
       state.copy(manifest = state.manifest.withBlockedSelection(selection.subtask.id, selection.reason)),
-      request.dbPathOverride,
     )
     selection.subtask.workflowId?.takeIf(String::isNotBlank)?.let { workflowId ->
       observability.record(
@@ -147,7 +146,7 @@ internal class GoalRunnerGoalLoop(
           action = GoalAttemptLedgerAction.POLICY_BLOCK,
           issueKey = saved.manifest.issueKey,
           subtaskId = selection.subtask.id,
-          progress = progressReader.safeProgress(workflowId, request),
+          progress = progressReader.safeProgress(workflowId),
           blockedReason = selection.reason,
           stopReason = GoalRunnerStopReason.DEPENDENCIES_BLOCKED.name.lowercase(),
         ),
@@ -212,7 +211,7 @@ internal class GoalRunnerGoalLoop(
         currentSubtaskIntent = CurrentSubtaskIntent(subtaskId = 0, action = "blocked"),
       )
     }
-    val saved = manifestStore.save(state.copy(manifest = blockedManifest), request.dbPathOverride)
+    val saved = manifestStore.save(state.copy(manifest = blockedManifest))
     ledger.recordLedgerEntry(
       GoalRunnerLedgerContext(
         workflowId = saved.parentWorkflowId,

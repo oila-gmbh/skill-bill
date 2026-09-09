@@ -7,7 +7,7 @@ import skillbill.goalrunner.model.GoalRunnerLaunchFacts
 import skillbill.goalrunner.model.GoalRunnerLivenessState.IDLE
 import skillbill.goalrunner.model.GoalRunnerLivenessState.PROGRESSING
 import skillbill.goalrunner.model.GoalRunnerLivenessState.WORKING
-import skillbill.goalrunner.model.GoalRunnerRunReport
+import skillbill.goalrunner.model.GoalRunnerProcessState.CONFIRMED_ALIVEimport skillbill.goalrunner.model.GoalRunnerRunReport
 import skillbill.goalrunner.model.GoalRunnerStopReason
 import skillbill.goalrunner.model.GoalRunnerStoredOutcome
 import skillbill.goalrunner.model.GoalRunnerTerminalStatus
@@ -21,6 +21,8 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertTrue
+import skillbill.goalrunner.model.GoalRunnerProcessState.IDLE as PROCESS_IDLE
+import skillbill.goalrunner.model.GoalRunnerProcessState.PROGRESSING as PROCESS_PROGRESSING
 
 class GoalRunnerLedgerTest {
   @Test
@@ -343,6 +345,5 @@ class GoalRunnerLedgerTest {
     issueKey = "SKILL-56",
     repoRoot = Path.of("/tmp/skillbill-goal-runner"),
     invokedAgentId = "claude",
-    dbPathOverride = "/tmp/skillbill-goal-runner/metrics.db",
   )
 }

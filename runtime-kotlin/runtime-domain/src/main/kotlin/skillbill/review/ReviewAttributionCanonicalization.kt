@@ -4,6 +4,7 @@ import skillbill.review.model.CanonicalAttribution
 import skillbill.review.model.CanonicalScope
 import skillbill.review.model.ImportedReview
 import skillbill.review.model.ReviewAttributionResolutionError
+import skillbill.review.model.ReviewExecutionMode
 
 const val UNRESOLVED_ATTRIBUTION: String = "unresolved"
 
@@ -88,10 +89,14 @@ fun resolveCanonicalScope(rawValue: String?): CanonicalAttribution {
 
 // execution_mode is derived, never defaulted: an explicit reported value wins, otherwise the run's
 // own specialist-review evidence proves delegation, otherwise the value is explicitly unresolved.
-fun resolveExecutionMode(reportedExecutionMode: String?, specialistReviews: List<String>): String =
-  reportedExecutionMode?.trim()?.takeIf(String::isNotEmpty)
-    ?: if (specialistReviews.isNotEmpty()) EXECUTION_MODE_DELEGATED else UNRESOLVED_ATTRIBUTION
-
+fun resolveExecutionMode(
+  reportedExecutionMode: ReviewExecutionMode?,
+  specialistReviews: List<String>,
+): ReviewExecutionMode = reportedExecutionMode ?: if (specialistReviews.isNotEmpty()) {
+  ReviewExecutionMode.DELEGATED
+} else {
+  ReviewExecutionMode.UNRESOLVED
+}
 fun ImportedReview.withCanonicalAttribution(
   knownPackSkillNames: Set<String>,
   knownPlatformSlugs: Set<String>,
@@ -128,7 +133,11 @@ private val scopeMatchRules: List<ScopeMatchRule> = listOf(
     exact = setOf("worktree"),
     contains = setOf("unstaged", "working-tree", "working-dir"),
   ),
-  ScopeMatchRule(scope = CanonicalScope.STAGED, exact = setOf("index"), contains = setOf("staged")),
+  ScopeMatchRule(
+    scope = CanonicalScope.STAGED,
+    exact = setOf("index"),
+    contains = setOf(CanonicalScope.STAGED.wireValue),
+  ),
   // "pr-diff" is the governed pull-request label emitted by code-review-shell.yaml.
   ScopeMatchRule(
     scope = CanonicalScope.PULL_REQUEST,
@@ -142,7 +151,11 @@ private val scopeMatchRules: List<ScopeMatchRule> = listOf(
     containsAll = setOf("commit", "range"),
   ),
   // Positive other-scope rule: a recognized scope kind that is deliberately none of the four above.
-  ScopeMatchRule(scope = CanonicalScope.OTHER, exact = setOf("other", "file", "files"), contains = setOf("repo")),
+  ScopeMatchRule(
+    scope = CanonicalScope.OTHER,
+    exact = setOf(CanonicalScope.OTHER.wireValue, "file", "files"),
+    contains = setOf("repo"),
+  ),
 )
 
 private fun matchCanonicalScope(slug: String): CanonicalScope? =

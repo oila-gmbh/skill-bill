@@ -7,7 +7,6 @@ data class GoalRunnerOperatorDecisionRequest(
   val issueKey: String,
   val subtaskId: Int,
   val decision: GoalSubtaskOperatorDecision,
-  val dbPathOverride: String? = null,
   val repoRoot: Path? = null,
 ) {
   init {

@@ -109,7 +109,7 @@ private fun DefaultGoalPlanningSweep.loadSharedPreplanAfterRefresh(
   first: RefreshedSharedPreplan,
 ): SharedPreplanAfterRefresh {
   val afterRefresh = runCatching {
-    checkpoint.findSharedPreplan(args.identity, args.request.dbPathOverride)
+    checkpoint.findSharedPreplan(args.identity)
   }.getOrElse { error ->
     return SharedPreplanAfterRefresh.Halt(
       preSweepStopped(
@@ -198,7 +198,7 @@ internal fun DefaultGoalPlanningSweep.refreshStaleSharedPreplan(
   if (args.refreshedThisPrepare) {
     return@runCatching RefreshedSharedPreplan(existing.provenance, existing)
   }
-  refuseRefreshReason(shared.issueKey, refreshLiveness.resolve(state, shared.dbPathOverride))?.let { reason ->
+  refuseRefreshReason(shared.issueKey, refreshLiveness.resolve(state))?.let { reason ->
     throw RefreshRefused(reason)
   }
   val refreshShared = shared.copy(planningPacket = freshPlanningPacket(shared, state))
@@ -213,7 +213,6 @@ internal fun DefaultGoalPlanningSweep.refreshStaleSharedPreplan(
       identity = existing.identity,
       expectedPayloadSha256 = existing.payloadSha256,
       provenance = currentProvenance,
-      dbOverride = shared.dbPathOverride,
     )
     val advanced = existing.copy(provenance = currentProvenance)
     RefreshedSharedPreplan(currentProvenance, advanced)
@@ -221,7 +220,6 @@ internal fun DefaultGoalPlanningSweep.refreshStaleSharedPreplan(
     val cascadeIds = cascadeEligiblePlanSubtaskIds(
       plannedIds = checkpoint.sharedPreplanRefresh.listPreparedPlanSubtaskIds(
         state.parentWorkflowId,
-        shared.dbPathOverride,
       ),
       subtasks = state.manifest.subtasks,
     )
@@ -229,7 +227,6 @@ internal fun DefaultGoalPlanningSweep.refreshStaleSharedPreplan(
       checkpoint = produced,
       expectedPayloadSha256 = existing.payloadSha256,
       cascadePlanSubtaskIds = cascadeIds,
-      dbOverride = shared.dbPathOverride,
     )
     RefreshedSharedPreplan(currentProvenance, replaced)
   }

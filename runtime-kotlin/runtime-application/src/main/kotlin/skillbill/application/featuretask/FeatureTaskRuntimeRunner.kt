@@ -16,8 +16,7 @@ class FeatureTaskRuntimeRunner(
   val runLoopCollaborators: FeatureTaskRuntimeRunLoopCollaborators,
 ) {
   fun run(request: FeatureTaskRuntimeRunRequest): FeatureTaskRuntimeRunReport {
-    val reconciliation = dependencies.crashReconciler.reconcile(request.dbPathOverride)
-    return when (val preparation = prepareRun(request)) {
+    val reconciliation = crashReconciler.reconcile()    return when (val preparation = prepareRun(request)) {
       is FeatureTaskRuntimePreparation.PreparationBlocked -> preparation.report
       is FeatureTaskRuntimePreparation.Prepared -> executePreparedRun(preparation.request, reconciliation)
     }
@@ -32,8 +31,7 @@ class FeatureTaskRuntimeRunner(
       ).prepare(request)
 
   private fun foreignModeWorkflowBlock(request: FeatureTaskRuntimeRunRequest): FeatureTaskRuntimeRunReport.Blocked? {
-    val existingMode = dependencies.recorder.existingWorkflowMode(request.workflowId, request.dbPathOverride)
-    if (existingMode == null || existingMode == FeatureTaskWorkflowMode.RUNTIME) {
+    val existingMode = recorder.existingWorkflowMode(request.workflowId)    if (existingMode == null || existingMode == FeatureTaskWorkflowMode.RUNTIME) {
       return null
     }
     return FeatureTaskRuntimeRunReport.Blocked(

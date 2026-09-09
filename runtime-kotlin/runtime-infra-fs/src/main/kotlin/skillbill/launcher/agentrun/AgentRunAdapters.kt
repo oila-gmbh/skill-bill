@@ -274,11 +274,12 @@ internal const val RAW_OUTPUT_PREVIEW_MAX_CHARS = 2_000
 fun headlessAgentRunAdapters(
   processRunner: AgentRunProcessRunner,
   executableLookup: ExecutableLookup = PathExecutableLookup(),
+  databasePath: Path? = null,
 ): Map<InstallAgent, AgentRunAdapter> = listOf(
-  ClaudeAgentRunCommandBuilder(),
-  CodexAgentRunCommandBuilder(),
-  JunieAgentRunCommandBuilder(),
-  CursorAgentRunCommandBuilder(),
+  ClaudeAgentRunCommandBuilder(databasePath = databasePath),
+  CodexAgentRunCommandBuilder(databasePath = databasePath),
+  JunieAgentRunCommandBuilder(databasePath = databasePath),
+  CursorAgentRunCommandBuilder(databasePath = databasePath),
 ).associate { builder ->
   builder.agent to ProcessAgentRunAdapter(
     agent = builder.agent,

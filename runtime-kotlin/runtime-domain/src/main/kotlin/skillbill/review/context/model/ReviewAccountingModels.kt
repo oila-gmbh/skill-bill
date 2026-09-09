@@ -96,16 +96,28 @@ data class ReviewIntegrationAccounting(
   val counters: ReviewAccountingCounters = ReviewAccountingCounters(),
   val skipReason: String? = null,
 ) {
-  init {
+  constructor(
+    commitSequenceDigest: String,
+    terminalOutcome: String,
+    summarizedLaneCount: Int,
+    findingCount: Int,
+    counters: ReviewAccountingCounters = ReviewAccountingCounters(),
+    skipReason: String? = null,
+  ) : this(
+    commitSequenceDigest,
+    requireNotNull(ReviewIntegrationTerminalOutcome.fromWire(terminalOutcome)) {
+      "Unknown integration outcome '$terminalOutcome'."
+    },
+    summarizedLaneCount,
+    findingCount,
+    counters,
+    skipReason,
+  )  init {
     require(commitSequenceDigest.isNotBlank() && terminalOutcome.isNotBlank())
     require(summarizedLaneCount >= 0 && findingCount >= 0)
     if (terminalOutcome == SKIPPED_NOT_APPLICABLE) {
       require(!skipReason.isNullOrBlank()) { "A skipped integration pass must record why." }
     }
-  }
-
-  companion object {
-    const val SKIPPED_NOT_APPLICABLE: String = "skipped_not_applicable"
   }
 }
 

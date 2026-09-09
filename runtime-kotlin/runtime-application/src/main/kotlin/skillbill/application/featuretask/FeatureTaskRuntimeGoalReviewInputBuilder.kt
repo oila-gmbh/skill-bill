@@ -29,19 +29,17 @@ import kotlin.coroutines.cancellation.CancellationException
 class FeatureTaskRuntimeGoalReviewInputBuilder(
   internal val database: DatabaseSessionFactory,
   private val patcher: FeatureTaskRuntimeGoalContinuationArtifactPatcher,
-  private val persistGoalReviewInput: (String, GoalSubtaskReviewInput, String?) -> GoalSubtaskReviewState?,
+  private val persistGoalReviewInput: (String, GoalSubtaskReviewInput) -> GoalSubtaskReviewState?,
 ) {
   fun loadGoalReviewDurable(
     workflowId: String,
-    scope: FeatureTaskRuntimeGoalContinuationRecorder.GoalReviewInputScope,
-  ): Pair<GoalSubtaskReviewState, FeatureTaskRuntimeGoalContinuationArtifact>? =
-    database.read(scope.dbOverride) { unitOfWork ->
-      val record = WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, workflowId) ?: return@read null
-      val artifacts = decodeArtifacts(record.artifactsJson)
-      val state = reviewStateFromArtifacts(artifacts) ?: return@read null
-      val continuation = continuationFromArtifacts(artifacts) ?: return@read null
-      state to continuation
-    }
+  ): Pair<GoalSubtaskReviewState, FeatureTaskRuntimeGoalContinuationArtifact>? = database.read { unitOfWork ->
+    val record = WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, workflowId) ?: return@read null
+    val artifacts = decodeArtifacts(record.artifactsJson)
+    val state = reviewStateFromArtifacts(artifacts) ?: return@read null
+    val continuation = continuationFromArtifacts(artifacts) ?: return@read null
+    state to continuation
+  }
 
   fun buildGoalReviewInput(
     workflowId: String,
@@ -49,19 +47,7 @@ class FeatureTaskRuntimeGoalReviewInputBuilder(
     repoRoot: Path,
     scope: FeatureTaskRuntimeGoalContinuationRecorder.GoalReviewInputScope,
   ): GoalSubtaskReviewInputPreparation {
-    val durable = loadGoalReviewDurableOrThrow(workflowId, scope)
-      ?: return GoalSubtaskReviewInputPreparation.MissingState
-    return buildGoalReviewInputFromDurable(workflowId, gitOperations, repoRoot, scope, durable)
-  }
-
-  private fun buildGoalReviewInputFromDurable(
-    workflowId: String,
-    gitOperations: WorkflowGitOperations,
-    repoRoot: Path,
-    scope: FeatureTaskRuntimeGoalContinuationRecorder.GoalReviewInputScope,
-    durable: Pair<GoalSubtaskReviewState, FeatureTaskRuntimeGoalContinuationArtifact>,
-  ): GoalSubtaskReviewInputPreparation {
-    val (state, continuation) = durable
+    val durable = loadGoalReviewDurable(workflowId) ?: return GoalSubtaskReviewInputPreparation.MissingState    val (state, continuation) = durable
     val activeParentSha = activeSubtaskCheckpointParentOrThrow(workflowId, continuation, scope.dbOverride)
     if (state.completedPassCount == 0 && state.remediationBaseSha == null && activeParentSha == null) {
       return GoalSubtaskReviewInputBlocked(
@@ -88,13 +74,13 @@ class FeatureTaskRuntimeGoalReviewInputBuilder(
           failedBaseSha = selectedBaseline.reviewBaseSha,
           failedField = failedField,
           scope = scope,
-          execution = GoalReviewInputRecoveryExecution(gitOperations, repoRoot, scope.dbOverride),
+          execution = GoalReviewInputRecoveryExecution(gitOperations, repoRoot),
         ),
       )
     }
     val input = goalReviewInputFromBuildResult(result, recovery)
       ?: return goalReviewBlockedPreparation(result, recovery)
-    val persisted = persistGoalReviewInput(workflowId, input, scope.dbOverride)
+    val persisted = persistGoalReviewInput(workflowId, input)
       ?: return GoalSubtaskReviewInputPreparation.MissingState
     return GoalSubtaskReviewInputReady(persisted, input)
   }
@@ -216,7 +202,7 @@ class FeatureTaskRuntimeGoalReviewInputBuilder(
     recoveredBaseline: GoalSubtaskReviewBaseline,
     input: GoalSubtaskReviewInput,
     failureReason: GoalSubtaskReviewInputFailureReason,
-  ): GoalSubtaskReviewState? = database.transaction(request.execution.dbOverride) { unitOfWork ->
+  ): GoalSubtaskReviewState? = database.transaction { unitOfWork ->
     val record = WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, request.workflowId)
       ?: return@transaction null
     val artifacts = decodeArtifacts(record.artifactsJson)
@@ -322,7 +308,6 @@ internal sealed interface GoalReviewInputRecovery {
 internal data class GoalReviewInputRecoveryExecution(
   val gitOperations: WorkflowGitOperations,
   val repoRoot: Path,
-  val dbOverride: String?,
 )
 
 private val recoverableReviewBaseFailures: Set<GoalSubtaskReviewInputFailureReason> = setOf(

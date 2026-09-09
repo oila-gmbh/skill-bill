@@ -32,8 +32,10 @@ object DatabaseRuntime {
     userHome: Path = Paths.get(System.getProperty("user.home")),
   ): OpenDatabase {
     val dbPath = resolveDbPath(cliValue = cliValue, environment = environment, userHome = userHome)
-    return OpenDatabase(connection = ensureDatabase(dbPath), dbPath = dbPath)
+    return openDbAt(dbPath)
   }
+
+  fun openDbAt(dbPath: Path): OpenDatabase = OpenDatabase(connection = ensureDatabase(dbPath), dbPath = dbPath)
 
   fun openReadDb(
     cliValue: String? = null,
@@ -41,8 +43,12 @@ object DatabaseRuntime {
     userHome: Path = Paths.get(System.getProperty("user.home")),
   ): OpenDatabase {
     val dbPath = resolveDbPath(cliValue = cliValue, environment = environment, userHome = userHome)
+    return openReadDbAt(dbPath)
+  }
+
+  fun openReadDbAt(dbPath: Path): OpenDatabase {
     if (!Files.exists(dbPath) || isSchemaless(dbPath)) {
-      return OpenDatabase(connection = ensureDatabase(dbPath), dbPath = dbPath)
+      return openDbAt(dbPath)
     }
     return openReadOnlyDb(dbPath)
   }
@@ -53,6 +59,10 @@ object DatabaseRuntime {
     userHome: Path = Paths.get(System.getProperty("user.home")),
   ): OpenDatabase? {
     val dbPath = resolveDbPath(cliValue = cliValue, environment = environment, userHome = userHome)
+    return openReadDbIfPresentAt(dbPath)
+  }
+
+  fun openReadDbIfPresentAt(dbPath: Path): OpenDatabase? {
     if (!Files.exists(dbPath)) return null
     if (isSchemaless(dbPath)) {
       throw DatabaseAccessError(

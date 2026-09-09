@@ -64,7 +64,6 @@ class FeatureTaskRuntimeDeprecatedRunCommand(
       specPath = runSpecPath,
       workflowId = {
         workflowService.openRuntimeWorkflowId(
-          deps.inputs,
           runIssueKey,
           runSpecPath,
           repoRoot ?: ".",
@@ -94,7 +93,6 @@ class FeatureTaskRuntimeDeprecatedExplicitRunCommand(
       specPath = runSpecPath,
       workflowId = {
         workflowService.openRuntimeWorkflowId(
-          deps.inputs,
           issueKey,
           runSpecPath,
           repoRoot ?: ".",
@@ -115,7 +113,7 @@ class FeatureTaskRuntimeDeprecatedStatusCommand(
 
   override fun run() {
     val projection = statusService.status(
-      FeatureTaskRuntimeStatusRequest(workflowId = workflowId, dbPathOverride = inputs.dbPathOverride),
+      FeatureTaskRuntimeStatusRequest(workflowId = workflowId),
     )
     val payload = projection.toRuntimeStatusCliMap(workflowId)
     state.completeText(runtimeStatusText(payload), payload, exitCode = payload.runtimeStatusExitCode())

@@ -12,6 +12,8 @@ import skillbill.workflow.goal.model.GOAL_SUBTASK_REVIEW_RESULTS_ARTIFACT_KEY
 import skillbill.workflow.goal.model.GOAL_SUBTASK_REVIEW_STATE_ARTIFACT_KEY
 import skillbill.workflow.goal.model.GoalSubtaskReviewArtifactDecoder
 import skillbill.workflow.goal.model.GoalSubtaskReviewState
+import skillbill.workflow.model.WorkflowStepStatus
+import skillbill.workflow.model.workflowStepStatus
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_RECORDS_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_REVIEW_GENERATION_ARTIFACT_KEY
@@ -22,28 +24,25 @@ class FeatureTaskRuntimeReviewGenerationRecorder(
   private val workflowPersistence: FeatureTaskRuntimeWorkflowPersistence,
   private val runtimeOwnedPersistence: RuntimeOwnedPersistenceBoundary,
 ) : FeatureTaskRuntimePhaseReviewGenerationApi {
-  override fun persistReviewGenerationInvalidation(workflowId: String, dbOverride: String?): Int? =
-    database.transaction(dbOverride) { unitOfWork ->
-      persistReviewGenerationInvalidationInTransaction(unitOfWork, workflowId)
-    }
-
-  private fun persistReviewGenerationInvalidationInTransaction(unitOfWork: UnitOfWork, workflowId: String): Int? {
+  override fun persistReviewGenerationInvalidation(workflowId: String): Int? = database.transaction { unitOfWork ->
     val record = WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, workflowId)
-      ?: return null
+      ?: return@transaction null
     val artifacts = decodeArtifacts(record.artifactsJson)
     val storedGeneration = reviewGenerationFrom(artifacts)
     val existingRecords = phaseRecordsFrom(artifacts)
     val previousReview = existingRecords[FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW]
-      ?: return storedGeneration
-    val previousAudit = existingRecords[FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT]
-    if (
-      previousReview.resolvedAgentId == REVIEW_INVALIDATION_AGENT_ID &&
-      previousAudit?.resolvedAgentId == REVIEW_INVALIDATION_AGENT_ID
-    ) {
-      return storedGeneration
-    }
-    val updatedRecords = invalidatedReviewRecords(previousReview, previousAudit, existingRecords)
-    val nextGeneration = storedGeneration + 1
+      ?: return@transaction storedGeneration
+    val tombstone = FeatureTaskRuntimePhaseRecord(
+      phaseId = FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW,
+      status = WorkflowStepStatus.RUNNING,
+      attemptCount = previousReview.attemptCount,
+      startedAt = previousReview.startedAt,
+      firstStartedAt = previousReview.firstStartedAt,
+      resolvedAgentId = REVIEW_INVALIDATION_AGENT_ID,
+    )
+    val updatedRecords = LinkedHashMap(existingRecords).apply {
+      put(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW, tombstone)
+    }    val nextGeneration = storedGeneration + 1
     val patch = linkedMapOf<String, Any?>(
       FEATURE_TASK_RUNTIME_PHASE_RECORDS_ARTIFACT_KEY to
         updatedRecords.mapValues { (_, value) -> value.toArtifactMap() },
@@ -52,7 +51,7 @@ class FeatureTaskRuntimeReviewGenerationRecorder(
     GoalSubtaskReviewArtifactDecoder.decode(artifacts)?.state?.let { state ->
       patch[GOAL_SUBTASK_REVIEW_STATE_ARTIFACT_KEY] = GoalSubtaskReviewState.initial(
         reviewBaseSha = state.reviewBaseSha,
-        codeReviewMode = state.codeReviewMode,
+        baselineUntrackedPaths = state.baselineUntrackedPaths,        codeReviewMode = state.codeReviewMode,
       ).toArtifactMap()
       patch[GOAL_SUBTASK_REVIEW_RESULTS_ARTIFACT_KEY] = emptyMap<String, String>()
       unitOfWork.unaddressedFindings.clearWorkflowLedger(workflowId)
@@ -67,61 +66,29 @@ class FeatureTaskRuntimeReviewGenerationRecorder(
         stepUpdates = stepUpdatesFrom(updatedRecords),
       ),
     )
-    return nextGeneration
+    nextGeneration
   }
-
-  private fun invalidatedReviewRecords(
-    previousReview: FeatureTaskRuntimePhaseRecord,
-    previousAudit: FeatureTaskRuntimePhaseRecord?,
-    existingRecords: Map<String, FeatureTaskRuntimePhaseRecord>,
-  ): Map<String, FeatureTaskRuntimePhaseRecord> {
-    val tombstone = previousReview.copy(
-      status = STATUS_RUNNING,
-      finishedAt = null,
-      outputArtifact = null,
-      repairEvidence = null,
-      resolvedAgentId = REVIEW_INVALIDATION_AGENT_ID,
+  override fun reconcileReviewGeneration(workflowId: String): Int = database.transaction { unitOfWork ->
+    val record = WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, workflowId)
+      ?: return@transaction 0
+    val artifacts = decodeArtifacts(record.artifactsJson)
+    val storedGeneration = reviewGenerationFrom(artifacts)
+    val tombstoned = phaseRecordsFrom(artifacts)[FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW]
+      ?.resolvedAgentId == REVIEW_INVALIDATION_AGENT_ID
+    if (!tombstoned || storedGeneration > 0) return@transaction storedGeneration
+    workflowPersistence.persistPatch(
+      unitOfWork.workflowStates,
+      record,
+      mapOf(FEATURE_TASK_RUNTIME_REVIEW_GENERATION_ARTIFACT_KEY to 1),
     )
-    return LinkedHashMap(existingRecords).apply {
-      put(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW, tombstone)
-      previousAudit?.let { audit ->
-        put(
-          FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT,
-          audit.copy(
-            status = STATUS_RUNNING,
-            finishedAt = null,
-            outputArtifact = null,
-            repairEvidence = null,
-            resolvedAgentId = REVIEW_INVALIDATION_AGENT_ID,
-          ),
-        )
-      }
-    }
+    1
   }
-
-  override fun reconcileReviewGeneration(workflowId: String, dbOverride: String?): Int =
-    database.transaction(dbOverride) { unitOfWork ->
-      val record = WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, workflowId)
-        ?: return@transaction 0
-      val artifacts = decodeArtifacts(record.artifactsJson)
-      val storedGeneration = reviewGenerationFrom(artifacts)
-      val tombstoned = phaseRecordsFrom(artifacts)[FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW]
-        ?.resolvedAgentId == REVIEW_INVALIDATION_AGENT_ID
-      if (!tombstoned || storedGeneration > 0) return@transaction storedGeneration
-      workflowPersistence.persistPatch(
-        unitOfWork.workflowStates,
-        record,
-        mapOf(FEATURE_TASK_RUNTIME_REVIEW_GENERATION_ARTIFACT_KEY to 1),
-      )
-      1
-    }
   override fun invalidateQuarantinedProducerRecord(
     workflowId: String,
     producerPhaseId: String,
     loopId: String,
     edgeIteration: Int,
-    dbOverride: String?,
-  ): Boolean = database.transaction(dbOverride) { unitOfWork ->
+  ): Boolean = database.transaction { unitOfWork ->
     val record = WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, workflowId)
       ?: return@transaction false
     val artifacts = decodeArtifacts(record.artifactsJson)
@@ -155,19 +122,18 @@ class FeatureTaskRuntimeReviewGenerationRecorder(
     true
   }
 
-  override fun recordedFindingVerdicts(output: Map<String, Any?>, dbOverride: String?): List<ReviewFindingVerdict> {
+  override fun recordedFindingVerdicts(output: Map<String, Any?>): List<ReviewFindingVerdict> {
     val reviewRunId = GoalSubtaskReviewSummaryReducer.reviewRunIdOf(output) ?: return emptyList()
     return runtimeOwnedPersistence.requiredRead(
       seam = "FeatureTaskRuntimePhaseRecorder.recordedFindingVerdicts",
       expected = "runtime-owned finding verdicts",
-      dbOverride = dbOverride,
     ) { unitOfWork ->
       unitOfWork.reviews.fetchFindingVerdicts(reviewRunId)
     }
   }
 
-  override fun fetchUnaddressedLedger(workflowId: String, dbOverride: String?): List<UnaddressedFinding> =
-    database.transaction(dbOverride) { unitOfWork ->
+  override fun fetchUnaddressedLedger(workflowId: String): List<UnaddressedFinding> =
+    database.transaction { unitOfWork ->
       unitOfWork.unaddressedFindings.fetchWorkflowLedger(workflowId)
     }
 
@@ -175,10 +141,9 @@ class FeatureTaskRuntimeReviewGenerationRecorder(
     workflowId: String,
     passNumber: Int,
     rejected: List<UnaddressedFinding>,
-    dbOverride: String?,
   ) {
     if (rejected.isEmpty()) return
-    database.transaction(dbOverride) { unitOfWork ->
+    database.transaction { unitOfWork ->
       val existing = unitOfWork.unaddressedFindings.fetchWorkflowLedger(workflowId)
       val rejectedById = rejected.mapNotNull { finding ->
         finding.findingId?.let { id -> id to finding }

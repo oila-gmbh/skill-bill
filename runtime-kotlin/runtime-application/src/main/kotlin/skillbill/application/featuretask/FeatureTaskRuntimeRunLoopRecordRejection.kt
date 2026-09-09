@@ -141,4 +141,222 @@ class FeatureTaskRuntimeRunLoopRecordRejection {
       .forEach { value -> text = text.replace(value, "[response value omitted]") }
     return text.trim().takeUnless { it.isBlank() }
   }
-}
+
+  fun responseStringValues(runLoop: FeatureTaskRuntimeRunLoop, value: Any?): List<String> {
+    val values = mutableListOf<String>()
+    collectResponseStringValues(runLoop, value, values)
+    return values.distinct()
+  }
+
+  fun collectResponseStringValues(runLoop: FeatureTaskRuntimeRunLoop, value: Any?, values: MutableList<String>) {
+    when (value) {
+      is String -> values += value
+      is Map<*, *> -> value.values.forEach { nested -> collectResponseStringValues(runLoop, nested, values) }
+      is Iterable<*> -> value.forEach { nested -> collectResponseStringValues(runLoop, nested, values) }
+    }
+  }
+
+  internal fun attemptOnce(runLoop: FeatureTaskRuntimeRunLoop, args: RecordRejectionAttemptArgs): AttemptResult {
+    val run = args.context.run
+    val state = args.context.state
+    val iteration = args.context.iteration
+    val observability = args.context.observability
+    val priorCorrection = args.priorCorrection
+    val phaseTokenAccumulator = args.phaseTokenAccumulator
+    FeatureTaskRuntimeRunLoopOutputPersistence.persistPhase(
+      runLoop,
+      PersistPhaseArgs(
+        write = PhaseStateWriteArgs(
+          run = run,
+          iteration = iteration,
+          status = STATUS_RUNNING,
+          finished = false,
+          outputArtifact = runLoop.state.outputFor(run.phaseId)?.payload,
+        ),
+        launched = FeatureTaskRuntimeRunLoopOutputPersistence.launchedModelDirective(run),
+      ),
+    )
+    val launch = FeatureTaskRuntimeRunLoopLaunch.launchAndCapture(
+      runLoop,
+      run,
+      runLoop.state,
+      priorCorrection,
+      runLoop.phaseTokenAccumulator,
+    )
+    return settleRecordRejectionLaunchOutcome(runLoop, args, launch)
+  }
+
+  internal fun recordUnattributableRejectedEvidence(
+    runLoop: FeatureTaskRuntimeRunLoop,
+    run: PhaseRun,
+    state: FeatureTaskRuntimeRunState,
+    rejection: RecordRejection,
+  ) {
+    val detail = payloadFreeRejectionReason(
+      "reconciliation-${rejection.rejectionClass}",
+      rejectionPath(rejection.rejectionDetail),
+    )
+    val rejectedOutput = run.declaration.projectionDeclarations
+      .asSequence()
+      .map { it.producerIteration.phaseId }
+      .distinct()
+      .mapNotNull { phaseId -> state.outputFor(phaseId) }
+      .firstOrNull()
+    val evidence = rejectedOutput?.let { output ->
+      unattributableProducerEvidence(runLoop, state, output)
+    }
+    evidence?.let { writeUnattributableRejectedEvidence(runLoop, run, rejection, detail, it) }
+  }
+
+  private fun unattributableProducerEvidence(
+    runLoop: FeatureTaskRuntimeRunLoop,
+    state: FeatureTaskRuntimeRunState,
+    output: FeatureTaskRuntimePhaseOutput,
+  ): ProducerOutputEvidence? {
+    val agentId = state.recordFor(output.phaseId)?.resolvedAgentId ?: return null
+    return when (
+      val read = runLoop.recorder.producerOutput(
+        ProducerOutputQueryArgs(
+          workflowId = runLoop.request.workflowId,
+          phaseId = output.phaseId,
+          attempt = output.iteration.coerceAtLeast(1),
+          agentId = agentId,
+          generation = state.evidenceGeneration(output.phaseId),
+        ),
+      )
+    ) {
+      is FeatureTaskRuntimeProducerOutputRead.Found -> read.evidence
+      is FeatureTaskRuntimeProducerOutputRead.Absent,
+      is FeatureTaskRuntimeProducerOutputRead.Unreadable,
+      -> null
+    }
+  }
+
+  private fun writeUnattributableRejectedEvidence(
+    runLoop: FeatureTaskRuntimeRunLoop,
+    run: PhaseRun,
+    rejection: RecordRejection,
+    detail: String,
+    evidence: ProducerOutputEvidence,
+  ) {
+    val payload = evidence.payload ?: byteArrayOf()
+    FeatureTaskRuntimeRunLoopAttemptSettlement.recordRejectedOutput(
+      runLoop,
+      RecordRejectedOutputArgs(
+        run = run,
+        iteration = evidence.attempt,
+        rule = "reconciliation-${rejection.rejectionClass}",
+        reason = retryRejectionReason(detail, rejection.rejectionDetail),
+        captured = CapturedPhaseOutput(
+          text = payload.decodeToString(),
+          bytes = payload,
+          truncated = evidence.payload == null,
+          byteSize = evidence.byteSize,
+          sha256 = evidence.sha256,
+        ),
+        targeting = FeatureTaskRuntimeRunLoopAttemptSettlement.rejectedOutputTargeting(
+          defaultRejectedOutputTargetingArgs(
+            run,
+            RejectedOutputTargetingOverrides(
+              phaseId = evidence.phaseId,
+              agentId = evidence.agentId,
+              model = evidence.model,
+              path = rejectionPath(rejection.rejectionDetail),
+              repairTurn = evidence.repairTurn,
+            ),
+          ),
+        ),
+      ),
+    )
+  }
+
+  internal fun unattributableRecordRejectionReason(
+    consumerPhaseId: String,
+    rejection: RecordRejection,
+    producer: String?,
+    detail: String,
+  ): String = if (producer == null) {
+    "Feature-task-runtime phase '$consumerPhaseId' rejected an upstream durable record " +
+      "(${rejection.rejectionClass}) it cannot attribute to a producing phase, so no regeneration edge " +
+      "applies; the run blocks durably. Recover the record out of band by deleting or migrating the " +
+      "offending row. Detail: $detail"
+  } else {
+    "Feature-task-runtime phase '$consumerPhaseId' rejected the durable record produced by '$producer', but " +
+      "'$producer' is absent from this run's resolved pipeline (a goal-continuation truncation dropped it), " +
+      "so it cannot be regenerated in-band; the run blocks durably. Recover the record out of band by " +
+      "deleting or migrating the offending row. Detail: $detail"
+  }
+
+  internal fun settleRecordRejectionLaunchOutcome(
+    runLoop: FeatureTaskRuntimeRunLoop,
+    args: RecordRejectionAttemptArgs,
+    launch: LaunchResult,
+  ): AttemptResult {
+    val run = args.context.run
+    val state = args.context.state
+    val iteration = args.context.iteration
+    val observability = args.context.observability
+    launch.providerLimitReason?.let { reason ->
+      return AttemptResult.settled(
+        FeatureTaskRuntimeRunLoopPhaseAttempts.pauseAndPersistInPhase(
+          runLoop,
+          PauseAndPersistInPhaseArgs(run, iteration, reason, runLoop.observability, launch.fileManifest),
+        ),
+      )
+    }
+    launch.infraFailureReason?.let { reason ->
+      FeatureTaskRuntimeRunLoopAttemptSettlement.persistChildProcessFailureOutput(
+        runLoop,
+        run,
+        iteration,
+        reason,
+        launch.infraFailureChildOutput,
+      )
+      return AttemptResult.settled(
+        FeatureTaskRuntimeRunLoopPhaseAttempts.blockAndPersistInPhase(
+          runLoop,
+          phaseBlockArgs(
+            run,
+            iteration,
+            reason,
+            runLoop.observability,
+            payload = BlockAndPersistPayload(
+              childNeverLaunched = launch.childNeverLaunched,
+              fileManifest = launch.fileManifest,
+            ),
+          ).withDisposition(launch.failureDisposition),
+        ),
+      )
+    }
+    launch.recordRejection?.let { rejection ->
+      return AttemptResult.settled(
+        FeatureTaskRuntimeRunLoopPhaseAttempts.settleRecordRejection(
+          runLoop,
+          SettleRecordRejectionArgs(run, runLoop.state, iteration, runLoop.observability, rejection),
+        ),
+      )
+    }
+    val fileManifest = requireNotNull(launch.fileManifest)
+    return FeatureTaskRuntimeRunLoopAttemptSettlement.gateOutput(
+      runLoop,
+      GateOutputArgs(
+        run = run,
+        iteration = iteration,
+        captured = requireNotNull(launch.capturedPhaseOutput),
+        observability = runLoop.observability,
+        fileManifest = fileManifest,
+      ),
+    )
+  }
+
+  fun scrubOffVocabularyVerdictQuote(text: String): String {
+    val start = text.indexOf(OFF_VOCABULARY_VERDICT_OPEN, ignoreCase = true)
+    if (start < 0) return text
+    val afterOpenQuote = start + OFF_VOCABULARY_VERDICT_OPEN.length
+    val closeAt = text.lastIndexOf(OFF_VOCABULARY_VERDICT_CLOSE_BOUNDARY)
+    return if (closeAt >= afterOpenQuote) {
+      text.substring(0, start) + "off-vocabulary verdict" + text.substring(closeAt + 1)
+    } else {
+      text.substring(0, start) + "off-vocabulary verdict"
+    }
+  }}

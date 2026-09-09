@@ -19,7 +19,7 @@ class GoalOperatorDecisionService(
     when (val resolved = resolveChildWorkflow(request)) {
       is ResolvedChildWorkflow.Rejected -> return resolved.result
       is ResolvedChildWorkflow.Ok -> {
-        val auditGapPause = recorder.loadAuditGapPause(resolved.childWorkflowId, request.dbPathOverride)
+        val auditGapPause = recorder.loadAuditGapPause(resolved.childWorkflowId)
         return if (auditGapPause != null) {
           recordAuditGapPauseDecision(request, resolved.parentWorkflowId, resolved.childWorkflowId, auditGapPause)
         } else {
@@ -34,7 +34,7 @@ class GoalOperatorDecisionService(
   }
 
   private fun resolveChildWorkflow(request: GoalRunnerOperatorDecisionRequest): ResolvedChildWorkflow {
-    val loaded = manifestStore.loadByIssueKey(request.issueKey, request.dbPathOverride, request.repoRoot)
+    val loaded = manifestStore.loadByIssueKey(request.issueKey, request.repoRoot)
     val subtask = loaded?.manifest?.subtasks?.firstOrNull { it.id == request.subtaskId }
     val workflowId = subtask?.workflowId?.takeIf(String::isNotBlank)
     val rejectReason = when {
@@ -73,7 +73,6 @@ class GoalOperatorDecisionService(
         recorder.persistAuditGapPause(
           childWorkflowId,
           pause.copy(operatorDecision = AUDIT_GAP_PAUSE_DECISION_RETRY_FIX),
-          request.dbPathOverride,
         )
         recordedResult(request, parentWorkflowId, childWorkflowId)
       }
@@ -81,7 +80,6 @@ class GoalOperatorDecisionService(
         recorder.persistAuditGapPause(
           childWorkflowId,
           pause.copy(operatorDecision = AUDIT_GAP_PAUSE_DECISION_ABANDON_SUBTASK),
-          request.dbPathOverride,
         )
         recordedResult(request, parentWorkflowId, childWorkflowId)
       }

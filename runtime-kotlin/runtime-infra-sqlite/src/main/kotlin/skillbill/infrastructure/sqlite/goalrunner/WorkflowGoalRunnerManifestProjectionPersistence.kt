@@ -26,8 +26,8 @@ internal class WorkflowGoalRunnerManifestProjectionPersistence(
   private val parentProjection: GoalParentProjectionWriter,
   private val decompositionManifestValidator: DecompositionManifestValidator,
 ) {
-  fun save(state: GoalRunnerManifestState, dbPathOverride: String?): SavedManifestProjection =
-    database.transaction(dbPathOverride) { unitOfWork -> saveInTransaction(unitOfWork, state) }
+  fun save(state: GoalRunnerManifestState): SavedManifestProjection =
+    database.transaction { unitOfWork -> saveInTransaction(unitOfWork, state) }
 
   fun saveInTransaction(
     unitOfWork: UnitOfWork,

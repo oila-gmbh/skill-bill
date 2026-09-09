@@ -6,6 +6,8 @@ import skillbill.application.workflow.model.WorkflowFamily
 import skillbill.contracts.JsonSupport
 import skillbill.ports.db.DatabaseSessionFactory
 import skillbill.workflow.goal.model.appendBoundedHistoryBySequence
+import skillbill.workflow.model.WorkflowStepStatus
+import skillbill.workflow.model.workflowStepStatus
 import skillbill.workflow.taskruntime.FeatureTaskRuntimeImplementationAttemptValidator
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_FINDING_VERIFICATION_BOUNDARY_SELECTION_ARTIFACT_KEY
@@ -35,8 +37,8 @@ class FeatureTaskRuntimePhaseStateRecorder(
   val implementationAttemptValidator: FeatureTaskRuntimeImplementationAttemptValidator,
   val clock: Clock,
 ) : FeatureTaskRuntimePhaseStateApi {
-  override fun recordPhaseState(request: FeatureTaskRuntimePhaseStateRequest, dbOverride: String?): Boolean =
-    database.transaction(dbOverride) { unitOfWork ->
+  override fun recordPhaseState(request: FeatureTaskRuntimePhaseStateRequest): Boolean =
+    database.transaction { unitOfWork ->
       val record = WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, request.workflowId)
         ?: return@transaction false
       val artifacts = decodeArtifacts(record.artifactsJson)
@@ -63,73 +65,65 @@ class FeatureTaskRuntimePhaseStateRecorder(
       true
     }
 
-  override fun recordCompletedPhase(request: FeatureTaskRuntimePhaseStateRequest, dbOverride: String?): Boolean {
-    require(request.status == "completed" && request.finished)
-    return recordCompletedPhaseWrite(request, dbOverride)
-  }
+  override fun recordCompletedPhase(request: FeatureTaskRuntimePhaseStateRequest): Boolean {
+    require(request.status.workflowStepStatus() == WorkflowStepStatus.COMPLETED && request.finished)
+    return recordCompletedPhaseWrite(request)  }
 
-  override fun recordIncompleteImplementationAttempt(
-    request: FeatureTaskRuntimePhaseStateRequest,
-    dbOverride: String?,
-  ): Boolean = database.transaction(dbOverride) { unitOfWork ->
-    val record = WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, request.workflowId)
-      ?: return@transaction false
-    val patch = implementationAttemptPatch(
-      decodeArtifacts(record.artifactsJson),
-      request,
-      FeatureTaskRuntimeImplementationAttemptStatus.INCOMPLETE,
-    )
-    if (patch.isEmpty()) return@transaction false
-    workflowPersistence.persistPatch(unitOfWork.workflowStates, record, patch)
-    true
-  }
-  override fun loadImplementationAttempts(
-    workflowId: String,
-    dbOverride: String?,
-  ): List<FeatureTaskRuntimeImplementationAttempt>? = database.read(dbOverride) { unitOfWork ->
-    val record = WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, workflowId)
-      ?: return@read null
-    implementationAttemptsFrom(decodeArtifacts(record.artifactsJson))
-  }
+  override fun recordIncompleteImplementationAttempt(request: FeatureTaskRuntimePhaseStateRequest): Boolean =
+    database.transaction { unitOfWork ->
+      val record = WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, request.workflowId)
+        ?: return@transaction false
+      val patch = implementationAttemptPatch(
+        decodeArtifacts(record.artifactsJson),
+        request,
+        FeatureTaskRuntimeImplementationAttemptStatus.INCOMPLETE,
+      )
+      if (patch.isEmpty()) return@transaction false
+      workflowPersistence.persistPatch(unitOfWork.workflowStates, record, patch)
+      true
+    }
+  override fun loadImplementationAttempts(workflowId: String): List<FeatureTaskRuntimeImplementationAttempt>? =
+    database.read { unitOfWork ->
+      val record = WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, workflowId)
+        ?: return@read null
+      implementationAttemptsFrom(decodeArtifacts(record.artifactsJson))
+    }
 
-  override fun clearBackwardEdgeContext(
-    workflowId: String,
-    phaseIds: Collection<String>,
-    dbOverride: String?,
-  ): Boolean = database.transaction(dbOverride) { unitOfWork ->
-    val record = WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, workflowId)
-      ?: return@transaction false
-    val existingRecords = phaseRecordsFrom(decodeArtifacts(record.artifactsJson))
-    val cleared = LinkedHashMap(existingRecords)
-    phaseIds.forEach { phaseId ->
-      val previous = existingRecords[phaseId] ?: return@forEach
-      if (previous.loopId == null && previous.edgeIteration == null) {
-        return@forEach
+  override fun clearBackwardEdgeContext(workflowId: String, phaseIds: Collection<String>): Boolean =
+    database.transaction { unitOfWork ->
+      val record = WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, workflowId)
+        ?: return@transaction false
+      val existingRecords = phaseRecordsFrom(decodeArtifacts(record.artifactsJson))
+      val cleared = LinkedHashMap(existingRecords)
+      phaseIds.forEach { phaseId ->
+        val previous = existingRecords[phaseId] ?: return@forEach
+        if (previous.loopId == null && previous.edgeIteration == null) {
+          return@forEach
+        }
+        cleared[phaseId] = previous.copy(loopId = null, edgeIteration = null)
       }
-      cleared[phaseId] = previous.copy(loopId = null, edgeIteration = null)
+      if (cleared == existingRecords) {
+        return@transaction true
+      }
+      workflowPersistence.persistPatch(
+        unitOfWork.workflowStates,
+        record,
+        mapOf(
+          FEATURE_TASK_RUNTIME_PHASE_RECORDS_ARTIFACT_KEY to
+            cleared.mapValues { (_, value) -> value.toArtifactMap() },
+        ),
+      )
+      true
     }
-    if (cleared == existingRecords) {
-      return@transaction true
-    }
-    workflowPersistence.persistPatch(
-      unitOfWork.workflowStates,
-      record,
-      mapOf(
-        FEATURE_TASK_RUNTIME_PHASE_RECORDS_ARTIFACT_KEY to
-          cleared.mapValues { (_, value) -> value.toArtifactMap() },
-      ),
-    )
-    true
-  }
-  override fun loadPhaseRecords(workflowId: String, dbOverride: String?): Map<String, FeatureTaskRuntimePhaseRecord>? =
-    database.read(dbOverride) { unitOfWork ->
+  override fun loadPhaseRecords(workflowId: String): Map<String, FeatureTaskRuntimePhaseRecord>? =
+    database.read { unitOfWork ->
       val record = WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, workflowId)
         ?: return@read null
       phaseRecordsFrom(decodeArtifacts(record.artifactsJson))
     }
 
-  override fun loadOperatorBlockRetry(workflowId: String, dbOverride: String?): FeatureTaskRuntimeOperatorBlockRetry? =
-    database.read(dbOverride) { unitOfWork ->
+  override fun loadOperatorBlockRetry(workflowId: String): FeatureTaskRuntimeOperatorBlockRetry? =
+    database.read { unitOfWork ->
       val record = WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, workflowId)
         ?: return@read null
       val artifacts = decodeArtifacts(record.artifactsJson)
@@ -146,8 +140,8 @@ class FeatureTaskRuntimePhaseStateRecorder(
       }
       retry.takeUnless { settledAfterRetry }
     }
-  override fun loadPhaseLedger(workflowId: String, dbOverride: String?): List<FeatureTaskRuntimePhaseLedgerEntry>? =
-    database.read(dbOverride) { unitOfWork ->
+  override fun loadPhaseLedger(workflowId: String): List<FeatureTaskRuntimePhaseLedgerEntry>? =
+    database.read { unitOfWork ->
       val record = WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, workflowId)
         ?: return@read null
       phaseLedgerFrom(decodeArtifacts(record.artifactsJson))
@@ -266,11 +260,9 @@ fun FeatureTaskRuntimePhaseStateRecorder.findingVerificationCheckpointPatch(
 
 fun FeatureTaskRuntimePhaseStateRecorder.recordCompletedPhaseWrite(
   request: FeatureTaskRuntimePhaseStateRequest,
-  dbOverride: String?,
 ): Boolean = runtimeOwnedPersistence.requiredWrite(
   seam = "FeatureTaskRuntimePhaseRecorder.recordCompletedPhase",
   expected = "runtime-owned completed phase state",
-  dbOverride = dbOverride,
 ) { unitOfWork ->
   val record = WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, request.workflowId)
     ?: return@requiredWrite false

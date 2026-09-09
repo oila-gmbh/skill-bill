@@ -6,7 +6,12 @@ import skillbill.workflow.decomposition.model.CurrentSubtaskIntent
 import skillbill.workflow.decomposition.model.DecompositionExecutionModel
 import skillbill.workflow.decomposition.model.DecompositionManifest
 import skillbill.workflow.decomposition.model.DecompositionSubtask
-import java.nio.file.Path
+import skillbill.workflow.model.DecompositionStatus
+import skillbill.workflow.model.WorkflowStatus
+import skillbill.workflow.model.WorkflowStepStatus
+import skillbill.workflow.model.decompositionStatus
+import skillbill.workflow.model.workflowStatus
+import skillbill.workflow.model.workflowStepStatusimport java.nio.file.Path
 
 // Runtime terminal step is `pr` (FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PR). Keep
 // `pr_description` only so legacy GoalRunner lastResumableStep stamps still decode as terminal.
@@ -61,13 +66,20 @@ fun DecompositionManifest.currentSubtaskIdForUpdate(repoRoot: Path, update: Deco
 fun statusFromUpdate(update: DecompositionManifestRuntimeUpdate): String? {
   val stepUpdates = update.stepUpdates.orEmpty()
   return when {
-    update.workflowStatus == "blocked" || stepUpdates.any { it["status"] == "blocked" } -> "blocked"
-    prSuppressedCommitStatus(update) == "complete" -> "complete"
-    prSuppressedCommitStatus(update) == "blocked" -> "blocked"
-    stepUpdates.any { it["status"] == "skipped" && it["step_id"] in terminalSkippedSteps } -> "skipped"
-    update.workflowStatus == "completed" ||
-      stepUpdates.any { it["status"] == "completed" && it["step_id"] in completionSteps } -> "complete"
-    update.currentStepId in statusTrackedSteps || stepUpdates.any { it["step_id"] in statusTrackedSteps } ->
+    workflowStatus == WorkflowStatus.BLOCKED ||
+      stepUpdates.any { it["status"].workflowStepStatus() == WorkflowStepStatus.BLOCKED } ->
+      DecompositionStatus.BLOCKED.wireValue
+    prSuppressedCommitStatus(update) == DecompositionStatus.COMPLETE -> DecompositionStatus.COMPLETE.wireValue
+    prSuppressedCommitStatus(update) == DecompositionStatus.BLOCKED -> DecompositionStatus.BLOCKED.wireValue
+    stepUpdates.any {
+      it["status"].workflowStepStatus() == WorkflowStepStatus.SKIPPED &&
+        it["step_id"] in terminalSkippedSteps
+    } -> DecompositionStatus.SKIPPED.wireValue
+    workflowStatus == WorkflowStatus.COMPLETED ||
+      stepUpdates.any {
+        it["status"].workflowStepStatus() == WorkflowStepStatus.COMPLETED &&
+          it["step_id"] in completionSteps
+      } -> DecompositionStatus.COMPLETE.wireValue    update.currentStepId in statusTrackedSteps || stepUpdates.any { it["step_id"] in statusTrackedSteps } ->
       "in_progress"
     else -> null
   }
@@ -136,8 +148,10 @@ private fun prSuppressedCommitStatus(update: DecompositionManifestRuntimeUpdate)
     commitPushResult?.get("pre_commit_projection") == true &&
     commitShaFrom(artifacts) == null
   val commitPushCompleted =
-    update.stepUpdates.orEmpty().any { it["step_id"] == "commit_push" && it["status"] == "completed" }
-  return when {
+    update.stepUpdates.orEmpty().any {
+      it["step_id"] == "commit_push" &&
+        it["status"].workflowStepStatus() == WorkflowStepStatus.COMPLETED
+    }  return when {
     !suppressPr -> null
     preCommitProjection -> "complete"
     !commitPushCompleted -> null

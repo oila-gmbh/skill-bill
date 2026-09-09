@@ -42,8 +42,8 @@ class FeatureTaskRuntimeBuildGateProgressStoreIsolationTest {
       gateRuns = listOf(gateRunRecord(outcome = "passed")),
     )
 
-    FeatureTaskRuntimeValidationGateProgressStore(recorder).persist(workflowId, validationProgress, dbOverride = null)
-    FeatureTaskRuntimeBuildGateProgressStore(recorder).persist(workflowId, buildProgress, dbOverride = null)
+    FeatureTaskRuntimeValidationGateProgressStore(recorder).persist(workflowId, validationProgress)
+    FeatureTaskRuntimeBuildGateProgressStore(recorder).persist(workflowId, buildProgress)
 
     val reloadedValidation = assertNotNull(recorder.loadValidationGateProgress(workflowId))
     val reloadedBuild = assertNotNull(recorder.loadBuildGateProgress(workflowId))

@@ -973,7 +973,7 @@ private fun recordFeatureTaskRuntimeLifecycle(context: McpRuntimeContext) {
 }
 
 private fun featureTaskRuntimeStatsPayload(context: McpRuntimeContext): Map<String, Any?> =
-  services(context).reviewService.featureTaskRuntimeStats(dbOverride = null)
+  services(context).reviewService.featureTaskRuntimeStats()
     .toFeatureTaskRuntimeStatsPayload()
     .toPayload()
 

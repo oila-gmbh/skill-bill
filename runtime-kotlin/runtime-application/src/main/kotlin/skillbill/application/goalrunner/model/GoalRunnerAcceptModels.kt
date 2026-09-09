@@ -7,7 +7,6 @@ data class GoalRunnerAcceptRequest(
   val subtaskId: Int,
   val commitSha: String,
   val reason: String,
-  val dbPathOverride: String? = null,
   val repoRoot: Path? = null,
   val restoreAfterHardReset: Boolean = false,
 ) {

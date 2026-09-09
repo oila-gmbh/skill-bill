@@ -16,7 +16,6 @@ data class FeatureTaskRuntimeFinishedTelemetryContext(
   val regenerationTelemetry: () -> FeatureTaskRuntimeRegenerationTelemetry = {
     FeatureTaskRuntimeRegenerationTelemetry()
   },
-  val dbOverride: String?,
   val phaseTokenData: () -> Pair<String?, Int?> = { null to null },
   val crashReconciliation: () -> FeatureTaskRuntimeCrashReconciliationResult = {
     FeatureTaskRuntimeCrashReconciliationResult.NONE

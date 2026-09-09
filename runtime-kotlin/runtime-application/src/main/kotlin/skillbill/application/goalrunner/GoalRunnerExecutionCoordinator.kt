@@ -18,11 +18,11 @@ import java.time.Clock
 import java.time.Duration
 
 interface GoalRunnerExecutionCoordinator {
-  fun <T> runOwned(parentWorkflowId: String, dbPathOverride: String?, block: () -> T): T
+  fun <T> runOwned(parentWorkflowId: String, block: () -> T): T
 
   companion object {
     val NONE: GoalRunnerExecutionCoordinator = object : GoalRunnerExecutionCoordinator {
-      override fun <T> runOwned(parentWorkflowId: String, dbPathOverride: String?, block: () -> T): T = block()
+      override fun <T> runOwned(parentWorkflowId: String, block: () -> T): T = block()
     }
   }
 }
@@ -60,11 +60,11 @@ class DefaultGoalRunnerExecutionCoordinator(
   private val daemonThreadPort: DaemonThreadPort,
   private val identifierGeneratorPort: IdentifierGeneratorPort,
 ) : GoalRunnerExecutionCoordinator {
-  override fun <T> runOwned(parentWorkflowId: String, dbPathOverride: String?, block: () -> T): T {
-    val existing = manifestStore.executionLease(parentWorkflowId, dbPathOverride)
+  override fun <T> runOwned(parentWorkflowId: String, block: () -> T): T {
+    val existing = manifestStore.executionLease(parentWorkflowId)
     val expectedOwnerToken = existing?.let { reclaimableOwnerToken(parentWorkflowId, it) }
     val lease = newLease(existing, supervisor.currentProcess())
-    if (!manifestStore.acquireExecutionLease(parentWorkflowId, lease, expectedOwnerToken, dbPathOverride)) {
+    if (!manifestStore.acquireExecutionLease(parentWorkflowId, lease, expectedOwnerToken)) {
       throw GoalRunnerExecutionAlreadyRunningException(
         parentWorkflowId,
         "another goal runner claimed the execution lease before this run could start",
@@ -78,7 +78,7 @@ class DefaultGoalRunnerExecutionCoordinator(
     val heartbeat = supervisor.startHeartbeat(plan) {
       val now = clock.instant()
       val updated = lease.copy(heartbeatAt = now.toString(), expiresAt = now.plus(LEASE_DURATION).toString())
-      if (manifestStore.heartbeatExecutionLease(parentWorkflowId, updated, dbPathOverride)) {
+      if (manifestStore.heartbeatExecutionLease(parentWorkflowId, updated)) {
         FeatureTaskRuntimeHeartbeatTick.Renewed
       } else {
         FeatureTaskRuntimeHeartbeatTick.FencingLost(
@@ -89,7 +89,7 @@ class DefaultGoalRunnerExecutionCoordinator(
     // Registered only for the span this process owns the lease: a runner killed from outside records
     // why it stopped, so an operator stop is never indistinguishable from a crash.
     val shutdownHookRegistration = shutdownHookPort.register {
-      recordInterruption(parentWorkflowId, dbPathOverride)
+      recordInterruption(parentWorkflowId)
     }
     val result = try {
       block()
@@ -100,7 +100,6 @@ class DefaultGoalRunnerExecutionCoordinator(
         parentWorkflowId,
         lease.ownerToken,
         lease.generation,
-        dbPathOverride,
       )
     }
     // Checked after the block rather than inside the finally so a failing block reports its own cause.
@@ -117,7 +116,7 @@ class DefaultGoalRunnerExecutionCoordinator(
    * makes it idempotent with the stop verb — a stop that killed this process already wrote the more
    * specific `operator_stop`, and the hook leaves it alone.
    */
-  fun recordInterruption(parentWorkflowId: String, dbPathOverride: String?) {
+  fun recordInterruption(parentWorkflowId: String) {
     daemonThreadPort.runWithJoinBudget(
       action = {
         runCatching {
@@ -126,7 +125,6 @@ class DefaultGoalRunnerExecutionCoordinator(
             reason = GOAL_PAUSE_REASON_RUNNER_INTERRUPTED,
             pausedAt = clock.instant().toString(),
             overwriteExistingReason = false,
-            dbPathOverride = dbPathOverride,
           )
         }
       },

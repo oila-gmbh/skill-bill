@@ -38,14 +38,14 @@ class FeatureTaskRuntimeWorkerCoordinator(
   private val supervisor: FeatureTaskRuntimeWorkerSupervisor,
   private val clock: Clock,
 ) {
-  fun <T> runOwned(workflowId: String, dbOverride: String?, block: () -> T): T {
-    val ownership = acquireOrRecover(workflowId, dbOverride)
-    val heartbeats = supervisor.startHeartbeat(heartbeatPlan(workflowId)) { heartbeat(ownership, dbOverride) }
+  fun <T> runOwned(workflowId: String, block: () -> T): T {
+    val ownership = acquireOrRecover(workflowId)
+    val heartbeats = supervisor.startHeartbeat(heartbeatPlan(workflowId)) { heartbeat(ownership) }
     val result = try {
       block()
     } finally {
       heartbeats.stop()
-      database.transaction(dbOverride) {
+      database.transaction {
         it.workflowStates.releaseFeatureTaskRuntimeWorker(workflowId, ownership.ownerToken, ownership.generation)
       }
     }
@@ -62,50 +62,45 @@ class FeatureTaskRuntimeWorkerCoordinator(
     leaseSeconds = LEASE_DURATION.seconds,
   )
 
-  private fun acquireOrRecover(workflowId: String, dbOverride: String?): FeatureTaskRuntimeWorkerOwnership {
-    val existing = database.read(dbOverride) { it.workflowStates.getFeatureTaskRuntimeWorkerOwnership(workflowId) }
-    return if (existing == null) acquireUnowned(workflowId, dbOverride) else recoverOwned(existing, dbOverride)
+  private fun acquireOrRecover(workflowId: String): FeatureTaskRuntimeWorkerOwnership {
+    val existing = database.read { it.workflowStates.getFeatureTaskRuntimeWorkerOwnership(workflowId) }
+    return if (existing == null) acquireUnowned(workflowId) else recoverOwned(existing)
   }
 
-  private fun acquireUnowned(workflowId: String, dbOverride: String?): FeatureTaskRuntimeWorkerOwnership {
+  private fun acquireUnowned(workflowId: String): FeatureTaskRuntimeWorkerOwnership {
     repeat(UNOWNED_ACQUIRE_ATTEMPTS) {
-      when (val claim = claimUnowned(workflowId, dbOverride)) {
+      when (val claim = claimUnowned(workflowId)) {
         is UnownedClaim.Owned -> return claim.ownership
-        is UnownedClaim.Recover -> return recoverOwned(claim.existing, dbOverride)
+        is UnownedClaim.Recover -> return recoverOwned(claim.existing)
         UnownedClaim.Lost -> Unit
       }
     }
     error("Workflow '$workflowId' changed before worker ownership could be acquired.")
   }
 
-  private fun claimUnowned(workflowId: String, dbOverride: String?): UnownedClaim =
-    database.selfManagedWrite(dbOverride) { unitOfWork ->
-      val existing = unitOfWork.workflowStates.getFeatureTaskRuntimeWorkerOwnership(workflowId)
-      if (existing != null) return@selfManagedWrite UnownedClaim.Recover(existing)
-      val row = unitOfWork.workflowStates.getFeatureTaskRuntimeWorkflow(workflowId)
-        ?: throw InvalidWorkflowStateSchemaError("Feature-task runtime worker workflow '$workflowId' is missing.")
-      if (row.workflowStatus in TERMINAL_WORKFLOW_STATUSES) {
-        error(
-          "Cannot acquire worker ownership for terminal workflow '$workflowId' (${row.workflowStatus}).",
-        )
-      }
-      val ownership = newOwnership(
-        workflowId,
-        generation = 1,
-        phaseId = row.currentStepId,
-        phaseAttempt = 1,
-      )
-      if (unitOfWork.workflowStates.acquireFeatureTaskRuntimeWorker(ownership, row.updatedAt)) {
-        UnownedClaim.Owned(ownership)
-      } else {
-        UnownedClaim.Lost
-      }
+  private fun claimUnowned(workflowId: String): UnownedClaim = database.selfManagedWrite { unitOfWork ->
+    val existing = unitOfWork.workflowStates.getFeatureTaskRuntimeWorkerOwnership(workflowId)
+    if (existing != null) return@selfManagedWrite UnownedClaim.Recover(existing)
+    val row = unitOfWork.workflowStates.getFeatureTaskRuntimeWorkflow(workflowId)
+      ?: throw InvalidWorkflowStateSchemaError("Feature-task runtime worker workflow '$workflowId' is missing.")
+    if (row.workflowStatus.workflowStatus() in TERMINAL_WORKFLOW_STATUSES) {
+      error(
+        "Cannot acquire worker ownership for terminal workflow '$workflowId' (${row.workflowStatus}).",      )
     }
+    val ownership = newOwnership(
+      workflowId,
+      generation = 1,
+      phaseId = row.currentStepId,
+      phaseAttempt = 1,
+    )
+    if (unitOfWork.workflowStates.acquireFeatureTaskRuntimeWorker(ownership, row.updatedAt)) {
+      UnownedClaim.Owned(ownership)
+    } else {
+      UnownedClaim.Lost
+    }
+  }
 
-  private fun recoverOwned(
-    existing: FeatureTaskRuntimeWorkerOwnership,
-    dbOverride: String?,
-  ): FeatureTaskRuntimeWorkerOwnership {
+  private fun recoverOwned(existing: FeatureTaskRuntimeWorkerOwnership): FeatureTaskRuntimeWorkerOwnership {
     when (val inspection = supervisor.inspect(existing)) {
       FeatureTaskRuntimeProcessInspection.ExactLive -> stopExactWorker(existing)
       FeatureTaskRuntimeProcessInspection.NotRunning -> Unit
@@ -114,7 +109,7 @@ class FeatureTaskRuntimeWorkerCoordinator(
       is FeatureTaskRuntimeProcessInspection.Unsupported ->
         if (leaseIsActive(existing)) error(inspection.reason)
     }
-    val reserved = database.transaction(dbOverride) {
+    val reserved = database.transaction {
       it.workflowStates.reserveFeatureTaskRuntimeWorkerTakeover(
         existing.workflowId,
         existing.ownerToken,
@@ -128,7 +123,7 @@ class FeatureTaskRuntimeWorkerCoordinator(
       existing.phaseId,
       existing.phaseAttempt + 1,
     )
-    val transferred = database.transaction(dbOverride) {
+    val transferred = database.transaction {
       it.workflowStates.transferFeatureTaskRuntimeWorker(replacement, existing.ownerToken, existing.generation)
     }
     if (!transferred) error("Worker takeover fencing changed for workflow '${existing.workflowId}'.")
@@ -152,13 +147,10 @@ class FeatureTaskRuntimeWorkerCoordinator(
     }
   }
 
-  private fun heartbeat(
-    base: FeatureTaskRuntimeWorkerOwnership,
-    dbOverride: String?,
-  ): FeatureTaskRuntimeHeartbeatTick {
+  private fun heartbeat(base: FeatureTaskRuntimeWorkerOwnership): FeatureTaskRuntimeHeartbeatTick {
     val now = clock.instant()
     val updated = base.copy(heartbeatAt = now.toString(), expiresAt = now.plus(LEASE_DURATION).toString())
-    val persisted = database.transaction(dbOverride) {
+    val persisted = database.transaction {
       it.workflowStates.heartbeatFeatureTaskRuntimeWorker(updated)
     }
     return if (persisted) {

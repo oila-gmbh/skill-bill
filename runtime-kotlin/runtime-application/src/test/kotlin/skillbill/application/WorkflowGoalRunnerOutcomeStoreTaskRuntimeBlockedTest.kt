@@ -73,7 +73,6 @@ class WorkflowGoalRunnerOutcomeStoreTaskRuntimeBlockedTest {
         issueKey = "SKILL-176.4",
         subtaskId = 4,
         repoRoot = Path.of("."),
-        dbPathOverride = null,
       ),
     )
     assertEquals(GoalRunnerTerminalStatus.BLOCKED, recovered.status)
@@ -123,7 +122,6 @@ class WorkflowGoalRunnerOutcomeStoreTaskRuntimeBlockedTest {
         issueKey = "SKILL-176.4",
         subtaskId = 4,
         repoRoot = Path.of("."),
-        dbPathOverride = null,
       ),
     )
     assertEquals(GoalRunnerTerminalStatus.RECONCILABLE, recovered.status)
@@ -221,7 +219,6 @@ class WorkflowGoalRunnerOutcomeStoreTaskRuntimeBlockedTest {
         issueKey = "SKILL-176.4",
         subtaskId = 4,
         repoRoot = Path.of("."),
-        dbPathOverride = null,
       ),
     )
     assertEquals(GoalRunnerTerminalStatus.COMPLETE, recovered.status)

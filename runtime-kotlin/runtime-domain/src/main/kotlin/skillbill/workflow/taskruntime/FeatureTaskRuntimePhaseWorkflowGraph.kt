@@ -13,7 +13,15 @@ internal object FeatureTaskRuntimePhaseWorkflowGraph {
     workflowIdPrefix = "wftr",
     defaultSessionPrefix = "ftr",
     contractVersion = WORKFLOW_STATE_CONTRACT_VERSION,
-    workflowStatuses = WorkflowStatus.entries.map(WorkflowStatus::wireValue).toSet(),
+    workflowStatuses = setOf(
+      WorkflowStatus.PENDING.wireValue,
+      WorkflowStatus.RUNNING.wireValue,
+      WorkflowStatus.COMPLETED.wireValue,
+      WorkflowStatus.FAILED.wireValue,
+      WorkflowStatus.ABANDONED.wireValue,
+      WorkflowStatus.BLOCKED.wireValue,
+      WorkflowStatus.PAUSED.wireValue,
+    ),
     stepStatuses = WorkflowStepStatus.entries.map(WorkflowStepStatus::wireValue).toSet(),
     terminalStatuses = setOf(
       WorkflowStatus.COMPLETED.wireValue,

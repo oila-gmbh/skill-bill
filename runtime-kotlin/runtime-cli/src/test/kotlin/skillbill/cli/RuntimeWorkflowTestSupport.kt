@@ -27,11 +27,10 @@ internal fun installFakeRuntimeMcpBin(home: Path): Path {
 
 internal object RuntimeWorkflowTestSupport {
   fun open(dbPath: Path, context: CliRuntimeContext): Map<String, Any?> {
-    val service = component(context).workflowService
+    val service = component(context, dbPath).workflowService
     val result = service.open(
       WorkflowServiceOpenArgs(
         kind = WorkflowFamilyKind.TASK_RUNTIME,
-        dbOverride = dbPath.toString(),
       ),
     )
     return assertIs<WorkflowOpenResult.Ok>(result)
@@ -49,7 +48,7 @@ internal object RuntimeWorkflowTestSupport {
   )
 
   fun update(args: UpdateArgs): Map<String, Any?> {
-    val service = component(args.context).workflowService
+    val service = component(args.context, args.dbPath).workflowService
     val result = service.update(
       WorkflowFamilyKind.TASK_RUNTIME,
       WorkflowUpdateRequest(
@@ -59,14 +58,13 @@ internal object RuntimeWorkflowTestSupport {
         stepUpdates = args.stepUpdates,
         artifactsPatch = args.artifactsPatch,
       ),
-      args.dbPath.toString(),
     )
     return assertIs<WorkflowUpdateResult.Ok>(result).toPayload()
   }
 
   fun get(dbPath: Path, workflowId: String, context: CliRuntimeContext): Map<String, Any?> {
-    val service = component(context).workflowService
-    val result = service.get(WorkflowFamilyKind.TASK_RUNTIME, workflowId, dbPath.toString())
+    val service = component(context, dbPath).workflowService
+    val result = service.get(WorkflowFamilyKind.TASK_RUNTIME, workflowId)
     return assertIs<WorkflowGetResult.Ok>(result).toCliMap(service.goalObservabilityEventValidator)
   }
 
@@ -76,12 +74,11 @@ internal object RuntimeWorkflowTestSupport {
     subtaskId: Int?,
     context: CliRuntimeContext,
   ): Map<String, Any?> {
-    val service = component(context).workflowService
+    val service = component(context, dbPath).workflowService
     return service.continueWorkflow(
       kind = WorkflowFamilyKind.TASK_RUNTIME,
       workflowId = issueKey,
       subtaskId = subtaskId,
-      dbOverride = dbPath.toString(),
     ).toCliMap()
   }
 
@@ -95,6 +92,6 @@ internal object RuntimeWorkflowTestSupport {
       ?.let(JsonSupport::anyToStringAnyMap),
   )
 
-  private fun component(context: CliRuntimeContext): RuntimeComponent =
-    RuntimeComponent::class.create(context.toRuntimeContext())
+  private fun component(context: CliRuntimeContext, dbPath: Path): RuntimeComponent =
+    RuntimeComponent::class.create(context.toRuntimeContext(dbPathOverride = dbPath.toString()))
 }

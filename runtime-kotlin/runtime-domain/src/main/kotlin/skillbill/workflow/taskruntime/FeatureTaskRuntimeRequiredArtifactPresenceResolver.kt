@@ -5,6 +5,8 @@ import skillbill.error.InvalidWorkflowStateSchemaError
 import skillbill.workflow.engine.model.RequiredArtifactPresenceResolver
 import skillbill.workflow.engine.model.ResolvedRequiredArtifact
 import skillbill.workflow.engine.model.WorkflowSnapshotView
+import skillbill.workflow.model.WorkflowStepStatus
+import skillbill.workflow.model.workflowStepStatus
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_GOAL_CONTINUATION_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_RECORDS_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeGoalContinuationArtifact
@@ -23,8 +25,6 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeQualityGateSelecti
  * Pure domain function: no JDBC/HTTP/Files and no clock/random.
  */
 object FeatureTaskRuntimeRequiredArtifactPresenceResolver : RequiredArtifactPresenceResolver {
-  private const val PHASE_STATUS_COMPLETED = "completed"
-
   override fun missingRequiredArtifacts(
     snapshot: WorkflowSnapshotView,
     resumeStepId: String,

@@ -84,7 +84,9 @@ class IdeStatusReadSnapshotConcurrencyTest {
     Files.createDirectory(repoRoot.resolve(".git"))
     Files.writeString(repoRoot.resolve(".git").resolve("HEAD"), "ref: refs/heads/feat/$ISSUE_KEY-snapshot\n")
     val dbPath = home.resolve("metrics.db")
-    val database = SQLiteDatabaseSessionFactory(EnvironmentContext(userHome = home))
+    val database = SQLiteDatabaseSessionFactory(
+      EnvironmentContext(dbPathOverride = dbPath.toString(), environment = emptyMap(), userHome = home),
+    )
     val identity = "$REPOSITORY_IDENTITY_PREFIX${repoRoot.toRealPath()}"
     seed(dbPath, database, identity)
     return SnapshotFixture(home, repoRoot, dbPath, database, observedAt)
@@ -106,7 +108,7 @@ class IdeStatusReadSnapshotConcurrencyTest {
         statement.executeUpdate()
       }
     }
-    database.transaction(dbPath.toString()) { unitOfWork ->
+    database.transaction { unitOfWork ->
       // A goal child bound elsewhere makes an unbound goal resolve as "belongs to another repository",
       // so a torn read of the goal binding drops the candidate instead of silently passing.
       unitOfWork.workflowStates.saveFeatureTaskRuntimeWorkflow(foreignChildWorkflow())
@@ -168,7 +170,7 @@ private class SnapshotFixture(
     private set
 
   fun clearGoalBinding() {
-    database.transaction(dbPath.toString()) { unitOfWork ->
+    database.transaction { unitOfWork ->
       unitOfWork.goalRunnerControls.persistControlState("goal-snapshot", GoalRunnerControlState())
     }
   }
@@ -180,7 +182,7 @@ private class SnapshotFixture(
       clearGoalBinding()
     }
     return service(instrumented).status(
-      IdeStatusRequest(repoRoot = repoRoot.toString(), dbOverride = dbPath.toString(), observedAt = observedAt),
+      IdeStatusRequest(repoRoot = repoRoot.toString(), observedAt = observedAt),
     )
   }
 
@@ -216,13 +218,13 @@ private class InterleavingDatabase(
   private val interleaveAfterCall: Int?,
   private val onInterleave: () -> Unit,
 ) : DatabaseSessionFactory by delegate {
-  override fun <T> read(dbOverride: String?, block: (UnitOfWork) -> T): T {
+  override fun <T> read(block: (UnitOfWork) -> T): T {
     var calls = 0
     val trigger: () -> Unit = {
       calls += 1
       if (calls == interleaveAfterCall) onInterleave()
     }
-    return delegate.read(dbOverride) { unitOfWork -> block(InterleavingUnitOfWork(unitOfWork, trigger)) }
+    return delegate.read { unitOfWork -> block(InterleavingUnitOfWork(unitOfWork, trigger)) }
   }
 }
 

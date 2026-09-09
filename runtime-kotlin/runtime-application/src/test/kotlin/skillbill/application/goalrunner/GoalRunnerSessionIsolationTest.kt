@@ -23,18 +23,18 @@ class GoalRunnerSessionIsolationTest {
     try {
       val first = executor.submit {
         start.await(5, TimeUnit.SECONDS)
-        runA.bind("workflow-a", null)
+        runA.bind("workflow-a")
         repeat(40) { runA.incrementValidationQualityRetry(1) }
       }
       val second = executor.submit {
         start.await(5, TimeUnit.SECONDS)
-        runB.bind("workflow-b", null)
+        runB.bind("workflow-b")
         repeat(40) { runB.incrementValidationQualityRetry(2) }
       }
       first.get(10, TimeUnit.SECONDS)
       second.get(10, TimeUnit.SECONDS)
-      runA.bind("workflow-a", null)
-      runB.bind("workflow-b", null)
+      runA.bind("workflow-a")
+      runB.bind("workflow-b")
       assertEquals(40, runA.validationQualityRetryCount(1))
       assertEquals(40, runB.validationQualityRetryCount(2))
       assertEquals(0, runA.validationQualityRetryCount(2))
@@ -48,40 +48,25 @@ class GoalRunnerSessionIsolationTest {
 private class ConcurrentControlManifestStore : GoalRunnerManifestStore {
   private val controls = ConcurrentHashMap<String, GoalRunnerControlState>()
 
-  override fun controlState(parentWorkflowId: String, dbPathOverride: String?): GoalRunnerControlState =
+  override fun controlState(parentWorkflowId: String): GoalRunnerControlState =
     controls.getOrPut(parentWorkflowId) { GoalRunnerControlState() }
 
-  override fun persistControlState(
-    parentWorkflowId: String,
-    state: GoalRunnerControlState,
-    dbPathOverride: String?,
-  ): GoalRunnerControlState {
+  override fun persistControlState(parentWorkflowId: String, state: GoalRunnerControlState): GoalRunnerControlState {
     controls[parentWorkflowId] = state
     return state
   }
 
-  override fun loadByIssueKey(issueKey: String, dbPathOverride: String?, repoRoot: Path?): GoalRunnerManifestState? =
-    null
+  override fun loadByIssueKey(issueKey: String, repoRoot: Path?): GoalRunnerManifestState? = null
 
-  override fun save(state: GoalRunnerManifestState, dbPathOverride: String?): GoalRunnerManifestState = state
+  override fun save(state: GoalRunnerManifestState): GoalRunnerManifestState = state
 
   override fun acquireExecutionLease(
     parentWorkflowId: String,
     lease: GoalRunnerExecutionLease,
     expectedOwnerToken: String?,
-    dbPathOverride: String?,
   ): Boolean = false
 
-  override fun heartbeatExecutionLease(
-    parentWorkflowId: String,
-    lease: GoalRunnerExecutionLease,
-    dbPathOverride: String?,
-  ): Boolean = false
+  override fun heartbeatExecutionLease(parentWorkflowId: String, lease: GoalRunnerExecutionLease): Boolean = false
 
-  override fun releaseExecutionLease(
-    parentWorkflowId: String,
-    ownerToken: String,
-    generation: Long,
-    dbPathOverride: String?,
-  ): Boolean = false
+  override fun releaseExecutionLease(parentWorkflowId: String, ownerToken: String, generation: Long): Boolean = false
 }

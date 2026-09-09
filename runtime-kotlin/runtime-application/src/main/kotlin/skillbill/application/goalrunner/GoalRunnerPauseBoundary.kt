@@ -1,7 +1,6 @@
 package skillbill.application.goalrunner
 
 import me.tatarka.inject.annotations.Inject
-import skillbill.application.goalrunner.model.GoalRunnerRunRequest
 import skillbill.error.ShellContentContractException
 import skillbill.goalrunner.model.GoalRunnerControlState
 import skillbill.goalrunner.model.GoalRunnerStopReason
@@ -15,8 +14,8 @@ import kotlin.coroutines.cancellation.CancellationException
 public class GoalRunnerProgressReader(
   private val outcomeStore: GoalRunnerWorkflowOutcomeStore,
 ) {
-  internal fun read(workflowId: String, request: GoalRunnerRunRequest): GoalRunnerChildProgressRead =
-    runCatching { GoalRunnerChildProgressRead.Present(outcomeStore.progress(workflowId, request.dbPathOverride)) }
+  internal fun read(workflowId: String): GoalRunnerChildProgressRead =
+    runCatching { GoalRunnerChildProgressRead.Present(outcomeStore.progress(workflowId)) }
       .fold(
         onSuccess = { it },
         onFailure = { error ->
@@ -31,12 +30,11 @@ public class GoalRunnerProgressReader(
         },
       )
 
-  fun safeProgress(workflowId: String, request: GoalRunnerRunRequest): GoalRunnerWorkflowProgress? =
-    when (val read = read(workflowId, request)) {
-      is GoalRunnerChildProgressRead.Present -> read.progress
-      is GoalRunnerChildProgressRead.Absent -> null
-      is GoalRunnerChildProgressRead.Failed -> null
-    }
+  fun safeProgress(workflowId: String): GoalRunnerWorkflowProgress? = when (val read = read(workflowId)) {
+    is GoalRunnerChildProgressRead.Present -> read.progress
+    is GoalRunnerChildProgressRead.Absent -> null
+    is GoalRunnerChildProgressRead.Failed -> null
+  }
 }
 
 @Inject
@@ -45,14 +43,12 @@ public class GoalRunnerPauseBoundary(
 ) {
   internal fun pauseBeforeLaunch(
     state: GoalRunnerManifestState,
-    request: GoalRunnerRunRequest,
     knownControl: GoalRunnerControlState? = null,
   ): GoalRunnerIterationResult? {
-    val control = knownControl ?: manifestStore.controlState(state.parentWorkflowId, request.dbPathOverride)
+    val control = knownControl ?: manifestStore.controlState(state.parentWorkflowId)
     if (!control.requiresPauseBoundary(state.manifest)) return null
     val pausedState = manifestStore.pauseAtBoundary(
       state.copy(controlState = control),
-      request.dbPathOverride,
     )
     val subtaskId = pausedState.manifest.currentSubtaskIntent.subtaskId
     return GoalRunnerIterationResult(

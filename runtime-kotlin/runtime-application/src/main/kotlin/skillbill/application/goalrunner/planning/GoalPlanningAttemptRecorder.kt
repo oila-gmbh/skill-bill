@@ -35,7 +35,7 @@ class DurableGoalPlanningAttemptRecorder(
           workflowPhase = "goal_planning",
           processAlive = true,
           sequenceNumber = nextSequenceByWorkflow.getOrPut(attempt.parentWorkflowId) {
-            outcomeStore.ledgerSequenceWatermarks(attempt.issueKey, attempt.dbPathOverride)
+            outcomeStore.ledgerSequenceWatermarks(attempt.issueKey)
               .maxProgressSequence
               ?.plus(1)
               ?: 0
@@ -48,7 +48,6 @@ class DurableGoalPlanningAttemptRecorder(
           outcome = attempt.outcome,
         ),
       ),
-      attempt.dbPathOverride,
     )
     nextSequenceByWorkflow[attempt.parentWorkflowId] = nextSequenceByWorkflow.getValue(attempt.parentWorkflowId) + 1
   }

@@ -43,7 +43,6 @@ private fun DefaultGoalPlanningSweep.missingPlanSet(
       args.identity,
       descriptors,
       args.provenance,
-      shared.dbPathOverride,
     ).missingSubtaskIds
   }
   val error = recovery.exceptionOrNull() ?: return MissingPlanSet(subtaskIds = recovery.getOrThrow())

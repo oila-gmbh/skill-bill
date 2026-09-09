@@ -421,7 +421,6 @@ data class IdeStatusSnapshot(
 
 data class IdeStatusRequest(
   val repoRoot: String,
-  val dbOverride: String? = null,
   val observedAt: Instant? = null,
 ) {
   init {

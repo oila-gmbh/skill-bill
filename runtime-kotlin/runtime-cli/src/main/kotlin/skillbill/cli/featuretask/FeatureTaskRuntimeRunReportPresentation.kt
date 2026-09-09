@@ -1,8 +1,8 @@
 package skillbill.cli.featuretask
 
-import skillbill.workflow.model.DecompositionStatus
 import skillbill.application.featuretask.model.FeatureTaskRuntimeRunReport
 import skillbill.application.featuretask.model.FeatureTaskRuntimeSubtaskOutcome
+import skillbill.workflow.model.DecompositionStatus
 
 internal fun FeatureTaskRuntimeRunReport.toRuntimeRunCliMap(): Map<String, Any?> = when (this) {
   is FeatureTaskRuntimeRunReport.Completed -> linkedMapOf(

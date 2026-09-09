@@ -398,21 +398,21 @@ internal class TrackingDatabase(
   var writeCalls: Int = 0
     internal set
 
-  override fun resolveDbPath(dbOverride: String?): Path = Path.of("/fake/ide-status.db")
+  override fun resolveDbPath(): Path = Path.of("/fake/ide-status.db")
 
-  override fun databaseExists(dbOverride: String?): Boolean = exists
+  override fun databaseExists(): Boolean = exists
 
-  override fun <T> read(dbOverride: String?, block: (UnitOfWork) -> T): T {
+  override fun <T> read(block: (UnitOfWork) -> T): T {
     readCalls += 1
     return block(unitOfWork())
   }
 
-  override fun <T> selfManagedWrite(dbOverride: String?, block: (UnitOfWork) -> T): T {
+  override fun <T> selfManagedWrite(block: (UnitOfWork) -> T): T {
     writeCalls += 1
     return block(unitOfWork())
   }
 
-  override fun <T> transaction(dbOverride: String?, block: (UnitOfWork) -> T): T {
+  override fun <T> transaction(block: (UnitOfWork) -> T): T {
     writeCalls += 1
     return block(unitOfWork())
   }
@@ -520,10 +520,9 @@ internal class StubGoalManifestStore(
   internal val state: GoalRunnerManifestState,
   internal val planning: GoalPlanningStatusSnapshot? = null,
   internal val lease: GoalRunnerExecutionLease? = null,
-) : GoalRunnerManifestStore {
-  override fun executionLease(parentWorkflowId: String, dbPathOverride: String?): GoalRunnerExecutionLease? = lease
-
-  override fun loadByIssueKey(issueKey: String, dbPathOverride: String?, repoRoot: Path?): GoalRunnerManifestState? =
+) : GoalRunnerManifestStoreDefaults() {
+  override fun executionLease(parentWorkflowId: String): GoalRunnerExecutionLease? = lease
+  override fun loadByIssueKey(issueKey: String, repoRoot: Path?): GoalRunnerManifestState? =
     state.takeIf { it.manifest.issueKey.equals(issueKey, ignoreCase = true) }
 
   override fun planningStatus(
@@ -531,73 +530,44 @@ internal class StubGoalManifestStore(
     orderedSubtaskIds: List<Int>,
     blockedSubtaskId: Int?,
     blockedReason: String?,
-    dbPathOverride: String?,
   ): GoalPlanningStatusSnapshot? = planning
 
-  override fun save(state: GoalRunnerManifestState, dbPathOverride: String?): GoalRunnerManifestState = state
+  override fun save(state: GoalRunnerManifestState): GoalRunnerManifestState = state
 
   override fun acquireExecutionLease(
     parentWorkflowId: String,
     lease: GoalRunnerExecutionLease,
     expectedOwnerToken: String?,
-    dbPathOverride: String?,
   ): Boolean = false
 
-  override fun heartbeatExecutionLease(
-    parentWorkflowId: String,
-    lease: GoalRunnerExecutionLease,
-    dbPathOverride: String?,
-  ): Boolean = false
+  override fun heartbeatExecutionLease(parentWorkflowId: String, lease: GoalRunnerExecutionLease): Boolean = false
 
-  override fun releaseExecutionLease(
-    parentWorkflowId: String,
-    ownerToken: String,
-    generation: Long,
-    dbPathOverride: String?,
-  ): Boolean = false
+  override fun releaseExecutionLease(parentWorkflowId: String, ownerToken: String, generation: Long): Boolean = false
 }
 
-internal object EmptyManifestStore : GoalRunnerManifestStore {
-  override fun loadByIssueKey(issueKey: String, dbPathOverride: String?, repoRoot: Path?): GoalRunnerManifestState? =
-    null
-
-  override fun save(state: GoalRunnerManifestState, dbPathOverride: String?): GoalRunnerManifestState = state
+internal object EmptyManifestStore : GoalRunnerManifestStoreDefaults() {
+  override fun loadByIssueKey(issueKey: String, repoRoot: Path?): GoalRunnerManifestState? = null
+  override fun save(state: GoalRunnerManifestState): GoalRunnerManifestState = state
 
   override fun acquireExecutionLease(
     parentWorkflowId: String,
     lease: GoalRunnerExecutionLease,
     expectedOwnerToken: String?,
-    dbPathOverride: String?,
   ): Boolean = false
 
-  override fun heartbeatExecutionLease(
-    parentWorkflowId: String,
-    lease: GoalRunnerExecutionLease,
-    dbPathOverride: String?,
-  ): Boolean = false
+  override fun heartbeatExecutionLease(parentWorkflowId: String, lease: GoalRunnerExecutionLease): Boolean = false
 
-  override fun releaseExecutionLease(
-    parentWorkflowId: String,
-    ownerToken: String,
-    generation: Long,
-    dbPathOverride: String?,
-  ): Boolean = false
+  override fun releaseExecutionLease(parentWorkflowId: String, ownerToken: String, generation: Long): Boolean = false
 }
 
 internal object EmptyOutcomeStore : GoalRunnerWorkflowOutcomeStore {
-  override fun terminalOutcome(
-    workflowId: String,
-    issueKey: String,
-    subtaskId: Int,
-    dbPathOverride: String?,
-  ): GoalRunnerStoredOutcome? = null
+  override fun terminalOutcome(workflowId: String, issueKey: String, subtaskId: Int): GoalRunnerStoredOutcome? = null
 
   override fun recoverAndPersistTerminalOutcome(
     workflowId: String,
     issueKey: String,
     subtaskId: Int,
     repoRoot: Path,
-    dbPathOverride: String?,
   ): GoalRunnerStoredOutcome? = null
 
   override fun recoverMissingResultPrefixOutput(
@@ -605,7 +575,6 @@ internal object EmptyOutcomeStore : GoalRunnerWorkflowOutcomeStore {
     issueKey: String,
     subtaskId: Int,
     output: Map<String, Any?>,
-    dbPathOverride: String?,
   ): GoalRunnerStoredOutcome? = null
 
   override fun reconcileAuthoritativeOutcomes(
@@ -613,7 +582,6 @@ internal object EmptyOutcomeStore : GoalRunnerWorkflowOutcomeStore {
     activeWorkflowIds: Set<String>,
     gate: GoalRunnerReconcileGate,
     repoRoot: Path?,
-    dbPathOverride: String?,
   ): Map<Int, GoalRunnerStoredOutcome> = emptyMap()
 
   override fun markBlocked(
@@ -621,52 +589,37 @@ internal object EmptyOutcomeStore : GoalRunnerWorkflowOutcomeStore {
     blockedReason: String,
     lastResumableStep: String,
     supervisionEvent: GoalRunnerSupervisionEvent?,
-    dbPathOverride: String?,
   ): String? = null
 
-  override fun progress(workflowId: String, dbPathOverride: String?): GoalRunnerWorkflowProgress? = null
+  override fun progress(workflowId: String): GoalRunnerWorkflowProgress? = null
 
-  override fun recordObservabilityEvent(
-    request: GoalRunnerObservabilityRecordRequest,
-    dbPathOverride: String?,
-  ): Boolean = false
+  override fun recordObservabilityEvent(request: GoalRunnerObservabilityRecordRequest): Boolean = false
 
-  override fun recordProgressEvent(request: GoalRunnerProgressEventRecordRequest, dbPathOverride: String?): Boolean =
-    false
+  override fun recordProgressEvent(request: GoalRunnerProgressEventRecordRequest): Boolean = false
 
-  override fun recordAttemptLedgerEntry(
-    request: GoalRunnerAttemptLedgerRecordRequest,
-    dbPathOverride: String?,
-  ): Boolean = false
+  override fun recordAttemptLedgerEntry(request: GoalRunnerAttemptLedgerRecordRequest): Boolean = false
 
   override fun recordWorkerSubtaskRequestOutcomes(
     workflowId: String,
     outcomes: List<GoalRunnerWorkerSubtaskRequestOutcome>,
-    dbPathOverride: String?,
   ): Boolean = false
 
-  override fun ledgerSequenceWatermarks(
-    issueKey: String,
-    dbPathOverride: String?,
-  ): GoalRunnerLedgerSequenceWatermarks = GoalRunnerLedgerSequenceWatermarks()
+  override fun ledgerSequenceWatermarks(issueKey: String): GoalRunnerLedgerSequenceWatermarks =
+    GoalRunnerLedgerSequenceWatermarks()
 
   override fun reopenBlockedPhaseForOperatorResume(
     workflowId: String,
     preferredPhaseId: String,
     reason: String,
-    dbPathOverride: String?,
   ): Boolean = false
 
-  override fun goalSubtaskReviewState(workflowId: String, dbPathOverride: String?): GoalSubtaskReviewState? = null
+  override fun goalSubtaskReviewState(workflowId: String): GoalSubtaskReviewState? = null
 
-  override fun unemittedGoalReviewPasses(
-    workflowId: String,
-    dbPathOverride: String?,
-  ): List<GoalSubtaskReviewPassResult> = emptyList()
+  override fun unemittedGoalReviewPasses(workflowId: String): List<GoalSubtaskReviewPassResult> = emptyList()
 
-  override fun acknowledgeGoalReviewPass(workflowId: String, passNumber: Int, dbPathOverride: String?): Boolean = false
+  override fun acknowledgeGoalReviewPass(workflowId: String, passNumber: Int): Boolean = false
 
-  override fun progressEvents(workflowId: String, dbPathOverride: String?): List<Map<String, Any?>> = emptyList()
+  override fun progressEvents(workflowId: String): List<Map<String, Any?>> = emptyList()
 
-  override fun childWorkflowLoopIterations(workflowId: String, dbPathOverride: String?): Map<String, Int> = emptyMap()
+  override fun childWorkflowLoopIterations(workflowId: String): Map<String, Int> = emptyMap()
 }

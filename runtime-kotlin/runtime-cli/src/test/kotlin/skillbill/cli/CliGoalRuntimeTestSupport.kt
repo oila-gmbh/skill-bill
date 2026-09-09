@@ -1,17 +1,11 @@
 package skillbill.cli
 
 import kotlinx.serialization.json.JsonElement
-import skillbill.application.workflow.model.WorkflowFamilyKind
-import skillbill.application.workflow.model.WorkflowOpenResult
-import skillbill.application.workflow.model.WorkflowServiceOpenArgs
 import skillbill.cli.model.CliRuntimeContext
 import skillbill.contracts.JsonSupport
 import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_CONTRACT_VERSION
 import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_WORKER_OWNERSHIP_CONTRACT_VERSION
 import skillbill.db.core.DatabaseRuntime
-import skillbill.di.RuntimeComponent
-import skillbill.di.create
-import skillbill.infrastructure.fs.JdkFeatureTaskRuntimeWorkerSupervisor
 import skillbill.install.model.InstallAgent
 import skillbill.ports.agentrun.AgentRunLauncher
 import skillbill.ports.agentrun.ExecutableLookup
@@ -40,6 +34,7 @@ import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewBaseline
 import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewBaselineRecoveryRequest
 import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewBaselineResult
 import skillbill.ports.workflow.gitops.model.WorkflowGitOperationResult
+import skillbill.ports.workflow.gitops.model.WorkflowGitOperationStatus
 import skillbill.ports.workflow.gitops.model.WorkflowSelectedDiffHunksRequest
 import skillbill.ports.workflow.gitops.model.WorkflowSelectedDiffHunksResult
 import skillbill.ports.workflow.gitops.model.WorkflowWorktreeActivityResult
@@ -49,21 +44,13 @@ import skillbill.workflow.goal.model.GoalObservabilitySelectedDiffHunks
 import java.nio.file.Files
 import java.nio.file.Path
 import java.sql.DriverManager
-import kotlin.test.assertIs
 import kotlin.test.assertTrue
 
 internal fun startRunningRuntimeGoalChild(fixture: GoalCliFixture): String {
   val childWorkflowId = startRunningGoalChild(fixture)
-  val component = RuntimeComponent::class.create(
-    fixture.context(launcher = NoopGoalTestAgentRunLauncher).toRuntimeContext(),
-  )
-  val runtimeWorkflow = assertIs<WorkflowOpenResult.Ok>(
-    component.workflowService.open(
-      WorkflowServiceOpenArgs(
-        kind = WorkflowFamilyKind.TASK_RUNTIME,
-        dbOverride = fixture.dbPath.toString(),
-      ),
-    ),
+  val runtimeWorkflow = RuntimeWorkflowTestSupport.open(
+    fixture.dbPath,
+    fixture.context(launcher = NoopGoalTestAgentRunLauncher),
   )
   DatabaseRuntime.ensureDatabase(fixture.dbPath).use { connection ->
     connection.prepareStatement(
@@ -71,12 +58,12 @@ internal fun startRunningRuntimeGoalChild(fixture: GoalCliFixture): String {
         "WHERE mode = 'runtime' AND instr(artifacts_json, ?) > 0",
     ).use { statement ->
       statement.setString(1, childWorkflowId)
-      statement.setString(2, runtimeWorkflow.workflowId)
+      statement.setString(2, runtimeWorkflow["workflow_id"] as String)
       statement.setString(3, childWorkflowId)
       assertTrue(statement.executeUpdate() >= 1)
     }
   }
-  return runtimeWorkflow.workflowId
+  return runtimeWorkflow["workflow_id"] as String
 }
 
 internal fun seedLiveWorkerLease(fixture: GoalCliFixture, workflowId: String) {
@@ -275,6 +262,7 @@ internal data class GoalCliFixture(
 
 internal class GoalFixtureAgentRunLauncher(
   private val fixture: GoalCliFixture,
+  private val dbPath: Path = fixture.dbPath,
   private val failSubtask: Int? = null,
   private val noTerminalSubtask: Int? = null,
   private val childDiagnosticChatterCount: Int = 1,
@@ -304,14 +292,14 @@ internal class GoalFixtureAgentRunLauncher(
           "subtask $subtaskId workflow wftr-$subtaskId step implement durable_progress\n",
       )
     }
-    val dbPath = requireNotNull(skillRequest.dbPathOverride)
-    val workflowId = startSubtaskWorkflow(skillRequest, dbPath)
+    val selectedDbPath = dbPath.toString()
+    val workflowId = startSubtaskWorkflow(skillRequest, selectedDbPath)
     if (subtaskId == failSubtask) {
-      failSubtaskWorkflow(workflowId, Path.of(dbPath))
+      failSubtaskWorkflow(workflowId, Path.of(selectedDbPath))
     } else if (subtaskId == noTerminalSubtask) {
-      stampImplementRunning(workflowId, Path.of(dbPath))
+      stampImplementRunning(workflowId, Path.of(selectedDbPath))
     } else {
-      completeSubtaskWorkflow(workflowId, subtaskId, Path.of(dbPath))
+      completeSubtaskWorkflow(workflowId, subtaskId, Path.of(selectedDbPath))
     }
     return AgentRunLaunchFacts(
       agent = InstallAgent.CODEX,
@@ -587,9 +575,7 @@ internal object GoalTestWorkflowGitOperations :
     override fun restoreIndexState(repoRoot: Path, paths: List<String>, snapshot: String): WorkflowGitOperationResult =
       WorkflowGitOperationResult(status = "ok", value = "")
 
-    override fun stagedPaths(repoRoot: Path): WorkflowGitOperationResult =
-      WorkflowGitOperationResult(status = "ok", value = "")
-
+    override fun stagedPaths(repoRoot: Path): WorkflowGitOperationResult = WorkflowGitOperationResult.Ok(value = "")
     override fun pathContentIdentities(repoRoot: Path, paths: List<String>): WorkflowGitOperationResult =
       WorkflowGitOperationResult(
         status = "ok",
@@ -603,9 +589,7 @@ internal object GoalTestWorkflowGitOperations :
   override fun branchExists(repoRoot: Path, branch: String): WorkflowGitOperationResult =
     WorkflowGitOperationResult(status = "ok", value = "true")
 
-  override fun currentBranch(repoRoot: Path): WorkflowGitOperationResult =
-    WorkflowGitOperationResult(status = "ok", value = "")
-
+  override fun currentBranch(repoRoot: Path): WorkflowGitOperationResult = WorkflowGitOperationResult.Ok(value = "")
   override val goalSubtaskReviewOperations: GoalSubtaskReviewGitOperations =
     object : GoalSubtaskReviewGitOperations {
       override fun captureBaseline(repoRoot: Path, expectedBranch: String): GoalSubtaskReviewBaselineResult =
@@ -645,9 +629,7 @@ internal object GoalTestWorkflowGitOperations :
     expectedBaseBranch: String,
   ): WorkflowGitOperationResult = WorkflowGitOperationResult(status = "ok", value = expectedBaseBranch)
 
-  override fun worktreeStatus(repoRoot: Path): WorkflowGitOperationResult =
-    WorkflowGitOperationResult(status = "ok", value = "")
-
+  override fun worktreeStatus(repoRoot: Path): WorkflowGitOperationResult = WorkflowGitOperationResult.Ok(value = "")
   override fun worktreeActivity(repoRoot: Path): WorkflowWorktreeActivityResult = WorkflowWorktreeActivityResult(
     status = "ok",
     diffStat = GoalObservabilityDiffStat(filesChanged = 1, insertions = 2, deletions = 1),

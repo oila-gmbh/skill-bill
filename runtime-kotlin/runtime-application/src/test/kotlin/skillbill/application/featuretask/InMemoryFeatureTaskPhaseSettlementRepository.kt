@@ -7,27 +7,14 @@ import java.util.concurrent.ConcurrentHashMap
 class InMemoryFeatureTaskPhaseSettlementRepository : FeatureTaskPhaseSettlementRepository {
   private val rows = ConcurrentHashMap<String, FeatureTaskPhaseSettlement>()
 
-  override fun upsert(settlement: FeatureTaskPhaseSettlement, dbPathOverride: String?) {
+  override fun upsert(settlement: FeatureTaskPhaseSettlement) {
     rows[key(settlement.workflowId, settlement.phaseId, settlement.attempt)] = settlement
   }
 
-  override fun find(
-    workflowId: String,
-    phaseId: String,
-    attempt: Int,
-    dbPathOverride: String?,
-  ): FeatureTaskPhaseSettlement? = rows[key(workflowId, phaseId, attempt)]
+  override fun find(workflowId: String, phaseId: String, attempt: Int): FeatureTaskPhaseSettlement? =
+    rows[key(workflowId, phaseId, attempt)]
 
-  override fun findLatestCompleted(
-    workflowId: String,
-    phaseId: String,
-    dbPathOverride: String?,
-  ): FeatureTaskPhaseSettlement? = rows.values
-    .filter { it.workflowId == workflowId && it.phaseId == phaseId && it.kind == "complete" }
-    .maxByOrNull(FeatureTaskPhaseSettlement::attempt)
-
-  override fun delete(workflowId: String, phaseId: String, attempt: Int, dbPathOverride: String?): Boolean =
-    rows.remove(key(workflowId, phaseId, attempt)) != null
+  override fun delete(workflowId: String, phaseId: String, attempt: Int): Boolean =    rows.remove(key(workflowId, phaseId, attempt)) != null
 
   private fun key(workflowId: String, phaseId: String, attempt: Int): String = "$workflowId::$phaseId::$attempt"
 }

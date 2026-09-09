@@ -478,7 +478,7 @@ private class GoalChildParityRun(
   val resume: () -> GoalRunnerRunReport,
 ) {
   fun authoritativeOutcome(): GoalRunnerStoredOutcome =
-    requireNotNull(outcomes.terminalOutcome(WORKFLOW_ID, "SKILL-56", 1, null))
+    requireNotNull(outcomes.terminalOutcome(WORKFLOW_ID, "SKILL-56", 1))
 }
 
 private fun GoalChildParityRun.blockedChildReason(): String? =
@@ -610,7 +610,7 @@ private fun goalRunForChildReport(
       invokedAgentId = INVOKED_AGENT,
     ),
   )
-  return report to requireNotNull(outcomes.terminalOutcome(WORKFLOW_ID, "SKILL-56", 1, null))
+  return report to requireNotNull(outcomes.terminalOutcome(WORKFLOW_ID, "SKILL-56", 1))
 }
 
 private data class GoalChildParityConfig(

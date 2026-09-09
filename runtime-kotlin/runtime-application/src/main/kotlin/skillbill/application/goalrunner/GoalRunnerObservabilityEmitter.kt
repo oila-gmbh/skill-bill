@@ -16,7 +16,6 @@ class GoalRunnerObservabilityEmitter(
   private val diagnostics: RuntimeDiagnostics,
   request: GoalRunnerRunRequest,
 ) {
-  private val dbPathOverride: String? = request.dbPathOverride
   private var sequence: Int = request.observabilitySequenceStart
 
   internal fun recordLaunchLifecycle(
@@ -47,7 +46,6 @@ class GoalRunnerObservabilityEmitter(
           sequenceNumber = sequence++,
           timestamp = clock.instant().toString(),
         ),
-        dbPathOverride = dbPathOverride,
       )
     }.onFailure { error ->
       diagnostics.warning(

@@ -69,7 +69,7 @@ internal fun DefaultGoalPlanningSweep.producePlan(args: ProducePlanArgs): GoalPl
     planPayload = planPayload,
     repairEvidence = captured.repairEvidence,
   )
-  return runCatching { checkpoint.recheckpointSubtaskPlan(record, shared.dbPathOverride) }.fold(
+  return runCatching { checkpoint.recheckpointSubtaskPlan(record) }.fold(
     onSuccess = { null },
     onFailure = { error ->
       stopped(
@@ -95,7 +95,6 @@ internal fun DefaultGoalPlanningSweep.descriptor(
     identity,
     subtask.id,
     governedPath,
-    shared.dbPathOverride,
   )
   val subSpecHash = when {
     recovered != null && subtask.status == "complete" -> recovered.subSpecHash

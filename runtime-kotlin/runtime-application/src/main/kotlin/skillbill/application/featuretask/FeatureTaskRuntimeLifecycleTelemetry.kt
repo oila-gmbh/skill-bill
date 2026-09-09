@@ -21,7 +21,6 @@ class FeatureTaskRuntimeLifecycleTelemetry(
         featureName = request.runInvariants.specReference,
         sessionId = request.sessionId,
       ),
-      dbOverride = request.dbPathOverride,
     )["session_id"]?.toString().orEmpty()
   }
 

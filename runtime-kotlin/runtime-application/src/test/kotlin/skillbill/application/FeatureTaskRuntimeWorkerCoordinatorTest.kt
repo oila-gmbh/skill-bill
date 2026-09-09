@@ -33,7 +33,7 @@ class FeatureTaskRuntimeWorkerCoordinatorTest {
       testHarnessClock,
     )
 
-    coordinator.runOwned(WORKFLOW_ID, null) {
+    coordinator.runOwned(WORKFLOW_ID) {
       val owned = requireNotNull(repository.getFeatureTaskRuntimeWorkerOwnership(WORKFLOW_ID))
       assertEquals(1, owned.generation)
       assertEquals("implement", owned.phaseId)
@@ -52,7 +52,7 @@ class FeatureTaskRuntimeWorkerCoordinatorTest {
       testHarnessClock,
     )
 
-    coordinator.runOwned(WORKFLOW_ID, null) {
+    coordinator.runOwned(WORKFLOW_ID) {
       val replacement = requireNotNull(repository.getFeatureTaskRuntimeWorkerOwnership(WORKFLOW_ID))
       assertEquals(2, replacement.generation)
       assertNotEquals("old-owner-token-0001", replacement.ownerToken)
@@ -72,7 +72,7 @@ class FeatureTaskRuntimeWorkerCoordinatorTest {
       testHarnessClock,
     )
 
-    coordinator.runOwned(WORKFLOW_ID, null) { Unit }
+    coordinator.runOwned(WORKFLOW_ID) { Unit }
 
     assertTrue(supervisor.gracefulTerminationRequested)
     assertEquals(false, supervisor.forceTerminationRequested)
@@ -91,7 +91,7 @@ class FeatureTaskRuntimeWorkerCoordinatorTest {
       testHarnessClock,
     )
 
-    val failure = assertFailsWith<IllegalStateException> { coordinator.runOwned(WORKFLOW_ID, null) { Unit } }
+    val failure = assertFailsWith<IllegalStateException> { coordinator.runOwned(WORKFLOW_ID) { Unit } }
 
     assertTrue(failure.message.orEmpty().contains("PID was reused"))
     assertEquals(false, supervisor.gracefulTerminationRequested)
@@ -110,7 +110,7 @@ class FeatureTaskRuntimeWorkerCoordinatorTest {
       testHarnessClock,
     )
 
-    coordinator.runOwned(WORKFLOW_ID, null) {
+    coordinator.runOwned(WORKFLOW_ID) {
       val replacement = requireNotNull(repository.getFeatureTaskRuntimeWorkerOwnership(WORKFLOW_ID))
       assertEquals(2, replacement.generation)
       assertNotEquals("old-owner-token-0001", replacement.ownerToken)
@@ -132,7 +132,7 @@ class FeatureTaskRuntimeWorkerCoordinatorTest {
       testHarnessClock,
     )
 
-    val failure = assertFailsWith<IllegalStateException> { coordinator.runOwned(WORKFLOW_ID, null) { Unit } }
+    val failure = assertFailsWith<IllegalStateException> { coordinator.runOwned(WORKFLOW_ID) { Unit } }
 
     assertTrue(failure.message.orEmpty().contains("Concurrent continuation"))
   }
@@ -148,7 +148,7 @@ class FeatureTaskRuntimeWorkerCoordinatorTest {
       testHarnessClock,
     )
 
-    coordinator.runOwned(WORKFLOW_ID, null) {
+    coordinator.runOwned(WORKFLOW_ID) {
       val owned = requireNotNull(repository.getFeatureTaskRuntimeWorkerOwnership(WORKFLOW_ID))
       assertEquals(FeatureTaskRuntimeHeartbeatTick.Renewed, supervisor.runHeartbeatTick())
       val renewed = requireNotNull(repository.getFeatureTaskRuntimeWorkerOwnership(WORKFLOW_ID))
@@ -172,7 +172,7 @@ class FeatureTaskRuntimeWorkerCoordinatorTest {
     )
 
     val failure = assertFailsWith<IllegalStateException> {
-      coordinator.runOwned(WORKFLOW_ID, null) {
+      coordinator.runOwned(WORKFLOW_ID) {
         repository.seedWorkerOwnership(ownership(ownerToken = "usurper-token-0002", generation = 9))
         assertTrue(supervisor.runHeartbeatTick() is FeatureTaskRuntimeHeartbeatTick.FencingLost)
       }
@@ -241,20 +241,19 @@ private class BumpUpdatedAtAfterReadDatabase(
 ) : DatabaseSessionFactory {
   private val inner = RuntimeFakeDatabaseSessionFactory(workflows)
 
-  override fun resolveDbPath(dbOverride: String?) = inner.resolveDbPath(dbOverride)
+  override fun resolveDbPath() = inner.resolveDbPath()
 
-  override fun databaseExists(dbOverride: String?) = inner.databaseExists(dbOverride)
+  override fun databaseExists() = inner.databaseExists()
 
-  override fun <T> read(dbOverride: String?, block: (UnitOfWork) -> T): T {
-    val result = inner.read(dbOverride, block)
+  override fun <T> read(block: (UnitOfWork) -> T): T {
+    val result = inner.read(block)
     workflows.bumpUpdatedAt(WORKFLOW_ID)
     return result
   }
 
-  override fun <T> transaction(dbOverride: String?, block: (UnitOfWork) -> T): T = inner.transaction(dbOverride, block)
+  override fun <T> transaction(block: (UnitOfWork) -> T): T = inner.transaction(block)
 
-  override fun <T> selfManagedWrite(dbOverride: String?, block: (UnitOfWork) -> T): T =
-    inner.selfManagedWrite(dbOverride, block)
+  override fun <T> selfManagedWrite(block: (UnitOfWork) -> T): T = inner.selfManagedWrite(block)
 }
 
 private fun unownedRuntimeRow(updatedAt: String) = WorkflowStateRecord(

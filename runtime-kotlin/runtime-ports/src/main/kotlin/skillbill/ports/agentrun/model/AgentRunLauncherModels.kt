@@ -24,7 +24,6 @@ data class SkillRunRequest(
   val issueKey: String,
   val repoRoot: Path,
   val subtaskId: Int? = null,
-  val dbPathOverride: String? = null,
   val timeout: Duration? = null,
   val progressIdleTimeout: Duration? = null,
   val progressProbe: AgentRunProgressProbe = AgentRunProgressProbe.NONE,

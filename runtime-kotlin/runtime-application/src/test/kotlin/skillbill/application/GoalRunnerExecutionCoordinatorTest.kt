@@ -36,7 +36,7 @@ class GoalRunnerExecutionCoordinatorTest {
     val store = InMemoryExecutionLeaseStore(lease(generation = 1, ownerToken = "old-owner"))
     val coordinator = testCoordinator(store, FakeGoalSupervisor(FeatureTaskRuntimeProcessInspection.NotRunning))
 
-    val result = coordinator.runOwned("parent-1", null) {
+    val result = coordinator.runOwned("parent-1") {
       assertEquals(2, requireNotNull(store.executionLeaseValue).generation)
       "continued"
     }
@@ -58,7 +58,7 @@ class GoalRunnerExecutionCoordinatorTest {
     val coordinator = testCoordinator(store, supervisor)
 
     val failure = assertFailsWith<GoalRunnerExecutionAlreadyRunningException> {
-      coordinator.runOwned("parent-1", null) { error("the second run must not enter the goal body") }
+      coordinator.runOwned("parent-1") { error("the second run must not enter the goal body") }
     }
     assertTrue(failure.message.orEmpty().contains("another goal runner process is live"))
     assertEquals(0, supervisor.awaitExitCalls)
@@ -77,7 +77,7 @@ class GoalRunnerExecutionCoordinatorTest {
     val supervisor = FakeGoalSupervisor(FeatureTaskRuntimeProcessInspection.ExactLive)
     val coordinator = testCoordinator(store, supervisor)
 
-    val result = coordinator.runOwned("parent-1", null) {
+    val result = coordinator.runOwned("parent-1") {
       assertEquals(2, requireNotNull(store.executionLeaseValue).generation)
       "continued"
     }
@@ -104,7 +104,7 @@ class GoalRunnerExecutionCoordinatorTest {
     val coordinator = testCoordinator(store, supervisor)
 
     val failure = assertFailsWith<GoalRunnerExecutionAlreadyRunningException> {
-      coordinator.runOwned("parent-1", null) { error("must not reclaim a still-live peer") }
+      coordinator.runOwned("parent-1") { error("must not reclaim a still-live peer") }
     }
     assertTrue(failure.message.orEmpty().contains("another goal runner process is live"))
     assertEquals(1, supervisor.awaitExitCalls)
@@ -127,7 +127,7 @@ class GoalRunnerExecutionCoordinatorTest {
     val coordinator = testCoordinator(store, supervisor)
 
     val failure = assertFailsWith<GoalRunnerExecutionAlreadyRunningException> {
-      coordinator.runOwned("parent-1", null) { error("must not re-enter") }
+      coordinator.runOwned("parent-1") { error("must not re-enter") }
     }
     assertTrue(failure.message.orEmpty().contains("this process already owns the execution lease"))
     assertEquals(0, supervisor.awaitExitCalls)
@@ -142,7 +142,7 @@ class GoalRunnerExecutionCoordinatorTest {
     val coordinator = testCoordinator(store, supervisor)
 
     val failure = assertFailsWith<GoalRunnerExecutionAlreadyRunningException> {
-      coordinator.runOwned("parent-1", null) { error("must not attach") }
+      coordinator.runOwned("parent-1") { error("must not attach") }
     }
     assertTrue(failure.message.orEmpty().contains("another goal runner process is live"))
     assertEquals(0, supervisor.awaitExitCalls)
@@ -154,7 +154,7 @@ class GoalRunnerExecutionCoordinatorTest {
     val supervisor = FakeGoalSupervisor(FeatureTaskRuntimeProcessInspection.NotRunning)
     val coordinator = testCoordinator(store, supervisor)
 
-    coordinator.runOwned("parent-1", null) {
+    coordinator.runOwned("parent-1") {
       assertEquals(FeatureTaskRuntimeHeartbeatTick.Renewed, supervisor.runHeartbeatTick())
       assertEquals(2, requireNotNull(store.executionLeaseValue).generation)
     }
@@ -170,7 +170,7 @@ class GoalRunnerExecutionCoordinatorTest {
     val coordinator = testCoordinator(store, supervisor)
 
     val failure = assertFailsWith<GoalRunnerExecutionAlreadyRunningException> {
-      coordinator.runOwned("parent-1", null) {
+      coordinator.runOwned("parent-1") {
         store.executionLeaseValue = lease(generation = 9, ownerToken = "usurper-owner")
         assertTrue(supervisor.runHeartbeatTick() is FeatureTaskRuntimeHeartbeatTick.FencingLost)
       }
@@ -188,7 +188,7 @@ class GoalRunnerShutdownHookTest {
     val store = InMemoryExecutionLeaseStore(null)
     val coordinator = testCoordinator(store, FakeGoalSupervisor(NOT_RUNNING))
 
-    coordinator.recordInterruption("parent-1", null)
+    coordinator.recordInterruption("parent-1")
 
     assertEquals(1, store.pauseNowCalls.size)
     assertEquals("runner_interrupted", store.pauseNowCalls.single().first)
@@ -202,7 +202,7 @@ class GoalRunnerShutdownHookTest {
   fun `an interruption reason is distinguishable from an operator stop`() {
     val store = InMemoryExecutionLeaseStore(null)
     testCoordinator(store, FakeGoalSupervisor(NOT_RUNNING))
-      .recordInterruption("parent-1", null)
+      .recordInterruption("parent-1")
 
     assertEquals("runner_interrupted", store.controlStateValue.pauseReason)
     assertTrue(store.controlStateValue.pauseReason != "operator_stop")
@@ -220,7 +220,7 @@ class GoalRunnerShutdownHookTest {
     )
 
     testCoordinator(store, FakeGoalSupervisor(NOT_RUNNING))
-      .recordInterruption("parent-1", null)
+      .recordInterruption("parent-1")
 
     assertEquals("operator_stop", store.controlStateValue.pauseReason)
     assertEquals("2026-08-02T09:00:00Z", store.controlStateValue.pausedAt)
@@ -232,7 +232,7 @@ class GoalRunnerShutdownHookTest {
     store.pauseNowBlocksForever = true
     val coordinator = testCoordinator(store, FakeGoalSupervisor(NOT_RUNNING))
 
-    val elapsed = measureTimeMillis { coordinator.recordInterruption("parent-1", null) }
+    val elapsed = measureTimeMillis { coordinator.recordInterruption("parent-1") }
 
     assertTrue(elapsed < SHUTDOWN_BUDGET_CEILING_MILLIS, "hook took ${elapsed}ms")
   }
@@ -243,7 +243,7 @@ class GoalRunnerShutdownHookTest {
     store.pauseNowFailure = { error("database is gone") }
     val coordinator = testCoordinator(store, FakeGoalSupervisor(NOT_RUNNING))
 
-    coordinator.recordInterruption("parent-1", null)
+    coordinator.recordInterruption("parent-1")
 
     assertEquals(1, store.pauseNowCalls.size)
     assertFalse(store.controlStateValue.paused)
@@ -254,7 +254,7 @@ class GoalRunnerShutdownHookTest {
     val store = InMemoryExecutionLeaseStore(null)
     val coordinator = testCoordinator(store, FakeGoalSupervisor(NOT_RUNNING))
 
-    coordinator.runOwned("parent-1", null) { "done" }
+    coordinator.runOwned("parent-1") { "done" }
 
     assertEquals(emptyList(), store.pauseNowCalls)
   }
@@ -272,15 +272,13 @@ private class InMemoryExecutionLeaseStore(
   var pauseNowFailure: (() -> Nothing)? = null
   var pauseNowBlocksForever: Boolean = false
 
-  override fun controlState(parentWorkflowId: String, dbPathOverride: String?): GoalRunnerControlState =
-    controlStateValue
+  override fun controlState(parentWorkflowId: String): GoalRunnerControlState = controlStateValue
 
   override fun pauseNow(
     parentWorkflowId: String,
     reason: String,
     pausedAt: String,
     overwriteExistingReason: Boolean,
-    dbPathOverride: String?,
   ): GoalRunnerControlState {
     pauseNowCalls.add(Triple(reason, pausedAt, overwriteExistingReason))
     if (pauseNowBlocksForever) Thread.sleep(Long.MAX_VALUE)
@@ -296,30 +294,23 @@ private class InMemoryExecutionLeaseStore(
     return controlStateValue
   }
 
-  override fun loadByIssueKey(issueKey: String, dbPathOverride: String?, repoRoot: Path?): GoalRunnerManifestState? =
-    null
+  override fun loadByIssueKey(issueKey: String, repoRoot: Path?): GoalRunnerManifestState? = null
 
-  override fun save(state: GoalRunnerManifestState, dbPathOverride: String?): GoalRunnerManifestState = state
+  override fun save(state: GoalRunnerManifestState): GoalRunnerManifestState = state
 
-  override fun executionLease(parentWorkflowId: String, dbPathOverride: String?): GoalRunnerExecutionLease? =
-    executionLeaseValue
+  override fun executionLease(parentWorkflowId: String): GoalRunnerExecutionLease? = executionLeaseValue
 
   override fun acquireExecutionLease(
     parentWorkflowId: String,
     lease: GoalRunnerExecutionLease,
     expectedOwnerToken: String?,
-    dbPathOverride: String?,
   ): Boolean {
     if (executionLeaseValue?.ownerToken != expectedOwnerToken) return false
     executionLeaseValue = lease
     return true
   }
 
-  override fun heartbeatExecutionLease(
-    parentWorkflowId: String,
-    lease: GoalRunnerExecutionLease,
-    dbPathOverride: String?,
-  ): Boolean {
+  override fun heartbeatExecutionLease(parentWorkflowId: String, lease: GoalRunnerExecutionLease): Boolean {
     if (executionLeaseValue?.ownerToken != lease.ownerToken || executionLeaseValue?.generation != lease.generation) {
       return false
     }
@@ -327,12 +318,7 @@ private class InMemoryExecutionLeaseStore(
     return true
   }
 
-  override fun releaseExecutionLease(
-    parentWorkflowId: String,
-    ownerToken: String,
-    generation: Long,
-    dbPathOverride: String?,
-  ): Boolean {
+  override fun releaseExecutionLease(parentWorkflowId: String, ownerToken: String, generation: Long): Boolean {
     if (executionLeaseValue?.ownerToken != ownerToken || executionLeaseValue?.generation != generation) return false
     executionLeaseValue = null
     return true

@@ -18,7 +18,6 @@ import skillbill.cli.kernel.formatOption
 import skillbill.cli.kernel.toCliPresentation
 import skillbill.cli.kernel.toPayload
 import skillbill.cli.model.CliFormat
-import skillbill.cli.model.CliRunInputs
 import skillbill.learnings.model.LearningScope
 
 @Inject
@@ -60,13 +59,12 @@ class LearningsCommand(
 class LearningsListCommand(
   private val service: LearningService,
   private val state: CliRunState,
-  private val inputs: CliRunInputs,
 ) : DocumentedCliCommand("list", "List local learning entries.") {
   private val status by option("--status", help = "Learning status filter.").default("all")
   private val format by formatOption()
 
   override fun run() {
-    val result = service.list(status, inputs.dbPathOverride)
+    val result = service.list(status)
     val payload = result.toPayload()
     if (format == CliFormat.JSON) {
       state.complete(payload, format)
@@ -80,13 +78,12 @@ class LearningsListCommand(
 class LearningsShowCommand(
   private val service: LearningService,
   private val state: CliRunState,
-  private val inputs: CliRunInputs,
 ) : DocumentedCliCommand("show", "Show a single learning entry.") {
   private val id by option("--id", help = "Learning id.").int().required()
   private val format by formatOption()
 
   override fun run() {
-    state.complete(service.show(id, inputs.dbPathOverride).toPayload(), format)
+    state.complete(service.show(id).toPayload(), format)
   }
 }
 
@@ -94,7 +91,6 @@ class LearningsShowCommand(
 class LearningsResolveCommand(
   private val service: LearningService,
   private val state: CliRunState,
-  private val inputs: CliRunInputs,
 ) : DocumentedCliCommand("resolve", "Resolve active learnings for a review context.") {
   private val repo by option("--repo", help = "Optional repo scope key.")
   private val skill by option("--skill", help = "Optional review skill name.")
@@ -102,7 +98,7 @@ class LearningsResolveCommand(
   private val format by formatOption()
 
   override fun run() {
-    val result = service.resolve(repo, skill, reviewSessionId, inputs.dbPathOverride)
+    val result = service.resolve(repo, skill, reviewSessionId)
     val payload = result.toPayload()
     if (format == CliFormat.JSON) {
       state.complete(payload, format)
@@ -116,7 +112,6 @@ class LearningsResolveCommand(
 class LearningsAddCommand(
   private val service: LearningService,
   private val state: CliRunState,
-  private val inputs: CliRunInputs,
 ) : DocumentedCliCommand("add", "Create a learning from a rejected review finding.") {
   private val scope by option("--scope").choice(
     "global" to LearningScope.GLOBAL,
@@ -133,7 +128,7 @@ class LearningsAddCommand(
 
   override fun run() {
     state.complete(
-      service.add(AddLearningInput(scope, scopeKey, title, rule, reason, fromRun, fromFinding), inputs.dbPathOverride)
+      service.add(AddLearningInput(scope, scopeKey, title, rule, reason, fromRun, fromFinding))
         .toPayload(),
       format,
     )
@@ -144,7 +139,6 @@ class LearningsAddCommand(
 class LearningsEditCommand(
   private val service: LearningService,
   private val state: CliRunState,
-  private val inputs: CliRunInputs,
 ) : DocumentedCliCommand("edit", "Edit a local learning entry.") {
   private val id by option("--id").int().required()
   private val scope by option("--scope").choice(
@@ -163,7 +157,7 @@ class LearningsEditCommand(
       "Learning edit requires at least one field to update."
     }
     state.complete(
-      service.edit(EditLearningInput(id, scope, scopeKey, title, rule, reason), inputs.dbPathOverride).toPayload(),
+      service.edit(EditLearningInput(id, scope, scopeKey, title, rule, reason)).toPayload(),
       format,
     )
   }
@@ -173,13 +167,12 @@ class LearningsEditCommand(
 class LearningsDisableCommand(
   private val service: LearningService,
   private val state: CliRunState,
-  private val inputs: CliRunInputs,
 ) : DocumentedCliCommand("disable", "Disable a learning entry.") {
   private val id by option("--id").int().required()
   private val format by formatOption()
 
   override fun run() {
-    state.complete(service.setStatus(id, "disabled", inputs.dbPathOverride).toPayload(), format)
+    state.complete(service.setStatus(id, "disabled").toPayload(), format)
   }
 }
 
@@ -187,13 +180,12 @@ class LearningsDisableCommand(
 class LearningsEnableCommand(
   private val service: LearningService,
   private val state: CliRunState,
-  private val inputs: CliRunInputs,
 ) : DocumentedCliCommand("enable", "Enable a disabled learning entry.") {
   private val id by option("--id").int().required()
   private val format by formatOption()
 
   override fun run() {
-    state.complete(service.setStatus(id, "active", inputs.dbPathOverride).toPayload(), format)
+    state.complete(service.setStatus(id, "active").toPayload(), format)
   }
 }
 
@@ -201,12 +193,11 @@ class LearningsEnableCommand(
 class LearningsDeleteCommand(
   private val service: LearningService,
   private val state: CliRunState,
-  private val inputs: CliRunInputs,
 ) : DocumentedCliCommand("delete", "Delete a learning entry.") {
   private val id by option("--id").int().required()
   private val format by formatOption()
 
   override fun run() {
-    state.complete(service.delete(id, inputs.dbPathOverride).toPayload(), format)
+    state.complete(service.delete(id).toPayload(), format)
   }
 }

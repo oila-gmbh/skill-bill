@@ -7,7 +7,9 @@ import skillbill.ports.scaffold.catalog.model.ScaffoldExplainSkill
 import skillbill.ports.scaffold.catalog.model.ScaffoldListResult
 import skillbill.ports.scaffold.catalog.model.ScaffoldShowResult
 import skillbill.ports.scaffold.model.ScaffoldBaselineLayer
+import skillbill.ports.scaffold.model.ScaffoldCompletionStatus
 import skillbill.ports.scaffold.model.ScaffoldReviewComposition
+import skillbill.ports.scaffold.model.ScaffoldSectionCompletionStatus
 import skillbill.ports.scaffold.model.ScaffoldSectionStatus
 import skillbill.ports.scaffold.model.ScaffoldSkillStatus
 import skillbill.ports.scaffold.repo.model.ScaffoldValidateResult

@@ -8,8 +8,12 @@ import skillbill.error.FeatureTaskRuntimeSubtaskCommitReconciliationError
 import skillbill.infrastructure.fs.GitWorkflowGitOperations
 import skillbill.ports.diagnostics.NoopRuntimeDiagnostics
 import skillbill.ports.workflow.gitops.WorkflowGitOperations
+import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewBaseline
+import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewBaselineResult
+import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewInputResult
 import skillbill.ports.workflow.gitops.model.WorkflowGitOperationResult
-import skillbill.review.context.model.CodeReviewExecutionMode
+import skillbill.ports.workflow.gitops.model.WorkflowGitOperationStatus
+import skillbill.ports.workflow.toRecordimport skillbill.review.context.model.CodeReviewExecutionMode
 import skillbill.workflow.engine.WorkflowEngine
 import skillbill.workflow.engine.model.WorkflowUpdateInput
 import skillbill.workflow.goal.model.GOAL_SUBTASK_REVIEW_RESULTS_ARTIFACT_KEY
@@ -411,8 +415,9 @@ class RemediationBaseReconciliationUnderAmendTest {
           parentSha?.trim()?.takeIf(String::isNotBlank)
         } else {
           val resolved = realGitOps().resolveCommit(repoRoot, predecessorCommitSha)
-          resolved.value.orEmpty().trim().takeIf { resolved.ok && it.isNotBlank() } ?: parentSha?.trim()
-        }
+          resolved.value.orEmpty().trim()
+            .takeIf { resolved is WorkflowGitOperationResult.Ok && it.isNotBlank() }
+            ?: parentSha?.trim()        }
       }
     }
     requireNotNull(restoreSha) { "rollback target missing" }

@@ -9,12 +9,16 @@ import skillbill.workflow.engine.model.WorkflowResumeView
 import skillbill.workflow.engine.model.WorkflowSnapshotView
 import skillbill.workflow.engine.model.WorkflowStateSnapshot
 import skillbill.workflow.engine.model.WorkflowStepState
+import skillbill.workflow.model.WorkflowContinueStatus
+import skillbill.workflow.model.WorkflowResumeMode
+import skillbill.workflow.model.WorkflowStatus
+import skillbill.workflow.model.WorkflowStepStatus
+import skillbill.workflow.model.workflowStatus
+import skillbill.workflow.model.workflowStepStatus
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 
-internal val workflowResumableStepStatuses = setOf("running", "blocked", "pending")
-
-private val REENTRANT_CONTINUE_STATUSES = setOf("reopened", "already_running")
-
+internal val workflowResumableStepStatuses =
+  setOf(WorkflowStepStatus.RUNNING, WorkflowStepStatus.BLOCKED, WorkflowStepStatus.PENDING)
 internal fun continueStatusFor(
   snapshot: WorkflowSnapshotView,
   resume: WorkflowResumeView,

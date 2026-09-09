@@ -5,9 +5,12 @@ import skillbill.application.featuretask.model.FeatureTaskRuntimeGoalContinuatio
 import skillbill.application.featuretask.model.FeatureTaskRuntimeRunReport
 import skillbill.application.featuretask.model.FeatureTaskRuntimeRunRequest
 import skillbill.application.featuretask.model.FeatureTaskRuntimeSubtaskOutcome
+import skillbill.goalrunner.model.FeatureTaskRuntimeGoalContinuationOutcome
 import skillbill.goalrunner.model.GoalRunnerLaunchFacts
 import skillbill.ports.agentrun.model.AgentRunLaunchFacts
 import skillbill.ports.workflow.gitops.WorkflowGitOperations
+import skillbill.workflow.model.WorkflowStepStatus
+import skillbill.workflow.model.workflowStepStatus
 import skillbill.workflow.taskruntime.FeatureTaskRuntimeHandoffContract
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowQueries
@@ -15,19 +18,16 @@ import skillbill.workflow.taskruntime.FeatureTaskRuntimeProviderLimitDetector
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_STATUS_PAUSED
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFailureDisposition
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFeatureSize
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeGoalContinuationOutcome
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseDeclaration
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutput
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeProviderLimitSignal
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeQualityGateSelection
 
-private const val PHASE_OUTPUT_STATUS_BLOCKED = "blocked"
-private const val PHASE_OUTPUT_STATUS_FAILED = "failed"
-
 fun terminalBlockedReasonFrom(phaseId: String, outputMap: Map<String, Any?>): String? {
   val status = outputMap["status"] as? String
-  if (status != PHASE_OUTPUT_STATUS_BLOCKED && status != PHASE_OUTPUT_STATUS_FAILED) {
-    return null
+  if (status.workflowStepStatus() != WorkflowStepStatus.BLOCKED &&
+    status.workflowStepStatus() != WorkflowStepStatus.FAILED
+  ) {    return null
   }
   val summary = (outputMap["summary"] as? String).orEmpty().trim()
   val blockingReasons = (outputMap["produced_outputs"] as? Map<*, *>)
@@ -68,7 +68,7 @@ fun persistGoalContinuationOutcome(
 ): FeatureTaskRuntimeRunReport {
   val context = request.goalContinuation ?: return report
   val outcome = goalContinuationOutcomeFor(phaseRecorder, gitOperations, request, context, report)?.let { base ->
-    val attribution = agentAttributionFromPhaseState(phaseRecorder, request.workflowId, request.dbPathOverride)
+    val attribution = agentAttributionFromPhaseState(phaseRecorder, request.workflowId)
     base.copy(
       finalizingAgentId = attribution.finalizingAgentId,
       participatingAgentIds = attribution.participatingAgentIds,
@@ -90,12 +90,15 @@ fun persistGoalContinuationOutcome(
           participatingAgentIds = terminal.participatingAgentIds,
         ),
         workflowStatus = when (terminal.status) {
-          "complete" -> "completed"
-          FEATURE_TASK_RUNTIME_PHASE_STATUS_PAUSED -> FEATURE_TASK_RUNTIME_PHASE_STATUS_PAUSED
-          else -> "blocked"
-        },
+          GoalRunnerTerminalStatus.COMPLETE -> "completed"
+          GoalRunnerTerminalStatus.PAUSED -> FEATURE_TASK_RUNTIME_PHASE_STATUS_PAUSED
+          GoalRunnerTerminalStatus.FAILED,
+          GoalRunnerTerminalStatus.BLOCKED,
+          GoalRunnerTerminalStatus.TIMEOUT,
+          GoalRunnerTerminalStatus.NO_TERMINAL_STORE_OUTCOME,
+          GoalRunnerTerminalStatus.RECONCILABLE,
+          -> "blocked"        },
       ),
-      dbOverride = request.dbPathOverride,
     )
   }
   return when {

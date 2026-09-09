@@ -44,7 +44,6 @@ fun emitFeatureTaskRuntimeFinished(
       findingVerificationRejectedCount = telemetryPayload.verificationTelemetry.rejectedCount,
       reviewFixCapExhausted = telemetryPayload.verificationTelemetry.reviewFixCapExhausted,
     ),
-    dbOverride = context.dbOverride,
   )
 }
 
@@ -58,8 +57,9 @@ fun emitFeatureTaskRuntimeFinishedError(
     FeatureTaskRuntimeFinishedRequest(
       sessionId = context.telemetrySessionId,
       completionStatus = "error",
-      completedPhaseIds = outcomes.filterValues { it == "completed" }.keys.toList(),
-      phaseOutcomes = outcomes,
+      completedPhaseIds = outcomes
+        .filterValues { it.workflowStepStatus() == WorkflowStepStatus.COMPLETED }
+        .keys.toList(),      phaseOutcomes = outcomes,
       lastIncompletePhase = outcomes.firstIncompletePhase(),
       blockedReason = normalizedBlockedReason(
         reason = null,
@@ -85,7 +85,6 @@ fun emitFeatureTaskRuntimeFinishedError(
       findingVerificationRejectedCount = telemetryPayload.verificationTelemetry.rejectedCount,
       reviewFixCapExhausted = telemetryPayload.verificationTelemetry.reviewFixCapExhausted,
     ),
-    dbOverride = context.dbOverride,
   )
 }
 

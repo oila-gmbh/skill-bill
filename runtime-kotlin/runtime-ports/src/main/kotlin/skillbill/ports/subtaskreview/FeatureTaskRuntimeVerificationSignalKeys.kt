@@ -1,5 +1,7 @@
 package skillbill.ports.subtaskreview
 
+import skillbill.contracts.SharedPayloadKeys
+
 /**
  * The machine-readable keys the runtime's review verification gates read from a phase's output,
  * shared by the gate ([FeatureTaskRuntimeRunner]) and the prompt that instructs the agent to emit them
@@ -7,7 +9,7 @@ package skillbill.ports.subtaskreview
  */
 object FeatureTaskRuntimeVerificationSignalKeys {
   /** Top-level verdict string both verifying gates accept as an explicit advance/remediation signal. */
-  const val VERDICT = "verdict"
+  const val VERDICT = SharedPayloadKeys.VERDICT
 
   /** produced_outputs key the review gate reads: the findings array (an empty [] affirms no Blocker). */
   const val REVIEW_FINDINGS = "findings"

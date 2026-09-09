@@ -11,9 +11,12 @@ import skillbill.cli.work.truncateTerminalDisplayWidth
 import skillbill.db.core.DatabaseRuntime
 import skillbill.di.RuntimeComponent
 import skillbill.di.create
+import skillbill.model.EnvironmentContext
+import skillbill.model.OptionalCallbacks
 import skillbill.model.RuntimeContext
+import skillbill.model.TransportContext
+import skillbill.model.WorkflowOpsContext
 import java.nio.file.Files
-import java.nio.file.Path
 import java.sql.Connection
 import kotlin.test.Test
 import kotlin.test.assertContains
@@ -44,10 +47,19 @@ class CliWorkListRuntimeTest {
   fun `work list table and json expose ordering unknown estimated values limits and utc instants`() {
     val dbPath = Files.createTempDirectory("skillbill-cli-work-list").resolve("metrics.db")
     val component = RuntimeComponent::class.create(
-      RuntimeContext(environment = emptyMap(), userHome = Files.createTempDirectory("skillbill-cli-work-list-home")),
+      RuntimeContext(
+        EnvironmentContext(
+          dbPathOverride = dbPath.toString(),
+          environment = emptyMap(),
+          userHome = Files.createTempDirectory("skillbill-cli-work-list-home"),
+        ),
+        TransportContext(),
+        WorkflowOpsContext(),
+        OptionalCallbacks(),
+      ),
     )
-    val runtime = component.openWorkflow(WorkflowFamilyKind.TASK_RUNTIME, dbPath, "SKILL-117")
-    val verify = component.openWorkflow(WorkflowFamilyKind.VERIFY, dbPath, "SKILL-118")
+    val runtime = component.openWorkflow(WorkflowFamilyKind.TASK_RUNTIME, "SKILL-117")
+    val verify = component.openWorkflow(WorkflowFamilyKind.VERIFY, "SKILL-118")
     DatabaseRuntime.ensureDatabase(dbPath).use { connection ->
       updateStartedAt(connection, "feature_task_workflows", runtime, "2026-05-01T12:00:00.000004Z")
       updateStartedAt(connection, "feature_verify_workflows", verify, "2026-05-01T12:00:00.000003Z")
@@ -137,10 +149,10 @@ class CliWorkListRuntimeTest {
     assertEquals(workflowId, row["workflow_id"])
   }
 
-  private fun RuntimeComponent.openWorkflow(kind: WorkflowFamilyKind, dbPath: Path, issueKey: String): String =
+  private fun RuntimeComponent.openWorkflow(kind: WorkflowFamilyKind, issueKey: String): String =
     assertIs<WorkflowOpenResult.Ok>(
       workflowService.open(
-        WorkflowServiceOpenArgs(kind = kind, dbOverride = dbPath.toString(), issueKey = issueKey),
+        WorkflowServiceOpenArgs(kind = kind, issueKey = issueKey),
       ),
     ).workflowId
 

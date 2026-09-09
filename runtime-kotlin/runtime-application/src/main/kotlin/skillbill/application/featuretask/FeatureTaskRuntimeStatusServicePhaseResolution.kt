@@ -2,6 +2,8 @@ package skillbill.application.featuretask
 
 import skillbill.application.featuretask.model.FeatureTaskRuntimeOperatorDecisionPause
 import skillbill.application.featuretask.model.FeatureTaskRuntimePhaseStatus
+import skillbill.workflow.model.WorkflowStepStatus
+import skillbill.workflow.model.workflowStepStatus
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_STATUS_BLOCKED
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_STATUS_PAUSED
@@ -63,12 +65,13 @@ fun shouldSkipPendingLoopOnlyPhase(
   if (status != PHASE_STATUS_PENDING || phaseId !in LOOP_ONLY_PHASE_IDS) {
     return false
   }
+  val reviewStatus = records[FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW]?.status?.workflowStepStatus()
+  val buildStatus = records[FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_BUILD]?.status?.workflowStepStatus()
   val buildStampedCurrent =
     phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_BUILD &&
       qualityGateSelection == FeatureTaskRuntimeQualityGateSelection.BUILD &&
-      records[FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW]?.status == PHASE_STATUS_COMPLETED &&
-      records[FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_BUILD]?.status != PHASE_STATUS_COMPLETED
-  if (buildStampedCurrent) {
+      reviewStatus == WorkflowStepStatus.COMPLETED &&
+      buildStatus != WorkflowStepStatus.COMPLETED  if (buildStampedCurrent) {
     return false
   }
   return true

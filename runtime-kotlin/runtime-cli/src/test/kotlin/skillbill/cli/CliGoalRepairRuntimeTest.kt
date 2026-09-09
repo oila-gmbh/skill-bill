@@ -199,7 +199,7 @@ class CliGoalRepairRuntimeTest {
       val stripped = current
         .replace(Regex(""""validation_depth"\s*:\s*"full"\s*,?"""), "")
         .replace(",}", "}")
-        .replace(",,", ",")
+        .replace(",", ",")
       check(stripped != current) { "could not strip validation_depth from $workflowId" }
       connection.prepareStatement(
         "UPDATE feature_task_workflows SET artifacts_json = ? WHERE workflow_id = ?",

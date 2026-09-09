@@ -6,15 +6,13 @@ import skillbill.ports.goalrunner.runner.model.GoalRunnerReconcileGate
 import java.nio.file.Path
 
 interface GoalRunnerWorkflowOutcomeMutationStore {
-  fun authoritativeOutcomes(issueKey: String, dbPathOverride: String? = null): Map<Int, GoalRunnerStoredOutcome> =
-    emptyMap()
+  fun authoritativeOutcomes(issueKey: String): Map<Int, GoalRunnerStoredOutcome> = emptyMap()
 
   fun reconcileAuthoritativeOutcomes(
     issueKey: String,
     activeWorkflowIds: Set<String> = emptySet(),
     gate: GoalRunnerReconcileGate = GoalRunnerReconcileGate(),
     repoRoot: Path? = null,
-    dbPathOverride: String? = null,
   ): Map<Int, GoalRunnerStoredOutcome>
 
   fun markBlocked(
@@ -22,13 +20,7 @@ interface GoalRunnerWorkflowOutcomeMutationStore {
     blockedReason: String,
     lastResumableStep: String,
     supervisionEvent: GoalRunnerSupervisionEvent? = null,
-    dbPathOverride: String? = null,
   ): String?
 
-  fun reopenBlockedPhaseForOperatorResume(
-    workflowId: String,
-    preferredPhaseId: String,
-    reason: String,
-    dbPathOverride: String? = null,
-  ): Boolean
+  fun reopenBlockedPhaseForOperatorResume(workflowId: String, preferredPhaseId: String, reason: String): Boolean
 }

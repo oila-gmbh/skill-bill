@@ -11,6 +11,10 @@ import skillbill.workflow.decomposition.DecompositionManifestValidator
 import skillbill.workflow.engine.WorkflowEngine
 import skillbill.workflow.engine.model.WorkflowStateSnapshot
 import skillbill.workflow.engine.model.WorkflowUpdateInput
+import skillbill.workflow.engine.model.isTerminalStatus
+import skillbill.workflow.model.WorkflowStepStatus
+import skillbill.workflow.model.workflowStatus
+import skillbill.workflow.model.workflowStepStatus
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_OPERATOR_BLOCK_RETRY_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_OPERATOR_BLOCK_RETRY_REASON_MAX_LENGTH
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_LEDGER_ARTIFACT_KEY
@@ -34,7 +38,6 @@ class WorkflowServiceBlockedPhaseRetry(
     workflowId: String,
     phaseId: String,
     reason: String,
-    dbOverride: String?,
   ): WorkflowUpdateResult {
     val normalizedReason = reason.trim()
     if (
@@ -56,7 +59,7 @@ class WorkflowServiceBlockedPhaseRetry(
       )
     }
     val request = BlockedPhaseRetryRequest(workflowId, normalizedPhaseId, normalizedReason)
-    val persistence = database.transaction(dbOverride) { unitOfWork ->
+    val persistence = database.transaction { unitOfWork ->
       retryInTransaction(unitOfWork, request)
     }
     persistence.projectionArtifactsJson?.let { artifactsJson ->

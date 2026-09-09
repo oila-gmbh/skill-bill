@@ -28,7 +28,6 @@ internal fun recordPlanningRejection(sweep: DefaultGoalPlanningSweep, args: Goal
     GoalPlanningRejectionRecord(
       parentWorkflowId = scope.shared.parentWorkflowId,
       issueKey = scope.shared.issueKey,
-      dbPathOverride = scope.shared.dbPathOverride,
       phaseId = diagnosticPhaseId(scope.phaseId, scope.subtask),
       subtaskId = scope.subtask?.id ?: 0,
       attempt = scope.attempt,
@@ -113,7 +112,6 @@ internal fun recordPlanningAttempt(sweep: DefaultGoalPlanningSweep, args: GoalPl
     GoalPlanningAttemptRecord(
       scope.shared.parentWorkflowId,
       scope.shared.issueKey,
-      scope.shared.dbPathOverride,
       scope.phaseId,
       scope.subtask?.id ?: 0,
       scope.attempt,

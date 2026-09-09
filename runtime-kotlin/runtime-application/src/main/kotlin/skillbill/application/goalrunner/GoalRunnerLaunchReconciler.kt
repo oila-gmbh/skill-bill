@@ -51,11 +51,10 @@ public class GoalRunnerLaunchReconciler(
       request = request,
     )
     val progressWatermark = runCatching {
-      outcomeStore.ledgerSequenceWatermarks(issueKey, request.dbPathOverride).maxProgressSequence
+      outcomeStore.ledgerSequenceWatermarks(issueKey).maxProgressSequence
     }.getOrNull()
     val progressEmitter = GoalRunnerProgressEventEmitter(
       outcomeStore = outcomeStore,
-      request = request,
       resolveWorkflowId = { tickReader.progressState()?.subtask?.workflowId?.takeIf(String::isNotBlank) },
       watermarkSeed = progressWatermark,
       clock = clock,
@@ -65,7 +64,6 @@ public class GoalRunnerLaunchReconciler(
     val activityStampSink = activityStampWriter.lazySink(
       resolveWorkflowId = { tickReader.progressState()?.subtask?.workflowId },
       parentWorkflowId = goalContinuation?.parentWorkflowId,
-      dbOverride = request.dbPathOverride,
     )
     return GoalRunnerSubtaskLaunchRequest(
       invokedAgentId = request.invokedAgentId,
@@ -74,7 +72,6 @@ public class GoalRunnerLaunchReconciler(
         issueKey = issueKey,
         repoRoot = request.repoRoot,
         subtaskId = subtaskId,
-        dbPathOverride = request.dbPathOverride,
         timeout = request.timeout,
         progressIdleTimeout = request.progressIdleTimeout,
         progressProbe = progressProbe(tickReader, subtaskId),
@@ -97,7 +94,7 @@ public class GoalRunnerLaunchReconciler(
     assignedWorkflowId: String?,
     reviewBaseline: GoalSubtaskReviewBaseline?,
   ): SkillRunGoalContinuationContext? {
-    val state = manifestStore.loadByIssueKey(issueKey, request.dbPathOverride, request.repoRoot) ?: return null
+    val state = manifestStore.loadByIssueKey(issueKey, request.repoRoot) ?: return null
     val branch = state.manifest.branchPlanFor(subtaskId).branch.takeIf(String::isNotBlank)
       ?: state.manifest.featureBranch?.takeIf(String::isNotBlank)
     val subtask = state.manifest.subtasks.firstOrNull { it.id == subtaskId }
@@ -123,7 +120,7 @@ public class GoalRunnerLaunchReconciler(
         qualityGateSelection = GoalRunnerQualityGateSelectionResolver.resolve(state.manifest, subtaskId),
         agentAddonSelection = manifestStore.effectiveAgentAddonSelection(state.parentWorkflowId, request),
         reviewBaseline = state.manifest.workflowIdFor(subtaskId)
-          ?.let { workflowId -> outcomeStore.goalSubtaskReviewState(workflowId, request.dbPathOverride) }
+          ?.let { workflowId -> outcomeStore.goalSubtaskReviewState(workflowId) }
           ?.let { reviewState ->
             GoalSubtaskReviewBaseline(reviewState.reviewBaseSha)
           }
@@ -140,7 +137,7 @@ public class GoalRunnerLaunchReconciler(
     subtaskId: Int,
     request: GoalRunnerRunRequest,
   ): GoalRunnerLaunchReconciliation {
-    val refreshed = manifestStore.loadByIssueKey(request.issueKey, request.dbPathOverride, request.repoRoot)
+    val refreshed = manifestStore.loadByIssueKey(request.issueKey, request.repoRoot)
       ?: attemptedState
     val launchFacts = launchOutcome.toGoalRunnerLaunchFacts()
     val reconciled = GoalRunnerOutcomeReconciler.reconcile(
@@ -192,7 +189,6 @@ public class GoalRunnerLaunchReconciler(
         issueKey = request.issueKey,
         subtaskId = subtaskId,
         output = candidate.output,
-        dbPathOverride = request.dbPathOverride,
       )
     }
     GoalRunnerMissingResultPrefixRecovery(
@@ -214,14 +210,12 @@ public class GoalRunnerLaunchReconciler(
         issueKey = state.manifest.issueKey,
         subtaskId = subtaskId,
         repoRoot = request.repoRoot,
-        dbPathOverride = request.dbPathOverride,
       )
     }
     return outcomeStore.reconcileAuthoritativeOutcomes(
       issueKey = state.manifest.issueKey,
       gate = GoalRunnerReconcileGate(requireStalenessEvidence = false),
       repoRoot = request.repoRoot,
-      dbPathOverride = request.dbPathOverride,
     )[subtaskId]
   }
 }

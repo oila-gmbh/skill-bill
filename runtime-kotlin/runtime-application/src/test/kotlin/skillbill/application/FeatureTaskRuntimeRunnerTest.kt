@@ -37,7 +37,6 @@ import skillbill.ports.diagnostics.model.ProducerOutputEvidence
 import skillbill.ports.diagnostics.model.RejectedOutputDiagnosticError.Conflict
 import skillbill.ports.validation.ValidationGateRunner
 import skillbill.ports.validation.model.ValidationGateFinding
-import skillbill.ports.validation.model.ValidationGateRunOutcome
 import skillbill.ports.validation.model.ValidationGateRunRequest
 import skillbill.ports.validation.model.ValidationGateRunResult
 import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewBaseline
@@ -67,6 +66,7 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeResolvedBranch
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeTransitionDeclaration
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeVerdict
 import skillbill.workflow.taskruntime.model.QUARANTINE_REJECTION_CLASS_CHECKPOINT_IDENTITY_VERSION
+import skillbill.workflow.taskruntime.model.ValidationGateRunOutcome
 import skillbill.workflow.taskruntime.model.featureTaskRuntimeCheckpointRefName
 import java.nio.file.Files
 import java.nio.file.Path
@@ -1155,16 +1155,13 @@ class FeatureTaskRuntimeLifecycleTelemetryRunnerTest {
   }
 
   @Test
-  fun `runtime lifecycle telemetry honors run db override`() {
-    val dbOverride = "/tmp/skillbill-runtime-override.db"
-    val harness = telemetryRunnerHarness(RuntimeHarnessConfig(dbPathOverride = dbOverride))
+  fun `runtime lifecycle telemetry uses the bound database session`() {
+    val harness = telemetryRunnerHarness(RuntimeHarnessConfig())
 
     val report = harness.runner.run(harness.request)
 
-    assertIs<FeatureTaskRuntimeRunReport.Completed>(report, report.toString())
-    assertTrue(harness.database.transactionDbOverrides.isNotEmpty())
-    assertTrue(harness.database.transactionDbOverrides.all { it == dbOverride })
-    assertEquals(SESSION_ID, harness.lifecycle.startedRecords.single().sessionId)
+    assertIs<FeatureTaskRuntimeRunReport.Completed>(report)
+    assertTrue(harness.database.transactionCount > 0)    assertEquals(SESSION_ID, harness.lifecycle.startedRecords.single().sessionId)
     assertEquals(SESSION_ID, harness.lifecycle.finishedRecords.single().sessionId)
   }
 
@@ -1236,7 +1233,6 @@ class FeatureTaskRuntimeLifecycleTelemetryRunnerTest {
         phaseOutcomes = { error("phase load failed") },
         reviewFixIterationCount = { 0 },
         auditGapIterationCount = { 0 },
-        dbOverride = null,
       ),
     )
 
@@ -4075,7 +4071,6 @@ class FeatureTaskRuntimeReconcileOnResumeTest {
         parentSha = null,
         ownedPaths = listOf("src/Owned.kt"),
         commitSha = "e".repeat(40),
-        dbOverride = null,
       ),
     )
 
@@ -4107,7 +4102,6 @@ class FeatureTaskRuntimeReconcileOnResumeTest {
           parentSha = null,
           ownedPaths = listOf("src/Owned.kt"),
           commitSha = "e".repeat(40),
-          dbOverride = null,
         ),
       )
     }

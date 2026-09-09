@@ -30,21 +30,18 @@ internal fun GoalRunnerControlCoordinator.persistPauseRequest(
   }
 }
 
-internal fun GoalRunnerControlCoordinator.requestPause(
-  parentWorkflowId: String,
-  dbPathOverride: String?,
-): GoalRunnerControlState? = database.transaction(dbPathOverride) { unitOfWork ->
-  WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, parentWorkflowId)?.let { parent ->
-    migrateLegacyGoalRunnerControls(unitOfWork, parent)
-    persistPauseRequest(unitOfWork, parentWorkflowId)
+internal fun GoalRunnerControlCoordinator.requestPause(parentWorkflowId: String): GoalRunnerControlState? =
+  database.transaction { unitOfWork ->
+    WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, parentWorkflowId)?.let { parent ->
+      migrateLegacyGoalRunnerControls(unitOfWork, parent)
+      persistPauseRequest(unitOfWork, parentWorkflowId)
+    }
   }
-}
 
 internal fun GoalRunnerControlCoordinator.requestPauseByIssueKey(
   issueKey: String,
-  dbPathOverride: String?,
   repoRoot: Path?,
-): GoalRunnerPausePersistenceResult? = database.transaction(dbPathOverride) { unitOfWork ->
+): GoalRunnerPausePersistenceResult? = database.transaction { unitOfWork ->
   val parent = unitOfWork.workflowStates.findDecomposedParentWorkflow(
     issueKey,
     decompositionManifestValidator,

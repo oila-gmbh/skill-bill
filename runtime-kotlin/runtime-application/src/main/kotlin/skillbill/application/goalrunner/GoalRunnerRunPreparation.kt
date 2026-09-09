@@ -20,16 +20,15 @@ public class GoalRunnerRunPreparation(
     val persistedControl = manifestStore.bindRepositoryIdentity(
       state.parentWorkflowId,
       goalRepositoryIdentity(request.repoRoot, repositoryEnclosingRootPort),
-      request.dbPathOverride,
     )
     stopAfterPolicyMismatch(state, request, persistedControl)?.let { return it }
-    val persistedReviewPolicy = manifestStore.reviewPolicy(state.parentWorkflowId, request.dbPathOverride)
+    val persistedReviewPolicy = manifestStore.reviewPolicy(state.parentWorkflowId)
     persistedReviewPolicy?.let { policy ->
       reviewPolicyMismatch(state, request, policy)?.let { return it }
     }
     val effectiveReviewPolicy = persistEffectiveReviewPolicy(state, request, persistedReviewPolicy)
     val effectiveControl = persistEffectiveStopAfterPolicy(state, request, persistedControl)
-    val preparedState = resumeForRun(state, request, effectiveControl)
+    val preparedState = resumeForRun(state, effectiveControl)
     return GoalRunPreparation.Prepared(
       preparedState,
       request.copy(
@@ -84,7 +83,6 @@ public class GoalRunnerRunPreparation(
     return manifestStore.persistReviewPolicy(
       parentWorkflowId = state.parentWorkflowId,
       policy = requestedReviewPolicy,
-      dbPathOverride = request.dbPathOverride,
     )
   }
 
@@ -96,7 +94,6 @@ public class GoalRunnerRunPreparation(
     manifestStore.persistStopAfterSubtask(
       state.parentWorkflowId,
       request.stopAfterSubtaskId,
-      request.dbPathOverride,
     )
   } else {
     persistedControl
@@ -104,18 +101,17 @@ public class GoalRunnerRunPreparation(
 
   private fun resumeForRun(
     state: GoalRunnerManifestState,
-    request: GoalRunnerRunRequest,
     effectiveControl: GoalRunnerControlState,
   ): GoalRunnerManifestState {
     val clearsPause = effectiveControl.paused || effectiveControl.pauseRequested
     val resumedState = if (clearsPause) {
-      manifestStore.resume(state.parentWorkflowId, request.dbPathOverride) ?: state
+      manifestStore.resume(state.parentWorkflowId) ?: state
     } else {
       state
     }
     return resumedState.copy(
       controlState = if (clearsPause) {
-        manifestStore.controlState(state.parentWorkflowId, request.dbPathOverride)
+        manifestStore.controlState(state.parentWorkflowId)
       } else {
         effectiveControl
       },

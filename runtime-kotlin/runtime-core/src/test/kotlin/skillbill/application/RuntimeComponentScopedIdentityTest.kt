@@ -14,7 +14,6 @@ class RuntimeComponentScopedIdentityTest {
     val component =
       RuntimeComponent::class.create(
         RuntimeContext(
-          dbPathOverride = tempDir.resolve("metrics.db").toString(),
           environment = emptyMap(),
           userHome = tempDir,
         ),

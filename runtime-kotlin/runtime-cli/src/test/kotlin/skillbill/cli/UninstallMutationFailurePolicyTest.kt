@@ -127,7 +127,7 @@ class UninstallMutationFailurePolicyTest {
     val command = UninstallCommand(
       state = state,
       inputs = CliRunInputs(
-        dbPathOverride = null,
+        databasePath = null,
         stdinText = null,
         environment = emptyMap(),
         externalCommandRunner = ExternalCommandRunner { ExternalCommandResult(exitCode = 0, output = "") },

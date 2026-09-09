@@ -7,6 +7,7 @@ import skillbill.ports.agentrun.model.ConversationIsolation
 import skillbill.ports.agentrun.model.SkillRunGoalContinuationContext
 import skillbill.ports.agentrun.model.SkillRunRequest
 import skillbill.ports.review.model.ReviewLaunchIsolationStrategy
+import java.nio.file.Path
 
 internal fun launchPrompt(request: SkillRunRequest): String = requireNotNull(request.promptOverride) {
   "launchPrompt requires a promptOverride; goal-continuation runs spawn skill-bill directly."
@@ -39,11 +40,15 @@ internal fun requireProcessLaunch(request: SkillRunRequest, strategy: ReviewLaun
   }
 }
 
-internal fun goalContinuationCommand(request: SkillRunRequest, agent: InstallAgent): AgentRunCommand? {
+internal fun goalContinuationCommand(
+  request: SkillRunRequest,
+  agent: InstallAgent,
+  databasePath: Path?,
+): AgentRunCommand? {
   val context = request.goalContinuation ?: return null
   if (request.promptOverride != null) return null
   return AgentRunCommand(
-    command = goalContinuationArguments(request, agent),
+    command = goalContinuationArguments(request, agent, databasePath),
     workingDirectory = request.repoRoot,
     timeout = request.timeout,
     environment = goalContinuationEnvironment(request),
@@ -51,15 +56,19 @@ internal fun goalContinuationCommand(request: SkillRunRequest, agent: InstallAge
   )
 }
 
-internal fun goalContinuationArguments(request: SkillRunRequest, agent: InstallAgent): List<String> {
+internal fun goalContinuationArguments(
+  request: SkillRunRequest,
+  agent: InstallAgent,
+  databasePath: Path?,
+): List<String> {
   val context = requireNotNull(request.goalContinuation)
   val childWorkflowId = context.childWorkflowId?.takeIf(String::isNotBlank)
   val assignedWorkflowId = context.assignedWorkflowId?.takeIf(String::isNotBlank)
   return buildList {
     add("skill-bill")
-    request.dbPathOverride?.let { db ->
+    databasePath?.let { db ->
       add("--db")
-      add(db)
+      add(db.toString())
     }
     add("feature-task")
     if (childWorkflowId != null) {

@@ -14,6 +14,8 @@ import skillbill.workflow.engine.WorkflowEngine
 import skillbill.workflow.engine.WorkflowSnapshotValidator
 import skillbill.workflow.engine.model.WorkflowStateSnapshot
 import skillbill.workflow.engine.model.WorkflowUpdateInput
+import skillbill.workflow.model.WorkflowStepStatus
+import skillbill.workflow.model.workflowStepStatus
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_STATUS_BLOCKED
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_STATUS_PAUSED
@@ -61,56 +63,50 @@ class FeatureTaskRuntimeWorkflowPersistence(
     WorkflowFamily.TASK_RUNTIME.save(workflowStates, updated)
   }
 
-  override fun existingWorkflowMode(workflowId: String, dbOverride: String?): FeatureTaskWorkflowMode? =
-    database.read(dbOverride) { unitOfWork ->
-      unitOfWork.workflowStates.getFeatureTaskWorkflow(workflowId)?.mode
-    }
-
-  override fun workerOwnership(workflowId: String, dbOverride: String?): FeatureTaskRuntimeWorkerOwnership? =
-    database.read(dbOverride) { unitOfWork ->
-      unitOfWork.workflowStates.getFeatureTaskRuntimeWorkerOwnership(workflowId)
-    }
-  override fun ensureWorkflowOpen(
-    workflowId: String,
-    sessionId: String,
-    dbOverride: String?,
-    issueKey: String?,
-  ): Boolean = database.transaction(dbOverride) { unitOfWork ->
-    val normalizedIssueKey = normalizeIssueKey(issueKey)
-    val existing = unitOfWork.workflowStates.getFeatureTaskRuntimeWorkflow(workflowId)
-    if (existing != null) {
-      val persistedIssueKey = existing.issueKey
-        ?.trim()
-        ?.takeIf(String::isNotEmpty)
-        ?.let(::normalizeIssueKey)
-      if (
-        persistedIssueKey != null &&
-        normalizedIssueKey != null &&
-        persistedIssueKey != normalizedIssueKey
-      ) {
-        throw WorkflowIssueKeyConflictError(workflowId, persistedIssueKey, normalizedIssueKey)
-      }
-      if (persistedIssueKey == null && normalizedIssueKey != null) {
-        unitOfWork.workflowStates.saveFeatureTaskRuntimeWorkflow(
-          existing.copy(issueKey = normalizedIssueKey, sessionId = existing.sessionId.ifBlank { sessionId }),
-        )
-      } else if (existing.sessionId.isBlank()) {
-        unitOfWork.workflowStates.saveFeatureTaskRuntimeWorkflow(existing.copy(sessionId = sessionId))
-      }
-      return@transaction true
-    }
-    val opened = engine.openRecord(
-      WorkflowFamily.TASK_RUNTIME.definition,
-      workflowId,
-      sessionId,
-      WorkflowFamily.TASK_RUNTIME.definition.defaultInitialStepId,
-    )
-    WorkflowFamily.TASK_RUNTIME.saveRecord(
-      unitOfWork.workflowStates,
-      opened.toRecord().copy(issueKey = normalizedIssueKey),
-    )
-    true
+  override fun existingWorkflowMode(workflowId: String): FeatureTaskWorkflowMode? = database.read { unitOfWork ->
+    unitOfWork.workflowStates.getFeatureTaskWorkflow(workflowId)?.mode
   }
+
+  override fun workerOwnership(workflowId: String): FeatureTaskRuntimeWorkerOwnership? = database.read { unitOfWork ->
+    unitOfWork.workflowStates.getFeatureTaskRuntimeWorkerOwnership(workflowId)
+  }
+  override fun ensureWorkflowOpen(workflowId: String, sessionId: String, issueKey: String?): Boolean =
+    database.transaction { unitOfWork ->
+      val normalizedIssueKey = normalizeIssueKey(issueKey)
+      val existing = unitOfWork.workflowStates.getFeatureTaskRuntimeWorkflow(workflowId)
+      if (existing != null) {
+        val persistedIssueKey = existing.issueKey
+          ?.trim()
+          ?.takeIf(String::isNotEmpty)
+          ?.let(::normalizeIssueKey)
+        if (
+          persistedIssueKey != null &&
+          normalizedIssueKey != null &&
+          persistedIssueKey != normalizedIssueKey
+        ) {
+          throw WorkflowIssueKeyConflictError(workflowId, persistedIssueKey, normalizedIssueKey)
+        }
+        if (persistedIssueKey == null && normalizedIssueKey != null) {
+          unitOfWork.workflowStates.saveFeatureTaskRuntimeWorkflow(
+            existing.copy(issueKey = normalizedIssueKey, sessionId = existing.sessionId.ifBlank { sessionId }),
+          )
+        } else if (existing.sessionId.isBlank()) {
+          unitOfWork.workflowStates.saveFeatureTaskRuntimeWorkflow(existing.copy(sessionId = sessionId))
+        }
+        return@transaction true
+      }
+      val opened = engine.openRecord(
+        WorkflowFamily.TASK_RUNTIME.definition,
+        workflowId,
+        sessionId,
+        WorkflowFamily.TASK_RUNTIME.definition.defaultInitialStepId,
+      )
+      WorkflowFamily.TASK_RUNTIME.saveRecord(
+        unitOfWork.workflowStates,
+        opened.toRecord().copy(issueKey = normalizedIssueKey),
+      )
+      true
+    }
 }
 
 fun stepUpdatesFrom(records: Map<String, FeatureTaskRuntimePhaseRecord>): List<Map<String, Any?>> {
@@ -119,8 +115,8 @@ fun stepUpdatesFrom(records: Map<String, FeatureTaskRuntimePhaseRecord>): List<M
     record.status == FEATURE_TASK_RUNTIME_PHASE_STATUS_PAUSED -> FEATURE_TASK_RUNTIME_PHASE_STATUS_PAUSED
     record.status == FEATURE_TASK_RUNTIME_PHASE_STATUS_PENDING -> FEATURE_TASK_RUNTIME_PHASE_STATUS_PENDING
     record.finishedAt != null -> "completed"
-    record.status == "running" || record.status == "completed" -> record.status
-    else -> throw InvalidWorkflowStateSchemaError(
+    record.status.workflowStepStatus() in setOf(WorkflowStepStatus.RUNNING, WorkflowStepStatus.COMPLETED) ->
+      record.status.wireValue    else -> throw InvalidWorkflowStateSchemaError(
       "Feature-task-runtime phase '${record.phaseId}' has unmappable status '${record.status}' for steps[].",
     )
   }

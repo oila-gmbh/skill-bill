@@ -30,9 +30,9 @@ class GoalRunnerResetReplanCoordinator(deps: GoalRunnerResetReplanCoordinatorDep
   private val repositoryEnclosingRootPort = deps.repositoryEnclosingRootPort
   fun reset(request: GoalRunnerResetRequest): GoalRunnerResetResult? {
     val loaded = if (request.deleteChildWorkflow) {
-      manifestStore.loadDurableByIssueKey(request.issueKey, request.dbPathOverride)?.copy(repoRoot = request.repoRoot)
+      manifestStore.loadDurableByIssueKey(request.issueKey)?.copy(repoRoot = request.repoRoot)
     } else {
-      manifestStore.loadByIssueKey(request.issueKey, request.dbPathOverride, request.repoRoot)
+      manifestStore.loadByIssueKey(request.issueKey, request.repoRoot)
     }
       ?: return null
     if (request.deleteChildWorkflow) {
@@ -42,17 +42,16 @@ class GoalRunnerResetReplanCoordinator(deps: GoalRunnerResetReplanCoordinatorDep
       issueKey = loaded.manifest.issueKey,
       activeWorkflowIds = emptySet(),
       gate = GoalRunnerReconcileGate(allowInactiveReconciliation = true),
-      dbPathOverride = request.dbPathOverride,
     )
-    val latest = manifestStore.loadByIssueKey(request.issueKey, request.dbPathOverride, request.repoRoot) ?: loaded
+    val latest = manifestStore.loadByIssueKey(request.issueKey, request.repoRoot) ?: loaded
     val hardResetRepoRoot = request.takeHardResetRepositoryRoot(latest)
     val before = latest.manifest.toResetSnapshot()
     val resetManifest = latest.manifest.resetManifest(request.hard)
     val resetState = latest.copy(manifest = resetManifest)
     val saved = if (request.hard) {
-      manifestStore.saveHardReset(resetState, request.dbPathOverride, request.preservePlanning)
+      manifestStore.saveHardReset(resetState, request.preservePlanning)
     } else {
-      manifestStore.save(resetState, request.dbPathOverride)
+      manifestStore.save(resetState)
     }
     if (request.hard) {
       pruneResetSubtaskCheckpointRefs(
@@ -64,7 +63,7 @@ class GoalRunnerResetReplanCoordinator(deps: GoalRunnerResetReplanCoordinatorDep
       )
     }
     val staleChild = if (!request.hard) {
-      currentChildRecoveryDiagnostic(saved.manifest, request.dbPathOverride)
+      currentChildRecoveryDiagnostic(saved.manifest)
     } else {
       null
     }
@@ -79,13 +78,13 @@ class GoalRunnerResetReplanCoordinator(deps: GoalRunnerResetReplanCoordinatorDep
   }
 
   fun replan(request: GoalRunnerReplanRequest): GoalRunnerReplanResult? {
-    val loaded = manifestStore.loadDurableByIssueKey(request.issueKey, request.dbPathOverride)
+    val loaded = manifestStore.loadDurableByIssueKey(request.issueKey)
       ?: return null
     val selected = requireReplanTarget(loaded.manifest, request)
     requireIdleForScopedReplan(loaded, request)
     val beforeSubtasks = loaded.manifest.toResetSnapshot().subtasks
     val expectedSharedDigest = if (request.includeSharedPreplan) {
-      manifestStore.sharedPreplanPayloadSha256(loaded.parentWorkflowId, request.dbPathOverride)
+      manifestStore.sharedPreplanPayloadSha256(loaded.parentWorkflowId)
     } else {
       null
     }
@@ -108,7 +107,6 @@ class GoalRunnerResetReplanCoordinator(deps: GoalRunnerResetReplanCoordinatorDep
     val written = manifestStore.saveScopedReplan(
       state = retargeted,
       subtaskId = request.subtaskId,
-      dbPathOverride = request.dbPathOverride,
       options = GoalRunnerScopedReplanOptions(
         includeSharedPreplan = request.includeSharedPreplan,
         expectedSharedPayloadSha256 = expectedSharedDigest,
@@ -118,9 +116,9 @@ class GoalRunnerResetReplanCoordinator(deps: GoalRunnerResetReplanCoordinatorDep
     return toReplanResult(request, loaded, written, beforeSubtasks)
   }
 
-  fun hardResetPreflight(issueKey: String, dbPathOverride: String?): List<GoalRunnerAcceptedSubtask> {
-    val state = manifestStore.loadDurableByIssueKey(issueKey, dbPathOverride) ?: return emptyList()
-    return manifestStore.outOfBandAcceptances(state.parentWorkflowId, dbPathOverride).toAcceptedSubtasks()
+  fun hardResetPreflight(issueKey: String): List<GoalRunnerAcceptedSubtask> {
+    val state = manifestStore.loadDurableByIssueKey(issueKey) ?: return emptyList()
+    return manifestStore.outOfBandAcceptances(state.parentWorkflowId).toAcceptedSubtasks()
   }
 
   private fun GoalRunnerResetRequest.takeHardResetRepositoryRoot(latest: GoalRunnerManifestState): Path? {
@@ -131,7 +129,6 @@ class GoalRunnerResetReplanCoordinator(deps: GoalRunnerResetReplanCoordinatorDep
     manifestStore.bindRepositoryIdentity(
       latest.parentWorkflowId,
       goalRepositoryIdentity(repoRoot, repositoryEnclosingRootPort),
-      dbPathOverride,
     )
     return repoRoot
   }
@@ -144,8 +141,8 @@ class GoalRunnerResetReplanCoordinator(deps: GoalRunnerResetReplanCoordinatorDep
     require(selected != null) {
       "Subtask '${request.subtaskId}' is not part of goal '${request.issueKey}'."
     }
-    require(selected.status != SUBTASK_STATUS_COMPLETE && selected.status != SUBTASK_STATUS_SKIPPED) {
-      "Subtask '${request.subtaskId}' is terminal (${selected.status}); use reset to reopen it before replanning."
+    val terminalStatuses = setOf(DecompositionStatus.COMPLETE, DecompositionStatus.SKIPPED)
+    require(selected.status.decompositionStatus() !in terminalStatuses) {      "Subtask '${request.subtaskId}' is terminal (${selected.status}); use reset to reopen it before replanning."
     }
     return selected
   }
@@ -157,7 +154,6 @@ class GoalRunnerResetReplanCoordinator(deps: GoalRunnerResetReplanCoordinatorDep
     val liveness = projectionAssembler.resolveExecutionLiveness(
       parentWorkflowId = loaded.parentWorkflowId,
       currentSubtask = currentSubtask,
-      dbPathOverride = request.dbPathOverride,
     )
     require(liveness == ExecutionLiveness.IDLE) {
       when (liveness) {
@@ -201,13 +197,10 @@ class GoalRunnerResetReplanCoordinator(deps: GoalRunnerResetReplanCoordinatorDep
     ),
   )
 
-  private fun currentChildRecoveryDiagnostic(
-    manifest: DecompositionManifest,
-    dbPathOverride: String?,
-  ): GoalRunnerChildRecoveryDiagnostic? {
+  private fun currentChildRecoveryDiagnostic(manifest: DecompositionManifest): GoalRunnerChildRecoveryDiagnostic? {
     val subtask = manifest.subtasks.firstOrNull { it.id == manifest.currentSubtaskIntent.subtaskId } ?: return null
     val workflowId = subtask.workflowId?.takeIf(String::isNotBlank) ?: return null
-    val classification = classifyDurableChild(outcomeStore.progress(workflowId, dbPathOverride))
+    val classification = classifyDurableChild(outcomeStore.progress(workflowId))
     return classification.takeIf { it == DurableChildRecoveryClass.INCOMPATIBLE_TERMINAL }?.let {
       GoalRunnerChildRecoveryDiagnostic(
         subtaskId = subtask.id,
@@ -230,7 +223,7 @@ class GoalRunnerResetReplanCoordinator(deps: GoalRunnerResetReplanCoordinatorDep
     }
     val workflowId = selected.workflowId?.takeIf(String::isNotBlank)
       ?: error("Subtask '$subtaskId' has no durable child workflow to delete.")
-    val classification = classifyDurableChild(outcomeStore.progress(workflowId, request.dbPathOverride))
+    val classification = classifyDurableChild(outcomeStore.progress(workflowId))
     require(classification == DurableChildRecoveryClass.INCOMPATIBLE_TERMINAL) {
       "Child workflow '$workflowId' is ${classification.wireValue}; scoped deletion requires an incompatible " +
         "terminal child."
@@ -239,7 +232,6 @@ class GoalRunnerResetReplanCoordinator(deps: GoalRunnerResetReplanCoordinatorDep
       authoritativeState,
       subtaskId,
       workflowId,
-      request.dbPathOverride,
     )
     pruneResetSubtaskCheckpointRefs(
       gitOperations = gitOperations,

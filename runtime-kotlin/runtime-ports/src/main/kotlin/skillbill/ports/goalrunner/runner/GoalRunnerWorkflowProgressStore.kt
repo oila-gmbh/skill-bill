@@ -6,12 +6,12 @@ import skillbill.ports.goalrunner.runner.model.GoalRunnerProgressEventRecordRequ
 import skillbill.ports.goalrunner.runner.model.GoalRunnerWorkflowProgress
 
 interface GoalRunnerWorkflowProgressStore {
-  fun progress(workflowId: String, dbPathOverride: String? = null): GoalRunnerWorkflowProgress?
+  fun progress(workflowId: String): GoalRunnerWorkflowProgress?
 
-  fun recordObservabilityEvent(request: GoalRunnerObservabilityRecordRequest, dbPathOverride: String? = null): Boolean
+  fun recordObservabilityEvent(request: GoalRunnerObservabilityRecordRequest): Boolean
 
-  fun recordProgressEvent(request: GoalRunnerProgressEventRecordRequest, dbPathOverride: String? = null): Boolean
+  fun recordProgressEvent(request: GoalRunnerProgressEventRecordRequest): Boolean
 
   @OpenBoundaryMap("Durable goal progress-event artifact maps read back at the goal-runner workflow seam")
-  fun progressEvents(workflowId: String, dbPathOverride: String? = null): List<Map<String, Any?>>
+  fun progressEvents(workflowId: String): List<Map<String, Any?>>
 }

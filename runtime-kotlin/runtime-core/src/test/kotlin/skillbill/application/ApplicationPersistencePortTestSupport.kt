@@ -67,6 +67,7 @@ import skillbill.ports.workflow.gitops.RepositoryFingerprintGitOperations
 import skillbill.ports.workflow.gitops.RepositoryFingerprintGitOperationsProvider
 import skillbill.ports.workflow.gitops.WorkflowGitOperations
 import skillbill.ports.workflow.gitops.model.WorkflowGitOperationResult
+import skillbill.ports.workflow.gitops.model.WorkflowGitOperationStatus
 import skillbill.ports.workflow.gitops.model.WorkflowSelectedDiffHunksRequest
 import skillbill.ports.workflow.gitops.model.WorkflowSelectedDiffHunksResult
 import skillbill.ports.workflow.gitops.model.WorkflowWorktreeActivityResult
@@ -83,6 +84,7 @@ import skillbill.review.model.FeedbackTelemetryOptions
 import skillbill.review.model.GoalWorkflowStats
 import skillbill.review.model.ImportedReview
 import skillbill.review.model.NumberedFinding
+import skillbill.review.model.ReviewExecutionMode
 import skillbill.review.model.ReviewFinishedTelemetry
 import skillbill.review.plan.model.ReviewLaunchLane
 import skillbill.review.plan.model.ReviewLaunchPlan
@@ -96,6 +98,7 @@ import skillbill.telemetry.model.TelemetryProxyCapabilities
 import skillbill.telemetry.model.TelemetryRemoteStatsResult
 import skillbill.telemetry.model.TelemetrySettings
 import skillbill.workflow.goal.NoopGoalObservabilityEventValidator
+import skillbill.workflow.model.WorkflowStepStatus
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_GOAL_CONTINUATION_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_BRIEFINGS_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_RECORDS_ARTIFACT_KEY
@@ -143,14 +146,12 @@ internal fun WorkflowService.openTestFeatureTask(
   kind: WorkflowFamilyKind,
   sessionId: String = "",
   currentStepId: String? = null,
-  dbOverride: String? = null,
   issueKey: String = "SKILL-120",
 ): WorkflowOpenResult = openFeatureTask(
   WorkflowServiceOpenFeatureTaskArgs(
     kind = kind,
     sessionId = sessionId,
     currentStepId = currentStepId,
-    dbOverride = dbOverride,
     issueKey = issueKey,
     repositoryIdentity = "repo-root-realpath-v1:/test/repository",
     governedSpecPath = ".feature-specs/$issueKey/spec.md",
@@ -200,18 +201,18 @@ internal class FakeDatabaseSessionFactory(
   val calls = mutableListOf<String>()
   private val dbPath = Path.of("/fake/metrics.db")
 
-  override fun resolveDbPath(dbOverride: String?): Path = dbPath
+  override fun resolveDbPath(): Path = dbPath
 
-  override fun databaseExists(dbOverride: String?): Boolean = true
+  override fun databaseExists(): Boolean = true
 
-  override fun <T> read(dbOverride: String?, block: (UnitOfWork) -> T): T {
+  override fun <T> read(block: (UnitOfWork) -> T): T {
     calls += "read"
     return block(fakeUnitOfWork())
   }
 
-  override fun <T> selfManagedWrite(dbOverride: String?, block: (UnitOfWork) -> T): T = transaction(dbOverride, block)
+  override fun <T> selfManagedWrite(block: (UnitOfWork) -> T): T = transaction(block)
 
-  override fun <T> transaction(dbOverride: String?, block: (UnitOfWork) -> T): T {
+  override fun <T> transaction(block: (UnitOfWork) -> T): T {
     calls += "transaction"
     return block(fakeUnitOfWork())
   }
@@ -437,14 +438,12 @@ internal class FakeReviewRepository(
   val feedbackRequests = mutableListOf<FeedbackRequest>()
   val learningSourceLookups = mutableListOf<String>()
   val savedReviews = mutableListOf<ImportedReview>()
-  val terminalStateWrites = mutableListOf<Pair<String, String?>>()
-
+  val terminalStateWrites = mutableListOf<Pair<String, ReviewExecutionMode?>>()
   override fun saveImportedReview(review: ImportedReview, sourcePath: String?) {
     savedReviews += review
   }
 
-  override fun ensureTerminalReviewState(runId: String, executionMode: String?) {
-    terminalStateWrites += runId to executionMode
+  override fun ensureTerminalReviewState(runId: String, executionMode: ReviewExecutionMode?) {    terminalStateWrites += runId to executionMode
   }
 
   override fun markOrchestrated(runId: String) = error("Unexpected markOrchestrated")
@@ -686,7 +685,6 @@ internal fun blockedGoalChildRetryFixture(): BlockedGoalChildRetryFixture {
     service.openTestFeatureTask(
       WorkflowFamilyKind.TASK_RUNTIME,
       sessionId = "ftr-goal-child",
-      dbOverride = null,
       issueKey = "SKILL-51",
     ) as WorkflowOpenResult.Ok
     ).workflowId
@@ -709,7 +707,6 @@ internal fun blockedGoalChildRetryFixture(): BlockedGoalChildRetryFixture {
           ).toArtifactMap(),
       ),
     ),
-    dbOverride = null,
   )
   testPhaseRecorder(database).recordRuntimePhase(
     childWorkflowId,
@@ -740,7 +737,7 @@ internal fun createDecompositionWorkflow(
   subtaskTwo: Path?,
   executionModel: String = "same_branch_commit_per_subtask",
 ): String {
-  val opened = service.openTestFeatureTask(WorkflowFamilyKind.TASK_RUNTIME, sessionId = "ftr-001", dbOverride = null)
+  val opened = service.openTestFeatureTask(WorkflowFamilyKind.TASK_RUNTIME, sessionId = "ftr-001")
     as WorkflowOpenResult.Ok
   val workflowId = opened.workflowId
   service.update(
@@ -752,7 +749,6 @@ internal fun createDecompositionWorkflow(
       stepUpdates = listOf(mapOf("step_id" to "plan", "status" to "completed", "attempt_count" to 1)),
       artifactsPatch = decompositionPlanPatch(parentSpec, subtaskOne, subtaskTwo, executionModel),
     ),
-    dbOverride = null,
   )
   return workflowId
 }
@@ -773,7 +769,6 @@ internal fun markDecompositionSubtaskBlocked(service: WorkflowService, workflowI
         "blocked_reason" to "Validation failed.",
       ),
     ),
-    dbOverride = null,
   )
 }
 
@@ -790,7 +785,6 @@ internal fun markDecompositionSubtaskSkipped(service: WorkflowService, workflowI
         FEATURE_TASK_RUNTIME_PHASE_RECORDS_ARTIFACT_KEY to completedPhaseRecords("implement", "commit_push"),
       ),
     ),
-    dbOverride = null,
   )
 }
 
@@ -807,7 +801,6 @@ internal fun markDecompositionSubtaskComplete(service: WorkflowService, workflow
         FEATURE_TASK_RUNTIME_PHASE_RECORDS_ARTIFACT_KEY to completedPhaseRecords("implement", "commit_push"),
       ),
     ),
-    dbOverride = null,
   )
 }
 
@@ -942,8 +935,7 @@ internal fun FeatureTaskRuntimePhaseRecorder.recordRuntimePhase(
   ),
 )
 internal fun expectedStepStatusForRecord(record: FeatureTaskRuntimePhaseRecord): String = when {
-  record.status == "blocked" -> "blocked"
-  record.finishedAt != null -> "completed"
+  record.status == WorkflowStepStatus.BLOCKED -> "blocked"  record.finishedAt != null -> "completed"
   else -> record.status
 }
 
@@ -1088,9 +1080,7 @@ internal class FakeWorkflowGitOperations(
     return WorkflowGitOperationResult(status = "ok", value = expectedBaseBranch)
   }
 
-  override fun worktreeStatus(repoRoot: Path): WorkflowGitOperationResult =
-    WorkflowGitOperationResult(status = "ok", value = "")
-
+  override fun worktreeStatus(repoRoot: Path): WorkflowGitOperationResult = WorkflowGitOperationResult.Ok(value = "")
   override fun worktreeActivity(repoRoot: Path): WorkflowWorktreeActivityResult =
     WorkflowWorktreeActivityResult(status = "ok")
 
@@ -1146,7 +1136,7 @@ internal fun testPhaseRecorder(database: DatabaseSessionFactory) = featureTaskRu
 
 internal fun openTaskRuntimeWorkflow(database: DatabaseSessionFactory): String = (
   testWorkflowService(database)
-    .openTestFeatureTask(WorkflowFamilyKind.TASK_RUNTIME, sessionId = "ftr-envelope", dbOverride = null)
+    .openTestFeatureTask(WorkflowFamilyKind.TASK_RUNTIME, sessionId = "ftr-envelope")
     as WorkflowOpenResult.Ok
   ).workflowId
 

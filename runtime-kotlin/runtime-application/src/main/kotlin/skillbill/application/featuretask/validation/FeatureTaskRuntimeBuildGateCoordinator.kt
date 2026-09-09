@@ -21,11 +21,8 @@ import skillbill.ports.config.RepoLocalConfigPort
 import skillbill.ports.config.model.ReadRepoLocalConfigRequest
 import skillbill.ports.diagnostics.RuntimeDiagnostics
 import skillbill.ports.validation.ValidationGateRunner
-import skillbill.ports.validation.model.ValidationGateCacheMode
 import skillbill.ports.validation.model.ValidationGateFinding
-import skillbill.ports.validation.model.ValidationGateFindingParseMode
-import skillbill.ports.validation.model.ValidationGateRunOutcome
-import skillbill.ports.validation.model.ValidationGateRunRequest
+import skillbill.ports.validation.model.ValidationGateFindingParseModeimport skillbill.ports.validation.model.ValidationGateRunRequest
 import skillbill.ports.validation.model.ValidationGateRunResult
 import skillbill.ports.validation.model.unparseableGateFailureMessage
 import skillbill.scaffold.model.ValidationGateDeclaration
@@ -36,7 +33,9 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeValidationGateProg
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeValidationGateRepairWindowPhase
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeValidationGateRunRecord
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeVerdict
-
+import skillbill.workflow.taskruntime.model.ValidationGateCacheMode
+import skillbill.workflow.taskruntime.model.ValidationGateRunOutcome
+import skillbill.workflow.taskruntime.unparseableGateFailureMessage
 private const val BUILD_PHASE_STATUS_COMPLETED = "completed"
 
 private data class BuildGateCycleState(
@@ -74,7 +73,7 @@ class FeatureTaskRuntimeBuildGateCoordinator(
     declaration: ValidationGateDeclaration,
     onGateRunCount: (Int) -> Unit,
   ): ValidationGateCycleResult {
-    val loaded = progressStore.load(cycle.request.workflowId, cycle.request.dbPathOverride)
+    val loaded = progressStore.load(cycle.request.workflowId)
     val measurements = loaded?.gateRuns?.toMutableList() ?: mutableListOf()
     val state = BuildGateCycleState(cycle, measurements, onGateRunCount)
 
@@ -276,7 +275,7 @@ class FeatureTaskRuntimeBuildGateCoordinator(
       repairsUsed = write.repairsUsed,
       capturedTriagePlan = write.capturedTriagePlan,
     )
-    progressStore.persist(state.cycle.request.workflowId, progress, state.cycle.request.dbPathOverride)
+    progressStore.persist(state.cycle.request.workflowId, progress)
     emitFeatureTaskRuntimeEventSafely(
       diagnostics = diagnostics,
       seam = "BuildGateProgress event-sink emission",

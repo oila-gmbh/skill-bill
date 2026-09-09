@@ -17,7 +17,6 @@ data class WorkflowServiceOpenArgs(
   val kind: WorkflowFamilyKind,
   val sessionId: String = "",
   val currentStepId: String? = null,
-  val dbOverride: String? = null,
   val issueKey: String? = null,
   val repositoryIdentity: String? = null,
   val governedSpecPath: String? = null,
@@ -28,7 +27,6 @@ data class WorkflowServiceOpenFeatureTaskArgs(
   val kind: WorkflowFamilyKind,
   val sessionId: String = "",
   val currentStepId: String? = null,
-  val dbOverride: String? = null,
   val issueKey: String,
   val repositoryIdentity: String,
   val governedSpecPath: String,
@@ -41,7 +39,6 @@ data class RepairFeatureTaskRuntimeIdentityArgs(
   val repositoryIdentity: String,
   val governedSpecPath: String,
   val reason: String,
-  val dbOverride: String?,
 )
 
 data class FeatureTaskIdentityRepairArgs(

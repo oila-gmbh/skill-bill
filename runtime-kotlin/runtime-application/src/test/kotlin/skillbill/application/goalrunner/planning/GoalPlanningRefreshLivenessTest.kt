@@ -51,10 +51,10 @@ class GoalPlanningRefreshLivenessTest {
     val harness = RefreshLivenessHarness(clock)
     val state = manifestState(childWorkflowId = null)
 
-    assertEquals(ExecutionLiveness.IDLE, harness.liveness.resolve(state, null))
+    assertEquals(ExecutionLiveness.IDLE, harness.liveness.resolve(state))
     assertEquals(
       ExecutionLiveness.IDLE,
-      resolveChildExecutionLiveness(state.manifest.subtasks.first(), null, harness.recorder, clock),
+      resolveChildExecutionLiveness(state.manifest.subtasks.first(), harness.recorder, clock),
     )
   }
 
@@ -63,7 +63,7 @@ class GoalPlanningRefreshLivenessTest {
     val harness = RefreshLivenessHarness(clock)
     val state = manifestState(childWorkflowId = "  ")
 
-    assertEquals(ExecutionLiveness.IDLE, harness.liveness.resolve(state, null))
+    assertEquals(ExecutionLiveness.IDLE, harness.liveness.resolve(state))
   }
 
   @Test
@@ -72,7 +72,7 @@ class GoalPlanningRefreshLivenessTest {
     harness.seedRuntimeChild("wfl-child", expiresAt = now.plusSeconds(60).toString())
     val state = manifestState(childWorkflowId = "wfl-child")
 
-    assertEquals(ExecutionLiveness.LIVE, harness.liveness.resolve(state, null))
+    assertEquals(ExecutionLiveness.LIVE, harness.liveness.resolve(state))
     assertEquals(
       "Goal 'SKILL-56' is live; refuse shared-preplan refresh while the current child run is active.",
       refuseRefreshReason("SKILL-56", ExecutionLiveness.LIVE),
@@ -85,7 +85,7 @@ class GoalPlanningRefreshLivenessTest {
     harness.seedRuntimeChild("wfl-child", expiresAt = now.minusSeconds(1).toString())
     val state = manifestState(childWorkflowId = "wfl-child")
 
-    assertEquals(ExecutionLiveness.IDLE, harness.liveness.resolve(state, null))
+    assertEquals(ExecutionLiveness.IDLE, harness.liveness.resolve(state))
     assertNull(refuseRefreshReason("SKILL-56", ExecutionLiveness.IDLE))
   }
 
@@ -95,7 +95,7 @@ class GoalPlanningRefreshLivenessTest {
     // Row absent from RUNTIME storage → existingWorkflowMode returns null → UNKNOWN.
     val state = manifestState(childWorkflowId = "wfl-missing")
 
-    assertEquals(ExecutionLiveness.UNKNOWN, harness.liveness.resolve(state, null))
+    assertEquals(ExecutionLiveness.UNKNOWN, harness.liveness.resolve(state))
     assertTrue(
       refuseRefreshReason("SKILL-56", ExecutionLiveness.UNKNOWN)!!
         .contains("unknown execution liveness"),
@@ -112,7 +112,7 @@ class GoalPlanningRefreshLivenessTest {
       manifest = base.copy(currentSubtaskIntent = CurrentSubtaskIntent(subtaskId = 9, action = "resume")),
     )
 
-    assertEquals(ExecutionLiveness.IDLE, harness.liveness.resolve(state, null))
+    assertEquals(ExecutionLiveness.IDLE, harness.liveness.resolve(state))
   }
 
   private fun manifestState(childWorkflowId: String?): GoalRunnerManifestState {
@@ -175,15 +175,15 @@ private class SeedableRefreshLivenessDatabase(
 ) : DatabaseSessionFactory {
   private val dbPath = Path.of("/fake/goal-planning-refresh-liveness.db")
 
-  override fun resolveDbPath(dbOverride: String?): Path = dbPath
+  override fun resolveDbPath(): Path = dbPath
 
-  override fun databaseExists(dbOverride: String?): Boolean = true
+  override fun databaseExists(): Boolean = true
 
-  override fun <T> read(dbOverride: String?, block: (UnitOfWork) -> T): T = block(unitOfWork())
+  override fun <T> read(block: (UnitOfWork) -> T): T = block(unitOfWork())
 
-  override fun <T> selfManagedWrite(dbOverride: String?, block: (UnitOfWork) -> T): T = transaction(dbOverride, block)
+  override fun <T> selfManagedWrite(block: (UnitOfWork) -> T): T = transaction(block)
 
-  override fun <T> transaction(dbOverride: String?, block: (UnitOfWork) -> T): T = block(unitOfWork())
+  override fun <T> transaction(block: (UnitOfWork) -> T): T = block(unitOfWork())
 
   private fun unitOfWork(): UnitOfWork = object : UnitOfWork {
     override val dbPath: Path = this@SeedableRefreshLivenessDatabase.dbPath

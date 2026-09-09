@@ -45,7 +45,7 @@ class FeatureTaskRuntimeCrashReconcilerTest {
       testHarnessClock,
     )
 
-    val result = reconciler.reconcile(null)
+    val result = reconciler.reconcile()
 
     assertEquals(0, result.reconciledCount)
     assertTrue(result.reasonClassCounts.isEmpty())
@@ -61,8 +61,8 @@ class FeatureTaskRuntimeCrashReconcilerTest {
       testHarnessClock,
     )
 
-    val first = reconciler.reconcile(null)
-    val second = reconciler.reconcile(null)
+    val first = reconciler.reconcile()
+    val second = reconciler.reconcile()
 
     assertEquals(1, first.reconciledCount)
     assertEquals(mapOf("lease_expired" to 1), first.reasonClassCounts)
@@ -81,7 +81,7 @@ class FeatureTaskRuntimeCrashReconcilerTest {
       testHarnessClock,
     )
 
-    val result = reconciler.reconcile(null)
+    val result = reconciler.reconcile()
 
     assertEquals(0, result.reconciledCount)
     assertEquals("running", repository.getFeatureTaskRuntimeWorkflow(WORKFLOW_ID)?.workflowStatus)
@@ -101,7 +101,7 @@ class FeatureTaskRuntimeCrashReconcilerTest {
         testHarnessClock,
       )
 
-      assertEquals(0, reconciler.reconcile(null).reconciledCount)
+      assertEquals(0, reconciler.reconcile().reconciledCount)
       assertEquals("running", repository.getFeatureTaskRuntimeWorkflow(WORKFLOW_ID)?.workflowStatus)
     }
   }
@@ -129,9 +129,10 @@ class FeatureTaskRuntimeCrashReconcilerTest {
       testHarnessClock,
     )
 
-    val result = assertFailsWith<FeatureTaskRuntimeSubtaskCommitReconciliationError> { reconciler.reconcile(null) }
-    assertEquals("probe blew up", result.cause?.message)
-    assertEquals("running", repository.getFeatureTaskRuntimeWorkflow(WORKFLOW_ID)?.workflowStatus)
+    val result = reconciler.reconcile()
+
+    assertEquals(0, result.reconciledCount)
+    assertEquals(mapOf("reconcile_fault" to 1), result.reasonClassCounts)    assertEquals("running", repository.getFeatureTaskRuntimeWorkflow(WORKFLOW_ID)?.workflowStatus)
   }
 
   private fun crashCandidateRepository(): InMemoryRuntimeWorkflowRepository =

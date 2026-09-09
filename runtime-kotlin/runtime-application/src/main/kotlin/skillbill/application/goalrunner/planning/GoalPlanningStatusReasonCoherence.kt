@@ -54,7 +54,7 @@ class LaunchAlignedGoalPlanningStatusReasonCoherence(
       request.issueKey.trim().uppercase(),
       "repo-root-realpath-v1:$canonicalRepository",
     )
-    val existing = checkpoint.findSharedPreplan(identity, request.dbPathOverride)
+    val existing = checkpoint.findSharedPreplan(identity)
       ?: return GoalPlanningProvenanceRecoverability.Reuse(
         GoalPlanningContractProvenance(
           parentSpecHash = "",

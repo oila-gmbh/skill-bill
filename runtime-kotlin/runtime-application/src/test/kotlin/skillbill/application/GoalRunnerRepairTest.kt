@@ -55,6 +55,7 @@ import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewBaselineResult
 import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewInput
 import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewInputResult
 import skillbill.ports.workflow.gitops.model.WorkflowGitOperationResult
+import skillbill.ports.workflow.gitops.model.WorkflowGitOperationStatus
 import skillbill.ports.workflow.model.WorkflowStateRecord
 import skillbill.review.context.model.CodeReviewExecutionMode
 import skillbill.workflow.decomposition.model.CurrentSubtaskIntent
@@ -1308,55 +1309,43 @@ internal abstract class GoalRunnerRepairFixtures {
 
   protected class RepairManifestStore(
     private val childWorkflowId: String,
-  ) : GoalRunnerManifestStore {
-    override fun loadByIssueKey(issueKey: String, dbPathOverride: String?, repoRoot: Path?): GoalRunnerManifestState =
-      GoalRunnerManifestState(
-        parentWorkflowId = "wfl-parent",
-        dbPath = "/tmp/repair.db",
-        manifest = DecompositionManifest(
-          contractVersion = "0.5",
-          issueKey = issueKey,
-          featureName = "repair",
-          parentSpecPath = ".feature-specs/$issueKey/spec.md",
-          status = "in_progress",
-          baseBranch = "main",
-          featureBranch = "feat/$issueKey-repair",
-          currentSubtaskIntent = CurrentSubtaskIntent(1, "resume"),
-          subtasks = listOf(
-            DecompositionSubtask(
-              id = 1,
-              name = "child",
-              specPath = ".feature-specs/$issueKey/spec_subtask_1.md",
-              status = "in_progress",
-              workflowId = childWorkflowId,
-            ),
-          ),
+  ) : GoalRunnerManifestStoreDefaults() {
+    override fun loadByIssueKey(issueKey: String, repoRoot: Path?): GoalRunnerManifestState = GoalRunnerManifestState(
+      parentWorkflowId = "wfl-parent",
+      dbPath = "/tmp/repair.db",
+      manifest = DecompositionManifest(
+        contractVersion = "0.5",
+        issueKey = issueKey,
+        featureName = "repair",
+        parentSpecPath = ".feature-specs/$issueKey/spec.md",
+        status = "in_progress",
+        baseBranch = "main",
+        featureBranch = "feat/$issueKey-repair",
+        currentSubtaskIntent = CurrentSubtaskIntent(1, "resume"),
+        subtasks = listOf(
+          DecompositionSubtask(
+            id = 1,
+            name = "child",
+            specPath = ".feature-specs/$issueKey/spec_subtask_1.md",
+            status = "in_progress",
+            workflowId = childWorkflowId,          ),
         ),
-        controlState = GoalRunnerControlState(),
-        repoRoot = repoRoot,
-      )
+      ),
+      controlState = GoalRunnerControlState(),
+      repoRoot = repoRoot,
+    )
 
-    override fun save(state: GoalRunnerManifestState, dbPathOverride: String?): GoalRunnerManifestState = state
+    override fun save(state: GoalRunnerManifestState): GoalRunnerManifestState = state
 
     override fun acquireExecutionLease(
       parentWorkflowId: String,
       lease: GoalRunnerExecutionLease,
       expectedOwnerToken: String?,
-      dbPathOverride: String?,
     ): Boolean = true
 
-    override fun heartbeatExecutionLease(
-      parentWorkflowId: String,
-      lease: GoalRunnerExecutionLease,
-      dbPathOverride: String?,
-    ): Boolean = true
+    override fun heartbeatExecutionLease(parentWorkflowId: String, lease: GoalRunnerExecutionLease): Boolean = true
 
-    override fun releaseExecutionLease(
-      parentWorkflowId: String,
-      ownerToken: String,
-      generation: Long,
-      dbPathOverride: String?,
-    ): Boolean = true
+    override fun releaseExecutionLease(parentWorkflowId: String, ownerToken: String, generation: Long): Boolean = true
   }
 
   protected class ReachableGit(

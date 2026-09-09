@@ -1,7 +1,8 @@
 package skillbill.application.goalrunner
 
 import skillbill.application.featuretask.FeatureTaskRuntimePhaseRecorder
-import skillbill.goalrunner.model.GoalRunnerLivenessSnapshot
+import skillbill.goalrunner.model.GoalPullRequestStatus
+import skillbill.goalrunner.model.GoalRunnerContinuationModeimport skillbill.goalrunner.model.GoalRunnerLivenessSnapshot
 import skillbill.goalrunner.model.GoalRunnerReconciledOutcome
 import skillbill.goalrunner.model.GoalRunnerRunReport
 import skillbill.goalrunner.model.GoalRunnerStopReason
@@ -77,7 +78,6 @@ fun String.withStopDiagnostics(
 
 fun GoalRunnerReconciledOutcome.Stop.isRecoverableValidationBlock(
   phaseRecorder: FeatureTaskRuntimePhaseRecorder? = null,
-  dbPathOverride: String? = null,
 ): Boolean {
   if (reason !in setOf(GoalRunnerStopReason.BLOCKED, GoalRunnerStopReason.FAILED)) {
     return false
@@ -91,7 +91,7 @@ fun GoalRunnerReconciledOutcome.Stop.isRecoverableValidationBlock(
   }
   val workflowId = workflowId
   if (workflowId != null && phaseRecorder != null) {
-    val disposition = phaseRecorder.loadPhaseRecords(workflowId, dbPathOverride)
+    val disposition = phaseRecorder.loadPhaseRecords(workflowId)
       ?.get(lastResumableStep)
       ?.failureDisposition
     if (disposition == FeatureTaskRuntimeFailureDisposition.NEEDS_USER_ACTION) {

@@ -16,7 +16,6 @@ class GoalRunnerLedgerRecorderBackwardEdgeTest {
       issueKey = "SKILL-142",
       repoRoot = Path.of("/tmp/skillbill-goal-runner"),
       invokedAgentId = "claude",
-      dbPathOverride = "/tmp/skillbill-goal-runner/metrics.db",
     ),
     testHarnessClock,
     NoopRuntimeDiagnostics,

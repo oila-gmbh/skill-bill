@@ -18,7 +18,6 @@ import skillbill.application.goalrunner.testGoalRunnerStatusService
 import skillbill.application.goalrunner.testPhaseRecorder
 import skillbill.application.goalrunner.testWorkflowGoalRunnerManifestStore
 import skillbill.application.goalrunner.testWorkflowGoalRunnerOutcomeStore
-import skillbill.application.workflow.ContinuationStepResult
 import skillbill.application.workflow.DecompositionWorkflowContinuation
 import skillbill.application.workflow.WorkflowService
 import skillbill.application.workflow.alignSubtaskResumeStep
@@ -377,7 +376,6 @@ class WorkflowServiceTest {
           repositoryIdentity = "repo-root-realpath-v1:/test/repository",
           governedSpecPath = ".feature-specs/SKILL-120/spec.md",
           reason = "Repair a legacy identity.",
-          dbOverride = null,
         ),
       ),
     )
@@ -391,7 +389,6 @@ class WorkflowServiceTest {
           repositoryIdentity = "repo-root-realpath-v1:/test/repository",
           governedSpecPath = ".feature-specs/SKILL-120/spec.md",
           reason = "Repair a legacy identity.",
-          dbOverride = null,
         ),
       ),
     )
@@ -437,7 +434,6 @@ class WorkflowServiceTest {
           repositoryIdentity = "repo-root-realpath-v1:/test/repository",
           governedSpecPath = ".feature-specs/SKILL-120/spec.md",
           reason = "Repair a legacy identity.",
-          dbOverride = null,
         ),
       ),
     )
@@ -1291,7 +1287,7 @@ class WorkflowServiceGoalManifestStoreTest {
     Files.deleteIfExists(manifestPath)
     check(Files.notExists(expectedWritePath)) { "Fixture must not pre-create the writer's derived path." }
 
-    store.save(loaded.copy(manifest = loaded.manifest.copy(status = "in_progress")), dbPathOverride = null)
+    store.save(loaded.copy(manifest = loaded.manifest.copy(status = "in_progress")))
 
     assertTrue(
       Files.exists(expectedWritePath),
@@ -1337,7 +1333,6 @@ class WorkflowServiceGoalManifestStoreTest {
     val result = scopedReplanStore(workflows, before).saveScopedReplan(
       state = scopedReplanState(before, "skillbill-scoped-replan-child"),
       subtaskId = 2,
-      dbPathOverride = null,
       options = GoalRunnerScopedReplanOptions(),
     )
 
@@ -1376,7 +1371,6 @@ class WorkflowServiceGoalManifestStoreTest {
     val result = scopedReplanStore(workflows, before).saveScopedReplan(
       state = scopedReplanState(before, "skillbill-scoped-replan-live-child"),
       subtaskId = 1,
-      dbPathOverride = null,
       options = GoalRunnerScopedReplanOptions(),
     )
 
@@ -2808,7 +2802,6 @@ class WorkflowGoalRunnerProgressStoreTest {
           reason = "needs approval",
         ),
       ),
-      dbPathOverride = null,
     )
 
     assertTrue(recorded)
@@ -3013,7 +3006,7 @@ class WorkflowGoalRunnerProgressStoreTest {
     workflows.saveFeatureImplementWorkflow(running.toRecord())
     val database = FakeDatabaseSessionFactory(workflows)
 
-    val aligned = database.transaction(null) { unitOfWork ->
+    val aligned = database.transaction { unitOfWork ->
       testWorkflowEngine.alignSubtaskResumeStep(running, "preplan", unitOfWork)
     }
 
@@ -3050,7 +3043,7 @@ class WorkflowGoalRunnerProgressStoreTest {
     workflows.saveFeatureImplementWorkflow(parent)
     val controls = RecordingGoalRunnerControlRepository()
 
-    FakeDatabaseSessionFactory(workflows, goalRunnerControls = controls).transaction(null) { unitOfWork ->
+    FakeDatabaseSessionFactory(workflows, goalRunnerControls = controls).transaction { unitOfWork ->
       testWorkflowEngine.persistParentDecompositionRuntime(
         parent.toSnapshot(),
         manifest,
@@ -3494,7 +3487,7 @@ class GoalChildPlanningHydrationTransactionIntegrationTest {
     val artifacts = parseChildArtifacts(child)
     val ledger = (artifacts["feature_task_runtime_phase_ledger"] as List<*>).toMutableList()
     val firstEntry = (ledger[0] as Map<*, *>).toMutableMap()
-    firstEntry["action"] = "corrupt-action"
+    firstEntry["action"] = "retry"
     ledger[0] = firstEntry
     artifacts["feature_task_runtime_phase_ledger"] = ledger
     harness.workflows.saveFeatureTaskRuntimeWorkflow(
@@ -3967,12 +3960,12 @@ internal class FakeDatabaseSessionFactory(
   private val goalRunnerControls: GoalRunnerControlRepository =
     EmptyGoalRunnerControlRepository,
 ) : DatabaseSessionFactory {
-  override fun resolveDbPath(dbOverride: String?): Path = fakeDbPath
-  override fun databaseExists(dbOverride: String?): Boolean = true
-  override fun <T> read(dbOverride: String?, block: (UnitOfWork) -> T): T = block(unit())
-  override fun <T> selfManagedWrite(dbOverride: String?, block: (UnitOfWork) -> T): T = transaction(dbOverride, block)
+  override fun resolveDbPath(): Path = fakeDbPath
+  override fun databaseExists(): Boolean = true
+  override fun <T> read(block: (UnitOfWork) -> T): T = block(unit())
+  override fun <T> selfManagedWrite(block: (UnitOfWork) -> T): T = transaction(block)
 
-  override fun <T> transaction(dbOverride: String?, block: (UnitOfWork) -> T): T = block(unit())
+  override fun <T> transaction(block: (UnitOfWork) -> T): T = block(unit())
 
   private fun unit(): UnitOfWork = object : UnitOfWork {
     override val dbPath: Path = fakeDbPath
@@ -4295,7 +4288,7 @@ class DecompositionDiskBootstrapTest {
     )
 
     assertFailsWith<IllegalArgumentException> {
-      FakeDatabaseSessionFactory(workflows).transaction<ContinuationStepResult>(null) { unitOfWork ->
+      FakeDatabaseSessionFactory(workflows).transaction { unitOfWork ->
         continuation.continueDecomposedParentByIssueKey(invalidIssueKey, unitOfWork)
       }
     }
@@ -4341,7 +4334,7 @@ class DecompositionDiskBootstrapTest {
       manifestWriter = testDecompositionManifestWriter,
     )
 
-    val result = db.transaction<ContinuationStepResult>(null) { unitOfWork ->
+    val result = db.transaction { unitOfWork ->
       continuation.continueDecomposedParentByIssueKey("SKILL-TEST", unitOfWork)
     }
 
@@ -4355,6 +4348,50 @@ class DecompositionDiskBootstrapTest {
     )
   }
 
+  @Test
+  fun `continueDecomposedParentByIssueKey without a manifest file store reports an unknown workflow`() {
+    val repoRoot = Files.createTempDirectory("skillbill-disk-bootstrap-no-store")
+    val manifestPath = repoRoot.resolve(".feature-specs/SKILL-TEST-feature/decomposition-manifest.yaml")
+    Files.createDirectories(manifestPath.parent)
+    val manifest = DecompositionManifest(
+      issueKey = "SKILL-TEST",
+      featureName = "test-feature",
+      parentSpecPath = ".feature-specs/SKILL-TEST-feature/spec.md",
+      status = "in_progress",
+      executionModel = DecompositionExecutionModel.SAME_BRANCH_COMMIT_PER_SUBTASK,
+      baseBranch = "main",
+      featureBranch = "",
+      currentSubtaskIntent = CurrentSubtaskIntent(subtaskId = 1, action = "implement"),
+      subtasks = listOf(
+        DecompositionSubtask(
+          id = 1,
+          name = "first-subtask",
+          specPath = ".feature-specs/SKILL-TEST-feature/spec_subtask_1.md",
+          status = "pending",
+        ),
+      ),
+    )
+    Files.writeString(
+      manifestPath,
+      encodeDecompositionManifestYaml(manifest, testDecompositionManifestValidator, TestDecompositionManifestStore),
+    )
+    val workflows = InMemoryWorkflowStates()
+    val db = FakeDatabaseSessionFactory(workflows)
+    val continuation = DecompositionWorkflowContinuation(
+      engine = testWorkflowEngine,
+      gitOperations = NoopWorkflowGitOperations,
+      validator = testDecompositionManifestValidator,
+      repoRoot = repoRoot,
+      manifestWriter = testDecompositionManifestWriter,
+    )
+
+    val result = db.transaction { unitOfWork ->
+      continuation.continueDecomposedParentByIssueKey("SKILL-TEST", unitOfWork)
+    }
+
+    assertTrue(result.result is WorkflowContinueResult.UnknownWorkflow)
+    assertTrue(workflows.listFeatureTaskRuntimeWorkflows(Int.MAX_VALUE).isEmpty())
+  }
   /**
    * SKILL-141 Subtask 1 AC-002/AC-004: the disk bootstrap reconstructs an interrupted parent, so it
    * must stamp the resumable `paused` status. Stamping `abandoned` made the row terminal and stale
@@ -4398,7 +4435,7 @@ class DecompositionDiskBootstrapTest {
       manifestWriter = testDecompositionManifestWriter,
     )
 
-    db.transaction<ContinuationStepResult>(null) { unitOfWork ->
+    db.transaction { unitOfWork ->
       continuation.continueDecomposedParentByIssueKey("SKILL-TEST", unitOfWork)
     }
     val parent = assertNotNull(
@@ -4468,7 +4505,7 @@ class DecompositionDiskBootstrapTest {
       repoRoot = repoRoot,
       manifestWriter = testDecompositionManifestWriter,
     )
-    db.transaction<ContinuationStepResult>(null) { unitOfWork ->
+    db.transaction { unitOfWork ->
       continuation.continueDecomposedParentByIssueKey("SKILL-TEST", unitOfWork)
     }
     val parentRow = requireNotNull(workflows.getFeatureTaskRuntimeWorkflow("wfl-corrupt-parent"))
@@ -4526,14 +4563,14 @@ class DecompositionDiskBootstrapTest {
       manifestWriter = testDecompositionManifestWriter,
     )
 
-    db.transaction<ContinuationStepResult>(null) { unitOfWork ->
+    db.transaction { unitOfWork ->
       continuation.continueDecomposedParentByIssueKey("SKILL-TEST", unitOfWork)
     }
     val parentRowsAfterFirst = workflows.decomposedParentRows("SKILL-TEST")
     assertEquals(1, parentRowsAfterFirst.size)
     val firstParentId = parentRowsAfterFirst.single().workflowId
 
-    db.transaction<ContinuationStepResult>(null) { unitOfWork ->
+    db.transaction { unitOfWork ->
       continuation.continueDecomposedParentByIssueKey("SKILL-TEST", unitOfWork)
     }
     val parentRowsAfterSecond = workflows.decomposedParentRows("SKILL-TEST")
@@ -4598,10 +4635,10 @@ class DecompositionDiskBootstrapTest {
       manifestWriter = testDecompositionManifestWriter,
     )
 
-    db.transaction<ContinuationStepResult>(null) { unitOfWork ->
+    db.transaction { unitOfWork ->
       continuation.continueDecomposedParentByIssueKey("SKILL-TEST", unitOfWork)
     }
-    db.transaction<ContinuationStepResult>(null) { unitOfWork ->
+    db.transaction { unitOfWork ->
       continuation.continueDecomposedParentByIssueKey("SKILL-TEST", unitOfWork)
     }
     val parentRows = workflows.decomposedParentRows("SKILL-TEST")
@@ -4661,7 +4698,7 @@ class DecompositionDiskBootstrapTest {
       manifestWriter = testDecompositionManifestWriter,
     )
 
-    db.transaction<ContinuationStepResult>(null) { unitOfWork ->
+    db.transaction { unitOfWork ->
       continuation.continueDecomposedParentByIssueKey("SKILL-TEST", unitOfWork)
     }
     val abandonedRow = requireNotNull(workflows.getFeatureTaskWorkflow("wfl-abandoned-corrupt"))
@@ -4682,7 +4719,7 @@ class DecompositionDiskBootstrapTest {
       manifestWriter = testDecompositionManifestWriter,
     )
 
-    val result = db.transaction<ContinuationStepResult>(null) { unitOfWork ->
+    val result = db.transaction { unitOfWork ->
       continuation.continueDecomposedParentByIssueKey("SKILL-MISSING", unitOfWork)
     }
 

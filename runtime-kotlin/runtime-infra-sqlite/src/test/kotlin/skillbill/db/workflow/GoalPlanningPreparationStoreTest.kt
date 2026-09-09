@@ -97,13 +97,15 @@ class GoalPlanningPreparationStoreTest {
   fun `bounded status reads while another connection holds the writer lock`() {
     val tempDir = Files.createTempDirectory("skillbill-planning-status-contention")
     val dbPath = tempDir.resolve("metrics.db")
-    val database = SQLiteDatabaseSessionFactory(EnvironmentContext(userHome = tempDir))
-    database.read(dbPath.toString()) { Unit }
+    val database = SQLiteDatabaseSessionFactory(
+      EnvironmentContext(dbPathOverride = dbPath.toString(), environment = emptyMap(), userHome = tempDir),
+    )
+    database.read { Unit }
 
     DriverManager.getConnection("jdbc:sqlite:$dbPath").use { writer ->
       writer.createStatement().use { it.execute("BEGIN IMMEDIATE") }
       try {
-        val status = database.read(dbPath.toString()) { unitOfWork ->
+        val status = database.read { unitOfWork ->
           unitOfWork.goalPlanningPreparations.boundedStatus("goal-contention", listOf(1, 2))
         }
         assertEquals(GoalPlanningStatusState.NOT_STARTED, status.state)

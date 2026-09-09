@@ -72,7 +72,6 @@ class AgentRunServiceTest {
     issueKey = "SKILL-56",
     repoRoot = Path.of("/tmp/skillbill-agent-run-service"),
     subtaskId = 2,
-    dbPathOverride = "/tmp/skillbill-agent-run-service/metrics.db",
   )
 }
 

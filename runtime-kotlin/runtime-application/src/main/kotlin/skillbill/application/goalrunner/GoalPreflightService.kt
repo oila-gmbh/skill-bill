@@ -36,7 +36,6 @@ class GoalPreflightService(deps: GoalPreflightServiceDeps) {
     )
     val manifestState = manifestStore.readByIssueKeyIfPresent(
       normalizedIssueKey,
-      request.dbPathOverride,
       root,
     )
     val manifest = manifestState?.manifest ?: projectedManifest
@@ -46,7 +45,6 @@ class GoalPreflightService(deps: GoalPreflightServiceDeps) {
     val lookup = continuationLookup.lookupIfPresent(
       issueKey = normalizedIssueKey,
       repositoryIdentity = goalRepositoryIdentity(root, repositoryEnclosingRootPort),
-      dbOverride = request.dbPathOverride,
     )
     return lookupResolver.resolve(
       GoalPreflightLookupInput(

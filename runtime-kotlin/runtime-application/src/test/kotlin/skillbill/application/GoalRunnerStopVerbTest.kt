@@ -39,7 +39,7 @@ class GoalRunnerStopVerbTest {
     val store = StopFakeManifestStore(lease = liveLease())
     val supervisor = RecordingSupervisor(FeatureTaskRuntimeProcessInspection.ExactLive)
 
-    val result = stopService(store, supervisor).stop("SKILL-168", null, Path.of("."))
+    val result = stopService(store, supervisor).stop("SKILL-168", Path.of("."))
 
     assertEquals(GoalRunnerStopStatus.STOPPED, result.status)
     assertTrue(result.terminationAttempted)
@@ -52,7 +52,7 @@ class GoalRunnerStopVerbTest {
     val store = StopFakeManifestStore(loaded = false)
 
     val result = stopService(store, RecordingSupervisor(FeatureTaskRuntimeProcessInspection.ExactLive))
-      .stop("SKILL-404", null, Path.of("."))
+      .stop("SKILL-404", Path.of("."))
 
     assertEquals(GoalRunnerStopStatus.NOT_FOUND, result.status)
     assertEquals(0, store.pauseNowCalls)
@@ -63,7 +63,7 @@ class GoalRunnerStopVerbTest {
     val store = StopFakeManifestStore(lease = null)
     val supervisor = RecordingSupervisor(FeatureTaskRuntimeProcessInspection.ExactLive)
 
-    val result = stopService(store, supervisor).stop("SKILL-168", null, Path.of("."))
+    val result = stopService(store, supervisor).stop("SKILL-168", Path.of("."))
 
     assertEquals(GoalRunnerStopStatus.NO_LIVE_LEASE, result.status)
     assertFalse(result.terminationAttempted)
@@ -300,7 +300,7 @@ private class StopFakeManifestStore(
   var pauseNowCalls: Int = 0
     private set
 
-  override fun loadByIssueKey(issueKey: String, dbPathOverride: String?, repoRoot: Path?): GoalRunnerManifestState? {
+  override fun loadByIssueKey(issueKey: String, repoRoot: Path?): GoalRunnerManifestState? {
     if (!loaded) return null
     return GoalRunnerManifestState(
       parentWorkflowId = "goal-parent-1",
@@ -318,17 +318,15 @@ private class StopFakeManifestStore(
     )
   }
 
-  override fun controlState(parentWorkflowId: String, dbPathOverride: String?): GoalRunnerControlState =
-    controlStateValue
+  override fun controlState(parentWorkflowId: String): GoalRunnerControlState = controlStateValue
 
-  override fun executionLease(parentWorkflowId: String, dbPathOverride: String?): GoalRunnerExecutionLease? = lease
+  override fun executionLease(parentWorkflowId: String): GoalRunnerExecutionLease? = lease
 
   override fun pauseNow(
     parentWorkflowId: String,
     reason: String,
     pausedAt: String,
     overwriteExistingReason: Boolean,
-    dbPathOverride: String?,
   ): GoalRunnerControlState {
     pauseNowCalls += 1
     if (controlStateValue.paused && !overwriteExistingReason) return controlStateValue
@@ -342,27 +340,17 @@ private class StopFakeManifestStore(
     return controlStateValue
   }
 
-  override fun save(state: GoalRunnerManifestState, dbPathOverride: String?): GoalRunnerManifestState = state
+  override fun save(state: GoalRunnerManifestState): GoalRunnerManifestState = state
 
   override fun acquireExecutionLease(
     parentWorkflowId: String,
     lease: GoalRunnerExecutionLease,
     expectedOwnerToken: String?,
-    dbPathOverride: String?,
   ): Boolean = false
 
-  override fun heartbeatExecutionLease(
-    parentWorkflowId: String,
-    lease: GoalRunnerExecutionLease,
-    dbPathOverride: String?,
-  ): Boolean = false
+  override fun heartbeatExecutionLease(parentWorkflowId: String, lease: GoalRunnerExecutionLease): Boolean = false
 
-  override fun releaseExecutionLease(
-    parentWorkflowId: String,
-    ownerToken: String,
-    generation: Long,
-    dbPathOverride: String?,
-  ): Boolean = false
+  override fun releaseExecutionLease(parentWorkflowId: String, ownerToken: String, generation: Long): Boolean = false
 }
 
 /** Records every supervisor interaction in order so tests can assert graceful-before-forcible and refusals. */

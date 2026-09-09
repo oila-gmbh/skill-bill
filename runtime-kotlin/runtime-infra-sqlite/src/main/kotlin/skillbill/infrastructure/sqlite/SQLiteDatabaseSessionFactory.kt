@@ -17,20 +17,19 @@ class SQLiteDatabaseSessionFactory(
   private val context: EnvironmentContext,
 ) : DatabaseSessionFactory {
   private val resolvedContext = context.withProcessDefaults()
+  private val resolvedPath by lazy {
+    DatabaseRuntime.resolveDbPath(
+      cliValue = resolvedContext.dbPathOverride,
+      environment = resolvedContext.environment,
+      userHome = resolvedContext.userHome,
+    )
+  }
 
-  override fun resolveDbPath(dbOverride: String?) = DatabaseRuntime.resolveDbPath(
-    cliValue = dbOverride ?: resolvedContext.dbPathOverride,
-    environment = resolvedContext.environment,
-    userHome = resolvedContext.userHome,
-  )
+  override fun resolveDbPath(): Path = resolvedPath
 
-  override fun databaseExists(dbOverride: String?): Boolean = Files.exists(resolveDbPath(dbOverride))
+  override fun databaseExists(): Boolean = Files.exists(resolveDbPath())
 
-  override fun <T> read(dbOverride: String?, block: (UnitOfWork) -> T): T = DatabaseRuntime.openReadDb(
-    cliValue = dbOverride ?: resolvedContext.dbPathOverride,
-    environment = resolvedContext.environment,
-    userHome = resolvedContext.userHome,
-  ).use { openDb ->
+  override fun <T> read(block: (UnitOfWork) -> T): T = DatabaseRuntime.openReadDbAt(resolveDbPath()).use { openDb ->
     try {
       openDb.connection.inReadTransaction(openDb.dbPath) {
         block(SQLiteUnitOfWork(openDb.connection, openDb.dbPath))
@@ -40,12 +39,8 @@ class SQLiteDatabaseSessionFactory(
     }
   }
 
-  override fun <T> readIfPresent(dbOverride: String?, block: (UnitOfWork) -> T): T? =
-    DatabaseRuntime.openReadDbIfPresent(
-      cliValue = dbOverride ?: resolvedContext.dbPathOverride,
-      environment = resolvedContext.environment,
-      userHome = resolvedContext.userHome,
-    )?.use { openDb ->
+  override fun <T> readIfPresent(block: (UnitOfWork) -> T): T? =
+    DatabaseRuntime.openReadDbIfPresentAt(resolveDbPath())?.use { openDb ->
       try {
         openDb.connection.inReadTransaction(openDb.dbPath) {
           block(SQLiteUnitOfWork(openDb.connection, openDb.dbPath))
@@ -55,19 +50,12 @@ class SQLiteDatabaseSessionFactory(
       }
     }
 
-  override fun <T> selfManagedWrite(dbOverride: String?, block: (UnitOfWork) -> T): T = DatabaseRuntime.openDb(
-    cliValue = dbOverride ?: resolvedContext.dbPathOverride,
-    environment = resolvedContext.environment,
-    userHome = resolvedContext.userHome,
-  ).use { openDb ->
-    block(SQLiteUnitOfWork(openDb.connection, openDb.dbPath))
-  }
+  override fun <T> selfManagedWrite(block: (UnitOfWork) -> T): T =
+    DatabaseRuntime.openDbAt(resolveDbPath()).use { openDb ->
+      block(SQLiteUnitOfWork(openDb.connection, openDb.dbPath))
+    }
 
-  override fun <T> transaction(dbOverride: String?, block: (UnitOfWork) -> T): T = DatabaseRuntime.openDb(
-    cliValue = dbOverride ?: resolvedContext.dbPathOverride,
-    environment = resolvedContext.environment,
-    userHome = resolvedContext.userHome,
-  ).use { openDb ->
+  override fun <T> transaction(block: (UnitOfWork) -> T): T = DatabaseRuntime.openDbAt(resolveDbPath()).use { openDb ->
     openDb.connection.inTransaction(openDb.dbPath) {
       block(SQLiteUnitOfWork(openDb.connection, openDb.dbPath))
     }

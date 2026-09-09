@@ -5,7 +5,6 @@ import java.nio.file.Path
 data class GoalRunnerReplanRequest(
   val issueKey: String,
   val subtaskId: Int,
-  val dbPathOverride: String? = null,
   val repoRoot: Path? = null,
   val includeSharedPreplan: Boolean = false,
 ) {

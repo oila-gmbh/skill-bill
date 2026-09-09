@@ -246,15 +246,15 @@ internal fun testGoalRunner(
 private object TestGoalActivityStampDatabase : DatabaseSessionFactory {
   private val dbPath = Path.of("/fake/goal-activity-stamp.db")
 
-  override fun resolveDbPath(dbOverride: String?): Path = dbPath
+  override fun resolveDbPath(): Path = dbPath
 
-  override fun databaseExists(dbOverride: String?): Boolean = true
+  override fun databaseExists(): Boolean = true
 
-  override fun <T> read(dbOverride: String?, block: (UnitOfWork) -> T): T = block(unitOfWork())
+  override fun <T> read(block: (UnitOfWork) -> T): T = block(unitOfWork())
 
-  override fun <T> selfManagedWrite(dbOverride: String?, block: (UnitOfWork) -> T): T = transaction(dbOverride, block)
+  override fun <T> selfManagedWrite(block: (UnitOfWork) -> T): T = transaction(block)
 
-  override fun <T> transaction(dbOverride: String?, block: (UnitOfWork) -> T): T = block(unitOfWork())
+  override fun <T> transaction(block: (UnitOfWork) -> T): T = block(unitOfWork())
 
   private fun unitOfWork(): UnitOfWork = object : UnitOfWork {
     override val dbPath: Path = this@TestGoalActivityStampDatabase.dbPath

@@ -12,7 +12,6 @@ data class RemediationReconciliationApplyRequest(
   val workflowId: String,
   val gitOperations: WorkflowGitOperations,
   val repoRoot: Path,
-  val dbOverride: String?,
   val latestRemediationResolved: ResolvedReviewFixCheckpoint?,
 )
 
@@ -25,7 +24,6 @@ data class RemediationBaseHealRequest(
   val workflowId: String,
   val gitOperations: WorkflowGitOperations,
   val repoRoot: Path,
-  val dbOverride: String?,
   val latestRemediationResolved: ResolvedReviewFixCheckpoint?,
 )
 
@@ -37,7 +35,6 @@ data class PersistHealedRemediationBaseRequest(
   val continuation: FeatureTaskRuntimeGoalContinuationArtifact,
   val gitOperations: WorkflowGitOperations,
   val repoRoot: Path,
-  val dbOverride: String?,
 )
 
 data class RemediationReconcileSnapshot(

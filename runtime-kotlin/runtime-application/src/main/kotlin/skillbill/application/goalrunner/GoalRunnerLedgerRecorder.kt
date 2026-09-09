@@ -1,6 +1,7 @@
 package skillbill.application.goalrunner
 
 import skillbill.application.goalrunner.model.GoalRunnerRunRequest
+import skillbill.goalrunner.model.GoalAttemptLaunchOutcome
 import skillbill.goalrunner.model.GoalAttemptLedgerAction
 import skillbill.goalrunner.model.GoalAttemptLedgerEntry
 import skillbill.ports.agentrun.model.AgentRunLaunchFacts
@@ -23,7 +24,7 @@ class GoalRunnerLedgerRecorder(
   // restarting at 0 and emitting duplicate, non-monotonic sequence numbers. A
   // fresh run (no durable entries) starts from the base.
   private val watermarks = runCatching {
-    outcomeStore.ledgerSequenceWatermarks(request.issueKey, request.dbPathOverride)
+    outcomeStore.ledgerSequenceWatermarks(request.issueKey)
   }.getOrNull()
   private var ledgerSequence: Int = watermarks?.maxLedgerSequence?.let { it + 1 } ?: 0
 
@@ -87,7 +88,6 @@ class GoalRunnerLedgerRecorder(
     runCatching {
       outcomeStore.recordAttemptLedgerEntry(
         GoalRunnerAttemptLedgerRecordRequest(workflowId = targetWorkflowId, entry = entry),
-        request.dbPathOverride,
       )
     }
       .onFailure { error ->

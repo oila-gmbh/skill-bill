@@ -32,6 +32,21 @@ data class FeatureTaskRuntimeValidationGateRunRecord(
   val cacheMode: String,
   val executedWorkUnits: Int,
 ) {
+  constructor(
+    durationMs: Long,
+    outcome: String,
+    cacheMode: String,
+    executedWorkUnits: Int,
+  ) : this(
+    durationMs = durationMs,
+    outcome = requireNotNull(ValidationGateRunOutcome.fromWire(outcome)) {
+      "Unknown validation gate outcome '$outcome'."
+    },
+    cacheMode = requireNotNull(ValidationGateCacheMode.fromWire(cacheMode)) {
+      "Unknown validation gate cache mode '$cacheMode'."
+    },
+    executedWorkUnits = executedWorkUnits,
+  )
   @OpenBoundaryMap("Runtime-owned validation gate run measurement at the durable workflow-artifact seam")
   fun toArtifactMap(): Map<String, Any?> = linkedMapOf(
     "duration_ms" to durationMs,

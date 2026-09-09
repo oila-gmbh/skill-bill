@@ -50,7 +50,6 @@ internal fun skillRunRequest(
   issueKey = issueKey,
   repoRoot = Path.of("/tmp/skillbill-agent-run"),
   subtaskId = 2,
-  dbPathOverride = "/tmp/skillbill-agent-run/metrics.db",
   timeout = 3.seconds,
   goalContinuation = goalContinuation,
 )

@@ -5,6 +5,9 @@ package skillbill.workflow.taskruntime.model
  * operation can dereference; the others are plain identifiers the consumer reads as-is. No kind
  * introduces arbitrary model-driven retrieval.
  */
+internal val REPOSITORY_CHECKPOINT_FIELD: String
+  get() = FeatureTaskRuntimeCompactReferenceKind.REPOSITORY_CHECKPOINT.wireValue
+
 enum class FeatureTaskRuntimeCompactReferenceKind(val wireValue: String, val runtimeResolvable: Boolean) {
   PRIVATE_EVIDENCE_ARTIFACT("private_evidence_artifact", true),
   REPOSITORY_PATH("repository_path", true),

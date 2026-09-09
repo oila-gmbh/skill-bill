@@ -17,7 +17,8 @@ import skillbill.ports.repository.RepositoryEnclosingRootPort
 import skillbill.ports.workflow.gitops.captureGoalSubtaskReviewBaseline
 import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewBaseline
 import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewBaselineResult
-import skillbill.review.context.model.CodeReviewExecutionMode
+import skillbill.ports.workflow.gitops.model.WorkflowGitOperationResult
+import skillbill.ports.workflow.gitops.model.WorkflowGitOperationStatusimport skillbill.review.context.model.CodeReviewExecutionMode
 import skillbill.workflow.decomposition.model.DecompositionSubtask
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import java.nio.file.Path
@@ -39,7 +40,7 @@ public class GoalRunnerSubtaskLaunchPrepare(
     val existingWorkflowId = state.manifest.workflowIdFor(subtaskId)
     if (existingWorkflowId != null) {
       return runCatching {
-        outcomeStore.goalSubtaskReviewState(existingWorkflowId, request.dbPathOverride)
+        outcomeStore.goalSubtaskReviewState(existingWorkflowId)
           ?.let { reviewState ->
             GoalSubtaskReviewBaselineResult(
               status = "ok",
@@ -77,7 +78,7 @@ public class GoalRunnerSubtaskLaunchPrepare(
     request: GoalRunnerRunRequest,
   ): GoalRunnerIterationResult {
     val blocked = state.manifest.withBranchSetupBlockedSubtask(subtaskId, reason)
-    val saved = manifestStore.save(state.copy(manifest = blocked), request.dbPathOverride)
+    val saved = manifestStore.save(state.copy(manifest = blocked))
     request.eventSink.emit(
       GoalRunnerRunEvent.SubtaskStopped(
         issueKey = saved.manifest.issueKey,
@@ -125,7 +126,6 @@ public class GoalRunnerSubtaskLaunchPrepare(
           blockedReason = reason,
           lastResumableStep = "preplan",
           supervisionEvent = null,
-          dbPathOverride = request.dbPathOverride,
         )
       }
     }
@@ -133,7 +133,7 @@ public class GoalRunnerSubtaskLaunchPrepare(
   }
 
   fun emitGoalReviewSummaries(issueKey: String, subtaskId: Int, workflowId: String, request: GoalRunnerRunRequest) {
-    outcomeStore.unemittedGoalReviewPasses(workflowId, request.dbPathOverride).forEach { pass ->
+    outcomeStore.unemittedGoalReviewPasses(workflowId).forEach { pass ->
       request.eventSink.emit(
         GoalRunnerRunEvent.SubtaskReviewSummary(
           issueKey = issueKey,
@@ -145,7 +145,7 @@ public class GoalRunnerSubtaskLaunchPrepare(
           findings = pass.findings,
         ),
       )
-      check(outcomeStore.acknowledgeGoalReviewPass(workflowId, pass.passNumber, request.dbPathOverride)) {
+      check(outcomeStore.acknowledgeGoalReviewPass(workflowId, pass.passNumber)) {
         "Goal-subtask review summary pass ${pass.passNumber} could not be acknowledged after emission."
       }
     }
@@ -162,9 +162,8 @@ public class GoalRunnerSubtaskLaunchPrepare(
     val subtask = requireNotNull(state.manifest.subtasks.firstOrNull { it.id == subtaskId }) {
       "Goal subtask '$subtaskId' is missing from the decomposition manifest."
     }
-    if (subtask.status == "blocked" && priorWorkflowId != null) {
-      reopenBlockedChildForOperatorResume(subtaskId, priorWorkflowId, subtask, request)
-    }
+    if (subtask.status.decompositionStatus() == DecompositionStatus.BLOCKED && priorWorkflowId != null) {
+      reopenBlockedChildForOperatorResume(subtaskId, priorWorkflowId, subtask)    }
     val firstRun = priorWorkflowId == null
     val assignedWorkflowId = priorWorkflowId ?: generateWorkflowId(RUNTIME_WORKFLOW_ID_PREFIX)
     val rawSpecPath = requireNotNull(
@@ -201,7 +200,6 @@ public class GoalRunnerSubtaskLaunchPrepare(
           ),
           planningHydration = planning.hydrationFor(subtaskId),
         ),
-        request.dbPathOverride,
       )
     }
     return PreparedLaunch(attemptedState, assignedWorkflowId.takeIf { firstRun })
@@ -233,12 +231,7 @@ public class GoalRunnerSubtaskLaunchPrepare(
     }
   }
 
-  private fun reopenBlockedChildForOperatorResume(
-    subtaskId: Int,
-    workflowId: String,
-    subtask: DecompositionSubtask,
-    request: GoalRunnerRunRequest,
-  ) {
+  private fun reopenBlockedChildForOperatorResume(subtaskId: Int, workflowId: String, subtask: DecompositionSubtask) {
     val phaseId = subtask.lastResumableStep?.takeIf(String::isNotBlank)
       ?: FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT
     check(
@@ -246,7 +239,6 @@ public class GoalRunnerSubtaskLaunchPrepare(
         workflowId = workflowId,
         preferredPhaseId = phaseId,
         reason = "Operator resumed the goal after a blocked stop at subtask $subtaskId.",
-        dbPathOverride = request.dbPathOverride,
       ),
     ) {
       "Goal subtask '$subtaskId' is blocked but child workflow '$workflowId' could not be reopened for resume."
@@ -260,7 +252,7 @@ public class GoalRunnerSubtaskLaunchPrepare(
     request: GoalRunnerRunRequest,
   ): GoalRunnerIterationResult {
     val blocked = state.manifest.withBranchSetupBlockedSubtask(subtaskId, reason)
-    val saved = manifestStore.save(state.copy(manifest = blocked), request.dbPathOverride)
+    val saved = manifestStore.save(state.copy(manifest = blocked))
     request.eventSink.emit(
       GoalRunnerRunEvent.SubtaskStopped(
         issueKey = saved.manifest.issueKey,

@@ -65,6 +65,44 @@ class WireVocabularyArchitectureTest {
   }
 
   @Test
+  fun `scanner keeps identical spellings separate when the decoding context differs`() {
+    val files = listOf(
+      syntheticSourceFile(
+        "fixture/Owner.kt",
+        """
+        package fixture
+
+        enum class Owner(val wireValue: String) {
+          READY("ready"),
+        }
+        """.trimIndent(),
+      ),
+      syntheticSourceFile(
+        "unrelated/Labels.kt",
+        """
+        package unrelated
+
+        val labels = setOf("ready")
+        """.trimIndent(),
+      ),
+      syntheticSourceFile(
+        "consumer/Decoder.kt",
+        """
+        package consumer
+
+        import fixture.Owner
+
+        fun decode(value: Owner) = value.wireValue
+        val labels = setOf("ready")
+        """.trimIndent(),
+      ),
+    )
+    val report = WireVocabularyArchitectureSupport.scanSourceFiles(files)
+    assertTrue(report.violations.none { it.contains("unrelated/Labels.kt") })
+    assertTrue(report.violations.any { it.contains("consumer/Decoder.kt") && it.contains("restates 'ready'") })
+  }
+
+  @Test
   fun `scanner rejects duplicates aliases local collections and foreign key accesses`() {
     val files = listOf(
       syntheticSourceFile(

@@ -1,8 +1,9 @@
 package skillbill.application.featuretask
 
-import me.tatarka.inject.annotations.Inject
 import skillbill.goalrunner.model.UNADDRESSED_FINDING_REJECTED_DISPOSITION
-import skillbill.workflow.goal.model.GoalSubtaskReviewState
+import skillbill.ports.workflow.gitops.captureIndexState
+import skillbill.ports.workflow.gitops.model.WorkflowGitOperationResult
+import skillbill.ports.workflow.gitops.stagePathsimport skillbill.workflow.goal.model.GoalSubtaskReviewState
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFailureDisposition
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairReceipt
 import skillbill.workflow.taskruntime.model.upsertRepairReceipt
@@ -15,7 +16,6 @@ class FeatureTaskRuntimeRunLoopRepairReceipt {
   ): String? = runCatching {
     runLoop.goalContinuationRecorder.updateReviewState(
       runLoop.request.workflowId,
-      runLoop.request.dbPathOverride,
     ) { state ->
       state.upsertRepairReceipt(receipt)
     }
@@ -116,7 +116,7 @@ class FeatureTaskRuntimeRunLoopRepairReceipt {
   fun refutedCarriedFindingIds(runLoop: FeatureTaskRuntimeRunLoop, reviewState: GoalSubtaskReviewState): Set<String> {
     val passNumber = reviewState.passResults.lastOrNull()?.passNumber ?: return emptySet()
     return runCatching {
-      runLoop.recorder.fetchUnaddressedLedger(runLoop.request.workflowId, runLoop.request.dbPathOverride)
+      runLoop.recorder.fetchUnaddressedLedger(runLoop.request.workflowId)
         .asSequence()
         .filter { finding -> finding.reviewPassNumber == passNumber }
         .filter { finding -> finding.verificationDisposition == UNADDRESSED_FINDING_REJECTED_DISPOSITION }

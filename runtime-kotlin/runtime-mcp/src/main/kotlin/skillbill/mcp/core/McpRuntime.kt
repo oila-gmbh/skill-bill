@@ -28,14 +28,14 @@ object McpRuntime {
     }
     val importResult =
       runtimeServices.reviewService
-        .importReview("-", dbOverride = null, finishZeroFindingTelemetry = !orchestrated)
+        .importReview("-", finishZeroFindingTelemetry = !orchestrated)
     val payload = importResult.toMcpMap().toMutableMap()
     val result = if (orchestrated) {
       val reviewRunId = importResult.preview.reviewRunId
-      runtimeServices.reviewService.markOrchestrated(reviewRunId, dbOverride = null)
+      runtimeServices.reviewService.markOrchestrated(reviewRunId)
       val telemetryPayload =
         if (importResult.preview.findingCount == 0) {
-          runtimeServices.reviewService.reviewFinishedTelemetryPayload(reviewRunId, dbOverride = null)
+          runtimeServices.reviewService.reviewFinishedTelemetryPayload(reviewRunId)
             ?.toReviewFinishedTelemetryPayload()
             ?.toPayload()
         } else {
@@ -60,14 +60,13 @@ object McpRuntime {
       return McpTriageSkippedContract(reason = "telemetry is disabled", reviewRunId = reviewRunId).toPayload()
     }
     if (orchestrated) {
-      runtimeServices.reviewService.markOrchestrated(reviewRunId, dbOverride = null)
+      runtimeServices.reviewService.markOrchestrated(reviewRunId)
     }
     val result =
       runtimeServices.reviewService.triage(
         reviewRunId,
         decisions,
         listOnly = false,
-        dbOverride = null,
         listWhenNoDecisions = false,
       )
     val payload = if (orchestrated) {
@@ -92,23 +91,23 @@ object McpRuntime {
     if (!runtimeServices.telemetryService.isEnabled()) {
       return McpLearningsSkippedContract(reason = "telemetry is disabled").toPayload()
     }
-    return runtimeServices.learningService.resolve(repo, skill, reviewSessionId, dbOverride = null).toMcpPayload()
+    return runtimeServices.learningService.resolve(repo, skill, reviewSessionId).toMcpPayload()
   }
 
   fun reviewStats(reviewRunId: String? = null, context: McpRuntimeContext = McpRuntimeContext()): Map<String, Any?> =
-    services(context).reviewService.reviewStats(reviewRunId, dbOverride = null).toMcpMap()
+    services(context).reviewService.reviewStats(reviewRunId).toMcpMap()
 
   fun featureVerifyStats(context: McpRuntimeContext = McpRuntimeContext()): Map<String, Any?> =
-    services(context).reviewService.featureVerifyStats(dbOverride = null).toMcpMap()
+    services(context).reviewService.featureVerifyStats().toMcpMap()
 
   fun goalStats(context: McpRuntimeContext = McpRuntimeContext()): Map<String, Any?> =
-    services(context).reviewService.goalStats(dbOverride = null).toMcpMap()
+    services(context).reviewService.goalStats().toMcpMap()
 
   fun version(context: McpRuntimeContext = McpRuntimeContext()): Map<String, Any?> =
     services(context).systemService.version().toPayload()
 
   fun doctor(context: McpRuntimeContext = McpRuntimeContext()): Map<String, Any?> =
-    services(context).systemService.doctor(dbOverride = null).toPayload()
+    services(context).systemService.doctor().toPayload()
 
   fun updateCheck(context: McpRuntimeContext = McpRuntimeContext()): Map<String, Any?> {
     val result = services(context).updateCheckService.check(includePrereleases = false)

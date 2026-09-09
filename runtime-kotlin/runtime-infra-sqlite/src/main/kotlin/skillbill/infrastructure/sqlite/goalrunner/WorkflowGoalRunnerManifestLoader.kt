@@ -40,17 +40,15 @@ internal class WorkflowGoalRunnerManifestLoader(
 
   fun loadFromWorkflowStore(
     issueKey: String,
-    dbPathOverride: String?,
     currentProjectedManifest: DecompositionManifest? = null,
-  ): GoalRunnerManifestState? = database.read(dbPathOverride) { unitOfWork ->
+  ): GoalRunnerManifestState? = database.read { unitOfWork ->
     loadFromWorkflowUnitOfWork(unitOfWork, issueKey, currentProjectedManifest)
   }
 
   fun loadFromWorkflowStoreIfPresent(
     issueKey: String,
-    dbPathOverride: String?,
     currentProjectedManifest: DecompositionManifest? = null,
-  ): GoalRunnerManifestState? = database.readIfPresent(dbPathOverride) { unitOfWork ->
+  ): GoalRunnerManifestState? = database.readIfPresent { unitOfWork ->
     loadFromWorkflowUnitOfWork(unitOfWork, issueKey, currentProjectedManifest)
   }
 
@@ -74,55 +72,53 @@ internal class WorkflowGoalRunnerManifestLoader(
     )
   }
 
-  fun importFromManifestProjection(
-    manifest: DecompositionManifest,
-    dbPathOverride: String?,
-  ): GoalRunnerManifestState? = database.transaction(dbPathOverride) { unitOfWork ->
-    val existingRecord = unitOfWork.workflowStates.findDecomposedParentOrCorruptFallback(
-      manifest.issueKey,
-      decompositionManifestValidator,
-      manifest,
-    )
-    existingRecord?.requireRuntimeModeForEngineWrite()
-    val existing = existingRecord?.toSnapshot()
-    existing?.let { migrateLegacyGoalRunnerControls(unitOfWork, it) }
-    val base = existing ?: engine.openRecord(
-      WorkflowFamily.TASK_RUNTIME.definition,
-      generateWorkflowId(WorkflowFamily.TASK_RUNTIME.definition.workflowIdPrefix),
-      WorkflowFamily.TASK_RUNTIME.definition.defaultSessionPrefix,
-      "plan",
-    )
-    val imported = engine.updateRecord(
-      WorkflowFamily.TASK_RUNTIME.definition,
-      base,
-      WorkflowUpdateInput(
-        workflowStatus = "paused",
-        currentStepId = "plan",
-        stepUpdates = if (existing != null) {
-          null
-        } else {
-          listOf(
-            mapOf("step_id" to "preplan", "status" to "completed", "attempt_count" to 1),
-            mapOf("step_id" to "plan", "status" to "completed", "attempt_count" to 1),
-          )
-        },
-        artifactsPatch = parentProjection.artifacts(manifest, base.artifactsJson),
-        sessionId = base.sessionId.orEmpty(),
-        replaceArtifacts = true,
-      ),
-    )
-    WorkflowFamily.TASK_RUNTIME.saveRecord(
-      unitOfWork.workflowStates,
-      imported.toRecord().copy(issueKey = normalizeRequiredIssueKey(manifest.issueKey)),
-    )
-    val saved = WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, imported.workflowId) ?: imported
-    GoalRunnerManifestState(
-      parentWorkflowId = saved.workflowId,
-      dbPath = unitOfWork.dbPath.toString(),
-      manifest = saved.decompositionRuntime(decompositionManifestValidator) ?: manifest,
-      controlState = unitOfWork.goalRunnerControls.controlState(saved.workflowId),
-    )
-  }
+  fun importFromManifestProjection(manifest: DecompositionManifest): GoalRunnerManifestState? =
+    database.transaction { unitOfWork ->
+      val existingRecord = unitOfWork.workflowStates.findDecomposedParentOrCorruptFallback(
+        manifest.issueKey,
+        decompositionManifestValidator,
+        manifest,
+      )
+      existingRecord?.requireRuntimeModeForEngineWrite()
+      val existing = existingRecord?.toSnapshot()
+      existing?.let { migrateLegacyGoalRunnerControls(unitOfWork, it) }
+      val base = existing ?: engine.openRecord(
+        WorkflowFamily.TASK_RUNTIME.definition,
+        generateWorkflowId(WorkflowFamily.TASK_RUNTIME.definition.workflowIdPrefix),
+        WorkflowFamily.TASK_RUNTIME.definition.defaultSessionPrefix,
+        "plan",
+      )
+      val imported = engine.updateRecord(
+        WorkflowFamily.TASK_RUNTIME.definition,
+        base,
+        WorkflowUpdateInput(
+          workflowStatus = "paused",
+          currentStepId = "plan",
+          stepUpdates = if (existing != null) {
+            null
+          } else {
+            listOf(
+              mapOf("step_id" to "preplan", "status" to "completed", "attempt_count" to 1),
+              mapOf("step_id" to "plan", "status" to "completed", "attempt_count" to 1),
+            )
+          },
+          artifactsPatch = parentProjection.artifacts(manifest, base.artifactsJson),
+          sessionId = base.sessionId.orEmpty(),
+          replaceArtifacts = true,
+        ),
+      )
+      WorkflowFamily.TASK_RUNTIME.saveRecord(
+        unitOfWork.workflowStates,
+        imported.toRecord().copy(issueKey = normalizeRequiredIssueKey(manifest.issueKey)),
+      )
+      val saved = WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, imported.workflowId) ?: imported
+      GoalRunnerManifestState(
+        parentWorkflowId = saved.workflowId,
+        dbPath = unitOfWork.dbPath.toString(),
+        manifest = saved.decompositionRuntime(decompositionManifestValidator) ?: manifest,
+        controlState = unitOfWork.goalRunnerControls.controlState(saved.workflowId),
+      )
+    }
 
   fun readProjection(
     stored: GoalRunnerManifestState?,
@@ -159,8 +155,14 @@ internal fun mergeConcurrentGoalProgress(
   val persistedById = persisted.subtasks.associateBy { it.id }
   val mergedSubtasks = incoming.subtasks.map { candidate ->
     val current = persistedById[candidate.id]
-    if (current?.status == "complete" && candidate.status != "complete") current else candidate
-  }
+    if (
+      current?.status.decompositionStatus() == DecompositionStatus.COMPLETE &&
+      candidate.status.decompositionStatus() != DecompositionStatus.COMPLETE
+    ) {
+      current ?: candidate
+    } else {
+      candidate
+    }  }
   val merged = incoming.copy(subtasks = mergedSubtasks)
   return if (
     persisted.currentSubtaskIntent.subtaskId > 0 &&
@@ -174,7 +176,8 @@ internal fun mergeConcurrentGoalProgress(
 }
 
 private fun DecompositionManifest.isCompleteGoalProjection(): Boolean =
-  status == "complete" && currentSubtaskIntent.action == "complete" && subtasks.all { subtask ->
-    subtask.status in setOf("complete", "skipped") &&
-      (subtask.status == "skipped" || !subtask.commitSha.isNullOrBlank())
-  }
+  status.decompositionStatus() == DecompositionStatus.COMPLETE &&
+    currentSubtaskIntent.action == "complete" && subtasks.all { subtask ->
+      subtask.status.decompositionStatus() in setOf(DecompositionStatus.COMPLETE, DecompositionStatus.SKIPPED) &&
+        (subtask.status.decompositionStatus() == DecompositionStatus.SKIPPED || !subtask.commitSha.isNullOrBlank())
+    }

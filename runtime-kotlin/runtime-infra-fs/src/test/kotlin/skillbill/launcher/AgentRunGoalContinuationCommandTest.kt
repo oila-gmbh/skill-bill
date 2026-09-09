@@ -18,7 +18,7 @@ class AgentRunGoalContinuationCommandTest {
   @Test
   fun `ordinary phase worker does not receive goal continuation marker`() {
     val runner = RecordingAgentRunProcessRunner()
-    requireNotNull(headlessAgentRunAdapters(runner, ALL_EXECUTABLES_AVAILABLE)[InstallAgent.CODEX]).launch(
+    requireNotNull(adapters(runner)[InstallAgent.CODEX]).launch(
       skillRunRequest(goalContinuation = null).copy(promptOverride = "Run the implementation phase."),
     )
 
@@ -28,7 +28,7 @@ class AgentRunGoalContinuationCommandTest {
   @Test
   fun `goal-continuation child with no child workflow id runs skill-bill feature-task run directly`() {
     val runner = RecordingAgentRunProcessRunner()
-    val outcome = requireNotNull(headlessAgentRunAdapters(runner, ALL_EXECUTABLES_AVAILABLE)[InstallAgent.CLAUDE])
+    val outcome = requireNotNull(adapters(runner)[InstallAgent.CLAUDE])
       .launch(skillRunRequest())
 
     assertEquals(InstallAgent.CLAUDE, outcome.agent)
@@ -72,7 +72,7 @@ class AgentRunGoalContinuationCommandTest {
   @Test
   fun `goal-continuation child with existing child workflow id runs feature-task resume`() {
     val runner = RecordingAgentRunProcessRunner()
-    requireNotNull(headlessAgentRunAdapters(runner, ALL_EXECUTABLES_AVAILABLE)[InstallAgent.CLAUDE]).launch(
+    requireNotNull(adapters(runner)[InstallAgent.CLAUDE]).launch(
       skillRunRequest(goalContinuation = goalContinuationContext(childWorkflowId = "wfl-child-runtime")),
     )
 
@@ -113,7 +113,7 @@ class AgentRunGoalContinuationCommandTest {
   @Test
   fun `goal-continuation child with assigned workflow id and no child runs feature-task run with workflow-id`() {
     val runner = RecordingAgentRunProcessRunner()
-    requireNotNull(headlessAgentRunAdapters(runner, ALL_EXECUTABLES_AVAILABLE)[InstallAgent.CLAUDE]).launch(
+    requireNotNull(adapters(runner)[InstallAgent.CLAUDE]).launch(
       skillRunRequest(
         goalContinuation = goalContinuationContext(childWorkflowId = null, assignedWorkflowId = "wfl-assigned"),
       ),
@@ -135,7 +135,7 @@ class AgentRunGoalContinuationCommandTest {
     val runner = RecordingAgentRunProcessRunner()
     // Remaining runtime agents each spawn skill-bill feature-task directly.
     listOf(InstallAgent.CLAUDE, InstallAgent.CODEX, InstallAgent.JUNIE, InstallAgent.CURSOR).forEach { agent ->
-      requireNotNull(headlessAgentRunAdapters(runner, ALL_EXECUTABLES_AVAILABLE)[agent]).launch(skillRunRequest())
+      requireNotNull(adapters(runner)[agent]).launch(skillRunRequest())
     }
 
     assertEquals(4, runner.requests.size)
@@ -161,7 +161,7 @@ class AgentRunGoalContinuationCommandTest {
   @Test
   fun `goal-continuation child always carries suppress-pr`() {
     val runner = RecordingAgentRunProcessRunner()
-    requireNotNull(headlessAgentRunAdapters(runner, ALL_EXECUTABLES_AVAILABLE)[InstallAgent.CODEX])
+    requireNotNull(adapters(runner)[InstallAgent.CODEX])
       .launch(skillRunRequest())
 
     assertContains(runner.requests.single().command, "--suppress-pr")
@@ -170,7 +170,7 @@ class AgentRunGoalContinuationCommandTest {
   @Test
   fun `goal-continuation wrapper never receives model or effort flags`() {
     val runner = RecordingAgentRunProcessRunner()
-    requireNotNull(headlessAgentRunAdapters(runner, ALL_EXECUTABLES_AVAILABLE)[InstallAgent.CODEX]).launch(
+    requireNotNull(adapters(runner)[InstallAgent.CODEX]).launch(
       skillRunRequest().copy(modelOverride = "gpt-sol", effortOverride = "high"),
     )
 
@@ -186,9 +186,14 @@ class AgentRunGoalContinuationCommandTest {
     issueKey = "SKILL-56",
     repoRoot = Path.of("/tmp/skillbill-agent-run"),
     subtaskId = 2,
-    dbPathOverride = "/tmp/skillbill-agent-run/metrics.db",
     timeout = 3.seconds,
     goalContinuation = goalContinuation,
+  )
+
+  private fun adapters(runner: RecordingAgentRunProcessRunner) = headlessAgentRunAdapters(
+    runner,
+    ALL_EXECUTABLES_AVAILABLE,
+    Path.of("/tmp/skillbill-agent-run/metrics.db"),
   )
 
   private fun goalContinuationContext(
@@ -209,7 +214,7 @@ class AgentRunGoalContinuationCommandTest {
   @Test
   fun `cursor goal-continuation child with no child workflow id runs skill-bill feature-task run directly`() {
     val runner = RecordingAgentRunProcessRunner()
-    val outcome = requireNotNull(headlessAgentRunAdapters(runner, ALL_EXECUTABLES_AVAILABLE)[InstallAgent.CURSOR])
+    val outcome = requireNotNull(adapters(runner)[InstallAgent.CURSOR])
       .launch(skillRunRequest())
 
     assertEquals(InstallAgent.CURSOR, outcome.agent)
@@ -251,7 +256,7 @@ class AgentRunGoalContinuationCommandTest {
   @Test
   fun `cursor goal-continuation child with existing child workflow id runs feature-task resume`() {
     val runner = RecordingAgentRunProcessRunner()
-    requireNotNull(headlessAgentRunAdapters(runner, ALL_EXECUTABLES_AVAILABLE)[InstallAgent.CURSOR]).launch(
+    requireNotNull(adapters(runner)[InstallAgent.CURSOR]).launch(
       skillRunRequest(goalContinuation = goalContinuationContext(childWorkflowId = "wfl-child-runtime")),
     )
 
@@ -291,7 +296,7 @@ class AgentRunGoalContinuationCommandTest {
   @Test
   fun `cursor goal-continuation child with assigned workflow id and no child runs feature-task run with workflow-id`() {
     val runner = RecordingAgentRunProcessRunner()
-    requireNotNull(headlessAgentRunAdapters(runner, ALL_EXECUTABLES_AVAILABLE)[InstallAgent.CURSOR]).launch(
+    requireNotNull(adapters(runner)[InstallAgent.CURSOR]).launch(
       skillRunRequest(
         goalContinuation = goalContinuationContext(childWorkflowId = null, assignedWorkflowId = "wfl-assigned"),
       ),
@@ -313,7 +318,7 @@ class AgentRunGoalContinuationCommandTest {
   @Test
   fun `goal-continuation builder stamps full validation depth in environment only`() {
     val runner = RecordingAgentRunProcessRunner()
-    val adapter = requireNotNull(headlessAgentRunAdapters(runner, ALL_EXECUTABLES_AVAILABLE)[InstallAgent.CLAUDE])
+    val adapter = requireNotNull(adapters(runner)[InstallAgent.CLAUDE])
 
     adapter.launch(
       skillRunRequest(goalContinuation = goalContinuationContext().copy(validationDepth = ValidationDepth.FULL)),

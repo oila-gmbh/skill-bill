@@ -4,6 +4,8 @@ import me.tatarka.inject.annotations.Inject
 import skillbill.application.featuretask.model.FeatureTaskRuntimeRunRequest
 import skillbill.ports.workflow.gitops.WorkflowGitOperations
 import skillbill.ports.workflow.gitops.captureGoalSubtaskReviewBaseline
+import skillbill.ports.workflow.gitops.model.WorkflowGitOperationResult
+import skillbill.ports.workflow.gitops.model.WorkflowGitOperationStatus
 import skillbill.ports.workflow.gitops.repositoryOwnedPaths
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeResolvedBranch
 
@@ -33,7 +35,7 @@ class FeatureTaskRuntimeBranchSetupRunner(
     if (!current.ok) {
       return FeatureTaskRuntimeBranchSetupOutcome.blocked(branchSetupBlockedReason(current.error))
     }
-    val persisted = recorder.loadResolvedBranch(request.workflowId, request.dbPathOverride)
+    val persisted = recorder.loadResolvedBranch(request.workflowId)
     return when {
       persisted != null -> reattachPersisted(request, observability, persisted.branch, current.value)
       request.goalContinuation != null -> reattachGoalContinuationBranch(request, observability, current.value)
@@ -112,8 +114,8 @@ class FeatureTaskRuntimeBranchSetupRunner(
   ): String? {
     val exists = gitOperations.branchExists(request.repoRoot, persistedBranch)
     return when {
-      !exists.ok -> branchSetupReattachExistenceUnreadableReason(persistedBranch, currentBranch, exists.error)
-      exists.value.trim() != "true" -> branchSetupReattachMissingReason(persistedBranch, currentBranch)
+      exists !is WorkflowGitOperationResult.Ok ->
+        branchSetupReattachExistenceUnreadableReason(persistedBranch, currentBranch, exists.error)      exists.value.trim() != "true" -> branchSetupReattachMissingReason(persistedBranch, currentBranch)
       else -> null
     }
   }
@@ -231,7 +233,6 @@ class FeatureTaskRuntimeBranchSetupRunner(
             .filter(String::isNotBlank),
         ),
       ),
-      request.dbPathOverride,
     )
     if (!recorded) {
       return FeatureTaskRuntimeBranchSetupOutcome.blocked(branchSetupNotPersistedBlockedReason(branch))

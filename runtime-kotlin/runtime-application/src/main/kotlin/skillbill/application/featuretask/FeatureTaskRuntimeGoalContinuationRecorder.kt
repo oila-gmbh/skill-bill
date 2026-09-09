@@ -5,8 +5,7 @@ import skillbill.application.featuretask.model.GoalSubtaskReviewInputPreparation
 import skillbill.application.featuretask.model.GoalSubtaskReviewPassReservation
 import skillbill.application.featuretask.model.RemediationBaseBlocked
 import skillbill.application.featuretask.model.RemediationBaseCoherenceResult
-import skillbill.error.FeatureTaskRuntimeSubtaskCommitReconciliationError
-import skillbill.ports.db.DatabaseSessionFactory
+import skillbill.goalrunner.model.FeatureTaskRuntimeGoalContinuationOutcomeimport skillbill.ports.db.DatabaseSessionFactory
 import skillbill.ports.diagnostics.RuntimeDiagnostics
 import skillbill.ports.workflow.gitops.WorkflowGitOperations
 import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewBaseline
@@ -19,7 +18,6 @@ import skillbill.workflow.goal.model.GoalSubtaskReviewCompactFinding
 import skillbill.workflow.goal.model.GoalSubtaskReviewState
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeGoalContinuationArtifact
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeGoalContinuationFieldAdoption
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeGoalContinuationOutcome
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeVerdict
 import java.nio.file.Path
 import java.time.Clock
@@ -44,33 +42,27 @@ class FeatureTaskRuntimeGoalContinuationRecorder(
   )
   val remediationReconciler = FeatureTaskRuntimeRemediationBaseReconciler(database, patcher, clock)
 
-  internal fun recordGoalContinuationState(
-    request: GoalContinuationStateRecordRequest,
-    dbOverride: String? = null,
-  ): Boolean = reviewStateRecorder.recordGoalContinuationState(request, dbOverride)
+  internal fun recordGoalContinuationState(request: GoalContinuationStateRecordRequest): Boolean =
+    reviewStateRecorder.recordGoalContinuationState(request)
 
-  fun reserveGoalReviewPass(workflowId: String, dbOverride: String? = null): GoalSubtaskReviewPassReservation =
-    reviewPassRecorder.reserveGoalReviewPass(workflowId, dbOverride)
+  fun reserveGoalReviewPass(workflowId: String): GoalSubtaskReviewPassReservation =
+    reviewPassRecorder.reserveGoalReviewPass(workflowId)
 
-  fun persistGoalReviewInput(
-    workflowId: String,
-    input: GoalSubtaskReviewInput,
-    dbOverride: String? = null,
-  ): GoalSubtaskReviewState? = reviewPassRecorder.persistGoalReviewInput(workflowId, input, dbOverride)
+  fun persistGoalReviewInput(workflowId: String, input: GoalSubtaskReviewInput): GoalSubtaskReviewState? =
+    reviewPassRecorder.persistGoalReviewInput(workflowId, input)
 
   fun updateReviewState(
     workflowId: String,
-    dbOverride: String? = null,
     transform: (GoalSubtaskReviewState) -> GoalSubtaskReviewState,
-  ): GoalSubtaskReviewState? = reviewPassRecorder.updateReviewState(workflowId, dbOverride, transform)
+  ): GoalSubtaskReviewState? = reviewPassRecorder.updateReviewState(workflowId, transform)
 
-  internal fun completeGoalReviewPass(
-    request: GoalReviewPassCompletionRequest,
-    dbOverride: String? = null,
-  ): GoalSubtaskReviewState? = reviewPassRecorder.completeGoalReviewPass(request, dbOverride)
+  internal fun completeGoalReviewPass(request: GoalReviewPassCompletionRequest): GoalSubtaskReviewState? =
+    reviewPassRecorder.completeGoalReviewPass(request)
 
-  class GoalReviewInputScope(val dbOverride: String? = null)
-
+  class GoalReviewInputScope(
+    val scopedUntrackedExclusions: List<String>? = null,
+    val ownedPathspec: List<String> = emptyList(),
+  )
   fun buildGoalReviewInput(
     workflowId: String,
     gitOperations: WorkflowGitOperations,
@@ -114,48 +106,24 @@ internal data class GoalReviewPassCompletionRequest(
   val commitFocusedAccounting: GoalSubtaskCommitFocusedAccounting? = null,
 )
 
-fun FeatureTaskRuntimeGoalContinuationRecorder.reviewState(
-  workflowId: String,
-  dbOverride: String?,
-): GoalSubtaskReviewState? = reviewStateRecorder.reviewState(workflowId, dbOverride)
+fun FeatureTaskRuntimeGoalContinuationRecorder.reviewState(workflowId: String): GoalSubtaskReviewState? =
+  reviewStateRecorder.reviewState(workflowId)
 
 fun FeatureTaskRuntimeGoalContinuationRecorder.continuation(
   workflowId: String,
-  dbOverride: String?,
-): FeatureTaskRuntimeGoalContinuationArtifact? = reviewStateRecorder.continuation(workflowId, dbOverride)
+): FeatureTaskRuntimeGoalContinuationArtifact? = reviewStateRecorder.continuation(workflowId)
 
-fun FeatureTaskRuntimeGoalContinuationRecorder.lastGoalReviewResult(workflowId: String, dbOverride: String?): String? =
-  reviewPassRecorder.lastGoalReviewResult(workflowId, dbOverride)
+fun FeatureTaskRuntimeGoalContinuationRecorder.lastGoalReviewResult(workflowId: String): String? =
+  reviewPassRecorder.lastGoalReviewResult(workflowId)
 
 internal fun FeatureTaskRuntimeGoalContinuationRecorder.appendRemediationRollbackDegradationEvidence(
   workflowId: String,
   signal: RemediationDegradationSignal,
-  dbOverride: String?,
-) = remediationReconciler.appendRemediationRollbackDegradationEvidence(workflowId, signal, dbOverride)
+) = remediationReconciler.appendRemediationRollbackDegradationEvidence(workflowId, signal)
 
 fun FeatureTaskRuntimeGoalContinuationRecorder.reconcileRemediationBaseCoherence(
   workflowId: String,
   gitOperations: WorkflowGitOperations,
   repoRoot: Path,
-  dbOverride: String?,
-): RemediationBaseCoherenceResult = try {
-  remediationReconciler.reconcileRemediationBaseCoherence(workflowId, gitOperations, repoRoot, dbOverride)
-} catch (error: CancellationException) {
-  throw error
-} catch (error: IllegalStateException) {
-  val reconciliationError = FeatureTaskRuntimeSubtaskCommitReconciliationError(
-    workflowId = workflowId,
-    issueKey = "unknown",
-    subtaskId = "unknown",
-    reason = "remediation-base reconciliation could not complete (${error.message.orEmpty()}); operator decision: " +
-      "repair the workflow store or checkpoint refs before resuming",
-    cause = error,
-  )
-  diagnostics.warning(
-    "record_kind=refusal seam=FeatureTaskRuntimeGoalContinuationRecorder.reconcileRemediationBaseCoherence " +
-      "value_used='$workflowId' value_expected=durable remediation-base reconciliation " +
-      "cause=${reconciliationError.reason}",
-    reconciliationError,
-  )
-  RemediationBaseBlocked(reconciliationError.message.orEmpty())
-}
+): RemediationBaseCoherenceResult =
+  remediationReconciler.reconcileRemediationBaseCoherence(workflowId, gitOperations, repoRoot)

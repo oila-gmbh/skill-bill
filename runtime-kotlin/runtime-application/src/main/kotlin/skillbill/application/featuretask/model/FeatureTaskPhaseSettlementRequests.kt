@@ -7,7 +7,6 @@ data class FeatureTaskPhaseSettlementCompleteRequest(
   val value: String,
   val prompt: String? = null,
   val summary: String? = null,
-  val dbPathOverride: String? = null,
 )
 
 data class FeatureTaskPhaseSettlementBlockRequest(
@@ -16,7 +15,6 @@ data class FeatureTaskPhaseSettlementBlockRequest(
   val attempt: Int,
   val reason: String,
   val failureDisposition: String = "needs_user_action",
-  val dbPathOverride: String? = null,
 )
 
 data class FeatureTaskPhaseSettlementAuditRequest(
@@ -26,5 +24,4 @@ data class FeatureTaskPhaseSettlementAuditRequest(
   val verdict: String,
   val value: String,
   val summary: String? = null,
-  val dbPathOverride: String? = null,
 )

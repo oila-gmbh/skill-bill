@@ -19,7 +19,6 @@ class GoalRunnerTelemetryEmitter(
   private val telemetry: GoalLifecycleTelemetryEmitter,
   private val clock: Clock,
   private val state: GoalRunnerManifestState,
-  private val dbPathOverride: String?,
 ) {
   private val segmentStartedAt: String = clock.instant().toString()
   private val segmentWorkflowId: String = "${state.parentWorkflowId}:seg:$segmentStartedAt"
@@ -45,7 +44,6 @@ class GoalRunnerTelemetryEmitter(
         mode = "runtime",
         parentWorkflowId = state.parentWorkflowId,
       ),
-      dbPathOverride,
     )
   }
 
@@ -78,7 +76,6 @@ class GoalRunnerTelemetryEmitter(
             finalizingAgentId = subtask.finalizingAgentId,
             participatingAgentIds = subtask.participatingAgentIds,
           ),
-          dbPathOverride,
         )
       }
   }
@@ -111,7 +108,6 @@ class GoalRunnerTelemetryEmitter(
         stopReason = stopReason,
         parentWorkflowId = state.parentWorkflowId,
       ),
-      dbPathOverride,
     )
   }
 
@@ -139,7 +135,6 @@ class GoalRunnerTelemetryEmitter(
         finishedAt = clock.instant().toString(),
         mode = "runtime",
       ),
-      dbPathOverride,
     )
   }
 

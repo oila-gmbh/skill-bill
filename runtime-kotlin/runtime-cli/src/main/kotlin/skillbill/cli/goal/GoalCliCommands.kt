@@ -186,11 +186,10 @@ class GoalRunCommand(
       inputs = deps.inputs,
       liveOutput = !noLiveOutput,
       repoRoot = effectiveRepoRoot,
-      dbOverride = deps.inputs.dbPathOverride,
-      runtimeProvenance = deps.runtimeProvenanceService.current(
-        executablePathHint = deps.inputs.environment[RUNTIME_EXECUTABLE_ENV],
-        classPath = deps.inputs.environment[RUNTIME_CLASSPATH_ENV] ?: deps.hostPlatform.jvmClassPath,
-        javaCommand = ProcessHandle.current().info().command().orElse(null),
+      dbOverride = inputs.databasePath,
+      runtimeProvenance = runtimeProvenanceService.current(
+        executablePathHint = inputs.environment[RUNTIME_EXECUTABLE_ENV],
+        classPath = inputs.environment[RUNTIME_CLASSPATH_ENV] ?: hostPlatform.jvmClassPath,        javaCommand = ProcessHandle.current().info().command().orElse(null),
         pathSeparator = deps.inputs.environment[RUNTIME_PATH_SEPARATOR_ENV] ?: deps.hostPlatform.pathSeparator,
       ),
     )
@@ -199,9 +198,8 @@ class GoalRunCommand(
       runRequest(runIssueKey, invokedAgentId, hydratedSelection, presenter, effectiveRepoRoot),
     )
     val payload = report.toGoalRunCliMap()
-    deps.state.completeText(goalRunText(payload), payload, exitCode = payload.goalExitCode())
-    drainTelemetryOnCompletion(deps.telemetryService, deps.inputs.dbPathOverride, deps.diagnostics)
-  }
+    state.completeText(goalRunText(payload), payload, exitCode = payload.goalExitCode())
+    drainTelemetryOnCompletion(telemetryService, diagnostics)  }
 
   private fun runRequest(
     runIssueKey: String,
@@ -214,7 +212,6 @@ class GoalRunCommand(
     repoRoot = effectiveRepoRoot,
     invokedAgentId = invokedAgentId,
     configuredAgentOverrideId = agentOverride,
-    dbPathOverride = deps.inputs.dbPathOverride,
     timeout = maxWallClockMinutes.takeIf { it > 0 }?.minutes,
     progressIdleTimeout = progressIdleTimeoutMinutes.takeIf { it > 0 }?.minutes,
     planningBudget = planningBudgetMinutes.takeIf { it > 0 }?.minutes,

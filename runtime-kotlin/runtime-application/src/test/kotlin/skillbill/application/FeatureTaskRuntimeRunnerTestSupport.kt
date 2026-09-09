@@ -163,11 +163,7 @@ import skillbill.ports.telemetry.TelemetryReconciliationRepository
 import skillbill.ports.telemetry.TelemetrySettingsProvider
 import skillbill.ports.time.JvmSystemClock
 import skillbill.ports.validation.ValidationGateRunner
-import skillbill.ports.validation.model.ValidationGateCacheMode.CACHE_ELIGIBLE
-import skillbill.ports.validation.model.ValidationGateFinding
-import skillbill.ports.validation.model.ValidationGateRunOutcome.FAILED
-import skillbill.ports.validation.model.ValidationGateRunOutcome.PASSED
-import skillbill.ports.validation.model.ValidationGateRunRequest
+import skillbill.ports.validation.model.ValidationGateFindingimport skillbill.ports.validation.model.ValidationGateRunRequest
 import skillbill.ports.validation.model.ValidationGateRunResult
 import skillbill.ports.work.EmptyWorkListRepository
 import skillbill.ports.workflow.WorkflowStateRepository
@@ -192,6 +188,7 @@ import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewBaselineResult
 import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewInput
 import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewInputResult
 import skillbill.ports.workflow.gitops.model.WorkflowGitOperationResult
+import skillbill.ports.workflow.gitops.model.WorkflowGitOperationStatus
 import skillbill.ports.workflow.gitops.model.WorkflowSelectedDiffHunksRequest
 import skillbill.ports.workflow.gitops.model.WorkflowSelectedDiffHunksResult
 import skillbill.ports.workflow.gitops.model.WorkflowWorktreeActivityResult
@@ -204,6 +201,7 @@ import skillbill.ports.workflow.model.WorkflowStateRecord
 import skillbill.ports.workflow.specscratch.SpecScratchStore
 import skillbill.review.context.ReviewContextEnvelopeValidator
 import skillbill.review.context.model.CodeReviewExecutionMode
+import skillbill.review.context.model.ReviewBudgetKind
 import skillbill.review.context.model.ReviewContextBudgetExceeded
 import skillbill.review.context.model.ReviewContextBudgetExceededException
 import skillbill.review.model.ParallelReviewMergeResult
@@ -250,6 +248,9 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRunInvariants
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeTransitionDeclaration
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeVerdict
 import skillbill.workflow.taskruntime.model.NormalizedFeatureTaskRuntimePhaseOutput
+import skillbill.workflow.taskruntime.model.ValidationGateCacheMode.CACHE_ELIGIBLE
+import skillbill.workflow.taskruntime.model.ValidationGateRunOutcome.FAILED
+import skillbill.workflow.taskruntime.model.ValidationGateRunOutcome.PASSED
 import java.lang.Boolean.TYPE
 import java.lang.reflect.Method
 import java.lang.reflect.Proxy
@@ -722,7 +723,6 @@ internal data class RuntimeHarnessConfig(
   val goalContinuation: FeatureTaskRuntimeGoalContinuationContext? = null,
   val useRealDecompositionPlanner: Boolean = false,
   val eventSink: FeatureTaskRuntimeRunEventSink? = null,
-  val dbPathOverride: String? = null,
   val acceptanceCriteria: List<String> = listOf("AC-1", "AC-2"),
   val planningProjectionValidator: FeatureTaskRuntimePlanningProjectionValidator =
     NoopFeatureTaskRuntimePlanningProjectionValidator,
@@ -882,7 +882,6 @@ private fun runnerHarnessRequest(
   invokedAgentId = INVOKED_AGENT,
   agentAssignment = agentAssignment,
   environment = runtimeConfig.environment,
-  dbPathOverride = null,
   repoRoot = runtimeConfig.repoRoot,
   goalContinuation = runtimeConfig.goalContinuation?.let { continuation ->
     if (continuation.reviewBaseline?.reviewBaseSha == "0".repeat(40)) {
@@ -1132,7 +1131,6 @@ private fun telemetryHarnessRequest(runtimeConfig: RuntimeHarnessConfig): Featur
       mandatesAndOverrides = listOf("mandate-X"),
     ),
     invokedAgentId = INVOKED_AGENT,
-    dbPathOverride = runtimeConfig.dbPathOverride,
     repoRoot = runtimeConfig.repoRoot,
   )
 
@@ -2399,7 +2397,7 @@ internal class RuntimeFakeDatabaseSessionFactory(
   private val rejectedOutputDiagnosticsAvailable: Boolean = true,
 ) : DatabaseSessionFactory {
   private val dbPath = Path.of("/fake/metrics.db")
-  val transactionDbOverrides = mutableListOf<String?>()
+  var transactionCount: Int = 0
   val ledgerRows = mutableListOf<UnaddressedFinding>()
   val outcomeRows = mutableListOf<ReviewFindingOutcomeRecord>()
   var producerOutputReadError: RejectedOutputDiagnosticError? = null
@@ -2426,16 +2424,16 @@ internal class RuntimeFakeDatabaseSessionFactory(
   }
   fun producerEvidenceAt(key: ProducerEvidenceKey): ProducerOutputEvidence? = producerEvidence[key]
 
-  override fun resolveDbPath(dbOverride: String?): Path = dbPath
+  override fun resolveDbPath(): Path = dbPath
 
-  override fun databaseExists(dbOverride: String?): Boolean = true
+  override fun databaseExists(): Boolean = true
 
-  override fun <T> read(dbOverride: String?, block: (UnitOfWork) -> T): T = block(unitOfWork())
+  override fun <T> read(block: (UnitOfWork) -> T): T = block(unitOfWork())
 
-  override fun <T> selfManagedWrite(dbOverride: String?, block: (UnitOfWork) -> T): T = block(unitOfWork())
+  override fun <T> selfManagedWrite(block: (UnitOfWork) -> T): T = block(unitOfWork())
 
-  override fun <T> transaction(dbOverride: String?, block: (UnitOfWork) -> T): T {
-    transactionDbOverrides += dbOverride
+  override fun <T> transaction(block: (UnitOfWork) -> T): T {
+    transactionCount += 1
     return block(unitOfWork())
   }
 

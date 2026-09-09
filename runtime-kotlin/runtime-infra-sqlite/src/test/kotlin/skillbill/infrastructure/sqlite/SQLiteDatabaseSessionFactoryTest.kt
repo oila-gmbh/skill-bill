@@ -8,6 +8,7 @@ import skillbill.ports.featuretask.model.FeatureTaskRuntimeWorkerOwnership
 import skillbill.ports.workflow.model.FeatureTaskWorkflowMode
 import skillbill.ports.workflow.model.WorkflowStateRecord
 import java.nio.file.Files
+import java.nio.file.Path
 import java.sql.Connection
 import java.sql.DriverManager
 import java.sql.SQLException
@@ -26,10 +27,10 @@ class SQLiteDatabaseSessionFactoryTest {
   fun `transaction rolls back repository writes when the use case fails`() {
     val tempDir = Files.createTempDirectory("skillbill-sqlite-session")
     val dbPath = tempDir.resolve("metrics.db")
-    val database = SQLiteDatabaseSessionFactory(EnvironmentContext(userHome = tempDir))
+    val database = boundDatabase(tempDir, dbPath)
 
     assertFailsWith<IllegalStateException> {
-      database.transaction(dbPath.toString()) { unitOfWork ->
+      database.transaction { unitOfWork ->
         unitOfWork.workflowStates.saveFeatureTaskRuntimeWorkflow(
           WorkflowStateRecord(
             workflowId = "wftr-rollback",
@@ -51,7 +52,7 @@ class SQLiteDatabaseSessionFactoryTest {
     }
 
     val saved =
-      database.read(dbPath.toString()) { unitOfWork ->
+      database.read { unitOfWork ->
         unitOfWork.workflowStates.getFeatureTaskRuntimeWorkflow("wftr-rollback")
       }
     assertNull(saved)
@@ -61,21 +62,35 @@ class SQLiteDatabaseSessionFactoryTest {
   fun `resolve path and existence are provided by the database session factory`() {
     val tempDir = Files.createTempDirectory("skillbill-sqlite-session-path")
     val dbPath = tempDir.resolve("metrics.db")
-    val database = SQLiteDatabaseSessionFactory(EnvironmentContext(userHome = tempDir))
+    val database = boundDatabase(tempDir, dbPath)
 
-    assertEquals(dbPath.toAbsolutePath().normalize(), database.resolveDbPath(dbPath.toString()))
-    assertEquals(false, database.databaseExists(dbPath.toString()))
-    database.read(dbPath.toString()) { Unit }
-    assertEquals(true, database.databaseExists(dbPath.toString()))
+    assertEquals(dbPath.toAbsolutePath().normalize(), database.resolveDbPath())
+    assertEquals(false, database.databaseExists())
+    database.read { Unit }
+    assertEquals(true, database.databaseExists())
+  }
+
+  @Test
+  fun `bound context without override selects the default database path`() {
+    val tempDir = Files.createTempDirectory("skillbill-sqlite-default-path")
+    val database =
+      SQLiteDatabaseSessionFactory(
+        EnvironmentContext(environment = emptyMap(), userHome = tempDir),
+      )
+
+    assertEquals(
+      tempDir.resolve(".skill-bill/review-metrics.db").toAbsolutePath().normalize(),
+      database.resolveDbPath(),
+    )
   }
 
   @Test
   fun `read if present does not create an absent database`() {
     val tempDir = Files.createTempDirectory("skillbill-sqlite-read-if-present")
     val dbPath = tempDir.resolve("metrics.db")
-    val database = SQLiteDatabaseSessionFactory(EnvironmentContext(userHome = tempDir))
+    val database = boundDatabase(tempDir, dbPath)
 
-    assertNull(database.readIfPresent(dbPath.toString()) { Unit })
+    assertNull(database.readIfPresent { Unit })
     assertFalse(Files.exists(dbPath))
   }
 
@@ -83,10 +98,10 @@ class SQLiteDatabaseSessionFactoryTest {
   fun `read if present rejects an existing schemaless database`() {
     val tempDir = Files.createTempDirectory("skillbill-sqlite-read-if-present-schemaless")
     val dbPath = Files.createFile(tempDir.resolve("metrics.db"))
-    val database = SQLiteDatabaseSessionFactory(EnvironmentContext(userHome = tempDir))
+    val database = boundDatabase(tempDir, dbPath)
 
     assertFailsWith<DatabaseAccessError> {
-      database.readIfPresent(dbPath.toString()) { Unit }
+      database.readIfPresent { Unit }
     }
   }
 
@@ -94,16 +109,16 @@ class SQLiteDatabaseSessionFactoryTest {
   fun `read opens an existing database while another connection holds the writer lock`() {
     val tempDir = Files.createTempDirectory("skillbill-sqlite-read-contention")
     val dbPath = tempDir.resolve("metrics.db")
-    val database = SQLiteDatabaseSessionFactory(EnvironmentContext(userHome = tempDir))
+    val database = boundDatabase(tempDir, dbPath)
     val workflowId = "wftr-read-contention"
-    database.transaction(dbPath.toString()) { unitOfWork ->
+    database.transaction { unitOfWork ->
       unitOfWork.workflowStates.saveFeatureTaskRuntimeWorkflow(workflowRecord(workflowId))
     }
 
     DriverManager.getConnection("jdbc:sqlite:$dbPath").use { writer ->
       writer.createStatement().use { it.execute("BEGIN IMMEDIATE") }
       try {
-        val status = database.read(dbPath.toString()) { unitOfWork ->
+        val status = database.read { unitOfWork ->
           unitOfWork.workflowStates.getFeatureTaskRuntimeWorkflow(workflowId)?.workflowStatus
         }
         assertEquals("running", status)
@@ -117,8 +132,8 @@ class SQLiteDatabaseSessionFactoryTest {
   fun `the read seam hands out a connection without write capability`() {
     val tempDir = Files.createTempDirectory("skillbill-sqlite-read-only-open")
     val dbPath = tempDir.resolve("metrics.db")
-    val database = SQLiteDatabaseSessionFactory(EnvironmentContext(userHome = tempDir))
-    database.transaction(dbPath.toString()) { unitOfWork ->
+    val database = boundDatabase(tempDir, dbPath)
+    database.transaction { unitOfWork ->
       unitOfWork.workflowStates.saveFeatureTaskRuntimeWorkflow(workflowRecord("wftr-read-only"))
     }
 
@@ -149,8 +164,8 @@ class SQLiteDatabaseSessionFactoryTest {
   fun `the read seam serves a query while another connection holds the writer lock`() {
     val tempDir = Files.createTempDirectory("skillbill-sqlite-read-only-contention")
     val dbPath = tempDir.resolve("metrics.db")
-    val database = SQLiteDatabaseSessionFactory(EnvironmentContext(userHome = tempDir))
-    database.transaction(dbPath.toString()) { unitOfWork ->
+    val database = boundDatabase(tempDir, dbPath)
+    database.transaction { unitOfWork ->
       unitOfWork.workflowStates.saveFeatureTaskRuntimeWorkflow(workflowRecord("wftr-read-only-contention"))
     }
 
@@ -158,7 +173,7 @@ class SQLiteDatabaseSessionFactoryTest {
       writer.createStatement().use { it.execute("BEGIN IMMEDIATE") }
       try {
         val startedAt = System.nanoTime()
-        val status = database.read(dbPath.toString()) { unitOfWork ->
+        val status = database.read { unitOfWork ->
           unitOfWork.workflowStates.getFeatureTaskRuntimeWorkflow("wftr-read-only-contention")?.workflowStatus
         }
         val elapsedMillis = (System.nanoTime() - startedAt) / 1_000_000
@@ -176,13 +191,13 @@ class SQLiteDatabaseSessionFactoryTest {
   fun `two statements in one read block observe one snapshot across a writer commit`() {
     val tempDir = Files.createTempDirectory("skillbill-sqlite-read-snapshot")
     val dbPath = tempDir.resolve("metrics.db")
-    val database = SQLiteDatabaseSessionFactory(EnvironmentContext(userHome = tempDir))
+    val database = boundDatabase(tempDir, dbPath)
     val workflowId = "wftr-read-snapshot"
-    database.transaction(dbPath.toString()) { unitOfWork ->
+    database.transaction { unitOfWork ->
       unitOfWork.workflowStates.saveFeatureTaskRuntimeWorkflow(workflowRecord(workflowId))
     }
 
-    val observed = database.read(dbPath.toString()) { unitOfWork ->
+    val observed = database.read { unitOfWork ->
       val before = unitOfWork.workflowStates.getFeatureTaskRuntimeWorkflow(workflowId)?.workflowStatus
       DriverManager.getConnection("jdbc:sqlite:$dbPath").use { writer ->
         writer.createStatement().use { it.execute("PRAGMA busy_timeout = 5000") }
@@ -199,7 +214,7 @@ class SQLiteDatabaseSessionFactoryTest {
     assertEquals("running" to "running", observed, "A read block must not observe a writer commit landing inside it.")
     assertEquals(
       "complete",
-      database.read(dbPath.toString()) {
+      database.read {
         it.workflowStates.getFeatureTaskRuntimeWorkflow(workflowId)?.workflowStatus
       },
       "The next read block must start from a fresh snapshot carrying the committed write.",
@@ -210,19 +225,19 @@ class SQLiteDatabaseSessionFactoryTest {
   fun `a writer commits while a read block holds its snapshot open`() {
     val tempDir = Files.createTempDirectory("skillbill-sqlite-read-snapshot-writer")
     val dbPath = tempDir.resolve("metrics.db")
-    val database = SQLiteDatabaseSessionFactory(EnvironmentContext(userHome = tempDir))
+    val database = boundDatabase(tempDir, dbPath)
     val workflowId = "wftr-read-snapshot-writer"
-    database.transaction(dbPath.toString()) { unitOfWork ->
+    database.transaction { unitOfWork ->
       unitOfWork.workflowStates.saveFeatureTaskRuntimeWorkflow(workflowRecord(workflowId))
     }
     val executor = Executors.newSingleThreadExecutor()
 
     try {
-      database.read(dbPath.toString()) { unitOfWork ->
+      database.read { unitOfWork ->
         // Materialize the snapshot first: BEGIN DEFERRED takes its read mark at the first statement.
         assertEquals("running", unitOfWork.workflowStates.getFeatureTaskRuntimeWorkflow(workflowId)?.workflowStatus)
         val writer = executor.submit {
-          database.transaction(dbPath.toString()) { writerWork ->
+          database.transaction { writerWork ->
             val row = requireNotNull(writerWork.workflowStates.getFeatureTaskRuntimeWorkflow(workflowId))
             writerWork.workflowStates.saveFeatureTaskRuntimeWorkflow(row.copy(artifactsJson = "{\"writer\":1}"))
           }
@@ -239,8 +254,8 @@ class SQLiteDatabaseSessionFactoryTest {
   fun `read path databases stay in wal mode so a held snapshot never blocks a writer`() {
     val tempDir = Files.createTempDirectory("skillbill-sqlite-read-journal-mode")
     val dbPath = tempDir.resolve("metrics.db")
-    val database = SQLiteDatabaseSessionFactory(EnvironmentContext(userHome = tempDir))
-    database.transaction(dbPath.toString()) { unitOfWork ->
+    val database = boundDatabase(tempDir, dbPath)
+    database.transaction { unitOfWork ->
       unitOfWork.workflowStates.saveFeatureTaskRuntimeWorkflow(workflowRecord("wftr-journal-mode"))
     }
 
@@ -254,9 +269,9 @@ class SQLiteDatabaseSessionFactoryTest {
   fun `a rollback-journal database still yields a consistent read snapshot`() {
     val tempDir = Files.createTempDirectory("skillbill-sqlite-read-rollback-journal")
     val dbPath = tempDir.resolve("metrics.db")
-    val database = SQLiteDatabaseSessionFactory(EnvironmentContext(userHome = tempDir))
+    val database = boundDatabase(tempDir, dbPath)
     val workflowId = "wftr-rollback-journal"
-    database.transaction(dbPath.toString()) { unitOfWork ->
+    database.transaction { unitOfWork ->
       unitOfWork.workflowStates.saveFeatureTaskRuntimeWorkflow(workflowRecord(workflowId))
     }
     // Every factory-opened writer re-asserts WAL, so the non-WAL case is reached with a raw connection.
@@ -267,7 +282,7 @@ class SQLiteDatabaseSessionFactoryTest {
     val executor = Executors.newSingleThreadExecutor()
 
     try {
-      val observed = database.read(dbPath.toString()) { unitOfWork ->
+      val observed = database.read { unitOfWork ->
         val before = unitOfWork.workflowStates.getFeatureTaskRuntimeWorkflow(workflowId)?.workflowStatus
         val writer = executor.submit { rawWriterCommit(dbPath.toString(), workflowId, "complete") }
         val after = unitOfWork.workflowStates.getFeatureTaskRuntimeWorkflow(workflowId)?.workflowStatus
@@ -280,7 +295,7 @@ class SQLiteDatabaseSessionFactoryTest {
       observed.third.get(10, TimeUnit.SECONDS)
       assertEquals(
         "complete",
-        database.read(dbPath.toString()) {
+        database.read {
           it.workflowStates.getFeatureTaskRuntimeWorkflow(workflowId)?.workflowStatus
         },
       )
@@ -293,9 +308,9 @@ class SQLiteDatabaseSessionFactoryTest {
   fun `write transactions reserve the writer before entering the transaction block`() {
     val tempDir = Files.createTempDirectory("skillbill-sqlite-write-reservation")
     val dbPath = tempDir.resolve("metrics.db")
-    val database = SQLiteDatabaseSessionFactory(EnvironmentContext(userHome = tempDir))
+    val database = boundDatabase(tempDir, dbPath)
     val workflowId = "wftr-write-reservation"
-    database.transaction(dbPath.toString()) { unitOfWork ->
+    database.transaction { unitOfWork ->
       unitOfWork.workflowStates.saveFeatureTaskRuntimeWorkflow(workflowRecord(workflowId))
     }
     val firstEntered = CountDownLatch(1)
@@ -306,7 +321,7 @@ class SQLiteDatabaseSessionFactoryTest {
 
     try {
       val first = executor.submit {
-        database.transaction(dbPath.toString()) { unitOfWork ->
+        database.transaction { unitOfWork ->
           val workflow = requireNotNull(unitOfWork.workflowStates.getFeatureTaskRuntimeWorkflow(workflowId))
           firstEntered.countDown()
           check(releaseFirst.await(5, TimeUnit.SECONDS))
@@ -316,7 +331,7 @@ class SQLiteDatabaseSessionFactoryTest {
       assertTrue(firstEntered.await(5, TimeUnit.SECONDS))
       val second = executor.submit {
         secondStarted.countDown()
-        database.transaction(dbPath.toString()) { unitOfWork ->
+        database.transaction { unitOfWork ->
           secondEntered.countDown()
           val workflow = requireNotNull(unitOfWork.workflowStates.getFeatureTaskRuntimeWorkflow(workflowId))
           unitOfWork.workflowStates.saveFeatureTaskRuntimeWorkflow(workflow.copy(artifactsJson = "{\"writer\":2}"))
@@ -339,22 +354,22 @@ class SQLiteDatabaseSessionFactoryTest {
   fun `crash reconcile write composes inside a real database transaction without nesting`() {
     val tempDir = Files.createTempDirectory("skillbill-sqlite-crash-reconcile")
     val dbPath = tempDir.resolve("metrics.db")
-    val database = SQLiteDatabaseSessionFactory(EnvironmentContext(userHome = tempDir))
+    val database = boundDatabase(tempDir, dbPath)
     val workflowId = "wftr-crash-reconcile"
     // Seed the row and the expired worker lease exactly as production does: acquisition runs under
     // read (the store method owns its own BEGIN IMMEDIATE), never inside an outer transaction.
-    database.transaction(dbPath.toString()) { it.workflowStates.saveFeatureTaskRuntimeWorkflow(runtimeRow(workflowId)) }
-    val updatedAt = database.read(dbPath.toString()) {
+    database.transaction { it.workflowStates.saveFeatureTaskRuntimeWorkflow(runtimeRow(workflowId)) }
+    val updatedAt = database.read {
       it.workflowStates.getFeatureTaskRuntimeWorkflow(workflowId)?.updatedAt
     }
     val ownership = expiredOwnership(workflowId)
-    database.selfManagedWrite(dbPath.toString()) {
+    database.selfManagedWrite {
       it.workflowStates.acquireFeatureTaskRuntimeWorker(ownership, updatedAt)
     }
 
     // The production reconciler and goal-parent both call the reconcile write inside
     // database.transaction; assert that composition succeeds instead of raising a nested BEGIN.
-    val reconciled = database.transaction(dbPath.toString()) {
+    val reconciled = database.transaction {
       it.workflowStates.reconcileFeatureTaskRuntimeCrashedWorker(
         workflowId = workflowId,
         ownerToken = ownership.ownerToken,
@@ -365,7 +380,7 @@ class SQLiteDatabaseSessionFactoryTest {
     }
 
     assertTrue(reconciled)
-    database.read(dbPath.toString()) {
+    database.read {
       assertEquals("pending", it.workflowStates.getFeatureTaskRuntimeWorkflow(workflowId)?.workflowStatus)
       assertNull(it.workflowStates.getFeatureTaskRuntimeWorkerOwnership(workflowId))
     }
@@ -418,6 +433,14 @@ class SQLiteDatabaseSessionFactoryTest {
         }
     }
   }
+
+  private fun boundDatabase(tempDir: Path, dbPath: Path): SQLiteDatabaseSessionFactory = SQLiteDatabaseSessionFactory(
+    EnvironmentContext(
+      dbPathOverride = dbPath.toString(),
+      environment = emptyMap(),
+      userHome = tempDir,
+    ),
+  )
 
   private fun workflowStatus(connection: Connection, workflowId: String): String? = connection
     .prepareStatement("SELECT workflow_status FROM feature_task_workflows WHERE workflow_id = ?")

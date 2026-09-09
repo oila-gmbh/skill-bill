@@ -20,7 +20,8 @@ import skillbill.ports.workflow.model.FeatureTaskWorkflowMode
 import skillbill.workflow.decomposition.DecompositionManifestValidator
 import skillbill.workflow.engine.WorkflowEngine
 import skillbill.workflow.engine.WorkflowSnapshotValidator
-import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
+import skillbill.workflow.model.WorkflowStatus
+import skillbill.workflow.model.workflowStatusimport skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 
 @Inject
 class FeatureTaskContinuationLookupService(
@@ -31,22 +32,19 @@ class FeatureTaskContinuationLookupService(
 ) {
   private val engine = WorkflowEngine(workflowSnapshotValidator)
 
-  fun claim(candidate: FeatureTaskContinuationCandidate, dbOverride: String? = null): Boolean =
-    database.transaction(dbOverride) { unitOfWork ->
-      unitOfWork.workflowStates.claimFeatureTaskContinuation(candidate.workflowId, candidate.updatedAt)
-    }
+  fun claim(candidate: FeatureTaskContinuationCandidate): Boolean = database.transaction { unitOfWork ->
+    unitOfWork.workflowStates.claimFeatureTaskContinuation(candidate.workflowId, candidate.updatedAt)
+  }
 
   fun lookup(
     issueKey: String,
     repositoryIdentity: String,
     workflowId: String? = null,
-    dbOverride: String? = null,
   ): FeatureTaskContinuationLookupResult = lookup(
     FeatureTaskContinuationLookupQuery(
       issueKey = issueKey,
       repositoryIdentity = repositoryIdentity,
       workflowId = workflowId,
-      dbOverride = dbOverride,
       routeScope = FeatureTaskRouteScope.STANDALONE,
     ),
   )
@@ -55,13 +53,11 @@ class FeatureTaskContinuationLookupService(
     issueKey: String,
     repositoryIdentity: String,
     workflowId: String,
-    dbOverride: String? = null,
   ): FeatureTaskContinuationLookupResult = lookup(
     FeatureTaskContinuationLookupQuery(
       issueKey = issueKey,
       repositoryIdentity = repositoryIdentity,
       workflowId = workflowId,
-      dbOverride = dbOverride,
       routeScope = FeatureTaskRouteScope.GOAL_CHILD,
     ),
   )
@@ -70,13 +66,11 @@ class FeatureTaskContinuationLookupService(
     issueKey: String,
     repositoryIdentity: String,
     workflowId: String? = null,
-    dbOverride: String? = null,
   ): FeatureTaskContinuationLookupResult = lookup(
     FeatureTaskContinuationLookupQuery(
       issueKey = issueKey,
       repositoryIdentity = repositoryIdentity,
       workflowId = workflowId,
-      dbOverride = dbOverride,
       routeScope = FeatureTaskRouteScope.STANDALONE,
       readIfPresent = true,
     ),
@@ -109,9 +103,9 @@ class FeatureTaskContinuationLookupService(
       )
     }
     return if (query.readIfPresent) {
-      database.readIfPresent(query.dbOverride, lookup) ?: FeatureTaskContinuationLookupResult.NoMatch
+      database.readIfPresent(lookup) ?: FeatureTaskContinuationLookupResult.NoMatch
     } else {
-      database.read(query.dbOverride, lookup)
+      database.read(lookup)
     }
   }
 

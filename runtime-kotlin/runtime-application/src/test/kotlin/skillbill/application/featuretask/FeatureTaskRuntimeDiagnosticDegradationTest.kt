@@ -39,12 +39,12 @@ class FeatureTaskRuntimeDiagnosticDegradationTest {
       database.retainedProducerEvidence().filter { it.phaseId == "validate" }.map { it.repairTurn },
     )
     val found = recorder.producerOutput(
-      ProducerOutputQueryArgs(WORKFLOW_ID, "validate", 1, "cursor", dbOverride = null, generation = 0),
+      ProducerOutputQueryArgs(WORKFLOW_ID, "validate", 1, "cursor", generation = 0),
     )
     assertIs<FeatureTaskRuntimeProducerOutputRead.Found>(found)
     assertContentEquals("turn-3".encodeToByteArray(), found.evidence.payload)
     val absent = recorder.producerOutput(
-      ProducerOutputQueryArgs(WORKFLOW_ID, "validate", 99, "cursor", dbOverride = null, generation = 0),
+      ProducerOutputQueryArgs(WORKFLOW_ID, "validate", 99, "cursor", generation = 0),
     )
     assertIs<FeatureTaskRuntimeProducerOutputRead.Absent>(absent)
     assertTrue(recorder.loadDiagnosticSignals(WORKFLOW_ID).isEmpty())
@@ -94,7 +94,7 @@ class FeatureTaskRuntimeDiagnosticDegradationTest {
       "the measurement must not carry the divergent agent bytes",
     )
     val found = recorder.producerOutput(
-      ProducerOutputQueryArgs(WORKFLOW_ID, "validate", 1, "cursor", dbOverride = null, generation = 0),
+      ProducerOutputQueryArgs(WORKFLOW_ID, "validate", 1, "cursor", generation = 0),
     )
     assertIs<FeatureTaskRuntimeProducerOutputRead.Found>(found)
     assertContentEquals(retained, found.evidence.payload)
@@ -127,7 +127,7 @@ class FeatureTaskRuntimeDiagnosticDegradationTest {
     recorder.ensureWorkflowOpen(WORKFLOW_ID, "session-1")
 
     val read = recorder.producerOutput(
-      ProducerOutputQueryArgs(WORKFLOW_ID, "validate", 1, "cursor", dbOverride = null, generation = 0),
+      ProducerOutputQueryArgs(WORKFLOW_ID, "validate", 1, "cursor", generation = 0),
     )
 
     val unreadable = assertIs<FeatureTaskRuntimeProducerOutputRead.Unreadable>(read)

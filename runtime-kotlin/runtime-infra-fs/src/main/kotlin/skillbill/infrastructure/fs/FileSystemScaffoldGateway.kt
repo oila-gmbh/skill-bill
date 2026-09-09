@@ -13,6 +13,7 @@ import skillbill.ports.scaffold.catalog.model.ScaffoldExplainSkill
 import skillbill.ports.scaffold.catalog.model.ScaffoldListResult
 import skillbill.ports.scaffold.catalog.model.ScaffoldShowResult
 import skillbill.ports.scaffold.model.PilotedPlatformPackProjection
+import skillbill.ports.scaffold.model.ScaffoldCompletionStatus
 import skillbill.ports.scaffold.model.ScaffoldRenderBlock
 import skillbill.ports.scaffold.model.ScaffoldRenderResult
 import skillbill.ports.scaffold.model.ScaffoldSkillStatus
@@ -209,8 +210,7 @@ private fun AgentAddonCatalogueEntry.toSkillStatus(repoRoot: Path, contentMode: 
     area = "",
     contentFile = contentPath.toString(),
     renderCommand = "skill-bill render bill-feature --repo-root ${repoRoot.toAbsolutePath().normalize()}",
-    completionStatus = "authored",
-    sectionCount = 0,
+    completionStatus = ScaffoldCompletionStatus.AUTHORED,    sectionCount = 0,
     sections = emptyList(),
     recommendedCommands = listOf("skill-bill validate", "skill-bill render bill-feature"),
     contentPreview = if (contentMode == "preview") contentText.take(CONTENT_PREVIEW_MAX_CHARS) else null,

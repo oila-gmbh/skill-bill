@@ -48,7 +48,6 @@ data class RuntimeContext(
   val callbacks: OptionalCallbacks,
 ) {
   constructor(
-    dbPathOverride: String? = null,
     stdinText: String? = null,
     environment: Map<String, String> = EnvironmentContext.UnspecifiedEnvironment,
     userHome: Path = EnvironmentContext.UnspecifiedUserHome,
@@ -62,7 +61,12 @@ data class RuntimeContext(
     runtimeTimingPort: RuntimeTimingPort? = null,
     hostPlatformPort: HostPlatformPort? = null,
   ) : this(
-    EnvironmentContext(dbPathOverride, stdinText, environment, userHome, repositoryRoot),
+    EnvironmentContext(
+      stdinText = stdinText,
+      environment = environment,
+      userHome = userHome,
+      repositoryRoot = repositoryRoot,
+    ),
     TransportContext(requester),
     WorkflowOpsContext(workflowGitOperations),
     OptionalCallbacks(

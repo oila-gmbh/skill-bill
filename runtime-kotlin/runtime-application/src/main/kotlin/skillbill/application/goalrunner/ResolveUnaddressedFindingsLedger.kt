@@ -8,11 +8,10 @@ import skillbill.goalrunner.model.UnaddressedFindingsLedger
 fun resolveUnaddressedFindingsLedger(
   service: UnaddressedFindingsLedgerService?,
   issueKey: String,
-  dbPathOverride: String?,
 ): UnaddressedFindingsLedger? {
   if (service == null) return null
   return try {
-    service.ledger(issueKey, dbPathOverride)
+    service.ledger(issueKey)
   } catch (_: UnaddressedFindingsLedgerAbsentError) {
     UnaddressedFindingsLedger(issueKey, emptyList())
   } catch (_: InvalidUnaddressedFindingsLedgerSchemaError) {

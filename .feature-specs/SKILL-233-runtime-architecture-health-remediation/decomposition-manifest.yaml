@@ -3,14 +3,14 @@ contract_version: "0.5"
 issue_key: "SKILL-233"
 feature_name: "runtime-architecture-health-remediation"
 parent_spec_path: ".feature-specs/SKILL-233-runtime-architecture-health-remediation/spec.md"
-status: "blocked"
+status: "in_progress"
 execution_model: "same_branch_commit_per_subtask"
 base_branch: "main"
 feature_branch: "feat/SKILL-233-runtime-architecture-health-remediation"
 stack_branches: []
 current_subtask_intent:
-  subtask_id: 4
-  action: "blocked"
+  subtask_id: 6
+  action: "resume"
 subtasks:
 - id: 1
   name: "Guard recalibration, run-loop consolidation, DI flattening"
@@ -61,13 +61,12 @@ subtasks:
 - id: 4
   name: "Closed status types and Git results"
   spec_path: ".feature-specs/SKILL-233-runtime-architecture-health-remediation/spec_subtask_4_status-types-and-git-results.md"
-  status: "blocked"
+  status: "complete"
   branch: null
   commit_sha: null
-  workflow_id: "wftr-20260907-180508-5cv0"
-  blocked_reason: "Feature-task-runtime phase 'review' agent exited with status 1\
-    \ — Error: turn/start: turn/start failed: Input exceeds the maxi"
-  last_resumable_step: "review"
+  workflow_id: "wftr-20260909-094120-5mpn"
+  blocked_reason: null
+  last_resumable_step: "commit_push"
   linear_issue_id: null
   finalizing_agent_id: null
   participating_agent_ids: []
@@ -78,12 +77,12 @@ subtasks:
 - id: 5
   name: "Wire vocabulary and contract keys"
   spec_path: ".feature-specs/SKILL-233-runtime-architecture-health-remediation/spec_subtask_5_wire-vocabulary.md"
-  status: "pending"
+  status: "complete"
   branch: null
   commit_sha: null
-  workflow_id: null
+  workflow_id: "wftr-20260909-115304-eqmp"
   blocked_reason: null
-  last_resumable_step: null
+  last_resumable_step: "commit_push"
   linear_issue_id: null
   finalizing_agent_id: null
   participating_agent_ids: []
@@ -94,12 +93,12 @@ subtasks:
 - id: 6
   name: "Runtime-context database resolution"
   spec_path: ".feature-specs/SKILL-233-runtime-architecture-health-remediation/spec_subtask_6_runtime-context-db.md"
-  status: "pending"
+  status: "in_progress"
   branch: null
   commit_sha: null
-  workflow_id: null
+  workflow_id: "wftr-20260911-112214-a2j1"
   blocked_reason: null
-  last_resumable_step: null
+  last_resumable_step: "audit"
   linear_issue_id: null
   finalizing_agent_id: null
   participating_agent_ids: []

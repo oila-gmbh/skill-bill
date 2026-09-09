@@ -50,13 +50,13 @@ class IdeStatusService(
     val repositoryIdentity = (identityResult as IdeStatusRepositoryResolution.Ok).identity
     val repoRoot = identityResult.repoRoot
 
-    if (!database.databaseExists(request.dbOverride)) {
+    if (!database.databaseExists()) {
       return emit(IdeStatusProblemSnapshots.absentDatabase(repositoryIdentity, observedAt))
     }
 
     val currentBranch = branchSource.checkedOutBranch(repoRoot)
     return try {
-      database.read(request.dbOverride) { unitOfWork ->
+      database.read { unitOfWork ->
         val candidates = scopeToBranch(collectCandidates(unitOfWork, repositoryIdentity), currentBranch)
         val selected = IdeStatusSelectionPolicy.select(candidates, observedAt)
           ?: return@read emit(IdeStatusProblemSnapshots.noMatchingWork(repositoryIdentity, observedAt, currentBranch))
@@ -66,7 +66,6 @@ class IdeStatusService(
             unitOfWork = unitOfWork,
             repositoryIdentity = repositoryIdentity,
             observedAt = observedAt,
-            dbOverride = request.dbOverride,
             repoRoot = repoRoot,
           ),
         )

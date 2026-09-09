@@ -1554,12 +1554,12 @@ internal class RecordingReviewDatabase : DatabaseSessionFactory {
     }
   } as UnitOfWork
 
-  override fun resolveDbPath(dbOverride: String?) = unitOfWork.dbPath
-  override fun databaseExists(dbOverride: String?) = true
-  override fun <T> read(dbOverride: String?, block: (UnitOfWork) -> T): T = block(unitOfWork)
-  override fun <T> selfManagedWrite(dbOverride: String?, block: (UnitOfWork) -> T): T = transaction(dbOverride, block)
+  override fun resolveDbPath() = unitOfWork.dbPath
+  override fun databaseExists() = true
+  override fun <T> read(block: (UnitOfWork) -> T): T = block(unitOfWork)
+  override fun <T> selfManagedWrite(block: (UnitOfWork) -> T): T = transaction(block)
 
-  override fun <T> transaction(dbOverride: String?, block: (UnitOfWork) -> T): T = block(unitOfWork)
+  override fun <T> transaction(block: (UnitOfWork) -> T): T = block(unitOfWork)
 }
 
 private object NoopReviewLifecycleTelemetry : LifecycleTelemetryRepository {

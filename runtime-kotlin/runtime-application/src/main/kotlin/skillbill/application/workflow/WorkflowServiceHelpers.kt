@@ -45,7 +45,7 @@ fun incompleteFeatureTaskIdentityError(args: WorkflowServiceOpenArgs): WorkflowO
 }
 
 fun persistOpenedWorkflow(args: PersistOpenedWorkflowArgs): WorkflowOpenResult =
-  args.database.transaction(args.dbOverride) { unitOfWork ->
+  args.database.transaction { unitOfWork ->
     val engine = args.engine
     val family = args.family
     val workflowId = args.workflowId
@@ -198,7 +198,6 @@ fun WorkflowService.openFeatureTask(args: WorkflowServiceOpenFeatureTaskArgs): W
       kind = args.kind,
       sessionId = args.sessionId,
       currentStepId = args.currentStepId,
-      dbOverride = args.dbOverride,
       issueKey = args.issueKey,
       repositoryIdentity = args.repositoryIdentity,
       governedSpecPath = args.governedSpecPath,

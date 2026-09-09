@@ -149,15 +149,15 @@ private class InMemoryUnaddressedFindings(
 private class LedgerOnlySessionFactory(
   private val findings: UnaddressedFindingsRepository,
 ) : DatabaseSessionFactory {
-  override fun resolveDbPath(dbOverride: String?): Path = Path.of("/fake/runtime.db")
+  override fun resolveDbPath(): Path = Path.of("/fake/runtime.db")
 
-  override fun databaseExists(dbOverride: String?): Boolean = true
+  override fun databaseExists(): Boolean = true
 
-  override fun <T> read(dbOverride: String?, block: (UnitOfWork) -> T): T = block(unit())
+  override fun <T> read(block: (UnitOfWork) -> T): T = block(unit())
 
-  override fun <T> selfManagedWrite(dbOverride: String?, block: (UnitOfWork) -> T): T = transaction(dbOverride, block)
+  override fun <T> selfManagedWrite(block: (UnitOfWork) -> T): T = transaction(block)
 
-  override fun <T> transaction(dbOverride: String?, block: (UnitOfWork) -> T): T = block(unit())
+  override fun <T> transaction(block: (UnitOfWork) -> T): T = block(unit())
 
   private fun unit(): UnitOfWork = object : UnitOfWork {
     override val dbPath: Path = Path.of("/fake/runtime.db")

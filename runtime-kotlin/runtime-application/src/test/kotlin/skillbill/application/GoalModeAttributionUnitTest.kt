@@ -133,7 +133,6 @@ class GoalModeAttributionUnitTest {
     issueKey = "SKILL-56",
     repoRoot = Path.of("/tmp/skillbill-goal-runner"),
     invokedAgentId = "claude",
-    dbPathOverride = "/tmp/skillbill-goal-runner/metrics.db",
     eventSink = GoalRunnerEventSink {},
   )
 }
@@ -142,15 +141,15 @@ private class ModeCapturingTelemetryEmitter : GoalLifecycleTelemetryEmitter {
   val started: MutableList<GoalStartedRequest> = mutableListOf()
   val finished: MutableList<GoalFinishedRequest> = mutableListOf()
 
-  override fun goalStarted(request: GoalStartedRequest, dbOverride: String?) {
+  override fun goalStarted(request: GoalStartedRequest) {
     started += request
   }
 
-  override fun goalSubtaskFinished(request: GoalSubtaskFinishedRequest, dbOverride: String?) = Unit
+  override fun goalSubtaskFinished(request: GoalSubtaskFinishedRequest) = Unit
 
-  override fun goalFinished(request: GoalFinishedRequest, dbOverride: String?) {
+  override fun goalFinished(request: GoalFinishedRequest) {
     finished += request
   }
 
-  override fun goalIssueFinished(request: GoalIssueFinishedRequest, dbOverride: String?) = Unit
+  override fun goalIssueFinished(request: GoalIssueFinishedRequest) = Unit
 }

@@ -92,3 +92,10 @@ const val FEATURE_TASK_RUNTIME_PHASE_STATUS_PAUSED: String = "paused"
 
 /** Terminal success. A completed phase's launch context is history, never current state. */
 const val FEATURE_TASK_RUNTIME_PHASE_STATUS_COMPLETED: String = "completed"
+
+/**
+ * Durable per-phase launch briefing store. The assembled briefing is persisted, keyed
+ * by phase id, before the phase agent is launched, so it is a durable handoff a consumer
+ * reads rather than dead computation. Each entry is the latest briefing for that phase.
+ */
+const val FEATURE_TASK_RUNTIME_PHASE_BRIEFINGS_ARTIFACT_KEY: String = "feature_task_runtime_phase_briefings"

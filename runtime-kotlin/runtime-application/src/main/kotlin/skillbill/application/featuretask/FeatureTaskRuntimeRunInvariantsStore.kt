@@ -30,23 +30,18 @@ class FeatureTaskRuntimeRunInvariantsStore(
    */
   fun resolve(
     workflowId: String,
-    dbOverride: String? = null,
     proposed: FeatureTaskRuntimeRunInvariants? = null,
   ): FeatureTaskRuntimeRunInvariants? {
-    proposed?.let { persistOrUpdateAgentAddons(workflowId, dbOverride, it) }
-    return database.read(dbOverride) { unitOfWork ->
+    proposed?.let { persistOrUpdateAgentAddons(workflowId, it) }
+    return database.read { unitOfWork ->
       val record = WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, workflowId)
         ?: return@read null
       runInvariantsFrom(decodeArtifacts(record.artifactsJson))
     }
   }
 
-  private fun persistOrUpdateAgentAddons(
-    workflowId: String,
-    dbOverride: String?,
-    proposed: FeatureTaskRuntimeRunInvariants,
-  ) {
-    database.transaction(dbOverride) { unitOfWork ->
+  private fun persistOrUpdateAgentAddons(workflowId: String, proposed: FeatureTaskRuntimeRunInvariants) {
+    database.transaction { unitOfWork ->
       val record = WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, workflowId)
         ?: return@transaction
       val artifacts = decodeArtifacts(record.artifactsJson)

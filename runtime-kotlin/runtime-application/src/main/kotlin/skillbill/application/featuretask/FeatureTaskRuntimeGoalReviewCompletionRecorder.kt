@@ -21,6 +21,8 @@ import skillbill.workflow.goal.model.GoalSubtaskReviewRevision
 import skillbill.workflow.goal.model.GoalSubtaskReviewState
 import skillbill.workflow.goal.model.appendBoundedHistoryBySequence
 import skillbill.workflow.goal.model.unionRefutedBlockerDispositions
+import skillbill.workflow.model.WorkflowStepStatus
+import skillbill.workflow.model.workflowStepStatus
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_LEDGER_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_LEDGER_LIMIT
@@ -37,9 +39,9 @@ class FeatureTaskRuntimeGoalReviewCompletionRecorder(
   private val workflowPersistence: FeatureTaskRuntimeWorkflowPersistence,
   private val clock: Clock,
 ) : FeatureTaskRuntimePhaseReviewApi {
-  override fun completeGoalReviewPhase(completion: GoalReviewPhaseCompletionRequest, dbOverride: String?): Boolean {
+  override fun completeGoalReviewPhase(completion: GoalReviewPhaseCompletionRequest): Boolean {
     val request = validatedGoalReviewPhaseState(completion)
-    return database.transaction(dbOverride) { unitOfWork ->
+    return database.transaction { unitOfWork ->
       persistCompletedGoalReview(unitOfWork, request, completion)
     }
   }

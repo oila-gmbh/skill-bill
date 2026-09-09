@@ -32,8 +32,8 @@ class FeatureTaskRuntimeBuildGateFullDiscoverTest {
       ),
       ScriptedGateRunner(listOf(failedWith(compilerFinding), passed(forced = true))),
       FeatureTaskRuntimeBuildGateProgressStore(
-        persist = { _, progressSnapshot, _ -> progress += progressSnapshot },
-        load = { _, _ -> progress.lastOrNull() },
+        persist = { _, progressSnapshot -> progress += progressSnapshot },
+        load = { _ -> progress.lastOrNull() },
       ),
       repoLocalConfig(),
       NoopRuntimeDiagnostics,

@@ -44,8 +44,9 @@ object ProsePhaseOutputSynthesizer {
       summary = ProsePhaseOutputRecover.recoverSummary(parsed, valueAndVerdict.first),
       prompt = ProsePhaseOutputRecover.recoverPrompt(parsed),
       verdict = valueAndVerdict.second,
-      failureDisposition = if (status == "blocked" || status == "failed") {
-        ProsePhaseOutputRecover.recoverFailureDisposition(parsed)
+      failureDisposition = if (
+        status == SettlementStatus.BLOCKED.wireValue || status == SettlementStatus.FAILED.wireValue
+      ) {        ProsePhaseOutputRecover.recoverFailureDisposition(parsed)
       } else {
         null
       },
@@ -87,8 +88,8 @@ object ProsePhaseOutputSynthesizer {
       }
       envelope[SharedPayloadKeys.VERDICT] = resolved
     }
-    if ((request.status == "blocked" || request.status == "failed") && !request.failureDisposition.isNullOrBlank()) {
-      envelope[SharedPayloadKeys.FAILURE_DISPOSITION] = request.failureDisposition
+    val settledAsFailure = request.status == SettlementStatus.BLOCKED || request.status == SettlementStatus.FAILED
+    if (settledAsFailure && !request.failureDisposition.isNullOrBlank()) {      envelope[SharedPayloadKeys.FAILURE_DISPOSITION] = request.failureDisposition
     }
     return envelope
   }

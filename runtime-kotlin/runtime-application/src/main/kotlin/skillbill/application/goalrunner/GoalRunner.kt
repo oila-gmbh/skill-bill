@@ -24,11 +24,11 @@ class GoalRunner(
   private val executionCoordinator get() = deps.runBoundaries.executionCoordinator
 
   fun run(request: GoalRunnerRunRequest): GoalRunnerRunReport {
-    val loadedState = manifestStore.loadByIssueKey(request.issueKey, request.dbPathOverride, request.repoRoot)
+    val loadedState = manifestStore.loadByIssueKey(request.issueKey, request.repoRoot)
       ?: return unknownGoal(request.issueKey)
     return try {
-      executionCoordinator.runOwned(loadedState.parentWorkflowId, request.dbPathOverride) {
-        val state = reconcileStateBeforeRun(loadedState, request)
+      executionCoordinator.runOwned(loadedState.parentWorkflowId) {
+        val state = reconcileStateBeforeRun(loadedState)
         when (val preparation = deps.runPreparation.prepareRun(state, request)) {
           is GoalRunPreparation.PreparationBlocked -> preparation.report
           is GoalRunPreparation.Prepared -> runPrepared(preparation)
@@ -53,21 +53,17 @@ class GoalRunner(
     }
   }
 
-  private fun reconcileStateBeforeRun(
-    state: GoalRunnerManifestState,
-    request: GoalRunnerRunRequest,
-  ): GoalRunnerManifestState {
+  private fun reconcileStateBeforeRun(state: GoalRunnerManifestState): GoalRunnerManifestState {
     val reconciled = reconcileGoalManifest(
       manifest = state.manifest,
-      dbPathOverride = request.dbPathOverride,
-      authoritativeOutcomes = outcomeStore.authoritativeOutcomes(state.manifest.issueKey, request.dbPathOverride),
-      acceptances = manifestStore.outOfBandAcceptances(state.parentWorkflowId, request.dbPathOverride),
+      authoritativeOutcomes = outcomeStore.authoritativeOutcomes(state.manifest.issueKey),
+      acceptances = manifestStore.outOfBandAcceptances(state.parentWorkflowId),
       outcomeStore = outcomeStore,
     )
     return if (reconciled == state.manifest) {
       state
     } else {
-      manifestStore.save(state.copy(manifest = reconciled), request.dbPathOverride)
+      manifestStore.save(state.copy(manifest = reconciled))
     }
   }
 
@@ -79,9 +75,9 @@ class GoalRunner(
     val ledger = GoalRunnerLedgerRecorder(outcomeStore, effectiveRequest, clock, diagnostics)
     effectiveRequest.eventSink.emit(GoalRunnerRunEvent.Started(state.manifest.issueKey))
     val telemetryEmitter =
-      GoalRunnerTelemetryEmitter(deps.runBoundaries.telemetry, clock, state, effectiveRequest.dbPathOverride)
+      GoalRunnerTelemetryEmitter(deps.runBoundaries.telemetry, clock, state)
         .also { it.goalStarted() }
-    deps.pauseBoundary.pauseBeforeLaunch(state, effectiveRequest)?.let { paused ->
+    deps.pauseBoundary.pauseBeforeLaunch(state)?.let { paused ->
       val pausedReport = requireNotNull(paused.report)
       closeGoalTelemetrySegment(telemetryEmitter, state, pausedReport, attempted)
       return pausedReport
@@ -91,7 +87,7 @@ class GoalRunner(
       return planningStoppedReport(effectiveRequest, state, telemetryEmitter, attempted, sweepOutcome)
     }
     val validationQualityState = GoalRunnerValidationQualityPendingState(manifestStore)
-    validationQualityState.bind(state.parentWorkflowId, effectiveRequest.dbPathOverride)
+    validationQualityState.bind(state.parentWorkflowId)
     val pendingState = GoalRunnerIterationPendingState(validationQualityState)
     val goalLoop = perRunLoopAssembler.assemble(pendingState)
     val loopResult = goalLoop.driveGoalLoop(

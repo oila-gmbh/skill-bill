@@ -10,6 +10,7 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeHandoffProjectionI
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeHandoffProjectionValue
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutput
 import skillbill.workflow.taskruntime.model.PhaseHandoffProjectionDeclaration
+import skillbill.workflow.taskruntime.model.REPOSITORY_CHECKPOINT_FIELD
 
 internal object FeatureTaskRuntimeHandoffProjectionValueBuilder {
   private val phaseProjectionContractIds: Set<String> = setOf(
@@ -78,27 +79,27 @@ internal object FeatureTaskRuntimeHandoffProjectionValueBuilder {
         .ceremonyScaling(inputs.runInvariants.featureSize)
         .reviewScope
         .wireValue,
-      "repository_checkpoint" to checkpointFingerprint(inputs),
+      REPOSITORY_CHECKPOINT_FIELD to checkpointFingerprint(inputs),
       "verdict" to auditClearanceStatus(envelope),
     )
     FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.REVIEW_REPAIR_REQUEST -> mapOf(
       "unresolved_blocker_findings" to verifiedFindingsProjection(inputs, produced),
-      "repository_checkpoint" to checkpointFingerprint(inputs),
+      REPOSITORY_CHECKPOINT_FIELD to checkpointFingerprint(inputs),
     )
     FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.FINDINGS_VERIFICATION_INPUT -> mapOf(
       "findings" to reviewFindingsForVerificationProjection(produced),
-      "repository_checkpoint" to checkpointFingerprint(inputs),
+      REPOSITORY_CHECKPOINT_FIELD to checkpointFingerprint(inputs),
     )
     FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.FINDINGS_VERIFICATION_DISPOSITIONS -> mapOf(
       "finding_dispositions" to produced["finding_dispositions"],
-      "repository_checkpoint" to checkpointFingerprint(inputs),
+      REPOSITORY_CHECKPOINT_FIELD to checkpointFingerprint(inputs),
     )
     FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.CHANGE_RECEIPT -> mapOf(
       "changed_paths" to inputs.resolvedCheckpoint?.workingTreeOwnedPaths.orEmpty(),
       "tests_added" to (produced["tests_added"] as? List<*>).orEmpty().filterIsInstance<String>(),
       "tests_updated" to (produced["tests_updated"] as? List<*>).orEmpty().filterIsInstance<String>(),
       "deviations" to (produced["deviations"] as? List<*>).orEmpty().filterIsInstance<String>(),
-      "repository_checkpoint" to checkpointFingerprint(inputs),
+      REPOSITORY_CHECKPOINT_FIELD to checkpointFingerprint(inputs),
     )
     FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.PHASE_PROSE ->
       phaseProseProjectionValues(inputs, declaration, produced)

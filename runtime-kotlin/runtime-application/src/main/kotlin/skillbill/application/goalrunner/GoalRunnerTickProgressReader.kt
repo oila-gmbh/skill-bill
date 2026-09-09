@@ -71,7 +71,7 @@ class GoalRunnerTickProgressReader(
   }
 
   private fun resolve(): GoalRunnerProgressState? {
-    val subtask = manifestStore.loadByIssueKey(issueKey, request.dbPathOverride, request.repoRoot)
+    val subtask = manifestStore.loadByIssueKey(issueKey, request.repoRoot)
       ?.manifest
       ?.subtasks
       ?.firstOrNull { subtask -> subtask.id == subtaskId }
@@ -83,7 +83,7 @@ class GoalRunnerTickProgressReader(
   }
 
   private fun readChildProgress(workflowId: String): GoalRunnerWorkflowProgress? =
-    when (val read = progressReader.read(workflowId, request)) {
+    when (val read = progressReader.read(workflowId)) {
       is GoalRunnerChildProgressRead.Present -> read.progress
       is GoalRunnerChildProgressRead.Absent -> null
       is GoalRunnerChildProgressRead.Failed -> null

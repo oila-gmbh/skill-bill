@@ -4,6 +4,7 @@ import skillbill.application.featuretask.model.FeatureTaskRuntimeCheckpointRefPr
 import skillbill.ports.workflow.gitops.WorkflowGitOperations
 import skillbill.ports.workflow.gitops.deleteCheckpointRef
 import skillbill.ports.workflow.gitops.listCheckpointRefs
+import skillbill.ports.workflow.gitops.model.WorkflowGitOperationResult
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_CHECKPOINT_REF_NAMESPACE
 import java.nio.file.Path
 
@@ -19,10 +20,12 @@ fun subtaskCommitReachableOnRemote(
   val sha = commitSha.trim()
   if (branch.isBlank() || sha.isBlank()) return false
   val remoteTip = gitOperations.resolveCommit(repoRoot, "origin/$branch")
-  val remoteSha = remoteTip.value.orEmpty().trim().takeIf { remoteTip.ok && it.isNotBlank() } ?: return false
+  val remoteSha = remoteTip.value.orEmpty().trim()
+    .takeIf { remoteTip is WorkflowGitOperationResult.Ok && it.isNotBlank() }
+    ?: return false
   val reachable = gitOperations.isCommitAncestor(repoRoot, sha, remoteSha)
-  return reachable.ok && reachable.value.orEmpty().trim().equals("true", ignoreCase = true)
-}
+  return reachable is WorkflowGitOperationResult.Ok &&
+    reachable.value.orEmpty().trim().equals("true", ignoreCase = true)}
 
 fun subtaskCommitSupersededOnPublishedBranch(
   gitOperations: WorkflowGitOperations,

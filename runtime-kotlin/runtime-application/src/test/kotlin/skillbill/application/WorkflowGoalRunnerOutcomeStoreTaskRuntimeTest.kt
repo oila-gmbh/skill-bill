@@ -98,7 +98,6 @@ class WorkflowGoalRunnerOutcomeStoreTaskRuntimeTest {
           message = "unsafe path",
         ),
       ),
-      dbPathOverride = null,
     )
 
     assertTrue(recorded)
@@ -351,7 +350,6 @@ class WorkflowGoalRunnerOutcomeStoreTaskRuntimeTest {
       issueKey = "SKILL-87.1",
       subtaskId = 1,
       repoRoot = Path.of("."),
-      dbPathOverride = null,
     )
 
     val reconciled = assertNotNull(outcome)
@@ -407,7 +405,7 @@ class WorkflowGoalRunnerOutcomeStoreTaskRuntimeTest {
       ),
     )
     assertNull(
-      liveLeaseStore.recoverAndPersistTerminalOutcome("wftr-live-lease", "SKILL-87.1", 1, Path.of("."), null),
+      liveLeaseStore.recoverAndPersistTerminalOutcome("wftr-live-lease", "SKILL-87.1", 1, Path.of(".")),
     )
     assertEquals("running", requireNotNull(liveLease.getFeatureTaskRuntimeWorkflow("wftr-live-lease")).workflowStatus)
     assertNotNull(liveLease.getFeatureTaskRuntimeWorkerOwnership("wftr-live-lease"))
@@ -424,7 +422,7 @@ class WorkflowGoalRunnerOutcomeStoreTaskRuntimeTest {
       ),
     )
     assertNull(
-      liveProcessStore.recoverAndPersistTerminalOutcome("wftr-live-process", "SKILL-87.1", 1, Path.of("."), null),
+      liveProcessStore.recoverAndPersistTerminalOutcome("wftr-live-process", "SKILL-87.1", 1, Path.of(".")),
     )
     assertEquals(
       "running",

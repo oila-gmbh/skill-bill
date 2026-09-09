@@ -758,8 +758,8 @@ runtime-ports
     - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeGoalContinuationArtifact.toArtifactMap`
     - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeGoalContinuationFieldAdoption.fromArtifactMap`
     - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeGoalContinuationFieldAdoption.toArtifactMap`
-    - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeGoalContinuationOutcome.fromArtifactMap`
-    - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeGoalContinuationOutcome.toArtifactMap`
+    - `skillbill.goalrunner.model.FeatureTaskRuntimeGoalContinuationOutcome.fromArtifactMap`
+    - `skillbill.goalrunner.model.FeatureTaskRuntimeGoalContinuationOutcome.toArtifactMap`
     - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeGoalPlanningImport.toArtifactMap`
     - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeHandoffEnvelope.fromEnvelopeMap`
     - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeHandoffEnvelope.toEnvelopeMap`
@@ -1614,6 +1614,14 @@ or lease across accessor reads (`DatabaseSessionFactory`,
 - Stateless orchestration services (`WorkflowService`, `ReviewService`,
   `ParallelCodeReviewRunner`, and similar) — no cross-call mutable state.
 
+Runtime database selection belongs to the bound `EnvironmentContext`. The
+`DatabaseSessionFactory` resolves and retains one normalized path for its
+component lifetime; application and port operations do not accept database
+path overrides. CLI parsing selects `--db` before component creation, while
+MCP and embedded callers bind their selected path in the same context. The
+`EnvironmentContext.dbPathOverride` property is configuration at that
+composition boundary, not operation or request plumbing.
+
 ## SKILL-52.2 — Runtime boundary closure inventory
 
 This section classifies every current public raw-map declaration in
@@ -2013,8 +2021,8 @@ Categories:
 - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeGoalContinuationArtifact.toArtifactMap`
 - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeGoalContinuationFieldAdoption.fromArtifactMap`
 - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeGoalContinuationFieldAdoption.toArtifactMap`
-- `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeGoalContinuationOutcome.fromArtifactMap`
-- `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeGoalContinuationOutcome.toArtifactMap`
+- `skillbill.goalrunner.model.FeatureTaskRuntimeGoalContinuationOutcome.fromArtifactMap`
+- `skillbill.goalrunner.model.FeatureTaskRuntimeGoalContinuationOutcome.toArtifactMap`
 - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeGoalPlanningImport.toArtifactMap`
 - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeHandoffEnvelope.fromEnvelopeMap`
 - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeHandoffEnvelope.toEnvelopeMap`
@@ -2135,7 +2143,10 @@ the workflow envelope keys. `ProsePhaseOutputParse` delegates status normalizati
 through `RuntimeModuleCatalog`, indexes declarations with source locations, rejects same-owner
 duplicates and local vocabulary restatements, and reports the measured baseline-to-final delta.
 Identical spellings in different enums remain separate when their decoding context differs; the
-owner and decoder are recorded together so a lexical match cannot silently change wire behavior.
+owner and decoder are recorded together so a lexical match cannot silently change wire behavior. A
+collection literal restates a token only inside that owner's decoding context — the file names the
+owning type or declares it in its own package — so a generic word such as `error` or `type` in an
+unrelated payload is not a restatement of an enum that happens to spell it the same way.
 
 # Native-agent installation integrity
 

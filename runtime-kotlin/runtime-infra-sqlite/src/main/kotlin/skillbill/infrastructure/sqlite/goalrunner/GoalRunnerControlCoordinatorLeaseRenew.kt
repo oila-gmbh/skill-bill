@@ -37,9 +37,8 @@ internal fun GoalRunnerControlCoordinator.requireParent(
 
 internal fun GoalRunnerControlCoordinator.spawnAuthorization(
   state: GoalRunnerManifestState,
-  dbPathOverride: String?,
 ): AgentRunSpawnAuthorization = object : AgentRunSpawnAuthorization {
-  override fun <T> withAuthorization(spawn: () -> T): T = database.transaction(dbPathOverride) { unitOfWork ->
+  override fun <T> withAuthorization(spawn: () -> T): T = database.transaction { unitOfWork ->
     val parent = requireParent(unitOfWork, state.parentWorkflowId)
     val controls = unitOfWork.goalRunnerControls.controlState(parent.workflowId)
     val manifest = parent.decompositionRuntime(decompositionManifestValidator) ?: state.manifest
@@ -58,8 +57,7 @@ internal fun GoalRunnerControlState.targetReached(state: GoalRunnerManifestState
 internal fun GoalRunnerControlCoordinator.bindRepositoryIdentity(
   parentWorkflowId: String,
   repositoryIdentity: String,
-  dbPathOverride: String?,
-): GoalRunnerControlState = database.transaction(dbPathOverride) { unitOfWork ->
+): GoalRunnerControlState = database.transaction { unitOfWork ->
   require(repositoryIdentity.isNotBlank()) { "repositoryIdentity is required." }
   val parent = requireParent(unitOfWork, parentWorkflowId)
   val existing = unitOfWork.goalRunnerControls.controlState(parent.workflowId)
@@ -78,9 +76,8 @@ internal fun GoalRunnerControlCoordinator.bindRepositoryIdentity(
 
 internal fun GoalRunnerControlCoordinator.planningSpawnAuthorization(
   parentWorkflowId: String,
-  dbPathOverride: String?,
 ): AgentRunSpawnAuthorization = object : AgentRunSpawnAuthorization {
-  override fun <T> withAuthorization(spawn: () -> T): T = database.transaction(dbPathOverride) { unitOfWork ->
+  override fun <T> withAuthorization(spawn: () -> T): T = database.transaction { unitOfWork ->
     val parent = requireParent(unitOfWork, parentWorkflowId)
     val controls = unitOfWork.goalRunnerControls.controlState(parent.workflowId)
     val manifest = parent.decompositionRuntime(decompositionManifestValidator)
@@ -95,8 +92,7 @@ internal fun GoalRunnerControlCoordinator.planningSpawnAuthorization(
 internal fun GoalRunnerControlCoordinator.persistStopAfterSubtask(
   parentWorkflowId: String,
   subtaskId: Int,
-  dbPathOverride: String?,
-): GoalRunnerControlState = database.transaction(dbPathOverride) { unitOfWork ->
+): GoalRunnerControlState = database.transaction { unitOfWork ->
   require(subtaskId > 0) { "stop-after subtask id must be positive." }
   val parent = requireParent(unitOfWork, parentWorkflowId)
   val manifest = parent.decompositionRuntime(decompositionManifestValidator)
@@ -115,34 +111,32 @@ internal fun GoalRunnerControlCoordinator.persistStopAfterSubtask(
     )
 }
 
-internal fun GoalRunnerControlCoordinator.resume(
-  parentWorkflowId: String,
-  dbPathOverride: String?,
-): GoalRunnerManifestState? = database.transaction(dbPathOverride) { unitOfWork ->
-  val parent = WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, parentWorkflowId)
-    ?: return@transaction null
-  migrateLegacyGoalRunnerControls(unitOfWork, parent)
-  val existing = unitOfWork.goalRunnerControls.controlState(parentWorkflowId)
-  val resumed = if (existing.paused || existing.pauseRequested) {
-    unitOfWork.goalRunnerControls.persistControlState(
-      parentWorkflowId,
-      existing.copy(
-        pauseRequested = false,
-        pauseConsumed = false,
-        paused = false,
-        pauseReason = null,
-        pausedAt = null,
-      ),
-    )
-  } else {
-    existing
+internal fun GoalRunnerControlCoordinator.resume(parentWorkflowId: String): GoalRunnerManifestState? =
+  database.transaction { unitOfWork ->
+    val parent = WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, parentWorkflowId)
+      ?: return@transaction null
+    migrateLegacyGoalRunnerControls(unitOfWork, parent)
+    val existing = unitOfWork.goalRunnerControls.controlState(parentWorkflowId)
+    val resumed = if (existing.paused || existing.pauseRequested) {
+      unitOfWork.goalRunnerControls.persistControlState(
+        parentWorkflowId,
+        existing.copy(
+          pauseRequested = false,
+          pauseConsumed = false,
+          paused = false,
+          pauseReason = null,
+          pausedAt = null,
+        ),
+      )
+    } else {
+      existing
+    }
+    parent.decompositionRuntime(decompositionManifestValidator)?.let { manifest ->
+      GoalRunnerManifestState(
+        parentWorkflowId = parent.workflowId,
+        dbPath = unitOfWork.dbPath.toString(),
+        manifest = manifest,
+        controlState = resumed,
+      )
+    }
   }
-  parent.decompositionRuntime(decompositionManifestValidator)?.let { manifest ->
-    GoalRunnerManifestState(
-      parentWorkflowId = parent.workflowId,
-      dbPath = unitOfWork.dbPath.toString(),
-      manifest = manifest,
-      controlState = resumed,
-    )
-  }
-}

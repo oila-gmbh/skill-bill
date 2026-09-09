@@ -16,7 +16,7 @@ fun GoalRunnerManifestStore.effectiveAgentAddonSelection(
   request: GoalRunnerRunRequest,
 ): AgentAddonSelection = request.agentAddonSelection.persisted
   .takeUnless { it.entries.isEmpty() }
-  ?: reviewPolicy(parentWorkflowId, request.dbPathOverride)?.agentAddonSelection
+  ?: reviewPolicy(parentWorkflowId)?.agentAddonSelection
   ?: AgentAddonSelection()
 
 internal data class GoalRunnerEffectiveReviewPolicy(

@@ -7,7 +7,6 @@ import java.time.Instant
 data class GoalPlanningLogRequest(
   val issueKey: String,
   val repoRoot: Path? = null,
-  val dbPathOverride: String? = null,
   val subtaskId: Int? = null,
   val failuresOnly: Boolean = false,
 )

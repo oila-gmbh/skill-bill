@@ -327,37 +327,23 @@ class GoalPreflightServiceTest {
 private class TestManifestStore(
   private val state: GoalRunnerManifestState?,
   private val persistedReviewPolicy: GoalRunnerReviewPolicy? = null,
-) : GoalRunnerManifestStore {
-  override fun loadByIssueKey(issueKey: String, dbPathOverride: String?, repoRoot: Path?): GoalRunnerManifestState? =
-    state
+) : GoalRunnerManifestStoreDefaults() {
+  override fun loadByIssueKey(issueKey: String, repoRoot: Path?): GoalRunnerManifestState? = state
+  override fun readByIssueKey(issueKey: String, repoRoot: Path?): GoalRunnerManifestState? = state
 
-  override fun readByIssueKey(issueKey: String, dbPathOverride: String?, repoRoot: Path?): GoalRunnerManifestState? =
-    state
-
-  override fun reviewPolicy(parentWorkflowId: String, dbPathOverride: String?): GoalRunnerReviewPolicy? =
-    persistedReviewPolicy
+  override fun reviewPolicy(parentWorkflowId: String): GoalRunnerReviewPolicy? = persistedReviewPolicy
 
   override fun acquireExecutionLease(
     parentWorkflowId: String,
     lease: GoalRunnerExecutionLease,
     expectedOwnerToken: String?,
-    dbPathOverride: String?,
   ): Boolean = true
 
-  override fun heartbeatExecutionLease(
-    parentWorkflowId: String,
-    lease: GoalRunnerExecutionLease,
-    dbPathOverride: String?,
-  ): Boolean = true
+  override fun heartbeatExecutionLease(parentWorkflowId: String, lease: GoalRunnerExecutionLease): Boolean = true
 
-  override fun releaseExecutionLease(
-    parentWorkflowId: String,
-    ownerToken: String,
-    generation: Long,
-    dbPathOverride: String?,
-  ): Boolean = true
+  override fun releaseExecutionLease(parentWorkflowId: String, ownerToken: String, generation: Long): Boolean = true
 
-  override fun save(state: GoalRunnerManifestState, dbPathOverride: String?): GoalRunnerManifestState =
+  override fun save(state: GoalRunnerManifestState): GoalRunnerManifestState =
     error("Preflight must not save manifest state.")
 }
 

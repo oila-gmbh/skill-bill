@@ -4,6 +4,7 @@ import skillbill.install.model.InstallAgent
 import skillbill.launcher.mcp.McpRegistrationOperations
 import skillbill.ports.agentrun.model.SkillRunRequest
 import skillbill.ports.review.model.ReviewLaunchIsolationStrategy
+import java.nio.file.Path
 import kotlin.time.DurationUnit
 
 class JunieAgentRunCommandBuilder(
@@ -12,6 +13,7 @@ class JunieAgentRunCommandBuilder(
     mcpIsolation = false,
     configFormat = McpRegistrationOperations.configFormatFor(InstallAgent.JUNIE),
   ),
+  private val databasePath: Path? = null,
 ) : AgentRunCommandBuilder {
   override val agent: InstallAgent = InstallAgent.JUNIE
   override val reviewIsolation: ReviewLaunchIsolationStrategy = ReviewLaunchIsolationStrategy.FRESH_PROCESS
@@ -19,7 +21,7 @@ class JunieAgentRunCommandBuilder(
   override fun build(request: SkillRunRequest): AgentRunCommand {
     requireProcessLaunch(request, reviewIsolation)
     requireGovernedReviewLaunch(request, agent, governedReviewLaunchCapability)
-    return goalContinuationCommand(request, agent) ?: AgentRunCommand(
+    return goalContinuationCommand(request, agent, databasePath) ?: AgentRunCommand(
       command = buildList {
         require(request.modelOverride == null && request.effortOverride == null) {
           "junie cannot honor a model/effort directive; remove its execution_matrix entry or --phase-model assignment."

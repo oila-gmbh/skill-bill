@@ -93,9 +93,9 @@ sealed interface ValidationGateCycleTerminalOutcome {
 
 /** Durable (or test) sink for live validate-gate progress, including remaining findings on exhaust. */
 fun interface ValidationGateProgressStore {
-  fun persist(workflowId: String, progress: FeatureTaskRuntimeValidationGateProgress, dbOverride: String?)
+  fun persist(workflowId: String, progress: FeatureTaskRuntimeValidationGateProgress)
 
-  fun load(workflowId: String, dbOverride: String?): FeatureTaskRuntimeValidationGateProgress? = null
+  fun load(workflowId: String): FeatureTaskRuntimeValidationGateProgress? = null
 }
 
 data class ValidationGateProgressWrite(

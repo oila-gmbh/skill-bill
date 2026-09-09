@@ -103,8 +103,9 @@ private data class DecomposedParentLookupCandidate(
 private fun DecomposedParentLookupCandidate.isStaleAbandonedLineage(
   currentProjectedManifest: DecompositionManifest?,
 ): Boolean {
-  if (currentProjectedManifest == null || record.workflowStatus != "abandoned") return false
-  if (manifest.subtasks.any { subtask -> subtask.hasStarted() }) return false
+  if (currentProjectedManifest == null || record.workflowStatus.workflowStatus() != WorkflowStatus.ABANDONED) {
+    return false
+  }  if (manifest.subtasks.any { subtask -> subtask.hasStarted() }) return false
   return manifest.subtasks.map { it.specPath } != currentProjectedManifest.subtasks.map { it.specPath }
 }
 

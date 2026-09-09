@@ -3,6 +3,7 @@ import skillbill.db.PARAM_ONE
 import skillbill.review.context.model.ReviewClaimVerdictAdmission
 import skillbill.review.context.model.ReviewSpecAdjudicationAdmission
 import skillbill.review.model.ReviewClaimVerdict
+import skillbill.review.model.ReviewExecutionMode
 import skillbill.review.model.ReviewFindingVerdict
 import skillbill.review.model.ReviewRejectedVerdictCounts
 import skillbill.review.model.ReviewScopeDisposition
@@ -67,14 +68,14 @@ fun resolvedTier(executionMode: String?): String = when (executionMode?.trim()?.
   else -> "unresolved"
 }
 
-fun fetchReviewExecutionMode(connection: Connection, reviewRunId: String): String? = connection.prepareStatement(
-  "SELECT execution_mode FROM review_runs WHERE review_run_id = ?",
-).use { statement ->
-  statement.setString(PARAM_ONE, reviewRunId)
-  statement.executeQuery().use { resultSet ->
-    if (resultSet.next()) resultSet.getString("execution_mode") else null
-  }
-}
+fun fetchReviewExecutionMode(connection: Connection, reviewRunId: String): ReviewExecutionMode? =
+  connection.prepareStatement(
+    "SELECT execution_mode FROM review_runs WHERE review_run_id = ?",
+  ).use { statement ->
+    statement.setString(PARAM_ONE, reviewRunId)
+    statement.executeQuery().use { resultSet ->
+      if (resultSet.next()) resultSet.getString("execution_mode")?.let(ReviewExecutionMode::fromWire) else null
+    }  }
 
 fun loadReviewRunTiers(connection: Connection): Map<String, String> = connection.prepareStatement(
   "SELECT review_run_id, execution_mode FROM review_runs",

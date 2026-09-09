@@ -33,7 +33,6 @@ internal data class GoalPlanningSharedContext(
   val parentSpec: String,
   val parentSpecHash: String,
   val decompositionManifestHash: String,
-  val dbPathOverride: String?,
   val repoRoot: Path,
   val invokedAgentId: String,
   val configuredAgentOverrideId: String?,
@@ -69,7 +68,7 @@ class DefaultGoalPlanningSweep(
       state.manifest.issueKey.trim().uppercase(),
       "repo-root-realpath-v1:${canonicalRepository(request.repoRoot, repositoryEnclosingRootPort)}",
     )
-    val existingShared = runCatching { checkpoint.findSharedPreplan(identity, request.dbPathOverride) }
+    val existingShared = runCatching { checkpoint.findSharedPreplan(identity) }
       .getOrElse { error ->
         return preSweepStopped(request, preparationStateReadReason(error, request.issueKey, 0))
       }

@@ -29,7 +29,6 @@ data class FeatureTaskRuntimeRunRequest(
   val modelAssignment: FeatureTaskRuntimeModelAssignment = FeatureTaskRuntimeModelAssignment(),
   val compactionSettings: CompactionSettings = CompactionSettings.DEFAULT,
   val environment: Map<String, String> = emptyMap(),
-  val dbPathOverride: String? = null,
   val repoRoot: Path,
   /** Optional per-phase wall-clock cap forwarded to each phase agent launch. */
   val timeout: Duration? = null,
