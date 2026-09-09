@@ -1,28 +1,3 @@
-# Platform-pack manifest schema (canonical source of truth).
-#
-# This file describes the shape of every `platform-packs/<slug>/platform.yaml`
-# file the Skill Bill runtime is allowed to load. It is authored in YAML for
-# human readability and consumed as a JSON Schema (Draft 2020-12) by the
-# Kotlin runtime (`PlatformPackSchemaValidator` in `runtime-core`).
-#
-# What lives here vs. in Kotlin:
-#
-# - This file defines TYPES, ENUMS, REQUIRED-VS-OPTIONAL fields, and
-#   VALUE-LEVEL constraints (regex patterns, non-empty arrays, content.md
-#   path suffixes, etc.) — anything expressible in pure JSON Schema.
-# - Cross-field "coherence" rules that JSON Schema cannot express cleanly
-#   stay in Kotlin (`ShellContentLoader.buildPack` /
-#   `validatePlatformPack`). Every such rule is named below under
-#   `x-coherence-checks` so the schema document alone fully describes the
-#   contract.
-#
-# Versioning rule:
-#
-# - `contract_version` is pinned by `SHELL_CONTRACT_VERSION` in
-#   `runtime-kotlin/runtime-infra-fs/src/main/kotlin/skillbill/scaffold/runtime/ScaffoldSupport.kt`.
-# - The parity test `PlatformPackSchemaContractVersionTest` fails the build
-#   if they diverge. To bump the contract, edit BOTH constants in the same
-#   change.
 $schema: "https://json-schema.org/draft/2020-12/schema"
 $id: "https://skill-bill.dev/contracts/platform-pack-schema.yaml"
 title: "Platform pack manifest"
@@ -34,20 +9,7 @@ description: >
   Maintained-pack effective coverage and substance thresholds are enforced by
   the repository audit rather than encoded as a fixed slug set in this schema.
 type: object
-# SKILL-48 Subtask 3 (per-repo customization): the top-level mapping intentionally allows
-# unknown keys so repo authors can extend `platform.yaml` with fork-specific fields without
-# patching this canonical schema. Every key that the Skill Bill runtime reads is marked
-# `x-runtime-anchored: true` below; the bijection test
-# `PlatformPackSchemaAnchoredBijectionTest` asserts schema↔Kotlin parity. Non-anchored
-# top-level fields flow verbatim into `PlatformManifest.customFields: Map<String, Any?>`.
-# Nested objects (`routing_signals`, `declared_files`, `area_metadata.<area>`,
-# `$defs.codeReviewArea`, etc.) remain strict (`additionalProperties: false`).
 additionalProperties: true
-# Single source of truth for approved code-review area slugs. Every reference
-# below points at `$defs.codeReviewArea` so the enum is declared exactly once
-# in this file; the Kotlin parity test
-# `PlatformPackSchemaCodeReviewAreasParityTest` pins this set to
-# `APPROVED_CODE_REVIEW_AREAS` in `runtime-core` so the two cannot drift.
 $defs:
   codeReviewArea:
     type: string
@@ -85,14 +47,24 @@ properties:
   contract_version:
     type: string
     minLength: 1
-    const: "1.7"
+    const: "1.8"
     x-runtime-anchored: true
     description: >
-      Pinned to `SHELL_CONTRACT_VERSION` (currently 1.7). The parity test
+      Pinned to `SHELL_CONTRACT_VERSION` (currently 1.8). The parity test
       `PlatformPackSchemaContractVersionTest` keeps the two in lockstep.
       Value mismatches at runtime are surfaced as the dedicated
       `ContractVersionMismatchError` (not generic schema error) so callers
       can distinguish a version drift from a malformed manifest.
+  required_rubric_companions:
+    type: object
+    x-runtime-anchored: true
+    propertyNames: { $ref: "#/$defs/codeReviewArea" }
+    additionalProperties:
+      type: array
+      minItems: 1
+      maxItems: 16
+      uniqueItems: true
+      items: { $ref: "#/$defs/pointerFileName" }
   display_name:
     type: string
     minLength: 1
@@ -297,8 +269,6 @@ properties:
           - target
         properties:
           name:
-            # Bare-filename rule: name must end in `.md`, must not contain
-            # path separators or parent-dir segments.
             $ref: "#/$defs/pointerFileName"
           target:
             type: string
@@ -563,12 +533,6 @@ properties:
           Present but malformed (non-array, blank entries) loud-fails at
           pack load and never degrades to an empty ungated set.
 
-# ---------------------------------------------------------------------------
-# Coherence checks (enforced in Kotlin)
-# ---------------------------------------------------------------------------
-# These rules cannot be expressed cleanly in JSON Schema because they cross
-# multiple top-level fields. They are enforced by `ShellContentLoader` and
-# documented here so this file alone describes the full contract.
 x-coherence-checks:
   slug-parity:
     description: >
@@ -674,3 +638,8 @@ x-coherence-checks:
       and cache_bypassing_build_command must not be byte-identical to
       cache_bypassing_collect_all_full_gate_command. Enforced in
       ShellContentLoader.parseValidationGate.
+  required-rubric-companion-ownership:
+    description: >
+      Companion keys name declared specialists. Files resolve within their owning
+      specialist directory and pack, are readable regular files, and total at most
+      256 KiB per specialist. ShellContentLoader rejects invalid declarations before launch.

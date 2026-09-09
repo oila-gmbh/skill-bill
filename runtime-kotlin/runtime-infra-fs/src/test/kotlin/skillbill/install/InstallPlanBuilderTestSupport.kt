@@ -104,7 +104,7 @@ open class InstallPlanBuilderTestSupport {
       classRoot.resolve("install-plan-test.yaml"),
       """
       |class: install-plan-test
-      |contract_version: "1.7"
+      |contract_version: "1.8"
       |matchers:
       |  - exact: $skillName
       |pointers:

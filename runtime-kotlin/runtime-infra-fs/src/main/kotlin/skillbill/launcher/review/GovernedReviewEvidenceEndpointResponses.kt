@@ -22,9 +22,11 @@ internal fun governedReviewEvidenceErrorResponse(id: Any?, code: Int, message: S
     linkedMapOf(
       "jsonrpc" to "2.0",
       "id" to id,
-      "error" to linkedMapOf("code" to code, "message" to message),
+      "error" to linkedMapOf("code" to code, "message" to message.take(ERROR_MESSAGE_CHARACTERS)),
     ),
   )
 
 internal const val GOVERNED_REVIEW_EVIDENCE_JSON_RPC_METHOD_NOT_FOUND: Int = JSON_RPC_METHOD_NOT_FOUND
 internal const val GOVERNED_REVIEW_EVIDENCE_JSON_RPC_INVALID_PARAMS: Int = JSON_RPC_INVALID_PARAMS
+
+private const val ERROR_MESSAGE_CHARACTERS = 512

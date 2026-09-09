@@ -1,5 +1,15 @@
 # featuretask runtime boundary history
 
+## [2026-09-10] SKILL-236 — write_history and commit_push stay forward-only
+Areas: runtime-application/featuretask, runtime-domain/workflow/taskruntime
+- Removed the commit_push stale-review reaudit path that wiped audit/review and bounced the drive loop back to audit after implement_fix left owned dirty files.
+- Identity and finalisation treat owned implement/implement_fix plus declared boundary-history as eligible to stage; matching subtask trailer on HEAD is still authoritative across tree drift. Foreign dirty blocks needs_human and does not reopen earlier phases.
+- Shipped topology keeps only `audit_gap` and `review_fix` backward edges; `write_history` and `commit_push` never originate a reopening.
+- Pattern: post-review owned repair is absorbed at finalisation, not by replaying the pipeline. reusable
+Feature flag: N/A
+Acceptance criteria: 2/2 implemented
+
+
 ## [2026-09-01] SKILL-228 subtask 1 — Validate/build needs_user_action operator block
 Areas: runtime-application/featuretask, runtime-application/featuretask/validation, runtime-application/goalrunner
 - Validate and build `blocked` + `failure_disposition: needs_user_action` settle once as terminal operator blocks: phase record + ledger before any parent-PID hold; no repair-turn increment or gate relaunch.

@@ -1,14 +1,11 @@
 package skillbill.application.featuretask
 
-import skillbill.application.featuretask.model.FeatureTaskRuntimeCheckpointRefPruneRequest
 import skillbill.application.featuretask.model.FeatureTaskRuntimeCommitPushHandoffResult
 import skillbill.application.featuretask.model.FeatureTaskRuntimeSubtaskFinalisationBlocked
 import skillbill.application.featuretask.model.FeatureTaskRuntimeSubtaskFinalisationResult
 import skillbill.application.featuretask.model.FeatureTaskRuntimeSubtaskFinaliseRequest
-import skillbill.application.featuretask.model.FeatureTaskRuntimeSubtaskFinalised
 import skillbill.ports.workflow.gitops.WorkflowGitOperations
 import skillbill.ports.workflow.gitops.captureIndexState
-import skillbill.ports.workflow.gitops.restoreIndexState
 import skillbill.ports.workflow.gitops.stagePaths
 import skillbill.ports.workflow.gitops.stagedPaths
 import skillbill.ports.workflow.gitops.unstagePaths
@@ -52,7 +49,6 @@ private fun FeatureTaskRuntimeSubtaskFinalisation.finaliseDirtyPaths(
   dirtyPaths: List<String>,
 ): FeatureTaskRuntimeSubtaskFinalisationResult {
   val paths = stageablePathsFrom(dirtyPaths)
-  if (paths.excluded.isNotEmpty()) record(specExclusionRecord(request.identity, paths.excluded))
   return when (val prepared = prepareFinalisationCommit(request, paths)) {
     is FinalisationCommitPreparationBlocked -> blocked(prepared.reason)
     is FinalisationCommitPreparationReady -> commitAndPush(prepared.value)
@@ -99,9 +95,6 @@ private fun FeatureTaskRuntimeSubtaskFinalisation.prepareFinalisationCommitAfter
     return FinalisationCommitPreparationBlocked(
       restoring(unstaged.error, foreignStaged, foreignSnapshot.value.orEmpty()),
     )
-  }
-  if (eligible.isEmpty() && paths.excluded.isNotEmpty() && !ownedHeadAlreadyFinalised(request.durableCommitSha)) {
-    return FinalisationCommitPreparationBlocked(emptyStageableReason(paths.excluded))
   }
   return prepareFinalisationCommitAfterForeignIndex(
     request,
@@ -160,42 +153,39 @@ private fun FeatureTaskRuntimeSubtaskFinalisation.eligibleFinalisationPaths(
   val owned = request.ownedPaths.map(::normalizeRepoPath).toSet()
   val declaredHistory = request.boundaryHistoryPaths.map(::normalizeRepoPath).toSet()
   val declaredHistoryRoots = request.boundaryHistoryRoots.map(::normalizeRepoPath).toSet()
-  val unowned = stageable.filterNot { normalizeRepoPath(it) in owned }
-  val unreviewed = stageable.filterNot {
-    normalizeRepoPath(it) in owned || isBoundaryHistoryPath(it, declaredHistory, declaredHistoryRoots)
+  val unowned = stageable.filterNot {
+    isEligibleFinalisationPath(it, owned, declaredHistory, declaredHistoryRoots)
   }
-  if (request.enforceReviewBoundary && unreviewed.isNotEmpty()) {
+  if (request.enforceReviewBoundary && unowned.isNotEmpty()) {
     record(
       "record_kind=refusal seam=FeatureTaskRuntimeSubtaskFinalisation.finalise " +
-        "value_used='${unreviewed.joinToString(", ")}' value_expected=durable owned-path inventory and " +
-        "declared boundary-history paths cause=post-review changes are not eligible for finalisation",
-    )
-    return FinalisationPathsBlocked(
-      "the reviewed tree no longer covers changed paths ${unreviewed.joinToString(", ")}; source changes after " +
-        "review must re-enter audit and review before finalisation",
-    )
-  }
-  val ambiguous = unowned.filter { normalizeRepoPath(it) !in declaredHistory }
-  if (request.enforceReviewBoundary && ambiguous.isNotEmpty()) {
-    record(
-      "record_kind=refusal seam=FeatureTaskRuntimeSubtaskFinalisation.finalise " +
-        "value_used='${ambiguous.joinToString(", ")}' value_expected=proven subtask ownership " +
+        "value_used='${unowned.joinToString(", ")}' value_expected=proven subtask ownership " +
         "cause=foreign dirty content cannot enter the subtask commit",
     )
     return FinalisationPathsBlocked(
       "the durable subtask ownership inventory does not prove ownership of changed paths " +
-        ambiguous.joinToString(", "),
+        unowned.joinToString(", "),
     )
   }
   return FinalisationPathsReady(
     if (request.enforceReviewBoundary) {
-      stageable.filter {
-        normalizeRepoPath(it) in owned || isBoundaryHistoryPath(it, declaredHistory, declaredHistoryRoots)
-      }
+      stageable.filter { isEligibleFinalisationPath(it, owned, declaredHistory, declaredHistoryRoots) }
     } else {
       stageable
     },
   )
+}
+
+private fun isEligibleFinalisationPath(
+  path: String,
+  owned: Set<String>,
+  declaredHistory: Set<String>,
+  declaredHistoryRoots: Set<String>,
+): Boolean {
+  val normalized = normalizeRepoPath(path)
+  return normalized in owned ||
+    isGovernedSpecPath(normalized) ||
+    isBoundaryHistoryPath(normalized, declaredHistory, declaredHistoryRoots)
 }
 
 internal data class FinalisationCommitRequest(
@@ -223,110 +213,3 @@ internal fun FeatureTaskRuntimeSubtaskFinalisation.prepareStaging(stageable: Lis
   }
   return FinalisationStagingReady(restoreState = snapshot.value.orEmpty())
 }
-
-internal fun FeatureTaskRuntimeSubtaskFinalisation.commitAndPush(
-  input: FinalisationCommitRequest,
-): FeatureTaskRuntimeSubtaskFinalisationResult {
-  val request = input.request
-  val stageable = input.stageable
-  val excluded = input.excluded
-  val restoreState = input.restoreState
-  val foreignStagedPaths = input.foreignStagedPaths
-  val foreignSnapshot = input.foreignSnapshot
-  val branch = request.metadata.branch
-  val decision = decide(
-    branch = branch,
-    identity = request.identity,
-    durableCommitSha = request.durableCommitSha,
-    sequenceNumber = request.sequenceNumber,
-  )
-  val rewrites = decision is FeatureTaskRuntimeSubtaskCommitAmend
-  val message = FeatureTaskRuntimeCheckpointMessage.finalise(
-    request.handoff.outcomeMessage,
-    request.metadata,
-    request.identity,
-  )
-  val commit = gitOperations.writeSubtaskCommitPreservingHistory(
-    SubtaskCommitPreservationRequest(
-      repoRoot = repoRoot,
-      decision = decision,
-      identity = request.identity,
-      message = message,
-      allowUnchangedIndex = true,
-      ownedPaths = stageable,
-      record = record,
-    ),
-  )
-  val commitSha = when (val outcome = finalisationCommitSha(commit, stageable, restoreState)) {
-    is FinalisationCommitShaBlocked -> return blocked(
-      restoreForeignFinalisationIndex(outcome.reason, foreignStagedPaths, foreignSnapshot),
-    )
-    is FinalisationCommitShaReady -> outcome.value
-  }
-  val foreignRestored = restoreForeignIndex(foreignStagedPaths, foreignSnapshot)
-  if (foreignRestored != null) return blocked(foreignRestored)
-  val recordFailure = recordCommit(commitSha, stageable)
-  return if (recordFailure != null) {
-    FeatureTaskRuntimeSubtaskFinalisationBlocked(recordFailure)
-  } else {
-    finalizeCommittedSubtask(
-      FinalizeCommittedSubtaskInput(
-        request = request,
-        branch = branch,
-        stageable = stageable,
-        excluded = excluded,
-        commitSha = commitSha,
-        rewrites = rewrites,
-      ),
-    )
-  }
-}
-
-private data class FinalizeCommittedSubtaskInput(
-  val request: FeatureTaskRuntimeSubtaskFinaliseRequest,
-  val branch: String,
-  val stageable: List<String>,
-  val excluded: List<String>,
-  val commitSha: String,
-  val rewrites: Boolean,
-)
-
-private fun FeatureTaskRuntimeSubtaskFinalisation.finalizeCommittedSubtask(
-  input: FinalizeCommittedSubtaskInput,
-): FeatureTaskRuntimeSubtaskFinalisationResult {
-  val forcedWithLease = input.rewrites && remoteDiverged(input.branch, input.commitSha)
-  val pushFailure = push(input.branch, input.request.identity, input.commitSha, forcedWithLease)
-  if (pushFailure != null) return blocked(pushFailure)
-  if (!input.request.manifestCommitSha.isNullOrBlank()) {
-    gitOperations.pruneSubtaskCheckpointRefs(
-      repoRoot = repoRoot,
-      request = FeatureTaskRuntimeCheckpointRefPruneRequest(
-        issueKey = input.request.identity.issueKey,
-        subtaskId = input.request.identity.subtaskId,
-        manifestCommitSha = input.request.manifestCommitSha,
-        featureBranch = input.branch,
-      ),
-      record = record,
-    )
-  }
-  return FeatureTaskRuntimeSubtaskFinalised(
-    commitSha = input.commitSha,
-    stagedPaths = input.stageable,
-    excludedSpecPaths = input.excluded,
-    forcedWithLease = forcedWithLease,
-  )
-}
-
-fun FeatureTaskRuntimeSubtaskFinalisation.restoring(error: String, paths: List<String>, snapshot: String): String {
-  val restored = gitOperations.restoreIndexState(repoRoot, paths, snapshot)
-  return if (restored.ok) {
-    "$error; the pre-finalisation index was restored and the working tree is unchanged"
-  } else {
-    "$error; the pre-finalisation index could NOT be restored (${restored.error}) — inspect " +
-      "`git status` before committing anything yourself"
-  }
-}
-
-fun FeatureTaskRuntimeSubtaskFinalisation.blocked(reason: String) = FeatureTaskRuntimeSubtaskFinalisationBlocked(
-  "needs_human: subtask finalisation could not complete because $reason.",
-)

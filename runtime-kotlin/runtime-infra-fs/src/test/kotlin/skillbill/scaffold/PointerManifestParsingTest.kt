@@ -208,7 +208,7 @@ class PointerManifestParsingTest {
     val pointersBlock = if (pointersYaml.isBlank()) "" else "\n$pointersYaml\n"
     val manifest = """
       platform: $slug
-      contract_version: "1.7"
+      contract_version: "1.8"
 
       routing_signals:
         strong:

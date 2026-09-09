@@ -19,13 +19,13 @@ import skillbill.review.context.model.ReviewOperationPolicy
 import skillbill.review.context.model.ReviewRequestedOperation
 import skillbill.review.context.model.requireRepositoryRelativePath
 import java.nio.charset.StandardCharsets
-import java.nio.file.Files
 import java.nio.file.Path
 
 internal class FileSystemReviewEvidenceBrokerReads(
   private val state: FileSystemReviewEvidenceBrokerReadState,
 ) {
-  fun readOne(request: ReviewEvidenceRequest): ReviewEvidenceResult = readOneEvidence(state, request)
+  fun readOne(request: ReviewEvidenceRequest, assignedDelta: Boolean = false): ReviewEvidenceResult =
+    readOneEvidence(state, request, assignedDelta)
 }
 
 internal class FileSystemReviewEvidenceBrokerReadState(
@@ -38,40 +38,30 @@ internal class FileSystemReviewEvidenceBrokerReadState(
   val policy: ReviewOperationPolicy = init.policy
   val authorizedExpansionLedger: List<ReviewExpansionRecord> = init.authorizedExpansionLedger
   val projectedHunks: List<ReviewChangedHunk> = init.projectedHunks
+  val visibleTargetPaths: Set<String> = init.visibleTargetPaths
   val locatorReader: FeatureTaskRuntimeSharedEvidenceLocatorReadPort = init.locatorReader
   val bodyExtractor: ReviewStoredHunkBodyExtractor = init.bodyExtractor
-  val completeFileCheckpoint: Map<String, String?> = init.completeFileCheckpoint
   val hunkCommitById: Map<String, String> = init.hunkCommitById
+  val expansionCoordinates = init.expansionCoordinates
   var cumulativeBytes: Long = 0L
   var authorizedReadCount: Int = 0
   var terminalOutcome: ReviewBudgetOutcome? = null
   val expansionLedger = mutableListOf<ReviewExpansionRecord>()
-  val admittedEvidenceTargets = mutableSetOf<String>()
   val deniedUnits = mutableListOf<String>()
 }
 
 private fun readOneEvidence(
   state: FileSystemReviewEvidenceBrokerReadState,
   request: ReviewEvidenceRequest,
+  assignedDelta: Boolean,
 ): ReviewEvidenceResult {
   val exactPath = request.path
   if (!exactPath.startsWith('/') && !exactPath.startsWith('\\')) {
     requireRepositoryRelativePath(exactPath)
   }
   val operation = ReviewRequestedOperation(ReviewOperationKind.FILE_READ, exactPath, request.reachabilityReason)
-  state.policy.classify(operation)?.let { return refusedEvidence(state, it) }
+  if (!assignedDelta) state.policy.classify(operation)?.let { return refusedEvidence(state, it) }
   requireRepositoryRelativePath(exactPath)
-  val normalizedTarget = normalizeEvidenceIdentity(exactPath)
-  if (!state.admittedEvidenceTargets.add(normalizedTarget)) {
-    return refusedEvidence(
-      state,
-      ForbiddenReviewOperation(
-        "repeated_evidence_read",
-        exactPath,
-        "The normalized evidence target was already read by this lane.",
-      ),
-    )
-  }
   val assigned = state.policy.isAssigned(exactPath)
   val expansion = request.authorizedExpansion
   if (!assigned || expansion != null) {
@@ -88,11 +78,10 @@ private fun readOneEvidence(
     require(expansion.reachabilityReason == request.reachabilityReason) {
       "Expansion '${expansion.expansionId}' reason provenance changed before admission."
     }
-    require(expansion !in state.expansionLedger) { "Expansion '${expansion.expansionId}' was already admitted." }
     require(expansion in state.authorizedExpansionLedger) {
       "Expansion '${expansion.expansionId}' was not authorized by this assignment's measured broker."
     }
-    state.expansionLedger += expansion
+    if (expansion !in state.expansionLedger) state.expansionLedger += expansion
     if (state.expansionLedger.size > state.budget.maxAssignmentExpansions) {
       return exceededEvidence(
         state,
@@ -102,32 +91,65 @@ private fun readOneEvidence(
       )
     }
   }
-  return readAdmittedFile(state, exactPath, assigned, expansion != null)
+  return readAdmittedFile(state, request, assigned)
+    .let { result ->
+      if (expansion != null && result.hasDeliveredContent()) {
+        result.copy(deliveredSelectors = listOf(expansion.expansionId))
+      } else {
+        result
+      }
+    }
 }
 
 private fun readAdmittedFile(
   state: FileSystemReviewEvidenceBrokerReadState,
-  normalized: String,
+  request: ReviewEvidenceRequest,
   assigned: Boolean,
-  completeFileAuthorized: Boolean,
 ): ReviewEvidenceResult {
   state.authorizedReadCount += 1
-  return if (assigned && !completeFileAuthorized) {
-    readProjectedHunks(state, normalized)
+  return if (assigned && request.authorizedExpansion == null) {
+    readProjectedHunks(state, request.path, request.selector)
   } else {
-    readCompleteFile(state, normalized, assigned)
+    readCompleteFile(state, request.path, request.authorizedExpansion?.expansionId)
   }
 }
 
-private fun readProjectedHunks(state: FileSystemReviewEvidenceBrokerReadState, path: String): ReviewEvidenceResult {
+private fun readProjectedHunks(
+  state: FileSystemReviewEvidenceBrokerReadState,
+  path: String,
+  selector: String?,
+): ReviewEvidenceResult {
   val hunks = state.projectedHunks
-    .filter { it.path == path }
+    .filter {
+      val hunkSelector = "hunk:${commitShaForHunk(state, it.hunkId)}:${it.hunkId}"
+      it.path == path && (selector == null || selector == hunkSelector)
+    }
     .sortedWith(compareBy({ it.newStart }, { it.oldStart }, { it.hunkId }))
+  if (hunks.isEmpty()) {
+    if (selector != null || path !in state.visibleTargetPaths) {
+      return unavailableEvidence(state, path)
+    }
+    return readUnprojectedDelta(state, path, selector)
+  }
   val delivered = mutableListOf<String>()
+  val deliveredSelectors = mutableListOf<String>()
   for (hunk in hunks) {
     val body = materializeAssignedHunk(state, hunk)
     val bytes = body.toByteArray(StandardCharsets.UTF_8).size.toLong()
-    assignedHunkBudgetOutcome(state, bytes, unitForHunk(state, hunk))?.let { exceeded ->
+    val resultBytes = delivered.sumOf { it.toByteArray(StandardCharsets.UTF_8).size.toLong() } + bytes + delivered.size
+    val resultOverflow = assignedHunkBudgetOutcome(
+      state,
+      bytes,
+      unitForHunk(
+        state,
+        hunk,
+      ),
+    ) ?: if (resultBytes > state.budget.maxEvidenceResultBytes) {
+      exceededEvidence(state, "evidence_result_bytes", state.budget.maxEvidenceResultBytes, resultBytes)
+    } else {
+      null
+    }
+    resultOverflow?.let { exceeded ->
       return if (delivered.isEmpty()) {
         exceeded
       } else {
@@ -138,11 +160,13 @@ private fun readProjectedHunks(state: FileSystemReviewEvidenceBrokerReadState, p
           state.cumulativeBytes,
           state.expansionLedger.size,
           budgetExceeded = exceeded.budgetExceeded,
+          deliveredSelectors = deliveredSelectors.toList(),
         )
       }
     }
     state.cumulativeBytes += bytes
     delivered += body
+    deliveredSelectors += "hunk:${commitShaForHunk(state, hunk.hunkId)}:${hunk.hunkId}"
   }
   val content = delivered.joinToString("\n")
   return ReviewEvidenceResult(
@@ -150,6 +174,7 @@ private fun readProjectedHunks(state: FileSystemReviewEvidenceBrokerReadState, p
     content.toByteArray(StandardCharsets.UTF_8).size.toLong(),
     state.cumulativeBytes,
     state.expansionLedger.size,
+    deliveredSelectors = deliveredSelectors.toList(),
   )
 }
 
@@ -176,19 +201,13 @@ private fun materializeAssignedHunk(state: FileSystemReviewEvidenceBrokerReadSta
 private fun readCompleteFile(
   state: FileSystemReviewEvidenceBrokerReadState,
   path: String,
-  assigned: Boolean,
+  expansionId: String?,
 ): ReviewEvidenceResult {
-  val real = resolveRepositoryFile(state.root, path)
-  val expectedDigest = state.completeFileCheckpoint.getValue(path)
-  if (real == null) {
-    if (expectedDigest != null) rejectCheckpointDrift(state, path)
-    require(assigned) { "Expanded evidence path must be a repository file." }
-    return unavailableResult(state.cumulativeBytes, state.expansionLedger.size)
+  val coordinates = requireNotNull(state.expansionCoordinates[expansionId]) {
+    "Whole-file evidence requires bound source coordinates."
   }
-  val contentBytes = Files.readAllBytes(real)
-  if (expectedDigest == null || digest(contentBytes) != expectedDigest) {
-    rejectCheckpointDrift(state, path)
-  }
+  val contentBytes = readReviewCoordinateFile(state, coordinates, path)
+    ?: return unavailableEvidence(state, path)
   return serveEvidence(state, path, contentBytes)
 }
 
@@ -212,3 +231,32 @@ private fun refusedEvidence(
   state: FileSystemReviewEvidenceBrokerReadState,
   forbidden: ForbiddenReviewOperation,
 ): ReviewEvidenceResult = forbiddenResult(forbidden, state.cumulativeBytes, state.expansionLedger.size)
+
+private fun ReviewEvidenceResult.hasDeliveredContent(): Boolean =
+  content != null && budgetExceeded == null && forbidden == null
+
+private fun readUnprojectedDelta(
+  state: FileSystemReviewEvidenceBrokerReadState,
+  path: String,
+  selector: String?,
+): ReviewEvidenceResult {
+  val content = readImmutableReviewDelta(
+    state.root,
+    state.assignment.baseRevision,
+    state.assignment.headRevision,
+    path,
+    state.budget.maxEvidenceResultBytes,
+
+  ) ?: return unavailableEvidence(state, path)
+  return serveEvidence(state, path, content).let { result ->
+    if (result.content == null) {
+      result
+    } else {
+      result.copy(
+        deliveredSelectors = listOf(
+          selector ?: "target:${state.assignment.baseRevision}:${state.assignment.headRevision}:$path",
+        ),
+      )
+    }
+  }
+}

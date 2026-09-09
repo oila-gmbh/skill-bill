@@ -36,34 +36,20 @@ class FeatureTaskRuntimeRunLoopCheckpointOwnedPathRemediationEstablish {
   fun checkpointWorktreeDelta(runLoop: FeatureTaskRuntimeRunLoop, baselineOwnedPaths: List<String>): List<String>? {
     val owned = runLoop.phaseGates.gitOperations.repositoryOwnedPaths(runLoop.request.repoRoot)
     if (!owned.ok) return null
-    val baseline = baselineOwnedPaths.toSet()
-    return owned.value.orEmpty()
+    val current = owned.value.orEmpty()
       .split(OWNED_PATH_DELIMITER)
       .map(String::trim)
       .filter(String::isNotBlank)
-      .filterNot { it in baseline }
       .filterNot(::isRuntimePrivatePath)
-      .distinct()
-      .sorted()
+    return (baselineOwnedPaths.filterNot(::isRuntimePrivatePath) + current).distinct().sorted()
   }
 
-  // The tracked-and-untracked baseline supersedes the untracked-only one; a run resolved before the
-  // wider baseline existed still has the narrower one and must keep using it rather than none.
-
-  /**
-   * The checkpoint commit has just captured the pre-fix tree, so [commitSha] (or HEAD when the
-   * checkpoint was skipped) IS the pre-fix tree. The reserved remediation pass reviews
-   * diff(this sha -> post-fix HEAD), which is what materializes a defect the remediation itself
-   * introduces instead of leaving it to be caught incidentally.
-   */
   fun recordRemediationBaseSha(
     runLoop: FeatureTaskRuntimeRunLoop,
     precedingPhaseId: String,
     commitSha: String? = null,
   ): Boolean {
     if (!isGoalContinuationRun(runLoop.request)) return true
-    // Without durable review runLoop.state there is no reserved remediation pass to bound, so there is no
-    // base to record and nothing this gate can protect.
     if (runLoop.collaborators.planningBranch.goalReviewStateOrNull(runLoop) == null) return true
     val baseSha = commitSha?.trim()?.takeIf(String::isNotBlank) ?: run {
       val head = runLoop.phaseGates.gitOperations.headCommitSha(runLoop.request.repoRoot)

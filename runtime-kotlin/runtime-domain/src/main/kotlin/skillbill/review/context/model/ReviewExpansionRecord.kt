@@ -9,6 +9,7 @@ data class ReviewExpansionRecord(
   val sequence: Int,
 ) {
   init {
+    listOf(expansionId, requestedPath, reachabilityReason).forEach(ReviewEvidenceLimits::field)
     require(expansionId.isNotBlank()) { "Expansion id must not be blank." }
     require(assignmentDigest.matches(SHA256_HEX)) { "Expansion assignment digest must be lowercase SHA-256." }
     requireRepositoryRelativePath(requestedPath)

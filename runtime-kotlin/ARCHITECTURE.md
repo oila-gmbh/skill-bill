@@ -539,6 +539,7 @@ runtime-ports
     - `skillbill.application.subtaskreview.GoalSubtaskReviewStructuredFindingsParse.structuredFindings`
     - `skillbill.application.subtaskreview.GoalSubtaskReviewSummaryReducer.blockerDispositions`
     - `skillbill.application.subtaskreview.GoalSubtaskReviewSummaryReducer.commitFocusedAccounting`
+    - `skillbill.application.subtaskreview.GoalSubtaskReviewSummaryReducer.evidenceCoverageComplete`
     - `skillbill.application.subtaskreview.GoalSubtaskReviewSummaryReducer.fromOutput`
     - `skillbill.application.subtaskreview.GoalSubtaskReviewSummaryReducer.outcomeFor`
     - `skillbill.application.subtaskreview.GoalSubtaskReviewSummaryReducer.rejectedVerificationFindings`
@@ -620,6 +621,7 @@ runtime-ports
     - `skillbill.ports.phaseartifacts.resolvedBranchFrom`
     - `skillbill.ports.phaseartifacts.reviewGenerationFrom`
     - `skillbill.ports.review.model.GovernedReviewEvidenceCodec.TOOL_SPECS`
+    - `skillbill.ports.review.model.GovernedReviewEvidenceCodec.discoveryRequest`
     - `skillbill.ports.review.model.GovernedReviewEvidenceCodec.expansionRequest`
     - `skillbill.ports.review.model.GovernedReviewEvidenceCodec.payload`
     - `skillbill.ports.review.model.GovernedReviewEvidenceCodec.readRequest`
@@ -630,6 +632,7 @@ runtime-ports
     - `skillbill.ports.subtaskreview.GoalSubtaskReviewStructuredFindingsParse.structuredFindings`
     - `skillbill.ports.subtaskreview.GoalSubtaskReviewSummaryReducer.blockerDispositions`
     - `skillbill.ports.subtaskreview.GoalSubtaskReviewSummaryReducer.commitFocusedAccounting`
+    - `skillbill.ports.subtaskreview.GoalSubtaskReviewSummaryReducer.evidenceCoverageComplete`
     - `skillbill.ports.subtaskreview.GoalSubtaskReviewSummaryReducer.fromOutput`
     - `skillbill.ports.subtaskreview.GoalSubtaskReviewSummaryReducer.outcomeFor`
     - `skillbill.ports.subtaskreview.GoalSubtaskReviewSummaryReducer.rejectedVerificationFindings`
@@ -1801,6 +1804,7 @@ Categories:
 - `skillbill.application.subtaskreview.GoalSubtaskReviewStructuredFindingsParse.structuredFindings`
 - `skillbill.application.subtaskreview.GoalSubtaskReviewSummaryReducer.blockerDispositions`
 - `skillbill.application.subtaskreview.GoalSubtaskReviewSummaryReducer.commitFocusedAccounting`
+- `skillbill.application.subtaskreview.GoalSubtaskReviewSummaryReducer.evidenceCoverageComplete`
 - `skillbill.application.subtaskreview.GoalSubtaskReviewSummaryReducer.fromOutput`
 - `skillbill.application.subtaskreview.GoalSubtaskReviewSummaryReducer.outcomeFor`
 - `skillbill.application.subtaskreview.GoalSubtaskReviewSummaryReducer.rejectedVerificationFindings`
@@ -1876,6 +1880,7 @@ Categories:
 - `skillbill.ports.phaseartifacts.resolvedBranchFrom`
 - `skillbill.ports.phaseartifacts.reviewGenerationFrom`
 - `skillbill.ports.review.model.GovernedReviewEvidenceCodec.TOOL_SPECS`
+- `skillbill.ports.review.model.GovernedReviewEvidenceCodec.discoveryRequest`
 - `skillbill.ports.review.model.GovernedReviewEvidenceCodec.expansionRequest`
 - `skillbill.ports.review.model.GovernedReviewEvidenceCodec.payload`
 - `skillbill.ports.review.model.GovernedReviewEvidenceCodec.readRequest`
@@ -1886,6 +1891,7 @@ Categories:
 - `skillbill.ports.subtaskreview.GoalSubtaskReviewStructuredFindingsParse.structuredFindings`
 - `skillbill.ports.subtaskreview.GoalSubtaskReviewSummaryReducer.blockerDispositions`
 - `skillbill.ports.subtaskreview.GoalSubtaskReviewSummaryReducer.commitFocusedAccounting`
+- `skillbill.ports.subtaskreview.GoalSubtaskReviewSummaryReducer.evidenceCoverageComplete`
 - `skillbill.ports.subtaskreview.GoalSubtaskReviewSummaryReducer.fromOutput`
 - `skillbill.ports.subtaskreview.GoalSubtaskReviewSummaryReducer.outcomeFor`
 - `skillbill.ports.subtaskreview.GoalSubtaskReviewSummaryReducer.rejectedVerificationFindings`

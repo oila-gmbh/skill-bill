@@ -1,5 +1,6 @@
 package skillbill.application.featuretask
 
+import skillbill.application.subtaskreview.GoalSubtaskReviewSummaryReducer
 import skillbill.contracts.JsonSupport
 import skillbill.review.ReviewFindingActionability
 import skillbill.review.model.ReviewClaimVerdict
@@ -98,6 +99,9 @@ private fun reviewVerdict(
   outputObject: Map<String, Any?>?,
   wireVerdict: FeatureTaskRuntimeVerdict?,
 ): FeatureTaskRuntimeVerdict {
+  if (GoalSubtaskReviewSummaryReducer.evidenceCoverageComplete(outputObject.orEmpty()) == false) {
+    return FeatureTaskRuntimeVerdict.CHANGES_REQUESTED
+  }
   val reviewVerdict = reviewVerdictFrom(outputObject)
   return reviewVerdict?.verdict ?: wireVerdict ?: FeatureTaskRuntimeVerdict.ADVANCE
 }

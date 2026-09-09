@@ -4,7 +4,9 @@ import skillbill.error.InvalidReviewContextSchemaError
 import skillbill.ports.review.BrokerBackedNativeReviewOperationProtocol
 import skillbill.ports.review.model.ReviewEvidenceBatchRequest
 import skillbill.ports.review.model.ReviewEvidenceBrokerBinding
+import skillbill.ports.review.model.ReviewEvidenceCoordinates
 import skillbill.ports.review.model.ReviewEvidenceRequest
+import skillbill.ports.review.model.ReviewEvidenceSource
 import skillbill.ports.review.model.ReviewExpansionAuthorizationRequest
 import skillbill.ports.review.model.ReviewRefusedOperationRecord
 import skillbill.ports.review.model.ReviewToolCall
@@ -27,7 +29,7 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class FileSystemReviewEvidenceBrokerTest {
-  @Test fun `assigned reads return only projected hunk bodies and normalized target is single use`() {
+  @Test fun `assigned reads return only projected hunk bodies and confirmed target is single use`() {
     val root = repo("A.kt" to "outside\nowned\noutside")
     val hunk = ReviewChangedHunk("A.kt", 2, 1, 2, 1, "@@ -2 +2 @@\n-owned\n+changed")
     val base = assignment(listOf("A.kt"))
@@ -42,7 +44,9 @@ class FileSystemReviewEvidenceBrokerTest {
       ),
     )
 
-    val first = broker.readBatch(batch("A.kt")).results.single()
+    val firstBatch = broker.readBatch(batch("A.kt"))
+    val first = firstBatch.results.single()
+    broker.confirmDelivery(requireNotNull(firstBatch.deliveryReceipt))
     val repeated = broker.readBatch(
       ReviewEvidenceBatchRequest.of(
         ReviewEvidenceRequest("security", "A.kt", offset = 1, limit = 1, paginationToken = "next"),
@@ -123,7 +127,7 @@ class FileSystemReviewEvidenceBrokerTest {
     assertEquals(14, broker.accounting().evidenceBytes)
   }
 
-  @Test fun `admitted assigned read with no projected hunks counts a zero-byte authorized read`() {
+  @Test fun `unavailable assigned evidence remains outstanding despite an authorized zero-byte read`() {
     val root = repo("A.kt" to "ignored")
     val broker = FileSystemReviewEvidenceBroker(
       ReviewEvidenceBrokerBinding(root, assignment(listOf("A.kt")), "security", policy(), projectedHunks = emptyList()),
@@ -131,7 +135,11 @@ class FileSystemReviewEvidenceBrokerTest {
 
     val result = broker.readBatch(batch("A.kt")).results.single()
 
-    assertEquals("", result.content)
+    assertNull(result.content)
+    assertEquals("evidence_unavailable", result.forbidden?.category)
+    assertEquals(1, broker.accounting().refusedOperationCount)
+    assertEquals("evidence_unavailable", broker.accounting().refusals.single().category)
+    assertEquals(1, broker.accounting().remainingEvidence.size)
     assertEquals(0, result.bytes)
     assertEquals(0, broker.accounting().evidenceBytes)
     assertEquals(1, broker.accounting().authorizedReadCount)
@@ -199,7 +207,11 @@ class FileSystemReviewEvidenceBrokerTest {
     assertEquals(10, result.terminalOutcome?.observedValue)
     assertEquals(1, broker.accounting().refusedOperationCount)
     assertEquals("lane_evidence_bytes", broker.accounting().terminalOutcome?.budgetKind)
-    assertEquals(listOf("head@B.kt"), broker.accounting().unreviewedUnits)
+    assertEquals(2, broker.accounting().remainingEvidence.size)
+    assertEquals(
+      broker.accounting().remainingEvidence.map { it.unitId }.toSet(),
+      broker.accounting().unreviewedUnits.toSet(),
+    )
     assertEquals("lane_evidence_bytes", broker.accounting().budgetDimension)
     val followOn = broker.readBatch(
       ReviewEvidenceBatchRequest(
@@ -249,6 +261,7 @@ class FileSystemReviewEvidenceBrokerTest {
         authorized,
         "security",
         policy(),
+        sources = listOf(checkpointSource(root, authorized)),
         trustedExpansionLedger = authorized.expansions,
         projectedHunks = listOf(hunk),
       ),
@@ -388,16 +401,14 @@ class FileSystemReviewEvidenceBrokerTest {
     val root = repo("A.kt" to "assigned", "B.kt" to "dep")
     val assignment = assignment(listOf("A.kt"), listOf("B.kt"))
     val request = expansionRequest(assignment, "B.kt", "reachable from assigned symbol")
-    val broker = broker(
-      root,
-      assignment,
-      policy(expansions = 0),
-      trustedExpansionLedger = listOf(requireNotNull(request.authorizedExpansion)),
-    )
-    val result = broker.readBatch(
-      ReviewEvidenceBatchRequest.of(request),
-    )
-    assertEquals("assignment_expansions", result.terminalOutcome?.budgetKind)
+    assertFailsWith<InvalidReviewContextSchemaError> {
+      broker(
+        root,
+        assignment,
+        policy(expansions = 0),
+        trustedExpansionLedger = listOf(requireNotNull(request.authorizedExpansion)),
+      )
+    }
   }
 
   @Test fun `named dependency is still measured as an authorized expansion`() {
@@ -487,8 +498,33 @@ class FileSystemReviewEvidenceBrokerTest {
     namedDependencies: Set<String> = emptySet(),
     trustedExpansionLedger: List<ReviewExpansionRecord> = emptyList(),
   ) = FileSystemReviewEvidenceBroker(
-    ReviewEvidenceBrokerBinding(root, assignment, "security", budget, namedDependencies, trustedExpansionLedger),
+    ReviewEvidenceBrokerBinding(
+      root,
+      assignment,
+      "security",
+      budget,
+      namedDependencies,
+      trustedExpansionLedger,
+      sources = listOf(checkpointSource(root, assignment, namedDependencies)),
+    ),
   )
+
+  private fun checkpointSource(root: Path, assignment: ReviewAssignment, dependencies: Set<String> = emptySet()) =
+    ReviewEvidenceSource(
+      assignment,
+      "security",
+      dependencies,
+      ReviewEvidenceCoordinates.Checkpoint(
+        ReviewEvidenceCoordinates.Checkpoint.Kind.WORKTREE,
+        (assignment.assignedPaths + assignment.dependencyAllowlist.normalized + dependencies).associateWith {
+          checkpointFileIdentity(
+            root,
+            it,
+          )
+        },
+
+      ),
+    )
 
   private fun projectedBroker(
     root: Path,

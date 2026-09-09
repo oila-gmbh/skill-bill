@@ -27,11 +27,6 @@ data class ForbiddenReviewOperation(val category: String, val target: String, va
   }
 }
 
-/**
- * Decides, without consulting any platform, pack, or provider identity, whether an operation a
- * specialist wants to run stays inside its assignment. Everything the parent already resolved is
- * forbidden to rediscover; everything outside the assignment needs an authorized expansion.
- */
 class ReviewOperationPolicy(
   private val assignment: ReviewAssignment,
   private val laneRubricId: String,

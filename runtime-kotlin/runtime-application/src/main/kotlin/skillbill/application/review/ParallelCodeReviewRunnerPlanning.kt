@@ -8,6 +8,7 @@ import skillbill.application.reviewevidence.ReviewDiffEvidence
 import skillbill.application.reviewevidence.SharedReviewEvidenceProjection
 import skillbill.application.reviewevidence.SharedReviewEvidenceQuery
 import skillbill.application.reviewevidence.SharedReviewEvidenceResolution
+import skillbill.application.reviewevidence.model.DiffResolutionException
 import skillbill.application.runtimepersistence.RuntimeOwnedPersistenceBoundary
 import skillbill.contracts.review.REVIEW_CONTEXT_CONTRACT_VERSION
 import skillbill.error.ReviewHunkEvidenceLocatorMissingError
@@ -54,6 +55,7 @@ internal class ParallelCodeReviewRunnerPlanning(deps: ParallelCodeReviewRunnerPl
   internal fun prepareInitialRun(originalRequest: ParallelCodeReviewRequest): ParallelCodeReviewInitialRun {
     val agent1 = resolveAgent(originalRequest.agent1Id, "--agent1")
     val revisions = resolveReviewRevisions(originalRequest)
+    val coordinates = evidenceCoordinates(originalRequest, revisions.second)
     val sharedEvidence = SharedReviewEvidenceResolution(sharedEvidenceResolver, diffResolver).resolve(
       SharedReviewEvidenceQuery(
         repoRoot = originalRequest.repoRoot,
@@ -63,6 +65,9 @@ internal class ParallelCodeReviewRunnerPlanning(deps: ParallelCodeReviewRunnerPl
         suppliedDiff = hasSuppliedDiff(originalRequest),
       ),
     ) { resolveDiff(originalRequest, revisions) }
+    if (coordinates != evidenceCoordinates(originalRequest, revisions.second)) {
+      throw DiffResolutionException("Reviewed checkpoint changed while resolving diff evidence.")
+    }
     val diffText = sharedEvidence.aggregateDiff
     val evidence = ReviewDiffEvidence.parse(diffText)
     val detection = detectStack(evidence)
@@ -84,6 +89,7 @@ internal class ParallelCodeReviewRunnerPlanning(deps: ParallelCodeReviewRunnerPl
         agentIds = listOf(agent1.id),
         budget = budget,
         evidenceStorePath = sharedEvidence.storePath,
+        evidenceCoordinates = coordinates,
       ),
     )
     return ParallelCodeReviewInitialRun(
@@ -187,6 +193,7 @@ internal class ParallelCodeReviewRunnerPlanning(deps: ParallelCodeReviewRunnerPl
         reviewRunId = args.request.reviewRunId,
         baseRevision = baseRevision,
         headRevision = headRevision,
+        evidenceCoordinates = args.evidenceCoordinates,
         prelaunchExpansions = args.request.prelaunchExpansions,
         baselineUntrackedPolicy = args.request.baselineUntrackedPolicy,
         specIntentResolution = specIntentResolution,

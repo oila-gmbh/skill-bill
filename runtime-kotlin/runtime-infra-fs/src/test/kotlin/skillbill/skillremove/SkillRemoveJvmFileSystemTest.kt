@@ -356,7 +356,7 @@ class SkillRemoveJvmFileSystemTest {
   private companion object {
     private val KOTLIN_PLATFORM_YAML = """
       |platform: kotlin
-      |contract_version: "1.7"
+      |contract_version: "1.8"
       |routing_signals:
       |  strong:
       |    - ".kt"
@@ -385,7 +385,7 @@ class SkillRemoveJvmFileSystemTest {
 
     private val KMP_PLATFORM_YAML = """
       |platform: kmp
-      |contract_version: "1.7"
+      |contract_version: "1.8"
       |routing_signals:
       |  strong:
       |    - "androidMain"
@@ -410,7 +410,7 @@ class SkillRemoveJvmFileSystemTest {
 
     private val ADDON_SKILL_CLASS_YAML = """
       |class: feature-task
-      |contract_version: "1.7"
+      |contract_version: "1.8"
       |matchers:
       |  - exact: bill-feature
       |pointers:
@@ -423,7 +423,7 @@ class SkillRemoveJvmFileSystemTest {
 
     private val KMP_PLATFORM_YAML_WITH_ADDON_REFERENCES = """
       |platform: kmp
-      |contract_version: "1.7"
+      |contract_version: "1.8"
       |routing_signals:
       |  strong:
       |    - "androidMain"

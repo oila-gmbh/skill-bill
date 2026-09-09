@@ -3,39 +3,23 @@ package skillbill.ports.review
 import skillbill.ports.review.model.ReviewEvidenceBatchRequest
 import skillbill.ports.review.model.ReviewEvidenceBatchResult
 import skillbill.ports.review.model.ReviewEvidenceBrokerBinding
+import skillbill.ports.review.model.ReviewEvidenceDiscoveryPage
+import skillbill.ports.review.model.ReviewEvidenceDiscoveryRequest
 import skillbill.ports.review.model.ReviewExpansionAuthorizationRequest
-import skillbill.ports.review.model.ReviewLaneAccounting
-import skillbill.ports.review.model.ReviewToolCall
-import skillbill.ports.review.model.ReviewToolCallResult
-import skillbill.review.context.model.ReviewBudgetOutcome
 import skillbill.review.context.model.ReviewExpansionRecord
 
-/**
- * The single measured surface a delegated specialist may act through. Every call is policy-checked
- * and accounted; once a lane produces a terminal outcome the broker keeps returning that outcome
- * rather than serving more context.
- */
-interface ReviewEvidenceBroker {
+interface ReviewEvidenceBroker : ReviewEvidenceLaneAccounting {
+  fun discover(request: ReviewEvidenceDiscoveryRequest): ReviewEvidenceDiscoveryPage =
+    error("This broker does not support evidence discovery.")
+  fun expansionById(id: String): ReviewExpansionRecord? = null
+  fun confirmDelivery(receipt: String) = Unit
+  fun recordMalformedRequest() = Unit
+  fun finishDeliverySession() = Unit
+
   fun authorizeExpansion(request: ReviewExpansionAuthorizationRequest): ReviewExpansionRecord =
     error("This evidence broker does not support governed complete-file expansion.")
 
   fun readBatch(request: ReviewEvidenceBatchRequest): ReviewEvidenceBatchResult
-
-  fun recordToolCall(call: ReviewToolCall): ReviewToolCallResult
-
-  fun recordModelTurn(): ReviewBudgetOutcome?
-
-  fun validateLaneResult(result: String): ReviewBudgetOutcome?
-
-  /** Observes cumulative provider result bytes while the lane is still running. */
-  fun observeLaneResultChunk(chunk: String): ReviewBudgetOutcome?
-
-  /** Distinguishes an observed empty provider result from a provider with no decoded result. */
-  fun hasObservedLaneResult(): Boolean = accounting().resultBytes > 0
-
-  fun accounting(): ReviewLaneAccounting
-
-  fun terminalOutcome(): ReviewBudgetOutcome?
 }
 
 fun interface ReviewEvidenceBrokerFactory {

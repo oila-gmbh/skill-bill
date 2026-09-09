@@ -32,6 +32,7 @@ data class ReviewAccountingInput(
   val segmentAccounting: List<ReviewLaneSegmentAccounting> = emptyList(),
   val unreviewedSegmentIds: List<String> = emptyList(),
   val children: List<ReviewAccountingInput> = emptyList(),
+  val evidenceDelivery: ReviewEvidenceDelivery? = null,
 ) {
   init {
     require(lane.isNotBlank() && assignmentDigest.isNotBlank())
@@ -41,23 +42,16 @@ data class ReviewAccountingInput(
 data class ReviewAccountingNode(
   val lane: String,
   val assignmentDigest: String,
-  /** Counters owned by this session alone. */
   val counters: ReviewAccountingCounters,
-  /** This session's counters plus every descendant's, each counted once. */
   val inclusiveCounters: ReviewAccountingCounters,
   val terminalOutcome: String,
-  /** Bundle composition this lane actually reviewed, so result records preserve it. */
   val bundleCompositionDigest: String?,
   val segmentAccounting: List<ReviewLaneSegmentAccounting>,
   val unreviewedSegmentIds: List<String>,
   val children: List<ReviewAccountingNode>,
+  val evidenceDelivery: ReviewEvidenceDelivery? = null,
 )
 
-/**
- * Commit-sequence identity plus the routing shape the parent decided before any worker launched.
- * Counting focused/skipped at both the commit and the commit-lane-pair level keeps two different
- * questions answerable: how much of the sequence was reviewed at all, and how sparse the fan-out was.
- */
 data class ReviewCommitRoutingAccounting(
   val commitSequenceDigest: String,
   val routingDigest: String,
@@ -82,7 +76,6 @@ data class ReviewCommitRoutingAccounting(
   }
 }
 
-/** What the parent's own relevance analysis consumed against its configured ceilings. */
 data class ReviewParentAnalysisConsumption(
   val analyzedPairs: Int,
   val analyzedBytes: Long,
@@ -95,7 +88,6 @@ data class ReviewParentAnalysisConsumption(
   }
 }
 
-/** Terminal state of the single integration pass, attributed to the sequence it covered. */
 data class ReviewIntegrationAccounting(
   val commitSequenceDigest: String,
   val terminalOutcome: String,
@@ -125,6 +117,16 @@ data class ReviewAccountingSummary(
   val aggregateCounters: ReviewAccountingCounters,
   val commitRouting: ReviewCommitRoutingAccounting? = null,
   val parentAnalysis: ReviewParentAnalysisConsumption? = null,
-  /** Null only when no integration state was settled at all, never as a stand-in for "clean". */
   val integration: ReviewIntegrationAccounting? = null,
 )
+
+data class ReviewEvidenceDelivery(
+  val requiredUnits: Int,
+  val deliveredUnits: Int,
+  val requestCount: Int,
+) {
+  init {
+    require(requiredUnits >= 0 && deliveredUnits in 0..requiredUnits && requestCount >= 0)
+  }
+  val remainingUnits: Int get() = requiredUnits - deliveredUnits
+}

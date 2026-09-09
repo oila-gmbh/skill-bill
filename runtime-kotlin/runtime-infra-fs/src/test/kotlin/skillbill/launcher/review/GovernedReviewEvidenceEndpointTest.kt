@@ -12,6 +12,7 @@ import skillbill.ports.review.model.ReviewToolCall
 import skillbill.ports.review.model.ReviewToolCallResult
 import skillbill.review.context.model.ForbiddenReviewOperation
 import skillbill.review.context.model.ReviewBudgetOutcome
+import skillbill.review.context.model.ReviewEvidenceLimits
 import skillbill.review.context.model.ReviewExpansionRecord
 import java.net.UnixDomainSocketAddress
 import java.nio.channels.Channels
@@ -28,6 +29,10 @@ import kotlin.test.assertTrue
 class GovernedReviewEvidenceEndpointTest {
   private class RecordingProtocol : NativeReviewOperationProtocol {
     val reads = mutableListOf<ReviewEvidenceBatchRequest>()
+    var malformed = 0
+    override fun recordMalformedRequest() {
+      malformed += 1
+    }
 
     override fun authorizeExpansion(request: ReviewExpansionAuthorizationRequest): ReviewExpansionRecord =
       error("unused")
@@ -52,6 +57,24 @@ class GovernedReviewEvidenceEndpointTest {
     override fun tool(call: ReviewToolCall): ReviewToolCallResult = error("unused")
     override fun modelTurn(): ReviewBudgetOutcome? = null
     override fun laneResultChunk(chunk: String): ReviewBudgetOutcome? = null
+  }
+
+  @Test
+  fun `oversized authenticated frames record a refusal without evidence and a new connection recovers`() {
+    val protocol = RecordingProtocol()
+    GovernedReviewEvidenceEndpoint.bind("architecture", protocol, listOf("/bin/true")).use { endpoint ->
+      connect(endpoint, endpoint.descriptor.token).use { connection ->
+        val response = requireNotNull(connection.call("x".repeat(ReviewEvidenceLimits.REQUEST_BYTES + 1)))
+        assertTrue(response.contains("byte limit"))
+        assertTrue(response.toByteArray().size < 1024)
+      }
+      assertEquals(1, protocol.malformed)
+      assertTrue(protocol.reads.isEmpty())
+      connect(endpoint, endpoint.descriptor.token).use { connection ->
+        assertTrue(requireNotNull(connection.call(readFrame("A.kt"))).contains("not assigned"))
+      }
+      assertEquals(1, protocol.reads.size)
+    }
   }
 
   @Test

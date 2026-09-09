@@ -3,6 +3,7 @@ package skillbill.review
 import skillbill.application.review.RecordedWorkerResponse
 import skillbill.application.review.ReviewHarnessConfig
 import skillbill.application.review.ReviewRecorder
+import skillbill.application.review.committedReviewRequest
 import skillbill.application.review.diffForChanges
 import skillbill.application.review.harnessRequest
 import skillbill.application.review.model.ReviewPrelaunchExpansion
@@ -154,7 +155,7 @@ class ReviewAccountingDurableRedactionTest {
       upsertReviewAccounting(connection, ReviewAccountingRecord(REVIEW_RUN_ID, summary.packetDigest, current))
       val regenerated = assertNotNull(loadReviewAccounting(connection, REVIEW_RUN_ID))
       assertEquals(REVIEW_CONTEXT_CONTRACT_VERSION, regenerated.boundedPayload["contract_version"])
-      assertEquals("2.2", regenerated.boundedPayload["contract_version"])
+      assertEquals("2.3", regenerated.boundedPayload["contract_version"])
     }
   }
 
@@ -206,15 +207,18 @@ class ReviewAccountingDurableRedactionTest {
     )
 
     val result = runner.run(
-      harnessRequest(
-        reviewRunId = REVIEW_RUN_ID,
-        prelaunchExpansions = listOf(
-          ReviewPrelaunchExpansion(
-            "parallel-code-review",
-            "src/Repo.kt",
-            "The durable redaction proof measures an explicitly authorized complete-file expansion.",
+      committedReviewRequest(
+        harnessRequest(
+          reviewRunId = REVIEW_RUN_ID,
+          prelaunchExpansions = listOf(
+            ReviewPrelaunchExpansion(
+              "parallel-code-review",
+              "src/Repo.kt",
+              "The durable redaction proof measures an explicitly authorized complete-file expansion.",
+            ),
           ),
         ),
+        mapOf("src/Repo.kt" to diffBody, "docs/GUIDANCE.md" to guidanceBody),
       ),
     )
 

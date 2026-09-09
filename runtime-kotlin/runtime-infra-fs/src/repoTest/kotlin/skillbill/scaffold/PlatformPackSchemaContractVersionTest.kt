@@ -41,7 +41,7 @@ class PlatformPackSchemaContractVersionTest {
       contractVersionNode.asText(),
       "Schema contract_version.const must equal SHELL_CONTRACT_VERSION ($SHELL_CONTRACT_VERSION).",
     )
-    assertEquals("1.7", SHELL_CONTRACT_VERSION, "Platform pack shell contract version must be pinned at 1.7.")
+    assertEquals("1.8", SHELL_CONTRACT_VERSION, "Platform pack shell contract version must be pinned at 1.8.")
   }
 
   @Test

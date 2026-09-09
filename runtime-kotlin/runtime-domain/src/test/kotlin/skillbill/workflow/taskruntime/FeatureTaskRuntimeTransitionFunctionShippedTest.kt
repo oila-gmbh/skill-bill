@@ -153,6 +153,14 @@ class FeatureTaskRuntimeTransitionFunctionShippedTest {
   }
 
   @Test
+  fun `write_history and commit_push never originate a backward edge`() {
+    val def = FeatureTaskRuntimePhaseWorkflowDefinition
+    val fromPhases = shipped.backwardEdges.map { it.fromPhaseId }.toSet()
+    assertTrue(def.PHASE_WRITE_HISTORY !in fromPhases)
+    assertTrue(def.PHASE_COMMIT_PUSH !in fromPhases)
+  }
+
+  @Test
   fun `RECORD_REJECTED at audit advances forward when no regeneration edge targets implement`() {
     val def = FeatureTaskRuntimePhaseWorkflowDefinition
     val next = assertIs<FeatureTaskRuntimeNextPhase.Next>(

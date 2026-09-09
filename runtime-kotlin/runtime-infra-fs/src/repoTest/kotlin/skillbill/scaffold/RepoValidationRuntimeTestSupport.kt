@@ -54,7 +54,7 @@ internal fun seedPlatformReviewPack(repoRoot: Path, slug: String, body: String) 
     repoRoot.resolve("platform-packs/$slug/platform.yaml"),
     """
       |platform: $slug
-      |contract_version: "1.7"
+      |contract_version: "1.8"
       |display_name: $slug
       |routing_signals:
       |  strong:

@@ -1,6 +1,8 @@
 package skillbill.ports.review.model
 
 import skillbill.contracts.JsonSupport
+import skillbill.error.InvalidReviewContextSchemaError
+import skillbill.review.context.model.ReviewEvidenceLimits
 import skillbill.review.context.model.ReviewExpansionRecord
 
 internal object GovernedReviewEvidenceCodecWireParsing {
@@ -10,36 +12,41 @@ internal object GovernedReviewEvidenceCodecWireParsing {
     expansionById: (String) -> ReviewExpansionRecord?,
   ): ReviewEvidenceRequest {
     val map = asMap(raw)
+    if (map.keys.any { it !in setOf("path", "selector", "expansion_id", "reachability_reason") }) {
+      throw InvalidReviewContextSchemaError("review-evidence", "Unknown read selector field.")
+    }
     val expansionId = optionalString(map, "expansion_id")
     val authorized = expansionId?.let { id ->
-      requireNotNull(expansionById(id)) { "Unknown expansion id '$id' for this lane." }
+      expansionById(id) ?: throw InvalidReviewContextSchemaError(
+        "review-evidence",
+        "Unknown expansion id for this assignment.",
+      )
     }
     return ReviewEvidenceRequest(
       lane = lane,
+      selector = optionalString(map, "selector"),
       path = requiredString(map, "path"),
       reachabilityReason = optionalString(map, "reachability_reason") ?: authorized?.reachabilityReason,
       authorizedExpansion = authorized,
-      offset = optionalLong(map, "offset"),
-      limit = optionalLong(map, "limit"),
-      paginationToken = optionalString(map, "pagination_token"),
     )
   }
 
   fun requiredString(source: Map<String, Any?>, key: String): String {
-    val value = source[key]?.toString()
-    require(!value.isNullOrBlank()) { "Governed evidence operation requires '$key'." }
+    val value = source[key] as? String
+    if (value.isNullOrBlank()) {
+      throw InvalidReviewContextSchemaError(
+        "review-evidence",
+        "Operation requires string '$key'.",
+      )
+    }
+    ReviewEvidenceLimits.field(value)
     return value
   }
-  private fun asMap(raw: Any?): Map<String, Any?> = requireNotNull(JsonSupport.anyToStringAnyMap(requireNotNull(raw))) {
-    "Each governed evidence request must be an object."
-  }
+  private fun asMap(raw: Any?): Map<String, Any?> = raw?.let(JsonSupport::anyToStringAnyMap)
+    ?: throw InvalidReviewContextSchemaError("review-evidence", "Each read selector must be an object.")
 
-  private fun optionalString(source: Map<String, Any?>, key: String): String? =
-    source[key]?.toString()?.takeIf(String::isNotBlank)
-
-  private fun optionalLong(source: Map<String, Any?>, key: String): Long? = when (val value = source[key]) {
-    null -> null
-    is Number -> value.toLong()
-    else -> value.toString().toLongOrNull()
+  private fun optionalString(source: Map<String, Any?>, key: String): String? = source[key]?.let { value ->
+    (value as? String)?.takeIf(String::isNotBlank)?.also(ReviewEvidenceLimits::field)
+      ?: throw InvalidReviewContextSchemaError("review-evidence", "Optional selector must be a nonblank string.")
   }
 }

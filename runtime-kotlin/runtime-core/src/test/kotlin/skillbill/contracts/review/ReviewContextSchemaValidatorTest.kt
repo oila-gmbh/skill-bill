@@ -270,19 +270,21 @@ class ReviewContextSchemaValidatorTest {
     }
   }
 
-  @Test fun `blank expansion reachability reasons are rejected`() {
-    val envelope = assignment.toAssignmentEnvelope().asWireMap().toMutableMap()
-    envelope["expansions"] = listOf(
-      mapOf(
-        "expansion_id" to "exp-1",
-        "assignment_digest" to assignment.digest,
-        "requested_path" to "src/C.kt",
-        "reachability_reason" to "",
-        "authorized" to true,
-        "sequence" to 0,
-      ),
-    )
-    assertFailsWith<InvalidReviewContextSchemaError> { ReviewContextSchemaValidator.validate(envelope, "assignment") }
+  @Test fun `blank and oversized expansion reachability reasons are rejected`() {
+    for (reason in listOf("", "x".repeat(1025))) {
+      val envelope = assignment.toAssignmentEnvelope().asWireMap().toMutableMap()
+      envelope["expansions"] = listOf(
+        mapOf(
+          "expansion_id" to "exp-1",
+          "assignment_digest" to assignment.digest,
+          "requested_path" to "src/C.kt",
+          "reachability_reason" to reason,
+          "authorized" to true,
+          "sequence" to 0,
+        ),
+      )
+      assertFailsWith<InvalidReviewContextSchemaError> { ReviewContextSchemaValidator.validate(envelope, "assignment") }
+    }
   }
 
   @Test fun `over long rule excerpts are rejected by the schema`() {
@@ -405,13 +407,13 @@ class ReviewContextSchemaValidatorTest {
     }
   }
 
-  @Test fun `projected envelopes carry contract version 2_2`() {
+  @Test fun `projected envelopes carry contract version 2_3`() {
     val launch =
       GovernedReviewLaunch(assignment, packet, "contract", "rubric", "broker", ReviewContextBudgetPolicy.DEFAULT)
     assertEquals(REVIEW_CONTEXT_CONTRACT_VERSION, packet.toParentPacketEnvelope().asWireMap()["contract_version"])
     assertEquals(REVIEW_CONTEXT_CONTRACT_VERSION, assignment.toAssignmentEnvelope().asWireMap()["contract_version"])
     assertEquals(REVIEW_CONTEXT_CONTRACT_VERSION, launch.toLaunchEnvelope().asWireMap()["contract_version"])
-    assertEquals("2.2", REVIEW_CONTEXT_CONTRACT_VERSION)
+    assertEquals("2.3", REVIEW_CONTEXT_CONTRACT_VERSION)
   }
 
   @Test fun `a 1_0 envelope fails with a typed version mismatch naming both versions`() {
@@ -421,7 +423,7 @@ class ReviewContextSchemaValidatorTest {
       ReviewContextSchemaValidator.validateParentPacket(envelope, "packet")
     }
     assertTrue("1.0" in failure.reason)
-    assertTrue("2.2" in failure.reason)
+    assertTrue("2.3" in failure.reason)
   }
 
   @Test fun `incomplete launch bundle without budget dimension is rejected`() {

@@ -102,15 +102,14 @@ private fun FeatureTaskRuntimeRunner.cappedReviewIsStaleForGoal(
   goalBranch: String,
 ): Boolean {
   val resolvedBranch = recorder.loadResolvedBranch(request.workflowId, request.dbPathOverride)
+  val phaseRecords = recorder.loadPhaseRecords(request.workflowId, request.dbPathOverride)
   val boundaryHistory = resolvedBranch?.boundaryHistoryProjection()
     ?.takeUnless { it.paths.isEmpty() && it.roots.isEmpty() }
     ?: declaredBoundaryHistoryProjection(
-      recorder.loadPhaseRecords(request.workflowId, request.dbPathOverride)
-        ?.get(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_WRITE_HISTORY),
+      phaseRecords?.get(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_WRITE_HISTORY),
       resolvedBranch?.boundaryHistoryRoots.orEmpty(),
     )
-  val declaredHistory = boundaryHistory.paths
-  val declaredHistoryRoots = boundaryHistory.roots
+  val owned = finalisationOwnedPaths(resolvedBranch, phaseRecords)
   val state = goalContinuationRecorder.reviewState(request.workflowId, request.dbPathOverride)
     ?.takeIf { it.reviewCapReached || it.pausedForOperatorDecision }
     ?: return false
@@ -119,11 +118,7 @@ private fun FeatureTaskRuntimeRunner.cappedReviewIsStaleForGoal(
     is DirtyPaths ->
       dirty.paths
         .map(::normalizeRepoPath)
-        .any {
-          !isGovernedSpecPath(it) &&
-            !isRuntimePrivatePath(it) &&
-            !isBoundaryHistoryPath(it, declaredHistory, declaredHistoryRoots)
-        }
+        .any { !isExemptFinalisationDirtyPath(it, owned, boundaryHistory) }
   }
   if (dirtyImplementation) return true
   val judgedDigest = state.reviewedDeltaDigest ?: return true

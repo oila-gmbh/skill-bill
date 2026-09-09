@@ -2,6 +2,7 @@ package skillbill.application.featuretask
 
 import skillbill.application.featuretask.model.FeatureTaskRuntimeSubtaskCommitIdentity
 import skillbill.error.FeatureTaskRuntimeSubtaskCommitReconciliationError
+import skillbill.ports.workflow.gitops.headCommitMessage
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeCheckpointIdentity
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeResolvedBranch
@@ -14,6 +15,7 @@ private data class ReviewIdentityContext(
   val ledger: FeatureTaskRuntimeCheckpointIdentity?,
   val identity: FeatureTaskRuntimeSubtaskCommitIdentity,
   val dirtyPaths: List<String>,
+  val ownedPaths: List<String>,
   val boundaryHistory: DeclaredBoundaryHistoryProjection,
 )
 
@@ -35,14 +37,14 @@ private fun evaluateReviewIdentityForSubtask(runLoop: FeatureTaskRuntimeRunLoop)
   val loaded = loadReviewIdentityContext(runLoop)
   loaded.failure?.let { return reviewIdentityReconciliationFailure(runLoop, it, loaded.cause) }
   val context = loaded.context ?: return "goal-subtask review cannot prove its reviewed revision"
-  val unreviewed = context.dirtyPaths.filterNot {
-    isBoundaryHistoryPath(it, context.boundaryHistory.paths, context.boundaryHistory.roots)
+  val foreign = context.dirtyPaths.filterNot {
+    isExemptFinalisationDirtyPath(it, context.ownedPaths, context.boundaryHistory)
   }
-  return if (unreviewed.isEmpty()) {
+  return if (foreign.isEmpty()) {
     evaluateReviewIdentity(runLoop, context)
   } else {
-    "review approval is stale: changed paths ${unreviewed.joinToString(", ")} are outside the " +
-      "declared boundary-history exemption; changed code must re-enter audit and review"
+    "needs_human: the durable subtask ownership inventory does not prove ownership of changed paths " +
+      foreign.joinToString(", ")
   }
 }
 
@@ -102,6 +104,7 @@ private fun loadReviewIdentityContextData(runLoop: FeatureTaskRuntimeRunLoop): R
       .map(::normalizeRepoPath)
       .filterNot(::isGovernedSpecPath)
       .filterNot(::isRuntimePrivatePath),
+    finalisationOwnedPaths(resolved, phaseRecords),
     boundaryHistory,
   )
 }
@@ -110,6 +113,7 @@ private fun loadReviewIdentityBranch(runLoop: FeatureTaskRuntimeRunLoop): Featur
   runLoop.recorder.loadResolvedBranch(runLoop.request.workflowId, runLoop.request.dbPathOverride)
 
 private fun evaluateReviewIdentity(runLoop: FeatureTaskRuntimeRunLoop, context: ReviewIdentityContext): String? {
+  if (ownedHeadMatchesTrailer(runLoop, context)) return null
   var readFailure: String? = null
   val authoritative = runLoop.phaseGates.gitOperations.reviewIdentityStillAuthoritative(
     ReviewIdentityAuthorityRequest(
@@ -125,8 +129,12 @@ private fun evaluateReviewIdentity(runLoop: FeatureTaskRuntimeRunLoop, context: 
   )
   if (authoritative) return null
   return readFailure?.let { reviewIdentityReconciliationFailure(runLoop, it, null) }
-    ?: "review approval is stale: reviewed target/tree '${context.target}/${context.reviewedTree}' differs from " +
-    "current '${context.currentHead}/${context.currentTree}'; changed code must re-enter audit and review"
+    ?: "needs_human: current HEAD '${context.currentHead}' is not the owned subtask commit"
+}
+
+private fun ownedHeadMatchesTrailer(runLoop: FeatureTaskRuntimeRunLoop, context: ReviewIdentityContext): Boolean {
+  val headMessage = runLoop.phaseGates.gitOperations.headCommitMessage(runLoop.request.repoRoot)
+  return headMessage.ok && context.identity.matches(headMessage.value.orEmpty())
 }
 
 private fun reviewIdentityReconciliationFailure(

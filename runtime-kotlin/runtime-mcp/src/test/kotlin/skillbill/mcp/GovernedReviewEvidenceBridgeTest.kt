@@ -23,8 +23,8 @@ class GovernedReviewEvidenceBridgeTest {
   }
 
   @Test
-  fun `a call to any other tool is refused instead of forwarded`() {
-    var forwarded = false
+  fun `a call to any other tool forwards only refusal accounting`() {
+    var forwarded: String? = null
     val reply = requireNotNull(
       GovernedReviewEvidenceBridge.handleLine(
         JsonSupport.mapToJsonString(
@@ -36,12 +36,14 @@ class GovernedReviewEvidenceBridgeTest {
           ),
         ),
       ) {
-        forwarded = true
+        forwarded = it
         "{}"
       },
     )
 
-    assertTrue(!forwarded)
+    val accounting = requireNotNull(JsonSupport.parseObjectOrNull(requireNotNull(forwarded)))
+    assertEquals("evidence/refused", accounting["method"]?.let(JsonSupport::jsonElementToValue))
+    assertTrue(!accounting.containsKey("params"))
     assertTrue(reply.contains("\"error\""))
   }
 }

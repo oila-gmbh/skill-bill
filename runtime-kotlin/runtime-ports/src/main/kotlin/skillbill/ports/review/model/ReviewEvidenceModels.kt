@@ -2,6 +2,7 @@ package skillbill.ports.review.model
 
 import skillbill.review.context.model.ForbiddenReviewOperation
 import skillbill.review.context.model.ReviewBudgetOutcome
+import skillbill.review.context.model.ReviewEvidenceLimits
 import skillbill.review.context.model.ReviewExpansionRecord
 import skillbill.review.context.model.ReviewLaneReviewDisposition
 import skillbill.review.context.model.ReviewLaneSegmentAccounting
@@ -28,13 +29,22 @@ data class ReviewEvidenceRequest(
   val offset: Long? = null,
   val limit: Long? = null,
   val paginationToken: String? = null,
-)
+  val selector: String? = null,
+) {
+  init {
+    listOfNotNull(lane, path, reachabilityReason, selector, paginationToken).forEach(ReviewEvidenceLimits::field)
+  }
+}
 
 data class ReviewExpansionAuthorizationRequest(
   val lane: String,
   val path: String,
   val reachabilityReason: String,
-)
+) {
+  init {
+    listOf(lane, path, reachabilityReason).forEach(ReviewEvidenceLimits::field)
+  }
+}
 
 data class ReviewEvidenceBatchRequest(val lane: String, val requests: List<ReviewEvidenceRequest>) {
   init {
@@ -56,6 +66,7 @@ data class ReviewEvidenceResult(
   val expansionCount: Int,
   val budgetExceeded: ReviewBudgetOutcome? = null,
   val forbidden: ForbiddenReviewOperation? = null,
+  val deliveredSelectors: List<String> = emptyList(),
 )
 
 data class ReviewEvidenceBatchResult(
@@ -63,6 +74,7 @@ data class ReviewEvidenceBatchResult(
   val cumulativeBytes: Long,
   val expansions: List<ReviewExpansionRecord>,
   val terminalOutcome: ReviewBudgetOutcome? = null,
+  val deliveryReceipt: String? = null,
 )
 
 data class ReviewToolCall(
@@ -105,11 +117,11 @@ data class ReviewLaneAccounting(
   val authorizedReadCount: Int = 0,
   val refusedOperationCount: Int = 0,
   val refusals: List<ReviewRefusedOperationRecord> = emptyList(),
-  val evidenceBytes: Long,
-  val expansions: List<ReviewExpansionRecord>,
-  val toolCalls: Int,
-  val modelTurns: Int,
-  val resultBytes: Long,
+  val evidenceBytes: Long = 0,
+  val expansions: List<ReviewExpansionRecord> = emptyList(),
+  val toolCalls: Int = 0,
+  val modelTurns: Int = 0,
+  val resultBytes: Long = 0,
   val terminalStatus: String = "completed",
   val terminalOutcome: ReviewBudgetOutcome? = null,
   val reviewDisposition: ReviewLaneReviewDisposition? = null,
@@ -118,6 +130,10 @@ data class ReviewLaneAccounting(
   val unreviewedSegmentIds: List<String> = emptyList(),
   val budgetDimension: String? = null,
   val unreviewedUnits: List<String> = emptyList(),
+  val requiredEvidenceUnits: Int = 0,
+  val deliveredEvidenceUnits: Int = 0,
+  val remainingEvidence: List<ReviewEvidenceOwner> = emptyList(),
+  val evidenceRequests: Int = 0,
 ) {
   init {
     require(lane.isNotBlank() && reviewId.isNotBlank() && packetDigest.isNotBlank() && assignmentDigest.isNotBlank())

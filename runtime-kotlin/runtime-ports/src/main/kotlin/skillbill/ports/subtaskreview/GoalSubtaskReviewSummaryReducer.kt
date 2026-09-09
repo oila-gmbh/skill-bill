@@ -98,9 +98,11 @@ object GoalSubtaskReviewSummaryReducer {
     val advanceBlockingCount = findings.count(GoalSubtaskReviewCompactFinding::blocksAdvance)
     val hasOnlyNonBlockingFindings = findings.isNotEmpty() && advanceBlockingCount == 0
     val verdict = reviewPassVerdict(output, findings, advanceBlockingCount, hasOnlyNonBlockingFindings)
+    val coverageIncomplete = GoalSubtaskReviewSummaryReducer.evidenceCoverageComplete(output) == false
     return GoalSubtaskReviewOutputOutcome(
       verdict = verdict,
       unresolvedFindingCount = when {
+        coverageIncomplete -> maxOf(advanceBlockingCount, 1)
         advanceBlockingCount > 0 -> advanceBlockingCount
         hasOnlyNonBlockingFindings ||
           verdict == FeatureTaskRuntimeVerdict.APPROVED ||
@@ -116,6 +118,10 @@ object GoalSubtaskReviewSummaryReducer {
       ?.get("commit_focused_accounting")
       ?.let(JsonSupport::anyToStringAnyMap)
       ?.let { GoalSubtaskCommitFocusedAccounting.fromArtifactMap(it, "produced_outputs.commit_focused_accounting") }
+
+  fun evidenceCoverageComplete(output: Map<String, Any?>): Boolean? = output["produced_outputs"]
+    ?.let(JsonSupport::anyToStringAnyMap)
+    ?.get(FeatureTaskRuntimeVerificationSignalKeys.EVIDENCE_COVERAGE_COMPLETE) as? Boolean
 
   internal fun rejectedVerificationFindings(
     verifyOutput: Map<String, Any?>,
@@ -185,6 +191,9 @@ fun reviewPassVerdict(
   advanceBlockingCount: Int,
   hasOnlyNonBlockingFindings: Boolean,
 ): FeatureTaskRuntimeVerdict {
+  if (GoalSubtaskReviewSummaryReducer.evidenceCoverageComplete(output) == false) {
+    return FeatureTaskRuntimeVerdict.CHANGES_REQUESTED
+  }
   val declaredVerdict = (output["verdict"] as? String)?.trim()
   val changesRequested = declaredVerdict in setOf("needs_fix", FeatureTaskRuntimeVerdict.CHANGES_REQUESTED.wireValue)
   val reportedFindingsWereFiltered = findings.isEmpty() &&

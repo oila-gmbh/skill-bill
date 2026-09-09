@@ -11,6 +11,7 @@ import skillbill.infrastructure.fs.CanonicalRepositoryRoot
 import skillbill.infrastructure.fs.ClasspathReviewSpecialistContractProvider
 import skillbill.infrastructure.fs.DecompositionManifestValidatorAdapter
 import skillbill.infrastructure.fs.FileSystemDecompositionManifestFileStore
+import skillbill.infrastructure.fs.FileSystemDiffResolver
 import skillbill.infrastructure.fs.FileSystemReviewEvidenceBrokerFactory
 import skillbill.install.model.InstallAgent
 import skillbill.ports.agentrun.model.AgentRunLaunchFacts
@@ -35,7 +36,9 @@ import skillbill.ports.review.ReviewRepository
 import skillbill.ports.review.ReviewRubricResolver
 import skillbill.ports.review.model.ResolvedReviewRubric
 import skillbill.ports.review.model.ReviewAccountingRecord
+import skillbill.ports.review.model.ReviewCheckpointFileIdentity
 import skillbill.ports.review.model.ReviewEvidenceBatchRequest
+import skillbill.ports.review.model.ReviewEvidenceDiscoveryRequest
 import skillbill.ports.review.model.ReviewEvidenceRequest
 import skillbill.ports.review.model.ReviewIntegrationPassRecord
 import skillbill.ports.review.model.ReviewLaneAccounting
@@ -44,8 +47,6 @@ import skillbill.ports.review.stubGovernedReviewEvidenceEndpointBinder
 import skillbill.ports.scaffold.ScaffoldCatalogGateway
 import skillbill.ports.scaffold.install.InstalledPlatformPackCatalogPort
 import skillbill.ports.scaffold.model.PilotedPlatformPackProjection
-import skillbill.ports.taskruntime.FeatureTaskRuntimeSharedEvidenceLocatorReadPort
-import skillbill.ports.taskruntime.FeatureTaskRuntimeSharedEvidenceResolverPort
 import skillbill.ports.telemetry.LifecycleTelemetryRepository
 import skillbill.review.ParallelReviewFindingParser
 import skillbill.review.context.ReviewContextEnvelopeValidator
@@ -90,11 +91,6 @@ import java.time.Clock
 import java.util.Collections
 import kotlin.time.Duration
 
-/**
- * A recording harness around the production [ParallelCodeReviewRunner]. It records what the
- * production composition, inline lane launch, and accounting seams actually did; it never restates
- * a routing, budget, or accounting policy of its own.
- */
 class ReviewRecorder {
   val parentLaunches: MutableList<GoalRunnerSubtaskLaunchRequest> =
     Collections.synchronizedList(mutableListOf())
@@ -103,11 +99,6 @@ class ReviewRecorder {
   val savedAccounting: MutableList<ReviewAccountingRecord> =
     Collections.synchronizedList(mutableListOf())
 
-  /**
-   * Durable review state the harness carries across runs, so a second run against the same recorder
-   * is a real resume: lane rows and the integration boundary are stored and read back separately,
-   * exactly as the two distinct durable boundaries they are.
-   */
   val durableLanes: MutableList<ReviewRunLane> = Collections.synchronizedList(mutableListOf())
 
   @Volatile var durableIntegrationPass: ReviewIntegrationPassRecord? = null
@@ -127,7 +118,6 @@ class ReviewRecorder {
   val stageDegradations: MutableList<ReviewStageDegradationMeasurement> =
     Collections.synchronizedList(mutableListOf())
 
-  /** The prompts the inline parent lanes were actually launched with. */
   val parentPrompts: List<String>
     get() = parentLaunches.mapNotNull { it.skillRunRequest.promptOverride }
 }
@@ -143,7 +133,6 @@ data class RecordedWorkerResponse(
   val liveness: AgentRunLivenessSnapshot? = null,
 )
 
-/** One commit of a harness commit-range fixture, in sequence order. */
 data class RecordedCommit(val sha: String, val subject: String, val diff: String)
 
 data class ReviewHarnessConfig(
@@ -155,15 +144,11 @@ data class ReviewHarnessConfig(
   val evidenceBrokerFactory: ReviewEvidenceBrokerFactory =
     FileSystemReviewEvidenceBrokerFactory(),
   val parentLaunch: ((GoalRunnerSubtaskLaunchRequest) -> AgentRunLaunchOutcome)? = null,
-  /** Set false to model a worker that answered without reading its assigned evidence. */
   val simulateEvidenceReads: Boolean = true,
   val evidenceEndpointBinder: GovernedReviewEvidenceEndpointBinder =
     stubGovernedReviewEvidenceEndpointBinder(Files.createTempDirectory("review-endpoint")),
-  /**
-   * Commit range the fixture enumerates. Empty keeps the default single synthetic unit; the last
-   * entry's sha must be the request's head revision, exactly as a real range resolves.
-   */
   val commits: List<RecordedCommit> = emptyList(),
+  val diffResolver: DiffResolverPort? = null,
 )
 
 fun reviewHarness(config: ReviewHarnessConfig, recorder: ReviewRecorder): ParallelCodeReviewRunner {
@@ -171,7 +156,7 @@ fun reviewHarness(config: ReviewHarnessConfig, recorder: ReviewRecorder): Parall
   val launcher = GoalRunnerSubtaskLauncher { request ->
     recorder.parentLaunches += request
     if (config.simulateEvidenceReads) {
-      simulateGovernedEvidenceReads(request.skillRunRequest, diffPaths(config.diff))
+      simulateGovernedEvidenceReads(request.skillRunRequest)
     }
     config.parentLaunch?.invoke(request)?.let { return@GoalRunnerSubtaskLauncher it }
     val response = config.response(request)
@@ -192,15 +177,25 @@ fun reviewHarness(config: ReviewHarnessConfig, recorder: ReviewRecorder): Parall
       mcpStartupObserved = response.mcpStartupObserved,
     ) as AgentRunLaunchOutcome
   }
-  val sharedEvidenceLocatorReader = FeatureTaskRuntimeSharedEvidenceLocatorReadPort.NONE
+  val evidenceStore = RecordingReviewEvidenceStore()
+  val sharedEvidenceLocatorReader = evidenceStore.reader
   val planningPort = DefaultParallelCodeReviewRunnerPlanningPort(
-    diffResolver = object : DiffResolverPort {
+    diffResolver = config.diffResolver ?: object : DiffResolverPort {
       override fun readDiff(path: Path, maxBytes: Long): String? = null
+
+      override fun reviewWorktreeFileIdentities(
+        root: Path,
+        paths: List<String>,
+      ): Map<String, ReviewCheckpointFileIdentity> {
+        require(paths.isEmpty())
+        return emptyMap()
+      }
 
       override fun runProcess(args: List<String>, workDir: Path): String? {
         recorder.diffCommands += args
         return when (args.getOrNull(1)) {
           "rev-parse" -> args.last().removeSuffix("^{commit}")
+          "ls-files" -> ""
           "rev-list" -> config.commits.joinToString("\n") { it.sha }
           "show" -> config.commits.single { it.sha == args.last() }.let { commit ->
             "${parentOf(config.commits, commit)}\n${commit.subject}"
@@ -222,7 +217,7 @@ fun reviewHarness(config: ReviewHarnessConfig, recorder: ReviewRecorder): Parall
     reviewSpecialistContractProvider = ClasspathReviewSpecialistContractProvider(),
     database = database,
     installedPackCatalog = InstalledPlatformPackCatalogPort { config.manifests },
-    sharedEvidenceResolver = FeatureTaskRuntimeSharedEvidenceResolverPort.NONE,
+    sharedEvidenceResolver = evidenceStore.resolver,
     sharedEvidenceLocatorReader = sharedEvidenceLocatorReader,
     specIntentProjectionResolver = SpecIntentProjectionResolver(
       FileSystemDecompositionManifestFileStore(),
@@ -255,16 +250,13 @@ fun reviewHarness(config: ReviewHarnessConfig, recorder: ReviewRecorder): Parall
   )
 }
 
-/** The base revision every harness request declares; the root commit of a fixture range parents onto it. */
 const val HARNESS_BASE_REVISION: String = "base-revision"
 
-/** The head revision every harness request declares; a fixture range must end on it. */
 const val HARNESS_HEAD_REVISION: String = "head-revision"
 
 private fun parentOf(commits: List<RecordedCommit>, commit: RecordedCommit): String =
   commits.getOrNull(commits.indexOf(commit) - 1)?.sha ?: HARNESS_BASE_REVISION
 
-/** Runs both lanes to completion in a fixed order so recorded evidence stays deterministic. */
 private fun recordingRubricResolver(recorder: ReviewRecorder, rubricBody: (String) -> String) =
   object : ReviewRubricResolver {
     override fun resolve(manifest: PlatformManifest?): ResolvedReviewRubric {
@@ -467,10 +459,6 @@ fun reviewPack(
   fallbackCapabilities = if (fallback) setOf("code-review") else emptySet(),
 )
 
-/**
- * Pack whose specialist path signals drive sparse commit/lane routing in harness fixtures: a required
- * baseline plus optional areas keyed by the given path prefixes.
- */
 fun sparseReviewPack(
   slug: String,
   requiredArea: String,
@@ -507,30 +495,31 @@ fun diffForChanges(vararg changes: Pair<String, String>): String = changes.joinT
   """.trimIndent()
 }
 
-fun simulateGovernedEvidenceReads(request: SkillRunRequest, paths: List<String> = emptyList()) {
+fun simulateGovernedEvidenceReads(request: SkillRunRequest) {
   val protocol = request.nativeReviewOperations ?: return
   val lane = request.reviewEvidenceBroker?.accounting()?.lane ?: return
-  if (paths.isEmpty()) return
-  runCatching {
-    protocol.read(
-      ReviewEvidenceBatchRequest(
-        lane = lane,
-        requests = paths.map { ReviewEvidenceRequest(lane = lane, path = it) },
-      ),
-    )
-  }
+  var cursor: String? = null
+  do {
+    val page = protocol.discover(ReviewEvidenceDiscoveryRequest(cursor))
+    page.entries.forEach { entry ->
+      val expansion = entry.expansionId?.let(protocol::expansionById)
+      val response = protocol.read(
+        ReviewEvidenceBatchRequest.of(
+          ReviewEvidenceRequest(
+            lane = lane,
+            path = entry.path,
+            selector = entry.selector,
+            authorizedExpansion = expansion,
+            reachabilityReason = expansion?.reachabilityReason,
+          ),
+        ),
+      )
+      response.deliveryReceipt?.let(protocol::confirmDelivery)
+    }
+    cursor = page.nextCursor
+  } while (cursor != null)
 }
 
-private fun diffPaths(diff: String): List<String> = diff.lineSequence()
-  .mapNotNull { line -> line.removePrefix("diff --git a/").substringAfter(" b/", "") }
-  .filter(String::isNotBlank)
-  .distinct()
-  .toList()
-
-/**
- * The harness broker with one lane-evidence denial injected where the runner reads it. A fixture
- * packet carries no materializable hunk bodies, so a byte-driven refusal cannot be provoked here.
- */
 fun brokerDenyingUnit(deniedPath: String): ReviewEvidenceBrokerFactory = ReviewEvidenceBrokerFactory { binding ->
   val delegate = FileSystemReviewEvidenceBrokerFactory().brokerFor(binding)
   val hunkId = binding.projectedHunks.first { it.path == deniedPath }.hunkId
@@ -542,4 +531,23 @@ fun brokerDenyingUnit(deniedPath: String): ReviewEvidenceBrokerFactory = ReviewE
       unreviewedUnits = listOf(deniedUnit),
     )
   }
+}
+
+fun reviewFileSystemDiffResolver(): DiffResolverPort = FileSystemDiffResolver()
+
+fun reviewFileSystemEvidenceBrokerFactory(): ReviewEvidenceBrokerFactory = FileSystemReviewEvidenceBrokerFactory()
+
+fun committedReviewRequest(request: ParallelCodeReviewRequest, files: Map<String, String>): ParallelCodeReviewRequest {
+  files.forEach { (path, body) ->
+    val file = request.repoRoot.resolve(path)
+    Files.createDirectories(file.parent)
+    Files.writeString(file, body)
+  }
+  val resolver = reviewFileSystemDiffResolver()
+  fun git(vararg args: String) = requireNotNull(resolver.runProcess(listOf("git") + args, request.repoRoot))
+  git("init", "--quiet")
+  git("add", ".")
+  git("-c", "user.name=Test", "-c", "user.email=test@example.invalid", "commit", "--quiet", "-m", "review evidence")
+  val head = git("rev-parse", "HEAD").trim()
+  return request.copy(baseRevision = head, headRevision = head)
 }

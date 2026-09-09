@@ -56,7 +56,7 @@ internal val validationGateTestDeclaration: ValidationGateDeclaration = Validati
 
 internal fun outOfContractResolver(): ValidationGateResolver = ValidationGateResolver {
   throw ContractVersionMismatchError(
-    "Platform pack 'fallback': declares contract_version '0.1' but the shell expects '1.7'.",
+    "Platform pack 'fallback': declares contract_version '0.1' but the shell expects '1.8'.",
   )
 }
 
@@ -188,7 +188,7 @@ internal fun completedRepair(): ValidationGateAgentRepairResult {
 internal fun kotlinPackWithoutGate(): PlatformManifest = PlatformManifest(
   slug = "kotlin",
   packRoot = validationGateTestRepoRoot.resolve("platform-packs/kotlin"),
-  contractVersion = "1.7",
+  contractVersion = "1.8",
   routingSignals = RoutingSignals(
     strong = listOf("runtime-kotlin"),
     tieBreakers = emptyList(),
@@ -204,7 +204,7 @@ internal fun kotlinPackWithoutGate(): PlatformManifest = PlatformManifest(
 internal fun reviewFallbackPackWithoutGate(): PlatformManifest = PlatformManifest(
   slug = "generic",
   packRoot = validationGateTestRepoRoot.resolve("platform-packs/generic"),
-  contractVersion = "1.7",
+  contractVersion = "1.8",
   routingSignals = RoutingSignals(
     strong = emptyList(),
     tieBreakers = emptyList(),

@@ -142,21 +142,6 @@ class FeatureTaskRuntimeRunState(
     fixLoopBudgetBaseByPhase[phaseId] = maxOf(nextIteration(phaseId) - 1, 0)
   }
 
-  fun reopenForChangedRevision() {
-    resetInvalidatedReviewGeneration()
-    transitions.forwardPhaseIds.dropWhile {
-      it != FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT
-    }.forEach { phaseId ->
-      reopenForReentry(phaseId)
-      outputs.removeAll { it.phaseId == phaseId }
-      priorRecords.remove(phaseId)
-      blockedRecords.remove(phaseId)
-    }
-    inFlightReentries.remove(FeatureTaskRuntimePhaseWorkflowDefinition.REVIEW_FIX_LOOP_ID)
-    edgeIterationByLoop.remove(FeatureTaskRuntimePhaseWorkflowDefinition.REVIEW_FIX_LOOP_ID)
-    liveClaimedLoops.remove(FeatureTaskRuntimePhaseWorkflowDefinition.REVIEW_FIX_LOOP_ID)
-  }
-
   fun invalidateProducerOutput(phaseId: String) {
     completed.remove(phaseId)
     outputs.removeAll { it.phaseId == phaseId }

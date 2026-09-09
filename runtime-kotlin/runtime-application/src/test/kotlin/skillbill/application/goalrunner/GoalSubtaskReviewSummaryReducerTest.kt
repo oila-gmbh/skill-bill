@@ -285,6 +285,22 @@ class GoalSubtaskReviewSummaryReducerTest {
   }
 
   @Test
+  fun `incomplete evidence coverage requests changes despite minor-only findings`() {
+    val output = mapOf(
+      "verdict" to FeatureTaskRuntimeVerdict.APPROVED.wireValue,
+      "produced_outputs" to mapOf(
+        FeatureTaskRuntimeVerificationSignalKeys.EVIDENCE_COVERAGE_COMPLETE to false,
+        "findings" to listOf(
+          mapOf("severity" to "minor", "message" to "Prefer clearer name"),
+        ),
+      ),
+    )
+    val outcome = GoalSubtaskReviewSummaryReducer.outcomeFor(output)
+    assertEquals(FeatureTaskRuntimeVerdict.CHANGES_REQUESTED, outcome.verdict)
+    assertEquals(1, outcome.unresolvedFindingCount)
+  }
+
+  @Test
   fun `rejected verification findings land in the ledger from review identity with optional reason`() {
     val reviewOutput = mapOf(
       "produced_outputs" to mapOf(

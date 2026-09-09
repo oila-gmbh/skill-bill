@@ -85,6 +85,7 @@ internal fun assemblePlatformManifest(
       ),
     ),
     featureAddonUsage = parseFeatureAddonUsage(manifest, slug, packRoot, pointers),
+    requiredRubricCompanions = parseRequiredRubricCompanions(manifest, packRoot, declaredFiles.areas),
     customFields = validatedCustomFields(slug, manifestPath, typedManifest),
   )
 }

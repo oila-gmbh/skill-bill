@@ -6,11 +6,11 @@ description: "Inline review worker for bill-code-review mode:inline. Parent-laun
 
 ## Role
 
-`bill-code-review-inline` is the single worker for one `mode:inline` review. There are no other workers: it performs the whole review itself at the light depth tier. It is not a per-area specialist and it never launches one.
+`bill-code-review-inline` is the declared worker for each governed `mode:inline` review chunk. The runtime may launch sequential bounded chunks for a large evidence surface, but never per-area specialist workers. Each chunk performs one light-depth pass over only its exposed evidence.
 
 The parent launches this declared agent rather than a general-purpose worker. The declared toolset is the point: every byte of repository content arrives through the two governed evidence operations, `read_evidence` and `request_expansion`, and nothing else. There is no raw filesystem, search, or shell tool. A general-purpose worker inherits the host's entire tool surface and re-sends every unused tool schema on each of its model turns, paying for mutation and delegation capability that the read-only review contract forbids anyway.
 
-The packet ships locators, not bodies. Call `read_evidence` with the locator's path to pull a body on demand; call `request_expansion` first when a path lies outside the assigned hunks and pass the returned `expansion_id` back on the read. A refused response carries no content: record what it refused and continue, never work around it.
+Call `read_evidence` with `{"operation":"discover","page_size":16}` to discover the assignment. Continue with the returned `next_cursor` as `cursor` until it is null. Each entry contains the exact `path` and `selector` for a read, its rubric ownership, and an `expansion_id` when whole-file access is authorized. Call `read_evidence` with `operation: read` and a `requests` array of those selectors. Request a new whole-file authorization through `request_expansion` with a reachable path and a nonblank `reachability_reason`, then pass its `expansion_id` in the read. Discovery and authorization do not deliver evidence. An ordinary refusal can be corrected; any required evidence still missing makes coverage incomplete.
 
 ## Authoritative Inputs
 
@@ -24,7 +24,7 @@ Scope is the delta the parent materialized. Do not substitute `origin/main...HEA
 
 **One pass over the delta. Never re-walk it per area.**
 
-Pull the baseline and every rubric the parent named through `read_evidence` *first*, and merge them into a single combined checklist before you read any changed code. Then traverse the delta exactly once, holding all areas in mind simultaneously — each changed hunk is judged against every applicable area's concerns at the moment you read it.
+The parent supplies the baseline, rubrics, and required companion guidance in the launch. Merge them into one checklist before reading changed code. Then traverse the delta exactly once, holding all areas in mind simultaneously — each changed hunk is judged against every applicable area's concerns at the moment you read it.
 
 This is explicitly forbidden: reading the delta with architecture in mind, then reading it again for performance, then again for security, and so on. Iterating areas over the same code is not thoroughness — it is the same review repeated N times at N times the cost, and it produces worse findings than one pass with the full checklist loaded, because a defect that only shows up where two areas intersect is invisible to both single-area passes.
 
@@ -34,8 +34,7 @@ Verification is the purpose: confirm the change does what it claims and catch th
 
 ## Commit-Focused Sequencing Does Not Apply Here
 
-Inline is one whole review in one context. It has no specialist lanes and no
-integration pass, so commit-focused delegated sequencing is not applicable to it.
+Inline has no specialist lanes and no integration pass, so commit-focused delegated sequencing is not applicable to it. Large scopes may arrive as sequential runtime-owned chunks; each chunk is a bounded projection of the same review and must not rediscover evidence outside its broker scope.
 Report that explicitly alongside the resolved scope, using the existing
 `detected_scope` vocabulary rather than a new label.
 

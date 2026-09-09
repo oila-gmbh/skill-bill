@@ -34,6 +34,7 @@ fun PlatformManifest.toNativeAgentPlatformPack(): NativeAgentPlatformPack = Nati
   declaredQualityCheckFile = declaredQualityCheckFile,
   pointers = pointers.map(PointerSpec::toNativeAgentPointerSpec),
   addonUsage = addonUsage.map(GovernedAddonUsage::toNativeAgentGovernedAddonUsage),
+  requiredRubricCompanions = requiredRubricCompanions,
 )
 
 private fun PointerSpec.toNativeAgentPointerSpec(): NativeAgentPointerSpec = NativeAgentPointerSpec(

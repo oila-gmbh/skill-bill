@@ -11,7 +11,6 @@ import skillbill.application.review.RequestedReviewMode
 import skillbill.application.review.model.ParallelCodeReviewRequest
 import skillbill.application.review.model.ParallelCodeReviewResult
 import skillbill.application.review.model.ParallelReviewLaneStatus
-import skillbill.application.review.model.ReviewPrelaunchExpansion
 import skillbill.application.review.model.StackDetectionException
 import skillbill.application.review.model.UsageValidationException
 import skillbill.application.review.toBoundedPayload
@@ -116,7 +115,7 @@ open class CodeReviewDriverCommand(
       reviewRunId = reviewRunId?.takeIf(String::isNotBlank),
       baseRevision = resolvedBase,
       headRevision = resolvedHead,
-      prelaunchExpansions = expandFiles.map(::parseExpansion),
+      prelaunchExpansions = expandFiles.map(::parseReviewPrelaunchExpansion),
       baselineUntrackedPolicy = ParallelCodeReviewRequest.baselineUntrackedPolicy(
         baselineUntrackedIncludes,
         baselineUntrackedExcludes,
@@ -146,19 +145,6 @@ open class CodeReviewDriverCommand(
   private fun suppliedDiffPath(): Path? = diffFile?.let { value ->
     Path.of(value).toAbsolutePath().normalize()
   }
-
-  private fun parseExpansion(value: String): ReviewPrelaunchExpansion {
-    val laneSeparator = value.indexOf(':')
-    val reasonSeparator = value.indexOf('=', startIndex = laneSeparator + 1)
-    if (laneSeparator <= 0 || reasonSeparator <= laneSeparator + 1 || reasonSeparator == value.lastIndex) {
-      throw UsageError("--expand-file must use LANE:PATH=REACHABILITY_REASON with non-blank values.")
-    }
-    return ReviewPrelaunchExpansion(
-      lane = value.substring(0, laneSeparator),
-      path = value.substring(laneSeparator + 1, reasonSeparator),
-      reachabilityReason = value.substring(reasonSeparator + 1),
-    )
-  }
 }
 
 internal const val DEFAULT_CODE_REVIEW_SCOPE = "branch"
@@ -178,7 +164,7 @@ private fun parsedReviewScope(scope: String): ParallelReviewScope = when (scope)
   "unstaged" -> ParallelReviewScope.UNSTAGED
   DEFAULT_CODE_REVIEW_SCOPE -> ParallelReviewScope.BRANCH
   "pr" -> ParallelReviewScope.PR
-  else -> throw UsageError("Invalid scope: $scope") // open CLI scope token: reject unrecognized values
+  else -> throw UsageError("Invalid scope: $scope")
 }
 
 private fun runParallelReviewDriver(
