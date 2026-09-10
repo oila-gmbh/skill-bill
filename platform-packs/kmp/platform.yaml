@@ -1,5 +1,5 @@
 platform: kmp
-contract_version: "1.7"
+contract_version: "1.8"
 display_name: "Android & Kotlin Multiplatform"
 
 routing_signals:
@@ -331,3 +331,7 @@ pointers:
       target: orchestration/telemetry-contract/PLAYBOOK.md
     - name: android-r8-review.md
       target: platform-packs/kmp/addons/android-r8-review.md
+
+required_rubric_companions:
+  ui:
+    - compose-guidelines.md

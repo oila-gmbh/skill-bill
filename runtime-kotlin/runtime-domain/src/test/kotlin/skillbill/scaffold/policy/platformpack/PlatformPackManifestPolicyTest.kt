@@ -34,7 +34,7 @@ class PlatformPackManifestPolicyTest {
     val expected = (
       listOf(
         "platform: \"java\"",
-        "contract_version: \"1.7\"",
+        "contract_version: \"1.8\"",
         "display_name: \"Java\"",
         "",
         "routing_signals:",
@@ -103,7 +103,7 @@ class PlatformPackManifestPolicyTest {
   private fun expectedRenderingWithBaselineLayers(): String = (
     listOf(
       "platform: \"java\"",
-      "contract_version: \"1.7\"",
+      "contract_version: \"1.8\"",
       "display_name: \"Java\"",
       "",
       "routing_signals:",

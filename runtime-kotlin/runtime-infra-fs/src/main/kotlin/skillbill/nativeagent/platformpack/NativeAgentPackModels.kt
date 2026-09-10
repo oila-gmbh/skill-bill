@@ -42,6 +42,7 @@ data class NativeAgentPlatformPack(
   val declaredQualityCheckFile: Path?,
   val pointers: List<NativeAgentPointerSpec>,
   val addonUsage: List<NativeAgentGovernedAddonUsage>,
+  val requiredRubricCompanions: Map<String, List<String>> = emptyMap(),
 ) {
   val routedSkillName: String? = declaredFiles.baseline?.let { "bill-$slug-code-review" }
 }

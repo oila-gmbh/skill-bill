@@ -85,49 +85,6 @@ class FeatureTaskRuntimeRunLoopDriveSettlementGate {
     }
   }
 
-  fun reenterAfterChangedRevision(runLoop: FeatureTaskRuntimeRunLoop): String? {
-    val generation = runCatching {
-      runLoop.recorder.persistReviewGenerationInvalidation(
-        runLoop.request.workflowId,
-        runLoop.request.dbPathOverride,
-      )
-    }.getOrElse { error ->
-      val reconciliationError = FeatureTaskRuntimeSubtaskCommitReconciliationError(
-        workflowId = runLoop.request.workflowId,
-        issueKey = runLoop.request.issueKey,
-        subtaskId = runLoop.request.goalContinuation?.subtaskId?.toString() ?: "unknown",
-        reason = "changed revision re-entry could not be persisted (${error.message.orEmpty()})",
-        cause = error,
-      )
-      runLoop.diagnostics.warning(
-        "record_kind=refusal seam=FeatureTaskRuntimeRunLoopDriveSettlementGate.reenterAfterChangedRevision " +
-          "value_used='changed review revision' value_expected=durable audit and review re-entry " +
-          "cause=${reconciliationError.reason}",
-        reconciliationError,
-      )
-      return "needs_human: ${reconciliationError.message.orEmpty()} Repair the workflow store before resuming."
-    } ?: run {
-      val reconciliationError = FeatureTaskRuntimeSubtaskCommitReconciliationError(
-        workflowId = runLoop.request.workflowId,
-        issueKey = runLoop.request.issueKey,
-        subtaskId = runLoop.request.goalContinuation?.subtaskId?.toString() ?: "unknown",
-        reason = "changed revision re-entry could not be persisted because the workflow row was absent",
-      )
-      runLoop.diagnostics.warning(
-        "record_kind=refusal seam=FeatureTaskRuntimeRunLoopDriveSettlementGate.reenterAfterChangedRevision " +
-          "value_used='missing workflow row' value_expected=durable audit and review re-entry " +
-          "cause=${reconciliationError.reason}",
-        reconciliationError,
-      )
-      return "needs_human: ${reconciliationError.message.orEmpty()}"
-    }
-    runLoop.state.advanceReviewGeneration(generation)
-    runLoop.state.reopenForChangedRevision()
-    runLoop.session.pendingReentry = null
-    runLoop.session.activeReentry = null
-    return null
-  }
-
   fun loadMigratedAuditGapPause(runLoop: FeatureTaskRuntimeRunLoop): FeatureTaskRuntimeAuditGapPause? =
     runLoop.recorder.loadAuditGapPause(runLoop.request.workflowId, runLoop.request.dbPathOverride)?.let { pause ->
       if (pause.pauseKind != AUDIT_GAP_PAUSE_KIND_WARN_THRESHOLD) {
@@ -188,10 +145,7 @@ class FeatureTaskRuntimeRunLoopDriveSettlementGate {
     while (phaseId != null) {
       val settled = runLoop.advance(phaseId)
       val completedPhaseId = settled.completedPhaseId
-      phaseId = if (runLoop.session.reviewReentryPending) {
-        runLoop.session.reviewReentryPending = false
-        FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT
-      } else if (completedPhaseId != null) {
+      phaseId = if (completedPhaseId != null) {
         runLoop.collaborators.driveContinued2.nextPhaseAfter(
           runLoop,
           completedPhaseId,

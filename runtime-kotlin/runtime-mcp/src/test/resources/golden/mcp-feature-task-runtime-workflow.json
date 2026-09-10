@@ -242,7 +242,7 @@
     "skill_name": "bill-feature-task",
     "workflow_status_before_continue": "running",
     "started_at": "<STARTED_AT>",
-    "updated_at": "<UPDATED_AT>",
+    "updated_at": "<CONTINUE_UPDATED_AT>",
     "continue_status": "already_running",
     "resume_step_id": "implement",
     "resume_step_label": "Phase 3: Implement",

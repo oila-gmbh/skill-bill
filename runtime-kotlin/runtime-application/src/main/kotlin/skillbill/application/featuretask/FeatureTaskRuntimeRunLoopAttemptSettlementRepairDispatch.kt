@@ -74,7 +74,6 @@ class FeatureTaskRuntimeRunLoopAttemptSettlementRepairDispatch {
       attested,
     )
   ) {
-    CommitPushReaudit -> attested to AttemptResult.settled(PhaseOutcome.Reaudit)
     is CommitPushNotApplicable -> attested to null
     is CommitPushSettled -> finalisation.output to null
     is CommitPushBlocked -> attested to AttemptResult.settled(

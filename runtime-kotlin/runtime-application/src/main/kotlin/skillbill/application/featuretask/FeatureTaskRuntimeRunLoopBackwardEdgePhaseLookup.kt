@@ -40,10 +40,6 @@ fun FeatureTaskRuntimeRunLoopBackwardEdge.runPhaseFor(runLoop: FeatureTaskRuntim
       phaseTokenAccumulator = runLoop.phaseTokenAccumulator,
     ),
   )
-  if (outcome == PhaseOutcome.Reaudit) {
-    runLoop.session.reviewReentryPending = true
-    return null
-  }
   outcome.regenerationTargetPhaseId?.let {
     // The launch seam quarantined an upstream record and requested regeneration. Do not record this
     // consumer as completed; signal advance() to settle it with the RECORD_REJECTED verdict so the

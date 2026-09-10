@@ -1617,7 +1617,7 @@ internal fun failThenPassValidationGateRunner(gateCalls: AtomicInteger): Validat
 internal fun kotlinPackWithValidationGate(): PlatformManifest = PlatformManifest(
   slug = "kotlin",
   packRoot = Path.of("/tmp/repo/platform-packs/kotlin"),
-  contractVersion = "1.7",
+  contractVersion = "1.8",
   routingSignals = RoutingSignals(
     strong = listOf("src"),
     tieBreakers = emptyList(),

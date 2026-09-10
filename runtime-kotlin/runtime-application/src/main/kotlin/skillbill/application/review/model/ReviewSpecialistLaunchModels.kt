@@ -1,5 +1,6 @@
 package skillbill.application.review.model
 
+import skillbill.ports.review.model.ReviewEvidenceCoordinates
 import skillbill.ports.review.model.ReviewExpansionAuthorizationRequest
 import skillbill.review.context.model.ReviewAssignment
 import skillbill.review.context.model.ReviewContextBudgetPolicy
@@ -33,6 +34,7 @@ data class ReviewSpecialistLaunchRequest(
   val namedDependencies: Set<String> = emptySet(),
   val prelaunchExpansions: List<ReviewExpansionAuthorizationRequest> = emptyList(),
   val attempt: Int = 1,
+  val evidenceCoordinates: ReviewEvidenceCoordinates = ReviewEvidenceCoordinates.Committed(assignment.headRevision),
 ) {
   init {
     require(attempt >= 1) { "Review specialist launch attempt must be positive." }

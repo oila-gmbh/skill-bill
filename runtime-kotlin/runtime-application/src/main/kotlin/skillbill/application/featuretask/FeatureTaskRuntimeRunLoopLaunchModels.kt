@@ -216,7 +216,6 @@ internal sealed interface AttemptResult {
 }
 
 internal sealed interface PhaseOutcome {
-  data object Reaudit : PhaseOutcome
   data class Completed(val output: FeatureTaskRuntimePhaseOutput) : PhaseOutcome
   data class Blocked(val reason: String) : PhaseOutcome
 

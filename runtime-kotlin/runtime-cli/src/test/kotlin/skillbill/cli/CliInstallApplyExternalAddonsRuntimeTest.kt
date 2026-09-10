@@ -113,7 +113,7 @@ class CliInstallApplyExternalAddonsRuntimeTest {
       packRoot.resolve("platform.yaml"),
       """
       platform: ios
-      contract_version: "1.7"
+      contract_version: "1.8"
       display_name: "iOS"
       routing_signals:
         strong:

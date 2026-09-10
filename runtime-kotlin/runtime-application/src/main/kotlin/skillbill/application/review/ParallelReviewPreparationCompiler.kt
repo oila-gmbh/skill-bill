@@ -14,6 +14,7 @@ import skillbill.ports.review.ReviewLaneSelectionPort
 import skillbill.ports.review.ReviewLearningsPort
 import skillbill.ports.review.ReviewScopeResolverPort
 import skillbill.ports.review.ReviewStackRoutingPort
+import skillbill.ports.review.model.ReviewEvidenceCoordinates
 import skillbill.ports.review.model.ReviewExpansionAuthorizationRequest
 import skillbill.ports.review.model.ReviewFactPorts
 import skillbill.ports.review.model.ReviewLaneSelection
@@ -38,7 +39,6 @@ import skillbill.review.plan.model.ReviewRoutedLane
 import java.nio.file.Path
 import java.security.MessageDigest
 
-/** Compiles the already-resolved parallel-review facts into validated assignment-owned launches. */
 object ParallelReviewPreparationCompiler {
   internal fun compile(
     input: ParallelReviewPreparationInput,
@@ -89,11 +89,6 @@ object ParallelReviewPreparationCompiler {
     return launchRequests(input, preparation, routes, budget, specialistContract)
   }
 
-  /**
-   * Sparse selection: a lane survives only where routing focused at least one commit, and it then
-   * owns exactly what those commits changed under its previously resolved path ownership. Required
-   * baseline lanes focus every commit, so this can only ever narrow an optional lane.
-   */
   private fun narrowToFocusedCommits(
     input: ParallelReviewPreparationInput,
     candidates: List<SpecialistRoute>,
@@ -243,6 +238,7 @@ object ParallelReviewPreparationCompiler {
           route.workerKind == ReviewWorkerKind.PROVIDER_NATIVE
         },
         repoRoot = input.repoRoot,
+        evidenceCoordinates = input.evidenceCoordinates,
         prelaunchExpansions = input.prelaunchExpansions
           .filter {
             it.lane == PARALLEL_REVIEW_SELECTOR ||
@@ -326,6 +322,7 @@ internal data class ParallelReviewPreparationInput(
   val reviewRunId: String? = null,
   val baseRevision: String,
   val headRevision: String,
+  val evidenceCoordinates: ReviewEvidenceCoordinates = ReviewEvidenceCoordinates.Committed(headRevision),
   val prelaunchExpansions: List<ReviewPrelaunchExpansion> = emptyList(),
   val baselineUntrackedPolicy: ReviewBaselineUntrackedPolicy = ReviewBaselineUntrackedPolicy.EMPTY,
   val specIntentResolution: SpecIntentResolution =

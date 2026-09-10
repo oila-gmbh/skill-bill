@@ -123,7 +123,9 @@ private fun SubtaskCommitWriteContext.unownedOwnershipFailure(
     unpushed ->
       "checked-out HEAD '$headSha' is an unowned unpushed commit and has no matching " +
         "'${identity.trailer}' trailer"
-    headMessage.contains("Skill-Bill-Subtask:") -> "checked-out HEAD '$headSha' carries another subtask trailer"
+    headMessage.contains("Skill-Bill-Subtask:") &&
+      !(isGoalContinuationRun(runLoop.request) && resolvedBranch?.reviewBaseSha == headSha) ->
+      "checked-out HEAD '$headSha' carries another subtask trailer"
     isGoalContinuationRun(runLoop.request) && resolvedBranch?.reviewBaseSha != headSha ->
       "checked-out HEAD '$headSha' is not the durable subtask base " +
         "'${resolvedBranch?.reviewBaseSha ?: "unresolved"}' " +

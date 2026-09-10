@@ -26,6 +26,7 @@ import skillbill.review.context.model.ReviewAccountingSummary
 import skillbill.review.context.model.ReviewCommitRoutingAccounting
 import skillbill.review.context.model.ReviewContextBudgetPolicy
 import skillbill.review.context.model.ReviewContextPacket
+import skillbill.review.context.model.ReviewEvidenceDelivery
 import skillbill.review.context.model.ReviewIntegrationAccounting
 import skillbill.review.context.model.ReviewIntegrationTerminalOutcome
 import skillbill.review.context.model.ReviewLaneReviewDisposition
@@ -386,7 +387,7 @@ internal fun ParallelCodeReviewRunnerResultAssembly.laneEvidenceBoundary(
 
 internal fun parallelAccountingSummary(outcomes: ParallelReviewLaneRunResult): ReviewAccountingSummary? {
   val accountedLanes = listOf(outcomes.lane1)
-  val specialists = accountedLanes.flatMap { it.specialistAccounting }
+  val specialists = accountedLanes.flatMap { it.specialistAccounting.ifEmpty { listOfNotNull(it.accounting) } }
   if (specialists.isEmpty()) return null
   fun ReviewLaneAccounting.toInput() = ReviewAccountingInput(
     lane = lane,
@@ -403,12 +404,13 @@ internal fun parallelAccountingSummary(outcomes: ParallelReviewLaneRunResult): R
     bundleCompositionDigest = bundleCompositionDigest,
     segmentAccounting = segmentAccounting,
     unreviewedSegmentIds = unreviewedSegmentIds,
+    evidenceDelivery = ReviewEvidenceDelivery(requiredEvidenceUnits, deliveredEvidenceUnits, evidenceRequests),
   )
   val roots = accountedLanes.mapIndexed { index, outcome ->
     ReviewAccountingInput(
       lane = "parallel-agent-${index + 1}",
       assignmentDigest = sha256HexUtf8("parallel-agent-${index + 1}"),
-      children = outcome.specialistAccounting.map { it.toInput() },
+      children = outcome.specialistAccounting.ifEmpty { listOfNotNull(outcome.accounting) }.map { it.toInput() },
       terminalOutcome = parallelReviewLaneTerminalOutcome(outcome),
       bundleCompositionDigest = outcome.bundleCompositionDigest,
       segmentAccounting = outcome.segmentAccounting,

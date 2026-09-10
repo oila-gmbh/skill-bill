@@ -14,6 +14,9 @@ internal data class ParallelCodeReviewParentPromptRequest(
   val baseRevision: String? = null,
   val headRevision: String? = null,
   val specPath: Path? = null,
+  val chunkId: String? = null,
+  val chunkIndex: Int? = null,
+  val chunkCount: Int? = null,
 )
 
 object ParallelCodeReviewRunnerParentPrompt {
@@ -23,21 +26,10 @@ object ParallelCodeReviewRunnerParentPrompt {
     val inline = resolvedMode == ResolvedReviewExecutionMode.INLINE
     return buildString {
       append(modeFraming(resolvedMode))
+      appendChunkFraming(request)
       appendCursorDelegatedFanOut(selected, resolvedMode, request.agentId)
       appendLine("Detected stack: ${request.routedManifests.joinToString("+") { it.slug }.ifBlank { "generic" }}")
-      val rubricLabel = selected.joinToString { launch ->
-        val decision = launch.assignment.laneDecision
-        "${decision.specialistSkillName}" +
-          "[lane=${decision.lane};add-ons=${decision.addOns.joinToString("+").ifBlank { "none" }}]"
-      }.ifBlank { "code-review" }
-      appendLine("Authoritative routed rubric identities: $rubricLabel")
-      selected.forEach { launch ->
-        val decision = launch.assignment.laneDecision
-        appendLine()
-        appendLine("## Resolved rubric: ${decision.specialistSkillName}")
-        appendLine("Review lane: ${decision.lane}")
-        launch.rubrics.forEach { rubric -> appendLine(rubric.body) }
-      }
+      appendRubrics(selected)
       val resolvedBase = request.baseRevision ?: selected.firstOrNull()?.packet?.baseRevision ?: "unspecified"
       val resolvedHead = request.headRevision ?: selected.firstOrNull()?.packet?.headRevision ?: "unspecified"
       appendLine(
@@ -45,8 +37,16 @@ object ParallelCodeReviewRunnerParentPrompt {
           "target=$resolvedHead. " +
           "The governing spec is ${request.specPath ?: "the resolved spec projection"}. " +
           "Read committed content on demand " +
-          "through the bound broker with read_evidence and request_expansion, or with bounded and paged Git reads. " +
+          "through the bound broker with read_evidence and request_expansion. " +
           "Do not expect paths, hunk spans, or hunk bodies in this launch prompt.",
+      )
+      appendLine(
+        "Call read_evidence with {\"operation\":\"discover\",\"page_size\":16}. " +
+          "Continue with cursor=next_cursor. Read entries using operation=read and requests containing " +
+          "the returned path, selector, and expansion_id when present. Rubrics and " +
+          "required guidance are already above. " +
+          "request_expansion accepts a reachable path and reachability_reason. Recover from ordinary refusals " +
+          "using authorized selectors; report outstanding evidence and never approve incomplete coverage.",
       )
       appendLine(if (inline) PARALLEL_REVIEW_INLINE_DEPTH_DIRECTIVE else PARALLEL_REVIEW_DELEGATED_DEPTH_DIRECTIVE)
       appendLine(
@@ -70,10 +70,34 @@ object ParallelCodeReviewRunnerParentPrompt {
         appendLine("## Assigned bundle: ${decision.specialistSkillName}")
         appendLine("Lane: ${decision.lane}")
         appendLine(
-          "Read the committed base-to-target revision pair on demand through read_evidence or bounded, " +
-            "paged Git reads. Keep routing and coverage metadata private to the runtime.",
+          "Discover this lane through read_evidence with operation=discover, then read its exact selectors. " +
+            "Continue with next_cursor until it is null. Discovery alone does not deliver required evidence.",
         )
       }
+    }
+  }
+
+  private fun StringBuilder.appendChunkFraming(request: ParallelCodeReviewParentPromptRequest) {
+    val chunkId = request.chunkId ?: return
+    val index = requireNotNull(request.chunkIndex)
+    val count = requireNotNull(request.chunkCount)
+    appendLine("Current governed inline review chunk: $chunkId (${index + 1} of $count).")
+    appendLine("Review only the evidence exposed by this chunk and finish with the explicit verdict.")
+  }
+
+  private fun StringBuilder.appendRubrics(selected: List<ReviewSpecialistLaunchRequest>) {
+    val rubricLabel = selected.joinToString { launch ->
+      val decision = launch.assignment.laneDecision
+      "${decision.specialistSkillName}" +
+        "[lane=${decision.lane};add-ons=${decision.addOns.joinToString("+").ifBlank { "none" }}]"
+    }.ifBlank { "code-review" }
+    appendLine("Authoritative routed rubric identities: $rubricLabel")
+    selected.forEach { launch ->
+      val decision = launch.assignment.laneDecision
+      appendLine()
+      appendLine("## Resolved rubric: ${decision.specialistSkillName}")
+      appendLine("Review lane: ${decision.lane}")
+      launch.rubrics.forEach { rubric -> appendLine(rubric.body) }
     }
   }
 

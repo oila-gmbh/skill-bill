@@ -2,6 +2,7 @@ package skillbill.ports.review.model
 
 import skillbill.boundary.OpenBoundaryMap
 import skillbill.contracts.review.REVIEW_CONTEXT_CONTRACT_VERSION
+import skillbill.error.InvalidReviewContextSchemaError
 
 data class ReviewAccountingRecord(
   val reviewId: String,
@@ -48,8 +49,6 @@ private fun requireBoundedAccountingPayload(payload: Map<String, Any?>) {
   }
 }
 
-// Commit-focused sequencing adds these three sections; absent (or null) on a review that carried no
-// commit sequence, so a non-commit-focused payload stays exactly what it was.
 private val COMMIT_FOCUSED_KEYS =
   setOf("commit_routing_accounting", "parent_analysis_consumption", "integration")
 
@@ -60,7 +59,8 @@ private fun requireAccountingNode(value: Any?, legacy: Boolean) {
     "tool_calls", "model_turns", "inclusive_counters", "terminal_outcome",
   ) + if (legacy) setOf("provider_usage", "direct_usage", "inclusive_usage") else emptySet()
   require(node.keys.containsAll(keys))
-  require(BUNDLE_KEYS.containsAll(node.keys - keys))
+  require((BUNDLE_KEYS + "evidence_delivery").containsAll(node.keys - keys))
+  if ("evidence_delivery" in node) requireEvidenceDelivery(node["evidence_delivery"])
   require(node["lane"] is String && node["assignment_digest"] is String && node["terminal_outcome"] is String)
   COUNTER_KEYS.forEach { key -> require((node[key] as? Number)?.toLong()?.let { it >= 0 } == true) }
   requireCounters(node["inclusive_counters"])
@@ -72,9 +72,26 @@ private fun requireAccountingNode(value: Any?, legacy: Boolean) {
   requireBundleAccounting(node)
 }
 
-// A lane that carried an assembled bundle also reports its composition and per-segment accounting.
-// The keys are present-or-absent rather than nullable, so a non-bundled lane stays byte-identical.
 private val BUNDLE_KEYS = setOf("bundle_composition_digest", "segment_accounting", "unreviewed_segment_ids")
+
+private fun requireEvidenceDelivery(value: Any?) {
+  val delivery = value as? Map<*, *>
+    ?: throw InvalidReviewContextSchemaError("review-accounting", "Evidence delivery must be an object.")
+  val keys = setOf("required_units", "delivered_units", "remaining_units", "request_count")
+  if (delivery.keys != keys || delivery.values.any { it !is Int && it !is Long }) {
+    throw InvalidReviewContextSchemaError("review-accounting", "Evidence delivery requires integer counters.")
+  }
+  val counts = keys.associateWith { (delivery[it] as Number).toLong() }
+  requireDeliveryCounts(counts)
+}
+
+private fun requireDeliveryCounts(counts: Map<String, Long>) {
+  if (counts.values.any { it !in 0..Int.MAX_VALUE.toLong() } ||
+    counts.getValue("required_units") != counts.getValue("delivered_units") + counts.getValue("remaining_units")
+  ) {
+    throw InvalidReviewContextSchemaError("review-accounting", "Evidence delivery counters are inconsistent.")
+  }
+}
 
 private fun requireBundleAccounting(node: Map<*, *>) {
   node["bundle_composition_digest"]?.let { require(it is String && it.isNotBlank()) }

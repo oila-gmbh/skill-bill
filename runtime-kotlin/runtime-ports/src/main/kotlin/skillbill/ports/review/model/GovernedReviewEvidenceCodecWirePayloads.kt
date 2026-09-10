@@ -7,6 +7,7 @@ import skillbill.review.context.model.ReviewExpansionRecord
 internal object GovernedReviewEvidenceCodecWirePayloads {
   fun expansionPayload(record: ReviewExpansionRecord): Map<String, Any?> = linkedMapOf(
     "expansion_id" to record.expansionId,
+    "assignment_digest" to record.assignmentDigest,
     "requested_path" to record.requestedPath,
     "reachability_reason" to record.reachabilityReason,
     "authorized" to record.authorized,
@@ -15,9 +16,10 @@ internal object GovernedReviewEvidenceCodecWirePayloads {
 
   fun resultPayload(result: ReviewEvidenceResult): Map<String, Any?> {
     val refusal = refusal(result)
-    if (refusal != null) return refusal
+    if (refusal != null && (result.forbidden != null || result.content == null)) return refusal
     return linkedMapOf(
       "refused" to false,
+      "terminal_outcome" to refusal,
       "content" to result.content,
       "bytes" to result.bytes,
       "cumulative_bytes" to result.cumulativeBytes,

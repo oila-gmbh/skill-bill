@@ -167,14 +167,17 @@ class ReviewAccountingProjectionRedactionTest {
       ),
       recorder,
     ).run(
-      harnessRequest(
-        prelaunchExpansions = listOf(
-          ReviewPrelaunchExpansion(
-            "parallel-code-review",
-            "src/DIFF_SECRET.kt",
-            "The redaction test measures one explicitly authorized complete-file expansion.",
+      committedReviewRequest(
+        harnessRequest(
+          prelaunchExpansions = listOf(
+            ReviewPrelaunchExpansion(
+              "parallel-code-review",
+              "src/DIFF_SECRET.kt",
+              "The redaction test measures one explicitly authorized complete-file expansion.",
+            ),
           ),
         ),
+        mapOf("src/DIFF_SECRET.kt" to "DIFF_SECRET"),
       ),
     )
 

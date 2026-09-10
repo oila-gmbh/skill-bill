@@ -137,7 +137,7 @@ class ParallelCodeReviewEndToEndTest {
     assertEquals(1, lanes.size, "Single-agent inline review owns exactly one accounting node.")
     lanes.forEach { lane ->
       assertTrue(lane.counters.launchBytes > 0, "Lane '${lane.lane}' reported no launch bytes.")
-      assertEquals(0, lane.counters.evidenceBytes, "Assigned hunk envelopes require no filesystem evidence reads.")
+      assertTrue(lane.counters.evidenceBytes > 0, "The worker must receive its assigned hunk evidence.")
       assertTrue(lane.counters.resultBytes > 0)
       assertEquals("completed", lane.terminalOutcome)
     }

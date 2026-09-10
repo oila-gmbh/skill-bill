@@ -13,8 +13,8 @@ internal fun exceededEvidence(
   val outcome = checkNotNull(ReviewBudgetEvaluator.exceededOrNull(state.identity, kind, limit, observed)) {
     "Budget dimension '$kind' reported an excess of $observed against $limit that does not exceed it."
   }
-  state.terminalOutcome = outcome
-  return terminalResult(outcome, state.cumulativeBytes, state.expansionLedger.size)
+  if (state.terminalOutcome == null) state.terminalOutcome = outcome
+  return terminalResult(requireNotNull(state.terminalOutcome), state.cumulativeBytes, state.expansionLedger.size)
 }
 
 internal fun assignedHunkBudgetOutcome(
@@ -63,3 +63,24 @@ internal fun unitAtPath(state: FileSystemReviewEvidenceBrokerReadState, path: St
 
 internal fun commitShaForHunk(state: FileSystemReviewEvidenceBrokerReadState, hunkId: String): String =
   state.hunkCommitById[hunkId] ?: state.assignment.headRevision
+
+internal fun readAssignedReviewTarget(
+  state: FileSystemReviewEvidenceBrokerReadState,
+  path: String,
+  selector: String,
+  base: String,
+  head: String,
+): ReviewEvidenceResult {
+  val content = readImmutableReviewDelta(state.root, base, head, path, state.budget.maxEvidenceResultBytes)
+    ?: return unavailableEvidence(state, path)
+  evidenceBudgetOutcome(state, content.size.toLong(), selector)?.let { return it }
+  state.authorizedReadCount += 1
+  state.cumulativeBytes += content.size
+  return ReviewEvidenceResult(
+    content.toString(Charsets.UTF_8),
+    content.size.toLong(),
+    state.cumulativeBytes,
+    state.expansionLedger.size,
+    deliveredSelectors = listOf(selector),
+  )
+}

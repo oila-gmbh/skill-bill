@@ -1,5 +1,5 @@
 class: feature-verify
-contract_version: "1.7"
+contract_version: "1.8"
 
 matchers:
   - pattern: "^bill-[a-z0-9-]*feature-verify$"

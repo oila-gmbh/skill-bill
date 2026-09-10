@@ -1418,9 +1418,8 @@ class FeatureTaskRuntimeRemediationGenerationTest {
       harness.goalContinuationRecorder.reviewStateRecorder.reviewState(WORKFLOW_ID),
     ).completedPassCount
 
-    assertIs<FeatureTaskRuntimeRunReport.Completed>(
-      harness.runner.run(harness.request().copy(requestedCodeReviewMode = CodeReviewExecutionMode.INLINE)),
-    )
+    val resumed = harness.runner.run(harness.request().copy(requestedCodeReviewMode = CodeReviewExecutionMode.INLINE))
+    assertIs<FeatureTaskRuntimeRunReport.Completed>(resumed, resumed.toString())
 
     assertEquals(
       settledLaunches,
@@ -4367,7 +4366,7 @@ class FeatureTaskRuntimeCheckpointHistoryOnResumeTest {
   }
 
   @Test
-  fun `goal-continuation reaudits repaired source before finalising a suppressed PR child`() {
+  fun `goal-continuation finalises owned implement_fix source without reopening audit or review`() {
     val repoRoot = Files.createTempDirectory("skillbill-runtime-goalcont-checkpoint")
     val specPath = repoRoot.resolve(SPEC_REFERENCE)
     Files.createDirectories(specPath.parent)
@@ -4402,17 +4401,16 @@ class FeatureTaskRuntimeCheckpointHistoryOnResumeTest {
     assertIs<FeatureTaskRuntimeRunReport.Completed>(harness.runner.run(harness.request()))
     val checkpointMessages = git.createCommitMessages + git.amendCommitMessages
     assertEquals(
-      4,
+      3,
       checkpointMessages.size,
-      "suppress_pr must checkpoint review and remediation authority boundaries",
+      "suppress_pr must checkpoint audit, remediation, and finalisation only",
     )
-    assertEquals(1, git.createCommitMessages.size, "four checkpoints, one subtask commit on the branch")
+    assertEquals(1, git.createCommitMessages.size, "three checkpoints, one subtask commit on the branch")
     assertContains(checkpointMessages[0], "audited implementation checkpoint")
     assertContains(checkpointMessages[1], "remediation checkpoint")
-    assertContains(checkpointMessages[2], "audited implementation checkpoint")
-    assertContains(checkpointMessages[3], "finalised subtask checkpoint")
-    assertEquals(2, harness.launchOrder().count { it == "audit" })
-    assertEquals(2, harness.launchOrder().count { it == "review" })
+    assertContains(checkpointMessages[2], "finalised subtask checkpoint")
+    assertEquals(1, harness.launchOrder().count { it == "audit" })
+    assertEquals(1, harness.launchOrder().count { it == "review" })
     assertEquals(listOf("feat/existing-runtime-branch"), git.pushedBranches + git.leasePushedBranches)
   }
 

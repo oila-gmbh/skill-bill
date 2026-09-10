@@ -12,9 +12,9 @@ explicit `mode:delegated` on `/bill-code-review` (or `skill-bill code-review
 --execution-mode delegated`). Goal and feature-task runs always review inline
 and never select it. The invoking agent fans the review out to
 specialist subagents inside its own harness and merges their findings. `inline`
-is the single-prompt review: the parent launches exactly one worker, the declared
-`bill-code-review-inline` native agent, which reviews the whole delta in one
-prompt with no per-area fan-out. `auto` and an omitted mode both resolve to
+is the single-prompt review: the runtime launches one or more sequential bounded
+workers, each the declared `bill-code-review-inline` native agent, which reviews
+one runtime-owned chunk with no per-area fan-out. `auto` and an omitted mode both resolve to
 `inline` for every pass and for a scope with no pass number, so only an explicit
 `delegated` selection reaches the fan-out.
 
@@ -74,6 +74,7 @@ harness's launch behavior.
 - Use this delegation contract only after the shared execution-mode contract selects `delegated` review.
 - Before launching any routed layer or specialist, the parent prepares one compact, in-memory review-context packet. The packet is authoritative for the whole review run and contains the resolved scope and diff source, routing decision, applicable project guidance, relevant build/test facts, changed-file and hunk map, selected add-ons, ordered selected lanes with inclusion or exclusion reasons, immutable session/run identifiers, and one assignment per worker.
 - Each worker assignment names its applicable embedded rubric, owns specific changed files and hunks, identifies only the direct dependencies that may be read, and states the evidence to verify. The validated assignment is the launch authority; do not give a worker the shared packet.
+- Workers discover exact evidence selectors through `read_evidence` with `operation: discover`. Follow `next_cursor` to the end, then read the selectors with `operation: read`. Whole-file reads require a discovered or newly issued `expansion_id`. Discovery and authorization do not count as delivered evidence. A recoverable refusal can be corrected; any remaining required evidence blocks approval.
 - Workers must not repeat repository, scope, stack, routing, or guidance discovery. They may read their assigned changed code and direct dependencies only when needed to establish a reachable finding.
 - Keep the packet factual and compact. Do not copy repository dumps, full project documentation, unrelated diffs, or unrelated specialist rubrics into it.
 - Build one deterministic launch plan before starting workers. Recursively flatten required baseline layers into direct specialist lanes, apply the nearest pack's area override, retain signal-relevant lanes and add-ons, and drop empty or duplicate assignments.

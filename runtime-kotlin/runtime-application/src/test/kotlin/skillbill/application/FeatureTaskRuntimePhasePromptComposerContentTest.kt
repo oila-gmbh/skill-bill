@@ -204,29 +204,30 @@ class FeatureTaskRuntimePhasePromptComposerContentTest {
   }
 
   @Test
-  fun `commit_push prompt carries the feature-spec exclusion directive`() {
+  fun `commit_push prompt carries the feature-spec inclusion directive`() {
     val prompt = composePromptForPhase("commit_push")
 
-    assertContains(prompt, "Feature-spec commit exclusion")
+    assertContains(prompt, "Feature-spec commit inclusion")
     assertContains(prompt, ".feature-specs/$PROMPT_COMPOSER_ISSUE_KEY-")
     assertContains(prompt, "decomposition-manifest.yaml")
-    assertContains(prompt, "Never list any `.feature-specs/`")
+    assertContains(prompt, "Unignored `.feature-specs/` paths belong in the owned subtask commit")
+    assertContains(prompt, "If nothing remains to commit, finish commit_push")
     assertContains(prompt, "Never amend, reset, or restage a commit this runtime does not own")
     assertTrue(
       !prompt.contains("do not add, amend,"),
       "the blanket amend prohibition is replaced by a scope bound to runtime-owned commits",
     )
-    assertTrue(!prompt.contains("The committed tree must contain no feature spec"))
+    assertTrue(!prompt.contains("never stages `.feature-specs/`"))
   }
 
   @Test
-  fun `feature-spec exclusion directive is absent on non-commit phases`() {
+  fun `feature-spec inclusion directive is absent on non-commit phases`() {
     val implementPrompt = composePhasePrompt(
       PROMPT_COMPOSER_ISSUE_KEY,
       promptComposerBriefingFor("implement"),
     )
 
-    assertTrue(!implementPrompt.contains("Feature-spec commit exclusion"))
+    assertTrue(!implementPrompt.contains("Feature-spec commit inclusion"))
   }
 
   @Test

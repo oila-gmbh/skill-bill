@@ -29,6 +29,7 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeGoalContinuationAr
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerAction.COMPLETE
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerEntry
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseRecord
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeVerdict
 import java.time.Clock
 
 class FeatureTaskRuntimeGoalReviewCompletionRecorder(
@@ -124,7 +125,12 @@ class FeatureTaskRuntimeGoalReviewCompletionRecorder(
     )
     val existingRecords = phaseRecordsFrom(artifacts)
     val completed = reviewArtifacts.state.completeReservedPass(
-      verdict = completion.verdict,
+      verdict = when {
+        completion.commitFocusedAccounting?.isCleanCoverage == false -> FeatureTaskRuntimeVerdict.CHANGES_REQUESTED
+        GoalSubtaskReviewSummaryReducer.evidenceCoverageComplete(envelope) == false ->
+          FeatureTaskRuntimeVerdict.CHANGES_REQUESTED
+        else -> completion.verdict
+      },
       unresolvedFindingCount = completion.unresolvedFindingCount,
       findings = completion.findings,
       blockerDispositions = dispositions,
@@ -132,16 +138,10 @@ class FeatureTaskRuntimeGoalReviewCompletionRecorder(
         commitFocusedAccounting = completion.commitFocusedAccounting,
       ),
     )
-    val reviewedInput = artifacts[GOAL_SUBTASK_REVIEW_INPUT_ARTIFACT_KEY] as? Map<*, *>
-    val reviewedTarget = reviewedInput?.get("current_head_sha") as? String
-    val reviewedTree = reviewedInput?.get("reviewed_tree_sha") as? String
     return GoalReviewCompletionWrite(
       record = record,
       continuation = reviewArtifacts.continuation,
-      completedState = completed.copy(
-        reviewedTargetSha = reviewedTarget?.takeIf(String::isNotBlank) ?: completed.reviewedTargetSha,
-        reviewedTreeSha = reviewedTree?.takeIf(String::isNotBlank) ?: completed.reviewedTreeSha,
-      ),
+      completedState = withReviewedIdentity(completed, artifacts),
       dispositions = dispositions,
       persisted = GoalReviewCompletionArtifacts(
         artifacts = artifacts,
@@ -153,6 +153,19 @@ class FeatureTaskRuntimeGoalReviewCompletionRecorder(
           )
         },
       ),
+    )
+  }
+
+  private fun withReviewedIdentity(
+    completed: GoalSubtaskReviewState,
+    artifacts: Map<String, Any?>,
+  ): GoalSubtaskReviewState {
+    val reviewedInput = artifacts[GOAL_SUBTASK_REVIEW_INPUT_ARTIFACT_KEY] as? Map<*, *>
+    val reviewedTarget = reviewedInput?.get("current_head_sha") as? String
+    val reviewedTree = reviewedInput?.get("reviewed_tree_sha") as? String
+    return completed.copy(
+      reviewedTargetSha = reviewedTarget?.takeIf(String::isNotBlank) ?: completed.reviewedTargetSha,
+      reviewedTreeSha = reviewedTree?.takeIf(String::isNotBlank) ?: completed.reviewedTreeSha,
     )
   }
 

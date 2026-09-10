@@ -1,6 +1,7 @@
 package skillbill.application.review
 
 import skillbill.ports.review.model.ParallelReviewLaneOutcome
+import skillbill.ports.review.model.ReviewLaneAccounting
 import skillbill.review.ReviewRunLaneResolver
 import skillbill.review.ReviewRunLaneResolver.COMPLETE_DISPOSITION
 import skillbill.review.ReviewRunLaneResolver.RESOLVED
@@ -27,6 +28,7 @@ import skillbill.review.model.ReviewRunLane
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
 /** Lane disposition and segment accounting without driving the full parallel runner. */
@@ -165,6 +167,63 @@ class ParallelReviewLaneDispositionTest {
       assertTrue(segment.compositionDigest.matches(Regex("[a-f0-9]{64}")))
     }
     assertEquals(launch.assembledBundle.compositionDigest, completion.bundleCompositionDigest)
+  }
+
+  @Test fun `complete broker delivery clears stale launch budget coverage`() {
+    val completion = governedLaunch().completionState
+    val accounting = ReviewLaneAccounting(
+      lane = "security",
+      evidenceBytes = 1,
+      expansions = emptyList(),
+      toolCalls = 0,
+      modelTurns = 1,
+      resultBytes = 1,
+      requiredEvidenceUnits = 1,
+      deliveredEvidenceUnits = 1,
+    )
+
+    val reconciled = parallelCodeReviewBrokerEvidenceCompletionState(completion, accounting)
+
+    assertEquals(ReviewLaneReviewDisposition.COMPLETE, reconciled.disposition)
+    assertTrue(reconciled.unreviewedSegmentIds.isEmpty())
+    assertEquals(null, reconciled.budgetDimension)
+    assertTrue(reconciled.unreviewedUnits.isEmpty())
+  }
+
+  @Test fun `aggregateInlineChunkOutcomes keeps parent incomplete when a later chunk is incomplete`() {
+    val complete = ParallelReviewLaneOutcome(
+      success = true,
+      rawOutput = "verdict: approved",
+      reviewDisposition = ReviewLaneReviewDisposition.COMPLETE,
+      accounting = ReviewLaneAccounting(
+        lane = "codex",
+        terminalStatus = "completed",
+        reviewDisposition = ReviewLaneReviewDisposition.COMPLETE,
+      ),
+    )
+    val incomplete = ParallelReviewLaneOutcome(
+      success = false,
+      rawOutput = "verdict: approved",
+      reviewDisposition = ReviewLaneReviewDisposition.INCOMPLETE,
+      failureReason = "Required review evidence remains undelivered.",
+      accounting = ReviewLaneAccounting(
+        lane = "codex",
+        terminalStatus = "incomplete",
+        reviewDisposition = ReviewLaneReviewDisposition.INCOMPLETE,
+        requiredEvidenceUnits = 2,
+        deliveredEvidenceUnits = 0,
+      ),
+    )
+    val aggregated = aggregateInlineChunkOutcomes(listOf(complete, incomplete))
+
+    assertFalse(aggregated.success)
+    assertEquals(ReviewLaneReviewDisposition.INCOMPLETE, aggregated.reviewDisposition)
+    val accounting = assertNotNull(aggregated.accounting)
+    assertEquals(ReviewLaneReviewDisposition.INCOMPLETE, accounting.reviewDisposition)
+    assertEquals("incomplete", accounting.terminalStatus)
+    assertEquals(null, accounting.terminalOutcome)
+    assertEquals(2, accounting.requiredEvidenceUnits)
+    assertEquals(0, accounting.deliveredEvidenceUnits)
   }
 
   @Test fun `resume selection keeps only incomplete durable lanes`() {

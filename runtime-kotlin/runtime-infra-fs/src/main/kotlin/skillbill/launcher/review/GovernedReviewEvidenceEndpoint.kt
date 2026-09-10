@@ -10,7 +10,9 @@ import skillbill.ports.review.GovernedReviewEvidenceEndpointHandle
 import skillbill.ports.review.NativeReviewOperationProtocol
 import skillbill.ports.review.model.GovernedReviewEvidenceCodec
 import skillbill.ports.review.model.GovernedReviewEvidenceEndpointDescriptor
-import skillbill.review.context.model.ReviewExpansionRecord
+import skillbill.ports.review.model.readReviewEvidenceFrame
+import skillbill.ports.review.model.validReviewEvidenceRequestId
+import skillbill.review.context.model.ReviewEvidenceLimits
 import java.io.IOException
 import java.net.StandardProtocolFamily
 import java.net.UnixDomainSocketAddress
@@ -22,14 +24,17 @@ import java.nio.file.Path
 import java.nio.file.attribute.PosixFilePermissions
 import java.security.MessageDigest
 import java.security.SecureRandom
-import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.locks.ReentrantLock
 import kotlin.concurrent.thread
+import kotlin.concurrent.withLock
 import kotlin.coroutines.cancellation.CancellationException
 private const val TOKEN_BYTES = 24
 private const val UNIX_SOCKET_PATH_LIMIT = 103
 private const val TEMP_SUFFIX_DIGITS = 20
 private const val PER_LAUNCH_PREFIX = "skill-bill-review-evidence-"
 private const val SOCKET_FILE_NAME = "evidence.sock"
+private const val DELIVERY_DRAIN_SECONDS = 1L
 
 @Inject
 class UnixSocketGovernedReviewEvidenceEndpointBinder(
@@ -60,11 +65,6 @@ internal fun bridgeCommand(environment: Map<String, String>, userHome: Path): Li
   return listOf(bin.toAbsolutePath().normalize().toString())
 }
 
-/**
- * Per-launch listener that serves the two governed evidence operations by delegating verbatim to
- * the supplied protocol. It holds no filesystem access of its own and re-implements no policy,
- * budget, expansion ledger, or lane termination: every answer is whatever the broker returned.
- */
 class GovernedReviewEvidenceEndpoint private constructor(
   override val descriptor: GovernedReviewEvidenceEndpointDescriptor,
   private val protocol: NativeReviewOperationProtocol,
@@ -72,18 +72,39 @@ class GovernedReviewEvidenceEndpoint private constructor(
   private val directory: Path,
   private val onEvidenceRead: (() -> Unit)?,
 ) : GovernedReviewEvidenceEndpointHandle {
-  private val issuedExpansions = ConcurrentHashMap<String, ReviewExpansionRecord>()
 
   @Volatile
   private var closed = false
+
+  private val deliveryLock = ReentrantLock()
+  private val deliveryCompleted = deliveryLock.newCondition()
+  private val pendingDeliveries = mutableSetOf<String>()
+  private var closing = false
+
+  @Volatile
+  private var activeConnection: SocketChannel? = null
   private val acceptor = thread(name = "skill-bill-review-evidence-${descriptor.lane}", isDaemon = true) {
     acceptLoop()
   }
   override fun close() {
-    if (closed) return
-    closed = true
-    runCatching { channel.close() }
+    deliveryLock.withLock {
+      if (closing) return
+      closing = true
+      runCatching { channel.close() }
+      try {
+        var remaining = TimeUnit.SECONDS.toNanos(DELIVERY_DRAIN_SECONDS)
+        while (pendingDeliveries.isNotEmpty() && remaining > 0) {
+          remaining = deliveryCompleted.awaitNanos(remaining)
+        }
+      } catch (_: InterruptedException) {
+        Thread.currentThread().interrupt()
+      } finally {
+        closed = true
+      }
+    }
+    runCatching { activeConnection?.close() }
     acceptor.interrupt()
+    protocol.finishDeliverySession()
     deleteDirectory()
   }
   private fun deleteDirectory() {
@@ -102,19 +123,43 @@ class GovernedReviewEvidenceEndpoint private constructor(
       } catch (_: IOException) {
         return
       } ?: return
-      runCatching { connection.use { serve(it) } }
+      activeConnection = connection
+      if (closed) {
+        connection.close()
+        return
+      }
+      try {
+        runCatching { connection.use { serve(it) } }
+      } finally {
+        activeConnection = null
+      }
     }
   }
   private fun serve(connection: SocketChannel) {
     val reader = Channels.newInputStream(connection).bufferedReader()
     val writer = Channels.newOutputStream(connection).bufferedWriter()
-    if (!authenticated(reader.readLine())) return
+    if (!authenticated(reader.readReviewEvidenceFrame())) return
     writer.appendLine(JsonSupport.mapToJsonString(linkedMapOf("jsonrpc" to "2.0", "result" to "ok")))
     writer.flush()
     while (!closed) {
-      val line = reader.readLine() ?: return
-      writer.appendLine(handleFrame(line))
+      val line = try {
+        reader.readReviewEvidenceFrame() ?: return
+      } catch (error: GovernedReviewEvidenceTransportError) {
+        protocol.recordMalformedRequest()
+        writer.appendLine(
+          governedReviewEvidenceErrorResponse(
+            null,
+            GOVERNED_REVIEW_EVIDENCE_JSON_RPC_INVALID_PARAMS,
+            error.message.orEmpty(),
+          ),
+        )
+        writer.flush()
+        return
+      }
+      val response = handleFrame(line)
+      writer.appendLine(response)
       writer.flush()
+      completeDelivery(line, response)
     }
   }
   private fun authenticated(handshake: String?): Boolean {
@@ -126,26 +171,59 @@ class GovernedReviewEvidenceEndpoint private constructor(
       descriptor.token.toByteArray(Charsets.UTF_8),
     )
   }
+  private fun completeDelivery(line: String, response: String) {
+    val frame = JsonSupport.parseObjectOrNull(line) ?: return
+    if (frame["method"]?.let(JsonSupport::jsonElementToValue) != "evidence/delivered") return
+    if (JsonSupport.parseObjectOrNull(response)?.containsKey("error") != false) return
+    val params = JsonSupport.anyToStringAnyMap(frame["params"]?.let(JsonSupport::jsonElementToValue)).orEmpty()
+    deliveryLock.withLock {
+      pendingDeliveries.remove(params["receipt"] as? String)
+      deliveryCompleted.signalAll()
+    }
+  }
   internal fun handleFrame(line: String): String {
+    if (line.toByteArray(Charsets.UTF_8).size > ReviewEvidenceLimits.REQUEST_BYTES) {
+      protocol.recordMalformedRequest()
+      return governedReviewEvidenceErrorResponse(
+        null,
+        GOVERNED_REVIEW_EVIDENCE_JSON_RPC_INVALID_PARAMS,
+        "Governed evidence frame exceeds its byte limit.",
+      )
+    }
     val frame = JsonSupport.parseObjectOrNull(line)
-      ?: return governedReviewEvidenceErrorResponse(
+    if (frame == null) {
+      protocol.recordMalformedRequest()
+      return governedReviewEvidenceErrorResponse(
         null,
         GOVERNED_REVIEW_EVIDENCE_JSON_RPC_INVALID_PARAMS,
         "Malformed governed evidence frame.",
       )
-    val id = frame["id"]?.let(JsonSupport::jsonElementToValue)
-    val method = frame["method"]?.let(JsonSupport::jsonElementToValue)?.toString().orEmpty()
-    if (method != "tools/call") {
-      return governedReviewEvidenceErrorResponse(
-        id,
-        GOVERNED_REVIEW_EVIDENCE_JSON_RPC_METHOD_NOT_FOUND,
-        "Method not found: $method",
-      )
     }
-    val params = JsonSupport.anyToStringAnyMap(frame["params"]?.let(JsonSupport::jsonElementToValue)).orEmpty()
-    val name = params["name"]?.toString().orEmpty()
-    val arguments = JsonSupport.anyToStringAnyMap(params["arguments"]).orEmpty()
-    return dispatch(id, name, arguments)
+    val id = frame["id"]?.let(JsonSupport::jsonElementToValue)
+    val method = frame["method"]?.let(JsonSupport::jsonElementToValue)
+    val reject = deliveryLock.withLock {
+      when {
+        closed || closing && method != "evidence/delivered" -> {
+          protocol.recordMalformedRequest()
+          governedReviewEvidenceErrorResponse(
+            id,
+            GOVERNED_REVIEW_EVIDENCE_JSON_RPC_INVALID_PARAMS,
+            "Governed review evidence endpoint is closing.",
+          )
+        }
+        !validReviewEvidenceRequestId(id) -> {
+          protocol.recordMalformedRequest()
+          governedReviewEvidenceErrorResponse(
+            null,
+            GOVERNED_REVIEW_EVIDENCE_JSON_RPC_INVALID_PARAMS,
+            "Invalid request id.",
+          )
+        }
+        else -> null
+      }
+    }
+    if (reject != null) return reject
+    return handleGovernedReviewMethod(frame, id, protocol, ::dispatch)
   }
   private fun dispatch(id: Any?, name: String, arguments: Map<String, Any?>): String = try {
     when (name) {
@@ -153,11 +231,14 @@ class GovernedReviewEvidenceEndpoint private constructor(
         governedReviewEvidenceToolResponse(id, read(arguments))
       GovernedReviewEvidenceCodec.REQUEST_EXPANSION ->
         governedReviewEvidenceToolResponse(id, expand(arguments))
-      else -> governedReviewEvidenceErrorResponse(
-        id,
-        GOVERNED_REVIEW_EVIDENCE_JSON_RPC_METHOD_NOT_FOUND,
-        "Unknown governed operation: $name",
-      )
+      else -> {
+        protocol.recordMalformedRequest()
+        governedReviewEvidenceErrorResponse(
+          id,
+          GOVERNED_REVIEW_EVIDENCE_JSON_RPC_METHOD_NOT_FOUND,
+          "Unknown governed operation: $name",
+        )
+      }
     }
   } catch (error: CancellationException) {
     throw error
@@ -187,20 +268,27 @@ class GovernedReviewEvidenceEndpoint private constructor(
     )
   }
   private fun read(arguments: Map<String, Any?>): Map<String, Any?> {
-    val request = GovernedReviewEvidenceCodec.readRequest(
-      descriptor.lane,
-      arguments,
-      issuedExpansions::get,
-    )
-    val payload = GovernedReviewEvidenceCodec.payload(protocol.read(request))
+    if (arguments["operation"] == "discover") {
+      val request = protocol.decodeGovernedReviewRequest { GovernedReviewEvidenceCodec.discoveryRequest(arguments) }
+      return GovernedReviewEvidenceCodec.payload(protocol.discover(request))
+    }
+    val request = protocol.decodeGovernedReviewRequest {
+      GovernedReviewEvidenceCodec.readRequest(descriptor.lane, arguments, protocol::expansionById)
+    }
+    val result = protocol.read(request)
+    result.deliveryReceipt?.let { receipt ->
+      deliveryLock.withLock {
+        pendingDeliveries.add(receipt)
+      }
+    }
+    val payload = GovernedReviewEvidenceCodec.payload(result)
     onEvidenceRead?.invoke()
     return payload
   }
   private fun expand(arguments: Map<String, Any?>): Map<String, Any?> {
     val record = protocol.authorizeExpansion(
-      GovernedReviewEvidenceCodec.expansionRequest(descriptor.lane, arguments),
+      protocol.decodeGovernedReviewRequest { GovernedReviewEvidenceCodec.expansionRequest(descriptor.lane, arguments) },
     )
-    if (record.authorized) issuedExpansions[record.expansionId] = record
     return GovernedReviewEvidenceCodec.payload(record)
   }
   companion object {

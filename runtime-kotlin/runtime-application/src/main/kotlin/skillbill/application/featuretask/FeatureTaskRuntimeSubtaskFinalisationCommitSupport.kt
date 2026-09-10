@@ -1,5 +1,7 @@
 package skillbill.application.featuretask
 
+import skillbill.application.featuretask.model.FeatureTaskRuntimeSubtaskFinalisationBlocked
+import skillbill.application.featuretask.model.FeatureTaskRuntimeSubtaskFinalisationResult
 import skillbill.ports.workflow.gitops.model.WorkflowGitOperationResult
 import skillbill.ports.workflow.gitops.restoreIndexState
 
@@ -43,3 +45,21 @@ internal fun FeatureTaskRuntimeSubtaskFinalisation.restoreForeignFinalisationInd
   val restored = restoreForeignIndex(foreignStagedPaths, foreignSnapshot)
   return restored?.let { "$reason; $it" } ?: reason
 }
+
+internal fun FeatureTaskRuntimeSubtaskFinalisation.commitAndPush(
+  input: FinalisationCommitRequest,
+): FeatureTaskRuntimeSubtaskFinalisationResult = FeatureTaskRuntimeSubtaskCommitPublisher(this).commitAndPush(input)
+
+fun FeatureTaskRuntimeSubtaskFinalisation.restoring(error: String, paths: List<String>, snapshot: String): String {
+  val restored = gitOperations.restoreIndexState(repoRoot, paths, snapshot)
+  return if (restored.ok) {
+    "$error; the pre-finalisation index was restored and the working tree is unchanged"
+  } else {
+    "$error; the pre-finalisation index could NOT be restored (${restored.error}) — inspect " +
+      "`git status` before committing anything yourself"
+  }
+}
+
+fun FeatureTaskRuntimeSubtaskFinalisation.blocked(reason: String) = FeatureTaskRuntimeSubtaskFinalisationBlocked(
+  "needs_human: subtask finalisation could not complete because $reason.",
+)

@@ -2,6 +2,7 @@ package skillbill.application.featuretask
 
 import skillbill.application.featuretask.model.FeatureTaskRuntimeRunRequest
 import skillbill.application.featuretask.model.FeatureTaskRuntimeSubtaskCommitIdentity
+import skillbill.ports.workflow.gitops.headCommitMessage
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeCheckpointIdentity
 
@@ -36,25 +37,30 @@ internal fun invalidateStaleGoalReviewApprovalForGoalRuntime(
   val reviewedTree = state.reviewedTreeSha ?: return
   val context = loadStaleReviewApprovalContext(runner, request, reviewedTarget, reviewedTree)
   var identityReadFailure: String? = null
-  if (!context.dirtyRepair && runner.phaseGates.gitOperations.reviewIdentityStillAuthoritative(
-      ReviewIdentityAuthorityRequest(
-        request.repoRoot,
-        context.reviewedTarget,
-        context.currentHead,
-        context.reviewedTree,
-        context.currentTree,
-        context.durableTarget,
-        context.identity,
-        onReadFailure = { identityReadFailure = it },
-      ),
-    )
+  val headMessage = runner.phaseGates.gitOperations.headCommitMessage(request.repoRoot)
+  val matchingTrailer = headMessage.ok && context.identity.matches(headMessage.value.orEmpty())
+  if (
+    !context.dirtyRepair && (
+      matchingTrailer ||
+        runner.phaseGates.gitOperations.reviewIdentityStillAuthoritative(
+          ReviewIdentityAuthorityRequest(
+            request.repoRoot,
+            context.reviewedTarget,
+            context.currentHead,
+            context.reviewedTree,
+            context.currentTree,
+            context.durableTarget,
+            context.identity,
+            onReadFailure = { identityReadFailure = it },
+          ),
+        )
+      )
   ) {
     return
   }
   if (identityReadFailure != null) {
     throw runner.staleApprovalReconciliationFailure(request, identityReadFailure.orEmpty(), null)
   }
-  persistStaleReviewInvalidation(runner, request)
 }
 
 private fun loadStaleReviewApprovalContext(
@@ -81,11 +87,11 @@ private fun loadStaleReviewApprovalContext(
       resolvedBranch?.boundaryHistoryRoots.orEmpty(),
     )
   val dirty = runner.phaseGates.gitOperations.dirtyImplementationPaths(request.repoRoot)
+  val owned = finalisationOwnedPaths(resolvedBranch, phaseRecords)
   val dirtyRepair = when (dirty) {
     is DirtyPathsError -> staleApprovalFailure(runner, request, dirty.reason, null)
     is DirtyPaths -> dirty.paths.map(::normalizeRepoPath).any {
-      !isGovernedSpecPath(it) && !isRuntimePrivatePath(it) &&
-        !isBoundaryHistoryPath(it, boundaryHistory.paths, boundaryHistory.roots)
+      !isExemptFinalisationDirtyPath(it, owned, boundaryHistory)
     }
   }
   val identity = FeatureTaskRuntimeSubtaskCommitIdentity(
@@ -106,27 +112,6 @@ private fun loadStaleReviewApprovalContext(
     durableTarget,
     identity,
   )
-}
-
-private fun persistStaleReviewInvalidation(runner: FeatureTaskRuntimeRunner, request: FeatureTaskRuntimeRunRequest) {
-  val persisted = runCatching {
-    runner.recorder.persistReviewGenerationInvalidation(request.workflowId, request.dbPathOverride)
-  }
-  if (persisted.isFailure) {
-    throw runner.staleApprovalReconciliationFailure(
-      request,
-      "stale goal-review approval invalidation could not be persisted " +
-        "(${persisted.exceptionOrNull()?.message.orEmpty()})",
-      persisted.exceptionOrNull(),
-    )
-  }
-  if (persisted.getOrNull() == null) {
-    throw runner.staleApprovalReconciliationFailure(
-      request,
-      "stale goal-review approval invalidation found no workflow row",
-      null,
-    )
-  }
 }
 
 private fun staleApprovalFailure(

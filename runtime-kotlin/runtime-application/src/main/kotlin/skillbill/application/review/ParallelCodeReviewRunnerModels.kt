@@ -18,6 +18,7 @@ import skillbill.ports.review.ReviewEvidenceBrokerFactory
 import skillbill.ports.review.ReviewLaunchAgentStagingPort
 import skillbill.ports.review.ReviewSpecialistContractProvider
 import skillbill.ports.review.model.ParallelReviewLaneRunResult
+import skillbill.ports.review.model.ReviewEvidenceCoordinates
 import skillbill.ports.review.model.ReviewIntegrationPassOutcome
 import skillbill.ports.review.model.ReviewLaneAccounting
 import skillbill.ports.scaffold.install.InstalledPlatformPackCatalogPort
@@ -108,6 +109,7 @@ internal data class PlanningPrepareArgs(
   val agentIds: List<String>,
   val budget: ReviewContextBudgetPolicy,
   val evidenceStorePath: String?,
+  val evidenceCoordinates: ReviewEvidenceCoordinates,
 )
 
 internal data class ParallelCodeReviewInitialRun(
@@ -148,11 +150,12 @@ internal data class ParallelCodeReviewSoftRegisterAdmission(
   val rejectedCandidateCount: Int,
 )
 
-class ParallelCodeReviewInlineParentLaunch(
+internal class ParallelCodeReviewInlineParentLaunch(
   val agentId: String,
   val selected: List<ReviewSpecialistLaunchRequest>,
   val prompt: String,
   val bundleState: ReviewLaneCompletionState,
+  val chunk: ParallelCodeReviewInlineChunk? = null,
 ) {
   val assignment: ReviewAssignment get() = selected.first().assignment
 }
@@ -191,11 +194,25 @@ internal fun parallelCodeReviewEffectiveCompletionState(
   outcomes: ParallelReviewLaneRunResult,
 ): ReviewLaneCompletionState {
   val governed = parallelCodeReviewGovernedLaunchFor(launch)
-  val runCompletion = if (outcomes.lane1.success) {
+  val accounting = outcomes.lane1.accounting
+  val runCompletion = if (
+    outcomes.lane1.success || accounting?.terminalStatus == "incomplete" && accounting.terminalOutcome == null
+  ) {
     governed.completionState
   } else {
     governed.completionState.asFailedLaneRun(
       governed.assembledBundle.entries.map { "${it.commitSha}@${it.hunk.path}" },
+    )
+  }
+  val remaining = outcomes.lane1.accounting?.remainingEvidence.orEmpty()
+    .filter {
+      it.assignmentDigest == launch.assignment.digest && it.rubricId in launch.rubrics.map { rubric -> rubric.rubricId }
+    }
+    .map { it.unitId }.distinct()
+  if (remaining.isNotEmpty()) {
+    return runCompletion.copy(
+      disposition = ReviewLaneReviewDisposition.INCOMPLETE,
+      unreviewedUnits = (runCompletion.unreviewedUnits + remaining).distinct(),
     )
   }
   val assignedUnits = governed.assembledBundle.entries
@@ -223,10 +240,27 @@ internal fun parallelCodeReviewEffectiveCompletionState(
 internal fun parallelCodeReviewBrokerEvidenceCompletionState(
   completion: ReviewLaneCompletionState,
   accounting: ReviewLaneAccounting,
-): ReviewLaneCompletionState = if (accounting.budgetDimension == LANE_EVIDENCE_BYTES_DIMENSION) {
-  completion.withBrokerEvidenceRefusal(accounting.unreviewedUnits)
-} else {
-  completion
+): ReviewLaneCompletionState = when {
+  accounting.requiredEvidenceUnits > accounting.deliveredEvidenceUnits ->
+    completion.copy(
+      disposition = ReviewLaneReviewDisposition.INCOMPLETE,
+      unreviewedUnits = (completion.unreviewedUnits + accounting.unreviewedUnits).distinct(),
+    )
+  accounting.budgetDimension == LANE_EVIDENCE_BYTES_DIMENSION && accounting.unreviewedUnits.isNotEmpty() ->
+    completion.withBrokerEvidenceRefusal(accounting.unreviewedUnits)
+  accounting.terminalOutcome != null ->
+    completion.asFailedLaneRun(accounting.unreviewedUnits)
+      .copy(budgetDimension = accounting.terminalOutcome?.budgetKind)
+  accounting.requiredEvidenceUnits > 0 &&
+    accounting.requiredEvidenceUnits == accounting.deliveredEvidenceUnits &&
+    completion.budgetDimension == "lane_launch_bytes" ->
+    completion.copy(
+      disposition = ReviewLaneReviewDisposition.COMPLETE,
+      unreviewedSegmentIds = emptyList(),
+      budgetDimension = null,
+      unreviewedUnits = emptyList(),
+    )
+  else -> completion
 }
 
 internal fun parallelCodeReviewAggregateBundleCompletion(

@@ -30,6 +30,7 @@ object ReviewTreeAccounting {
       input.segmentAccounting,
       input.unreviewedSegmentIds,
       children,
+      input.evidenceDelivery,
     )
   }
 

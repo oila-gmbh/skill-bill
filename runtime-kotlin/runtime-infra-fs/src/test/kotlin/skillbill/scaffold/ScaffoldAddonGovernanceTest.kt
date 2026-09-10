@@ -142,7 +142,7 @@ class ScaffoldAddonGovernanceTest {
   fun `add-on manifest registration preserves hyphenated custom top-level fields`() {
     val manifest = """
       platform: kotlin
-      contract_version: "1.7"
+      contract_version: "1.8"
       routing_signals:
         strong:
           - ".kt"
@@ -210,7 +210,7 @@ private fun seedQualityCheckOnlyRepo(): Path {
     packRoot.resolve("platform.yaml"),
     """
     platform: qualityonly
-    contract_version: "1.7"
+    contract_version: "1.8"
     display_name: "Quality Only"
 
     routing_signals:
@@ -239,7 +239,7 @@ private fun seedAddonOnlyRepo(): Path {
     packRoot.resolve("platform.yaml"),
     """
     platform: addononly
-    contract_version: "1.7"
+    contract_version: "1.8"
     display_name: "Add-On Only"
 
     routing_signals:

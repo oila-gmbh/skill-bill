@@ -13,6 +13,7 @@ import skillbill.ports.review.ReviewEvidenceBroker
 import skillbill.ports.review.model.ParallelReviewLaneOutcome
 import skillbill.ports.review.model.ParallelReviewLaneRunResult
 import skillbill.ports.review.model.ReviewEvidenceBrokerBinding
+import skillbill.ports.review.model.ReviewEvidenceSource
 import skillbill.ports.review.model.ReviewLaneAccounting
 import skillbill.ports.review.model.ReviewLaunchAgentStagingRequest
 import skillbill.review.context.model.ResolvedReviewExecutionMode
@@ -21,10 +22,12 @@ import skillbill.review.context.model.ReviewContextBudgetExceededException
 import skillbill.review.context.model.ReviewContextBudgetPolicy
 import skillbill.review.context.model.ReviewContextPacket
 import skillbill.review.context.model.ReviewDependencyAllowlist
+import skillbill.review.context.model.ReviewExpansionRecord
 import skillbill.review.context.model.ReviewLaneBundle
 import skillbill.review.context.model.ReviewLaneBundleEntry
 import skillbill.review.context.model.ReviewLaneCompletionState
 import skillbill.review.context.model.ReviewLaneIdentity
+import skillbill.review.context.model.ReviewLaneReviewDisposition
 import skillbill.review.model.ReviewEvidenceBoundaryAccounting
 import java.nio.file.Path
 import kotlin.coroutines.cancellation.CancellationException
@@ -62,6 +65,19 @@ internal class ParallelCodeReviewRunnerLaneLaunch(
   private fun launchParentLane(args: LaunchParentLaneArgs): ParallelReviewLaneOutcome {
     if (args.launchRequests.isEmpty()) return parallelCodeReviewNoOpResumeOutcome(args.agentId)
     val selected = args.launchRequests.sortedBy { it.assignment.laneDecision.orderIndex }
+    if (args.resolvedMode == ResolvedReviewExecutionMode.INLINE) {
+      return inlineReviewChunks(selected)
+        .map { chunk -> launchParentLaneChunk(args, selected, chunk) }
+        .let(::aggregateInlineChunkOutcomes)
+    }
+    return launchParentLaneChunk(args, selected, null)
+  }
+
+  private fun launchParentLaneChunk(
+    args: LaunchParentLaneArgs,
+    selected: List<ReviewSpecialistLaunchRequest>,
+    chunk: ParallelCodeReviewInlineChunk?,
+  ): ParallelReviewLaneOutcome {
     val bundleStates = selected.map(::parallelCodeReviewGovernedLaunchFor).map { it.completionState }
     val launch = ParallelCodeReviewInlineParentLaunch(
       agentId = args.agentId,
@@ -75,11 +91,15 @@ internal class ParallelCodeReviewRunnerLaneLaunch(
           baseRevision = args.request.baseRevision,
           headRevision = args.request.headRevision,
           specPath = args.request.specPath,
+          chunkId = chunk?.id,
+          chunkIndex = chunk?.index,
+          chunkCount = chunk?.total,
         ),
       ),
       bundleState = parallelCodeReviewAggregateBundleCompletion(bundleStates),
+      chunk = chunk,
     )
-    return when (val bound = bindGovernedEvidence(selected, args.request)) {
+    return when (val bound = bindGovernedEvidence(selected, args.request, chunk)) {
       is ParallelCodeReviewGovernedEvidenceBind.Unbound -> unboundParentOutcome(launch, bound)
       is ParallelCodeReviewGovernedEvidenceBind.Bound -> launchedBoundParent(
         LaunchedBoundParentArgs(
@@ -138,8 +158,16 @@ internal class ParallelCodeReviewRunnerLaneLaunch(
   private fun bindGovernedEvidence(
     selected: List<ReviewSpecialistLaunchRequest>,
     request: ParallelCodeReviewRequest,
+    chunk: ParallelCodeReviewInlineChunk?,
   ): ParallelCodeReviewGovernedEvidenceBind {
-    val broker = runCatching { parentEvidenceBroker(selected, request.repoRoot) }
+    val broker = runCatching {
+      parentEvidenceBroker(
+        selected = selected,
+        repoRoot = request.repoRoot,
+        visibleHunkIds = chunk?.hunkIds,
+        visibleTargetPaths = chunk?.targetPaths,
+      )
+    }
       .getOrElseRethrowingCancellation {
         return ParallelCodeReviewGovernedEvidenceBind.Unbound(
           ReviewEvidenceBoundaryAccounting.GOVERNED_EVIDENCE_SEAM,
@@ -237,9 +265,12 @@ internal class ParallelCodeReviewRunnerLaneLaunch(
       ParallelCodeReviewSoftRegisterAdmission(emptyList(), null, 0)
     }
     return ParallelReviewLaneOutcome(
-      success = launchReason == null,
+      success = launchReason == null && completion.disposition == ReviewLaneReviewDisposition.COMPLETE &&
+        evidenceAccounting.terminalOutcome == null,
       rawOutput = outcome.stdout,
-      failureReason = launchReason,
+      failureReason = launchReason ?: "Required review evidence remains undelivered.".takeIf {
+        completion.disposition == ReviewLaneReviewDisposition.INCOMPLETE || evidenceAccounting.terminalOutcome != null
+      },
       droppedCandidateDiagnostic = softAdmission.droppedCandidateDiagnostic,
       budgetOutcome = budgetOutcome,
       accounting = inlineParentAccounting(
@@ -260,8 +291,18 @@ internal class ParallelCodeReviewRunnerLaneLaunch(
     )
   }
 
-  fun parentEvidenceBroker(selected: List<ReviewSpecialistLaunchRequest>, repoRoot: Path): ReviewEvidenceBroker =
-    reviewEvidenceBrokerFactory.brokerFor(parentBrokerBinding(selected, repoRoot))
+  fun parentEvidenceBroker(
+    selected: List<ReviewSpecialistLaunchRequest>,
+    repoRoot: Path,
+    visibleHunkIds: Set<String>? = null,
+    visibleTargetPaths: Set<String>? = null,
+  ): ReviewEvidenceBroker = reviewEvidenceBrokerFactory.brokerFor(
+    parentBrokerBinding(selected, repoRoot, visibleHunkIds, visibleTargetPaths),
+  ).also { broker ->
+    selected.flatMap { it.prelaunchExpansions }
+      .filter { expansion -> visibleTargetPaths == null || expansion.path in visibleTargetPaths }
+      .forEach(broker::authorizeExpansion)
+  }
 }
 
 private inline fun <T> Result<T>.getOrElseRethrowingCancellation(onFailure: () -> T): T {
@@ -287,6 +328,10 @@ private fun inlineParentAccounting(
   evidenceBytes = brokerAccounting?.evidenceBytes ?: 0,
   expansions = brokerAccounting?.expansions.orEmpty(),
   toolCalls = brokerAccounting?.toolCalls ?: 0,
+  evidenceRequests = brokerAccounting?.evidenceRequests ?: 0,
+  requiredEvidenceUnits = brokerAccounting?.requiredEvidenceUnits ?: 0,
+  deliveredEvidenceUnits = brokerAccounting?.deliveredEvidenceUnits ?: 0,
+  remainingEvidence = brokerAccounting?.remainingEvidence.orEmpty(),
   modelTurns = 1,
   resultBytes = outcome?.stdout?.toByteArray(Charsets.UTF_8)?.size?.toLong() ?: 0,
   terminalStatus = terminalStatus,
@@ -324,12 +369,16 @@ internal fun ParallelCodeReviewRunnerLaneLaunch.mergedBundle(
 internal fun ParallelCodeReviewRunnerLaneLaunch.parentBrokerBinding(
   selected: List<ReviewSpecialistLaunchRequest>,
   repoRoot: Path,
+  visibleHunkIds: Set<String>? = null,
+  visibleTargetPaths: Set<String>? = null,
 ): ReviewEvidenceBrokerBinding {
   val primary = selected.minByOrNull { it.assignment.laneDecision.orderIndex } ?: selected.first()
-  if (selected.size == 1) return brokerBinding(primary, repoRoot)
+  if (selected.size == 1) {
+    return brokerBinding(primary, repoRoot, visibleHunkIds, visibleTargetPaths)
+  }
   val assignedPaths = selected.flatMap { it.assignment.assignedPaths }.distinct()
   val assignedHunks = selected.flatMap { it.assignment.assignedHunks }.distinct()
-  val expansions = selected.flatMap { it.assignment.expansions }.distinctBy { it.expansionId }
+  val expansions = emptyList<ReviewExpansionRecord>()
   val assigned = assignedHunks.toSet()
   val merged = primary.assignment.copy(
     laneRouting = emptyList(),
@@ -348,29 +397,57 @@ internal fun ParallelCodeReviewRunnerLaneLaunch.parentBrokerBinding(
     repoRoot = repoRoot,
     assignment = merged,
     laneRubricId = primary.rubrics.first().rubricId,
+    sources = selected.flatMap { launch ->
+      launch.rubrics.map {
+        ReviewEvidenceSource(launch.assignment, it.rubricId, launch.namedDependencies, launch.evidenceCoordinates)
+      }
+    },
     budget = mergedBudget(selected),
     namedDependencies = selected.flatMap { it.namedDependencies }.toSet(),
     trustedExpansionLedger = expansions,
     projectedHunks = primary.packet.changedHunks.filter { it.hunkId in assigned },
     locatorReader = sharedEvidenceLocatorReader,
     bodyExtractor = ReviewLocatorHunkBodyExtractor,
+    visibleHunkIds = visibleHunkIds ?: assigned,
+    visibleTargetPaths = visibleTargetPaths ?: (
+      assignedPaths +
+        selected.flatMap { it.assignment.dependencyAllowlist.normalized } +
+        selected.flatMap { launch -> launch.assignment.evidenceTargets.map { it.path } }
+      ).toSet(),
   )
 }
 
 internal fun ParallelCodeReviewRunnerLaneLaunch.brokerBinding(
   launch: ReviewSpecialistLaunchRequest,
   repoRoot: Path,
+  visibleHunkIds: Set<String>? = null,
+  visibleTargetPaths: Set<String>? = null,
 ): ReviewEvidenceBrokerBinding {
   val assigned = launch.assignment.assignedHunks.toSet()
   return ReviewEvidenceBrokerBinding(
     repoRoot = repoRoot,
     assignment = launch.assignment,
     laneRubricId = launch.rubrics.first().rubricId,
+    sources = launch.rubrics.map {
+      ReviewEvidenceSource(
+        launch.assignment,
+        it.rubricId,
+        launch.namedDependencies,
+        launch.evidenceCoordinates,
+      )
+    },
+
     budget = launch.budget,
     namedDependencies = launch.namedDependencies,
     trustedExpansionLedger = launch.assignment.expansions,
     projectedHunks = launch.packet.changedHunks.filter { it.hunkId in assigned },
     locatorReader = sharedEvidenceLocatorReader,
     bodyExtractor = ReviewLocatorHunkBodyExtractor,
+    visibleHunkIds = visibleHunkIds ?: assigned,
+    visibleTargetPaths = visibleTargetPaths ?: (
+      launch.assignment.assignedPaths +
+        launch.assignment.dependencyAllowlist.normalized +
+        launch.assignment.evidenceTargets.map { it.path }
+      ).toSet(),
   )
 }

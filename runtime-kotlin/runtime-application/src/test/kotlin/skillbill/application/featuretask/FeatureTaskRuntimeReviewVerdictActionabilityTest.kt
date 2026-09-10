@@ -7,6 +7,50 @@ import kotlin.test.assertEquals
 
 class FeatureTaskRuntimeReviewVerdictActionabilityTest {
   @Test
+  fun `incomplete evidence coverage requests changes despite approved worker prose and minor findings`() {
+    val envelope = mapOf(
+      "verdict" to "approved",
+      "produced_outputs" to mapOf(
+        FeatureTaskRuntimeVerificationSignalKeys.EVIDENCE_COVERAGE_COMPLETE to false,
+        FeatureTaskRuntimeVerificationSignalKeys.REVIEW_FINDINGS to listOf(
+          mapOf(
+            "finding_id" to "F-001",
+            "severity" to "minor",
+            "message" to "advisory only",
+          ),
+        ),
+      ),
+    )
+
+    assertEquals(
+      FeatureTaskRuntimeVerdict.CHANGES_REQUESTED,
+      FeatureTaskRuntimeOutputVerification.verdictFor(
+        FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW,
+        envelope,
+      ),
+    )
+  }
+
+  @Test
+  fun `incomplete evidence coverage requests changes when findings are empty`() {
+    val envelope = mapOf(
+      "verdict" to "approved",
+      "produced_outputs" to mapOf(
+        FeatureTaskRuntimeVerificationSignalKeys.EVIDENCE_COVERAGE_COMPLETE to false,
+        FeatureTaskRuntimeVerificationSignalKeys.REVIEW_FINDINGS to emptyList<Any>(),
+      ),
+    )
+
+    assertEquals(
+      FeatureTaskRuntimeVerdict.CHANGES_REQUESTED,
+      FeatureTaskRuntimeOutputVerification.verdictFor(
+        FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW,
+        envelope,
+      ),
+    )
+  }
+
+  @Test
   fun `a refuted major does not force changes_requested when only minors remain actionable`() {
     val envelope = mapOf(
       "verdict" to "approved",

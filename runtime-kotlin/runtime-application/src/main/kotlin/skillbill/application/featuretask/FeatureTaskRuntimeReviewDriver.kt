@@ -96,6 +96,7 @@ object FeatureTaskRuntimeReviewEnvelope {
     val produced = linkedMapOf<String, Any?>(
       FeatureTaskRuntimeVerificationSignalKeys.REVIEW_FINDINGS to emptyList<Any?>(),
       FeatureTaskRuntimeVerificationSignalKeys.REVIEW_RUN_ID to reviewRunId,
+      FeatureTaskRuntimeVerificationSignalKeys.EVIDENCE_COVERAGE_COMPLETE to evidenceCoverageComplete(result),
       "repository_checkpoint" to mapOf("fingerprint" to cycle.repositoryFingerprint),
     )
     commitFocusedAccounting(result, cycle.resolvedTier)?.let { accounting ->
@@ -108,7 +109,11 @@ object FeatureTaskRuntimeReviewEnvelope {
       "status" to STATUS_COMPLETED,
       "summary" to prose.take(SUMMARY_MAX_CHARS),
       "produced_outputs" to produced,
-      FeatureTaskRuntimeVerificationSignalKeys.VERDICT to extractReviewVerdict(prose).wireValue,
+      FeatureTaskRuntimeVerificationSignalKeys.VERDICT to if (!evidenceCoverageComplete(result)) {
+        FeatureTaskRuntimeVerdict.CHANGES_REQUESTED.wireValue
+      } else {
+        extractReviewVerdict(prose).wireValue
+      },
     )
     val outcome = GoalSubtaskReviewSummaryReducer.outcomeFor(envelope)
     produced[FeatureTaskRuntimeVerificationSignalKeys.REVIEW_FINDINGS] = findings
@@ -165,6 +170,9 @@ object FeatureTaskRuntimeReviewEnvelope {
 
   private fun citationPayload(citation: ReviewFindingCitation): Map<String, Any?> =
     mapOf("path" to citation.path, "line" to citation.line)
+
+  private fun evidenceCoverageComplete(result: ParallelCodeReviewResult): Boolean =
+    result.lane1.success && result.coverage?.isCleanCoverage != false
 
   private fun commitFocusedAccounting(
     result: ParallelCodeReviewResult,

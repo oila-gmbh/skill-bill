@@ -7,6 +7,7 @@ import skillbill.review.context.model.CodeReviewExecutionMode
 import skillbill.review.context.model.ReviewAccountingSummary
 import skillbill.review.context.model.ReviewBaselineUntrackedPolicy
 import skillbill.review.context.model.ReviewBudgetOutcome
+import skillbill.review.context.model.ReviewEvidenceLimits
 import skillbill.review.context.model.ReviewLaneCompletionState
 import skillbill.review.model.ParallelReviewMergeResult
 import skillbill.review.model.ReviewCoverageReport
@@ -82,6 +83,7 @@ data class ReviewPrelaunchExpansion(
   val reachabilityReason: String,
 ) {
   init {
+    listOf(lane, path, reachabilityReason).forEach(ReviewEvidenceLimits::field)
     require(lane.isNotBlank() && path.isNotBlank() && reachabilityReason.isNotBlank()) {
       "A prelaunch expansion requires a lane, path, and non-blank reachability reason."
     }

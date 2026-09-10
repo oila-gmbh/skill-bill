@@ -9,6 +9,7 @@ import skillbill.nativeagent.composition.platformPackRoot
 import skillbill.nativeagent.platformpack.NativeAgentAddonSelectionPolicy
 import skillbill.nativeagent.platformpack.NativeAgentGovernedAddonActivation
 import skillbill.nativeagent.platformpack.NativeAgentPlatformPack
+import skillbill.nativeagent.platformpack.readRequiredRubricCompanions
 import java.nio.file.Path
 
 internal fun composeGovernedAgentBody(
@@ -20,6 +21,14 @@ internal fun composeGovernedAgentBody(
   val resolvedAddons = resolveDeclaredAddonTargets(root, target)
   val session = SidecarInliningSession(root, target)
   resolvedAddons.targets.forEach { addon -> session.claim(addon.path) }
+  val pack = target.manifest
+  val area = pack?.declaredFiles?.areas?.entries?.singleOrNull { it.value == target.contentPath }?.key
+  val companions = if (pack != null && area != null) {
+    readRequiredRubricCompanions(pack.packRoot, target.contentPath, pack.requiredRubricCompanions[area].orEmpty())
+  } else {
+    emptyMap()
+  }
+  companions.keys.forEach(session::claim)
   val rewrittenBody = session.rewrite(body, target.contentPath)
   claimExcludedAddonPointerTargets(root, target, session)
   val addonBlocks = resolvedAddons.targets.map { addon ->
@@ -27,6 +36,7 @@ internal fun composeGovernedAgentBody(
   }
   val composedBody = buildString {
     append(rewrittenBody.trimEnd())
+    companions.values.forEach { append("\n\n").append(it.trimEnd()) }
     append(session.inlinedReferenceBlocks())
     if (addonBlocks.isNotEmpty()) {
       append("\n\n## Composed Add-Ons\n\n")

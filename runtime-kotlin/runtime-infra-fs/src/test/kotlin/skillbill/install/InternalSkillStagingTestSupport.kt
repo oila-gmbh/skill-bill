@@ -204,7 +204,7 @@ open class InternalSkillStagingTestSupport {
       packRoot.resolve("platform.yaml"),
       """
       |platform: "$slug"
-      |contract_version: "1.7"
+      |contract_version: "1.8"
       |routing_signals:
       |  strong:
       |    - "$slug"
@@ -249,7 +249,7 @@ open class InternalSkillStagingTestSupport {
       packRoot.resolve("platform.yaml"),
       """
       |platform: "$slug"
-      |contract_version: "1.7"
+      |contract_version: "1.8"
       |routing_signals:
       |  strong:
       |    - "$slug"

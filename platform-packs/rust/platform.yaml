@@ -1,5 +1,5 @@
 platform: rust
-contract_version: "1.7"
+contract_version: "1.8"
 display_name: Rust
 
 routing_signals:

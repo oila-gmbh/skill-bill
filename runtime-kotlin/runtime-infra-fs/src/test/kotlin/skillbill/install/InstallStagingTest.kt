@@ -626,7 +626,7 @@ class InstallStagingTest {
       packRoot.resolve("platform.yaml"),
       """
       |platform: "sample"
-      |contract_version: "1.7"
+      |contract_version: "1.8"
       |display_name: "Sample"
       |
       |routing_signals:

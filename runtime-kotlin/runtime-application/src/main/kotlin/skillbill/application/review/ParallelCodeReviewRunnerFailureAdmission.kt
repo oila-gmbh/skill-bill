@@ -146,11 +146,11 @@ internal fun parallelCodeReviewInlineTerminalStatus(
   facts: AgentRunLaunchFacts,
   disposition: ReviewLaneReviewDisposition,
 ): String = when {
-  disposition == ReviewLaneReviewDisposition.INCOMPLETE -> "incomplete"
   facts.timedOut -> "timeout"
   facts.interrupted -> "interrupted"
   facts.spawnFailed -> "spawn_failure"
   facts.exitStatus != 0 -> "process_failure"
+  disposition == ReviewLaneReviewDisposition.INCOMPLETE -> "incomplete"
   else -> "completed"
 }
 

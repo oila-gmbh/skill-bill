@@ -2,6 +2,7 @@ package skillbill.infrastructure.fs
 
 import me.tatarka.inject.annotations.Inject
 import skillbill.error.MissingContentFileError
+import skillbill.nativeagent.platformpack.readRequiredRubricCompanions
 import skillbill.ports.review.ReviewRubricResolver
 import skillbill.ports.review.model.ResolvedReviewRubric
 import skillbill.ports.review.model.ReviewOwnedFileEvidence
@@ -29,7 +30,8 @@ class FileSystemReviewRubricResolver : ReviewRubricResolver {
       require(file.startsWith(packRoot) && Files.isRegularFile(file) && !Files.isSymbolicLink(file)) {
         "Platform pack '${manifest.slug}' declares an unreadable '$area' code-review rubric."
       }
-      val body = Files.readString(file)
+      val companions = readRequiredRubricCompanions(packRoot, file, manifest.requiredRubricCompanions[area].orEmpty())
+      val body = (listOf(Files.readString(file)) + companions.values).joinToString("\n\n")
       require(body.toByteArray().size <= MAX_RUBRIC_BYTES) {
         "Platform pack '${manifest.slug}' declares a '$area' rubric larger than $MAX_RUBRIC_BYTES bytes."
       }

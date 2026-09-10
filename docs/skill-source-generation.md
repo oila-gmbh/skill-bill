@@ -587,7 +587,7 @@ Key guards:
 - committed generated `SKILL.md` wrappers are rejected
 - committed generated support pointer files are rejected
 - committed provider-specific native-agent artifacts are rejected
-- platform manifests must match shell contract version `1.3`
+- platform manifests must match shell contract version `1.8`
 - manifest-declared files must exist and be valid `content.md`
 - pointer target parity is validated against platform manifests
 - native-agent composition must render self-contained provider output
@@ -693,3 +693,9 @@ state, and allowlisted phase-local instructions. Do not describe these as
 complete artifact inheritance or agent-selected retrieval. Handoff declarations
 and delivered persistence records are versioned runtime contracts; projection
 budgets are enforced before launch without truncation or full-artifact fallback.
+
+## Required rubric companions
+
+A pack may declare `required_rubric_companions` as a mapping of declared review area to Markdown filenames. Each file belongs in that specialist's directory beside `content.md`. The loader rejects missing or unreadable files, directory escapes, repeated filenames, and guidance exceeding 256 KiB per specialist. Runtime rubric composition and native-agent rendering include these files before optional add-ons. Workers receive the bodies in their launch and do not read pack files through the evidence broker.
+
+Refresh generated output after changing this declaration or its guidance. A goal child that forbids installation must leave that refresh to an authorized external run and report it as an acceptance prerequisite.

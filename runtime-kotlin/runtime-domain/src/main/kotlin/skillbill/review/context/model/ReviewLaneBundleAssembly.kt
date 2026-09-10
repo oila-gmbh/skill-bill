@@ -3,10 +3,6 @@ package skillbill.review.context.model
 import java.nio.charset.StandardCharsets
 import java.security.MessageDigest
 
-/**
- * One assigned hunk body with the commit identity the parent already decided. Ordering authority is
- * commit order index, then path, then newStart — never worker-side rediscovery.
- */
 data class ReviewLaneAssembledEntry(
   val commitSha: String,
   val parentSha: String,
@@ -31,10 +27,6 @@ data class ReviewLaneAssembledEntry(
   )
 }
 
-/**
- * Launch-assembled view of a lane's sparse assignment: ordered hunk bodies with commit metadata.
- * Distinct from [ReviewLaneBundle], which stores assignment-level hunk-id grouping without bodies.
- */
 data class ReviewLaneAssembledBundle(val entries: List<ReviewLaneAssembledEntry>) {
   init {
     val ids = entries.map { it.hunkId }
@@ -49,12 +41,9 @@ data class ReviewLaneAssembledBundle(val entries: List<ReviewLaneAssembledEntry>
 
   val canonical: String get() = canonicalFieldList(entries.map { it.canonical })
 
-  /** Stable identity of the bundle's composition for launch, result, and resume records. */
   val compositionDigest: String get() = sha256Hex(canonical)
 
   companion object {
-    // Declared before EMPTY: the constructor's ordering check reads ENTRY_ORDER, so initializing
-    // EMPTY first would run that check against a still-null comparator and fail class init.
     val ENTRY_ORDER: Comparator<ReviewLaneAssembledEntry> = compareBy(
       ReviewLaneAssembledEntry::orderIndex,
       { it.hunk.path },
@@ -64,10 +53,6 @@ data class ReviewLaneAssembledBundle(val entries: List<ReviewLaneAssembledEntry>
 
     val EMPTY: ReviewLaneAssembledBundle = ReviewLaneAssembledBundle(emptyList())
 
-    /**
-     * Materializes the assignment's commit-grouped hunk ids into ordered body entries using the
-     * packet's commit units. Does not re-decide relevance or re-derive the commit sequence.
-     */
     fun assemble(assignment: ReviewAssignment, packet: ReviewContextPacket): ReviewLaneAssembledBundle {
       val hunksById = packet.changedHunks.associateBy { it.hunkId }
       val unitsBySha = packet.commitUnits.associateBy { it.commitSha }
@@ -95,7 +80,6 @@ data class ReviewLaneAssembledBundle(val entries: List<ReviewLaneAssembledEntry>
   }
 }
 
-/** One size-driven slice of an assembled bundle; may start or end mid-commit. */
 data class ReviewLaneBundleSegment(
   val segmentId: String,
   val entries: List<ReviewLaneAssembledEntry>,
@@ -114,10 +98,6 @@ data class ReviewLaneBundleSegment(
   val compositionDigest: String get() = sha256Hex(canonicalFieldList(entries.map { it.canonical }))
 }
 
-/**
- * Result of packing an assembled bundle into the fewest segments that fit [maxLaneLaunchBytes].
- * Unreviewable entries are those that cannot fit alone; they feed an incomplete lane disposition.
- */
 data class ReviewLaneBundleSegmentation(
   val segments: List<ReviewLaneBundleSegment>,
   val unreviewableEntries: List<ReviewLaneAssembledEntry> = emptyList(),
@@ -148,7 +128,6 @@ data class ReviewLaneBundleSegmentation(
   }
 }
 
-/** Whether a lane finished its single pass over every assigned segment. */
 enum class ReviewLaneReviewDisposition {
   COMPLETE,
   INCOMPLETE,
@@ -176,11 +155,6 @@ data class ReviewLaneCompletionState(
   val segments: List<ReviewLaneSegmentAccounting>,
   val unreviewedSegmentIds: List<String> = emptyList(),
   val budgetDimension: String? = null,
-  /**
-   * The concrete review units the lane left unreviewed, as `commit@path` labels. Reporting has to
-   * name what was not covered; a segment id alone tells a reader nothing about which code went
-   * unreviewed.
-   */
   val unreviewedUnits: List<String> = emptyList(),
 ) {
   init {
@@ -195,11 +169,10 @@ data class ReviewLaneCompletionState(
         require(unreviewedUnits.isEmpty()) { "A complete lane cannot name unreviewed units." }
       }
       ReviewLaneReviewDisposition.INCOMPLETE -> {
-        require(unreviewedSegmentIds.isNotEmpty()) {
-          "An incomplete lane must name every unreviewed segment id."
-        }
-        require(!budgetDimension.isNullOrBlank()) {
-          "An incomplete lane must name the budget dimension that stopped it."
+        if (budgetDimension != null) {
+          require(budgetDimension.isNotBlank() && unreviewedSegmentIds.isNotEmpty()) {
+            "A budget-stopped lane must name its budget dimension and unreviewed segments."
+          }
         }
         require(unreviewedUnits.isNotEmpty()) {
           "An incomplete lane must name the units it left unreviewed."
@@ -212,10 +185,6 @@ data class ReviewLaneCompletionState(
     get() = disposition == ReviewLaneReviewDisposition.COMPLETE
 }
 
-/**
- * Packs [bundle] entries in order into the fewest segments whose measured launch payload fits
- * [maxLaneLaunchBytes]. Split points are size-driven only — never commit boundaries.
- */
 fun segmentAssembledBundle(
   bundle: ReviewLaneAssembledBundle,
   maxLaneLaunchBytes: Long,
@@ -321,15 +290,8 @@ fun ReviewLaneCompletionState.withBrokerEvidenceRefusal(brokerDeniedUnits: List<
 
 private const val BROKER_EVIDENCE_REFUSAL_SEGMENT_ID = "seg-evidence-refused"
 
-/** The dimension named when a lane is incomplete because its parent agent run did not succeed. */
 const val LANE_RUN_OUTCOME_DIMENSION: String = "lane_run_outcome"
 
-/**
- * Downgrades a lane whose parent agent run did not succeed to incomplete coverage. Bundle
- * segmentation only describes whether the assembled bundle fit the budget, so a lane whose agent
- * crashed still looks complete by that measure; here its whole assigned bundle counts as
- * unreviewed, which is what both the coverage report and the integration pass must be told.
- */
 fun ReviewLaneCompletionState.asFailedLaneRun(assignedUnits: List<String>): ReviewLaneCompletionState =
   if (disposition == ReviewLaneReviewDisposition.INCOMPLETE) {
     this

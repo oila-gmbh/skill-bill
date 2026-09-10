@@ -51,19 +51,11 @@ private fun finaliseApplicableSubtaskCommit(
   val branch = subtaskCommit.finalisationBranch(runLoop)
     ?: return subtaskCommit.unownedWorktreeCommitSha(runLoop, run, normalizedOutput)
   val identityFailure = subtaskCommit.reviewIdentityFailure(runLoop)
-  if (identityFailure != null) return handleIdentityFailure(runLoop, identityFailure)
+  if (identityFailure != null) return CommitPushBlocked(identityFailure)
   return when (val preparation = prepareFinalisation(runLoop, normalizedOutput, branch)) {
     is FinalisationBlocked -> CommitPushBlocked(preparation.reason)
     is FinalisationReady -> executeFinalisation(runLoop, run, normalizedOutput, preparation.value)
   }
-}
-
-private fun handleIdentityFailure(runLoop: FeatureTaskRuntimeRunLoop, reason: String): CommitPushFinalisation {
-  if (reason.startsWith("review approval is stale:")) {
-    runLoop.collaborators.driveContinued3.reenterAfterChangedRevision(runLoop)?.let { return CommitPushBlocked(it) }
-    return CommitPushReaudit
-  }
-  return CommitPushBlocked("needs_human: $reason")
 }
 
 private fun prepareFinalisation(
@@ -108,7 +100,7 @@ private fun prepareFinalisationWithLedger(
       identity,
       ledger,
       branch,
-      resolved?.workflowOwnedPaths.orEmpty().filterNot(::isGovernedSpecPath).filterNot(::isRuntimePrivatePath),
+      finalisationOwnedPaths(resolved, records),
       boundaryHistory,
     ),
   )
@@ -217,7 +209,7 @@ private fun executeFinalisation(
     ),
   )
   return when (outcome) {
-    is FeatureTaskRuntimeSubtaskFinalisationBlocked -> settleFinalisationBlock(runLoop, outcome.reason)
+    is FeatureTaskRuntimeSubtaskFinalisationBlocked -> settleFinalisationBlock(outcome.reason)
     is FeatureTaskRuntimeSubtaskFinalised -> CommitPushSettled(
       runLoop.collaborators.subtaskCommit.revalidated(
         runLoop,
@@ -228,10 +220,4 @@ private fun executeFinalisation(
   }
 }
 
-private fun settleFinalisationBlock(runLoop: FeatureTaskRuntimeRunLoop, reason: String): CommitPushFinalisation {
-  if (reason.contains("source changes after review")) {
-    runLoop.collaborators.driveContinued3.reenterAfterChangedRevision(runLoop)?.let { return CommitPushBlocked(it) }
-    return CommitPushReaudit
-  }
-  return CommitPushBlocked(reason)
-}
+private fun settleFinalisationBlock(reason: String): CommitPushFinalisation = CommitPushBlocked(reason)

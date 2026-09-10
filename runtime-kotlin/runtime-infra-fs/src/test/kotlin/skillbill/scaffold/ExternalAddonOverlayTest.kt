@@ -411,7 +411,7 @@ class ExternalAddonOverlayTest {
       packRoot.resolve("platform.yaml"),
       """
       platform: $platform
-      contract_version: "1.7"
+      contract_version: "1.8"
       display_name: "$platform"
 
       routing_signals:
@@ -466,7 +466,7 @@ class ExternalAddonOverlayTest {
     manifest.append(
       """
       platform: ios
-      contract_version: "1.7"
+      contract_version: "1.8"
       display_name: "iOS"
 
       routing_signals:
@@ -516,7 +516,7 @@ class ExternalAddonOverlayTest {
       packRoot.resolve("platform.yaml"),
       """
       platform: kotlin
-      contract_version: "1.7"
+      contract_version: "1.8"
       display_name: "Kotlin"
 
       routing_signals:
