@@ -119,12 +119,52 @@ private fun validateMigrationRecoveryRef(
   val expected = checkpoint.parentSha.orEmpty().trim()
   val preserved = target.isNotBlank() && target != expected && ref.ok &&
     preservedMigrationParent(runLoop, checkpoint, target, expected)
-  return if (!ref.ok || (target != expected && !preserved)) {
-    "checkpoint ref '${checkpoint.checkpointRef}' does not prove the recorded parent; operator decision: repair " +
-      "the recovery refs before normalizing"
-  } else {
-    null
+  if (ref.ok && (target == expected || preserved)) return null
+  if (ref.ok && target.isBlank() && expected.isNotBlank()) {
+    return healMissingMigrationRecoveryRef(runLoop, checkpoint, expected)
   }
+  return "checkpoint ref '${checkpoint.checkpointRef}' does not prove the recorded parent; operator decision: repair " +
+    "the recovery refs before normalizing"
+}
+
+private fun healMissingMigrationRecoveryRef(
+  runLoop: FeatureTaskRuntimeRunLoop,
+  checkpoint: FeatureTaskRuntimeCheckpointIdentity,
+  expectedParentSha: String,
+): String? {
+  val parent = runLoop.phaseGates.gitOperations.resolveCommit(runLoop.request.repoRoot, expectedParentSha)
+  if (!parent.ok || parent.value.orEmpty().trim() != expectedParentSha) {
+    return "checkpoint ref '${checkpoint.checkpointRef}' is missing and recorded parent '$expectedParentSha' cannot " +
+      "be resolved; operator decision: repair the recovery refs before normalizing"
+  }
+  val written = runLoop.phaseGates.gitOperations.updateCheckpointRef(
+    runLoop.request.repoRoot,
+    FEATURE_TASK_RUNTIME_CHECKPOINT_REF_NAMESPACE,
+    checkpoint.checkpointRef,
+    expectedParentSha,
+  )
+  if (!written.ok) {
+    return "checkpoint ref '${checkpoint.checkpointRef}' could not be restored to parent '$expectedParentSha' " +
+      "(${written.error}); operator decision: repair the recovery refs before normalizing"
+  }
+  val verified = runLoop.phaseGates.gitOperations.resolveCheckpointRef(
+    runLoop.request.repoRoot,
+    FEATURE_TASK_RUNTIME_CHECKPOINT_REF_NAMESPACE,
+    checkpoint.checkpointRef,
+  )
+  if (!verified.ok || verified.value.orEmpty().trim() != expectedParentSha) {
+    return "checkpoint ref '${checkpoint.checkpointRef}' did not verify after restoring parent " +
+      "'$expectedParentSha'; operator decision: repair the recovery refs before normalizing"
+  }
+  runCatching {
+    runLoop.diagnostics.warning(
+      "record_kind=migration seam=FeatureTaskRuntimeSubtaskCommitMigrationRecovery." +
+        "healMissingMigrationRecoveryRef value_used='$expectedParentSha' " +
+        "value_expected='${checkpoint.checkpointRef}' " +
+        "cause=recovery ref missing; defaulting ref to recorded parent",
+    )
+  }
+  return null
 }
 
 private fun preservedMigrationParent(

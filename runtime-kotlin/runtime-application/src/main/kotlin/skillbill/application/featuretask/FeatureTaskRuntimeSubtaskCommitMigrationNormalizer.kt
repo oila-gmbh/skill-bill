@@ -201,9 +201,12 @@ private fun settleMigration(request: MigrationSettlementRequest): Boolean {
 
 private fun migrationSettlementValidationFailure(request: MigrationSettlementRequest): String? {
   val context = request.context
-  val baseSha = context.resolved.reviewBaseSha?.trim().takeIf { !it.isNullOrBlank() }
+  val durableBase = context.resolved.reviewBaseSha?.trim().takeIf { !it.isNullOrBlank() }
     ?: return "the active subtask span has no durable base SHA; operator decision: identify the span base before " +
       "normalizing"
+  val baseSha = migrationSpanBaseSha(durableBase, context.headSha, request.active, request.runLoop)
+    ?: return "the durable subtask base '$durableBase' collapsed onto HEAD without a recoverable checkpoint parent; " +
+      "operator decision: identify the exact active span before normalizing"
   val baseReachability = request.runLoop.phaseGates.gitOperations.isCommitAncestor(
     request.runLoop.request.repoRoot,
     baseSha,
@@ -222,6 +225,28 @@ private fun migrationSettlementValidationFailure(request: MigrationSettlementReq
     checkpoints = request.active,
   )
   return spanFailureForMigration(request.runLoop, spanRequest)
+}
+
+internal fun migrationSpanBaseSha(
+  durableBase: String,
+  headSha: String,
+  active: List<FeatureTaskRuntimeCheckpointIdentity>,
+  runLoop: FeatureTaskRuntimeRunLoop? = null,
+): String? {
+  if (durableBase != headSha) return durableBase
+  val parent = active.lastOrNull { it.commitSha == headSha }
+    ?.parentSha
+    ?.trim()
+    ?.takeIf { it.isNotBlank() && it != headSha }
+    ?: return null
+  runCatching {
+    runLoop?.diagnostics?.warning(
+      "record_kind=migration seam=FeatureTaskRuntimeSubtaskCommitMigrationNormalizer.migrationSpanBaseSha " +
+        "value_used='$parent' value_expected='$durableBase' " +
+        "cause=review_base_sha equals HEAD; defaulting span base to active checkpoint parent",
+    )
+  }
+  return parent
 }
 
 private fun spanFailureForMigration(

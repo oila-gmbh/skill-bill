@@ -129,6 +129,27 @@ class FeatureTaskRuntimeSubtaskCommitPreservationTest {
   }
 
   @Test
+  fun `migration span with review base collapsed onto HEAD requires the checkpoint parent as base`() {
+    initialize()
+    val parent = git("rev-parse", "HEAD")
+    git("commit", "--allow-empty", "-m", identity.trailer)
+    val head = git("rev-parse", "HEAD")
+    val operations = GitWorkflowGitOperations()
+    val current = checkpoint(head, 0)
+    assertContains(
+      operations.subtaskCommitSpanFailure(
+        SubtaskCommitSpanFailureRequest(repo, head, head, "feature", identity, listOf(current)),
+      ).orEmpty(),
+      "every active",
+    )
+    assertNull(
+      operations.subtaskCommitSpanFailure(
+        SubtaskCommitSpanFailureRequest(repo, parent, head, "feature", identity, listOf(current)),
+      ),
+    )
+  }
+
+  @Test
   fun `migration retains earlier subtask history outside the proven active span`() {
     initialize()
     val base = git("rev-parse", "HEAD")

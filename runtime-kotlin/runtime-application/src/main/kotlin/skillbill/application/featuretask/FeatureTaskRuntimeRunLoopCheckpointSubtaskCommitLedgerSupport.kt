@@ -351,7 +351,7 @@ private fun recordRecoveredCheckpointIdentity(request: MissingCheckpointIdentity
       ),
     )
   }
-  return request.runLoop.collaborators.checkpointContinued5.recordCheckpointIdentity(
+  val recorded = request.runLoop.collaborators.checkpointContinued5.recordCheckpointIdentity(
     request.runLoop,
     RecordCheckpointIdentityArgs(
       precedingPhaseId = request.precedingPhaseId,
@@ -363,6 +363,83 @@ private fun recordRecoveredCheckpointIdentity(request: MissingCheckpointIdentity
       parentSha = parentSha,
       commitSha = request.headSha,
       blockedReason = request.blockedReason,
+    ),
+  )
+  if (!recorded) return false
+  return persistRecoveredCheckpointParentRef(request, parentSha)
+}
+
+private fun persistRecoveredCheckpointParentRef(
+  request: MissingCheckpointIdentityRequest,
+  parentSha: String,
+): Boolean {
+  val runLoop = request.runLoop
+  val sequenceNumber = (request.identities.maxOfOrNull { it.sequenceNumber } ?: -1) + 1
+  val refName = request.identity.checkpointRefName(sequenceNumber)
+  val existing = runLoop.phaseGates.gitOperations.resolveCheckpointRef(
+    runLoop.request.repoRoot,
+    FEATURE_TASK_RUNTIME_CHECKPOINT_REF_NAMESPACE,
+    refName,
+  )
+  if (!existing.ok) {
+    return blockLedgerReconciliation(
+      runLoop,
+      BlockReconciliationRequest(
+        request.precedingPhaseId,
+        request.branch,
+        request.blockedReason,
+        "recovered checkpoint ref '$refName' could not be inspected (${existing.error}); operator decision: " +
+          "repair checkpoint ref access before reviewing",
+      ),
+    )
+  }
+  val occupant = existing.value.orEmpty().trim()
+  if (occupant.isNotBlank() && occupant != parentSha) {
+    return blockLedgerReconciliation(
+      runLoop,
+      BlockReconciliationRequest(
+        request.precedingPhaseId,
+        request.branch,
+        request.blockedReason,
+        "recovered checkpoint ref '$refName' already names '$occupant' instead of parent '$parentSha'; " +
+          "operator decision: resolve the foreign recovery ref before reviewing",
+      ),
+    )
+  }
+  if (occupant.isBlank()) {
+    val written = runLoop.phaseGates.gitOperations.updateCheckpointRef(
+      runLoop.request.repoRoot,
+      FEATURE_TASK_RUNTIME_CHECKPOINT_REF_NAMESPACE,
+      refName,
+      parentSha,
+    )
+    if (!written.ok) {
+      return blockLedgerReconciliation(
+        runLoop,
+        BlockReconciliationRequest(
+          request.precedingPhaseId,
+          request.branch,
+          request.blockedReason,
+          "recovered checkpoint ref '$refName' could not be written (${written.error}); operator decision: " +
+            "repair checkpoint ref access before reviewing",
+        ),
+      )
+    }
+  }
+  val verified = runLoop.phaseGates.gitOperations.resolveCheckpointRef(
+    runLoop.request.repoRoot,
+    FEATURE_TASK_RUNTIME_CHECKPOINT_REF_NAMESPACE,
+    refName,
+  )
+  if (verified.ok && verified.value.orEmpty().trim() == parentSha) return true
+  return blockLedgerReconciliation(
+    runLoop,
+    BlockReconciliationRequest(
+      request.precedingPhaseId,
+      request.branch,
+      request.blockedReason,
+      "recovered checkpoint ref '$refName' did not verify as parent '$parentSha'; operator decision: " +
+        "repair the recovery refs before reviewing",
     ),
   )
 }
