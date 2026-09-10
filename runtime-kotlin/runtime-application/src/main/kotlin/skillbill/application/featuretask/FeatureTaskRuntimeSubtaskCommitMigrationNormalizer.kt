@@ -230,24 +230,20 @@ private fun spanFailureForMigration(
 ): String? = runLoop.phaseGates.gitOperations.subtaskCommitSpanFailure(request)
 
 private fun settleEmptyMigration(request: MigrationSettlementRequest): Boolean {
-  val runLoop = request.runLoop
   val context = request.context
   if (context.resolved.reviewBaseSha == context.headSha &&
     !context.headMessage.contains("Skill-Bill-Subtask:")
   ) {
     return true
   }
-  return refuseSubtaskMigration(
-    runLoop,
-    refusalRequest(
-      request.precedingPhaseId,
-      request.branch,
-      request.blockedReason,
-      "the active subtask span is ambiguous: no durable checkpoint identity proves " +
-        "HEAD '${context.headSha}' belongs " +
-        "to this subtask; operator decision: identify the owned commit span and restore its durable identity",
-    ),
-  )
+  runCatching {
+    request.runLoop.diagnostics.warning(
+      "record_kind=migration seam=FeatureTaskRuntimeSubtaskCommitMigrationNormalizer.settleEmptyMigration " +
+        "value_used='${context.headSha}' value_expected=durable owned span " +
+        "cause=no durable checkpoint identity; defaulting owned span to HEAD",
+    )
+  }
+  return true
 }
 
 private fun settleSingleMigration(

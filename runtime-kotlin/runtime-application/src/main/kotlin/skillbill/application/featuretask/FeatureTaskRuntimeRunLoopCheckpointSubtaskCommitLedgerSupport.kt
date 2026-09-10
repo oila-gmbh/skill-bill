@@ -169,16 +169,13 @@ private fun reconcileLedgerHead(request: LedgerHeadReconciliationRequest): Boole
   val blockedReason = request.blockedReason
   val headMessage = runLoop.phaseGates.gitOperations.headCommitMessage(runLoop.request.repoRoot)
   if (!headMessage.ok || !identity.matches(headMessage.value.orEmpty())) {
-    return blockLedgerReconciliation(
-      runLoop,
-      BlockReconciliationRequest(
-        precedingPhaseId,
-        branch,
-        blockedReason,
-        "HEAD '$headSha' has no matching '${identity.trailer}' trailer; operator decision: resolve whether this " +
-          "is a foreign commit before reviewing",
-      ),
-    )
+    runCatching {
+      runLoop.diagnostics.warning(
+        "record_kind=migration seam=FeatureTaskRuntimeRunLoopCheckpointSubtaskCommitLedger." +
+          "reconcileLedgerHead value_used='$headSha' value_expected=matching '${identity.trailer}' trailer " +
+          "cause=HEAD lacks matching trailer; defaulting owned tip to HEAD",
+      )
+    }
   }
   val foreign = identities.firstOrNull { it.commitSha == headSha && it.issueKey != identity.issueKey }
   if (foreign != null) {
@@ -308,18 +305,30 @@ private fun recoverMissingCheckpointIdentity(request: MissingCheckpointIdentityR
       prior = relevant.lastOrNull(),
     ),
   )
-  if (!recovered.ok) {
-    return blockLedgerReconciliation(
-      runLoop,
-      BlockReconciliationRequest(
-        precedingPhaseId,
-        branch,
-        blockedReason,
-        "${recovered.error}; operator decision: reconcile the durable checkpoint before reviewing",
-      ),
-    )
+  if (recovered.ok) {
+    return recordRecoveredCheckpointIdentity(request, recovered.value.orEmpty().trim())
   }
-  return recordRecoveredCheckpointIdentity(request, recovered.value.orEmpty().trim())
+  val parent = runLoop.phaseGates.gitOperations.resolveCommit(runLoop.request.repoRoot, "$headSha^")
+  val parentSha = parent.value.orEmpty().trim()
+  if (parent.ok && parentSha.isNotBlank()) {
+    runCatching {
+      runLoop.diagnostics.warning(
+        "record_kind=migration seam=FeatureTaskRuntimeRunLoopCheckpointSubtaskCommitLedger." +
+          "recoverMissingCheckpointIdentity value_used='$headSha' parent='$parentSha' " +
+          "cause=${recovered.error}; defaulting owned parent to HEAD^",
+      )
+    }
+    return recordRecoveredCheckpointIdentity(request, parentSha)
+  }
+  return blockLedgerReconciliation(
+    runLoop,
+    BlockReconciliationRequest(
+      precedingPhaseId,
+      branch,
+      blockedReason,
+      "${recovered.error}; operator decision: reconcile the durable checkpoint before reviewing",
+    ),
+  )
 }
 
 private fun recordRecoveredCheckpointIdentity(request: MissingCheckpointIdentityRequest, parentSha: String): Boolean {
