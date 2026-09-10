@@ -190,41 +190,6 @@ class ParallelReviewLaneDispositionTest {
     assertTrue(reconciled.unreviewedUnits.isEmpty())
   }
 
-  @Test fun `aggregateInlineChunkOutcomes keeps parent incomplete when a later chunk is incomplete`() {
-    val complete = ParallelReviewLaneOutcome(
-      success = true,
-      rawOutput = "verdict: approved",
-      reviewDisposition = ReviewLaneReviewDisposition.COMPLETE,
-      accounting = ReviewLaneAccounting(
-        lane = "codex",
-        terminalStatus = "completed",
-        reviewDisposition = ReviewLaneReviewDisposition.COMPLETE,
-      ),
-    )
-    val incomplete = ParallelReviewLaneOutcome(
-      success = false,
-      rawOutput = "verdict: approved",
-      reviewDisposition = ReviewLaneReviewDisposition.INCOMPLETE,
-      failureReason = "Required review evidence remains undelivered.",
-      accounting = ReviewLaneAccounting(
-        lane = "codex",
-        terminalStatus = "incomplete",
-        reviewDisposition = ReviewLaneReviewDisposition.INCOMPLETE,
-        requiredEvidenceUnits = 2,
-        deliveredEvidenceUnits = 0,
-      ),
-    )
-    val aggregated = aggregateInlineChunkOutcomes(listOf(complete, incomplete))
-
-    assertFalse(aggregated.success)
-    assertEquals(ReviewLaneReviewDisposition.INCOMPLETE, aggregated.reviewDisposition)
-    val accounting = assertNotNull(aggregated.accounting)
-    assertEquals(ReviewLaneReviewDisposition.INCOMPLETE, accounting.reviewDisposition)
-    assertEquals("incomplete", accounting.terminalStatus)
-    assertEquals(null, accounting.terminalOutcome)
-    assertEquals(2, accounting.requiredEvidenceUnits)
-    assertEquals(0, accounting.deliveredEvidenceUnits)
-  }
 
   @Test fun `resume selection keeps only incomplete durable lanes`() {
     val complete = ReviewRunLane(

@@ -155,7 +155,6 @@ internal class ParallelCodeReviewInlineParentLaunch(
   val selected: List<ReviewSpecialistLaunchRequest>,
   val prompt: String,
   val bundleState: ReviewLaneCompletionState,
-  val chunk: ParallelCodeReviewInlineChunk? = null,
 ) {
   val assignment: ReviewAssignment get() = selected.first().assignment
 }

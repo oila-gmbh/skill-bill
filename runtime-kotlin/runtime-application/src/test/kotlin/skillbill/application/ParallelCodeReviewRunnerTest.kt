@@ -390,7 +390,7 @@ class ParallelCodeReviewRunnerTest {
   }
 
   @Test
-  fun `oversized inline review runs sequential evidence chunks`() {
+  fun `oversized inline review still launches one parent agent`() {
     val launcher = ParallelSubtaskLauncher()
     val diff = buildString {
       appendLine("diff --git a/src/Chunks.kt b/src/Chunks.kt")
@@ -410,16 +410,17 @@ class ParallelCodeReviewRunnerTest {
       baseRequest(scope = ParallelReviewScope.STAGED).copy(codeReviewMode = CodeReviewExecutionMode.INLINE),
     )
 
-    assertTrue(launcher.requests.size > 1)
+    assertEquals(1, launcher.requests.size)
     assertTrue(result.lane1.success)
-    val prompts = launcher.requests.map { it.skillRunRequest.promptOverride.orEmpty() }
-    assertTrue(prompts.all { it.contains("Current governed inline review chunk:") })
-    val chunkRequiredUnits = launcher.requests.map {
-      assertNotNull(it.skillRunRequest.reviewEvidenceBroker).accounting().requiredEvidenceUnits
-    }
-    assertTrue(chunkRequiredUnits.all { it <= 32 })
-    assertEquals(100, chunkRequiredUnits.sum())
-    assertEquals(launcher.requests.size, assertNotNull(result.lane1.accounting).modelTurns)
+    val prompt = launcher.requests.single().skillRunRequest.promptOverride.orEmpty()
+    assertFalse(prompt.contains("Current governed inline review chunk:"))
+    assertEquals(
+      100,
+      assertNotNull(launcher.requests.single().skillRunRequest.reviewEvidenceBroker)
+        .accounting()
+        .requiredEvidenceUnits,
+    )
+    assertEquals(1, assertNotNull(result.lane1.accounting).modelTurns)
   }
 
   @Test

@@ -6,7 +6,7 @@ description: "Inline review worker for bill-code-review mode:inline. Parent-laun
 
 ## Role
 
-`bill-code-review-inline` is the declared worker for each governed `mode:inline` review chunk. The runtime may launch sequential bounded chunks for a large evidence surface, but never per-area specialist workers. Each chunk performs one light-depth pass over only its exposed evidence.
+`bill-code-review-inline` is the declared worker for a governed `mode:inline` review. The runtime launches exactly one inline worker for the review. A large evidence surface is paged through the governed evidence broker inside that single session, never by spawning sequential chunk workers or per-area specialists.
 
 The parent launches this declared agent rather than a general-purpose worker. The declared toolset is the point: every byte of repository content arrives through the two governed evidence operations, `read_evidence` and `request_expansion`, and nothing else. There is no raw filesystem, search, or shell tool. A general-purpose worker inherits the host's entire tool surface and re-sends every unused tool schema on each of its model turns, paying for mutation and delegation capability that the read-only review contract forbids anyway.
 
@@ -34,7 +34,7 @@ Verification is the purpose: confirm the change does what it claims and catch th
 
 ## Commit-Focused Sequencing Does Not Apply Here
 
-Inline has no specialist lanes and no integration pass, so commit-focused delegated sequencing is not applicable to it. Large scopes may arrive as sequential runtime-owned chunks; each chunk is a bounded projection of the same review and must not rediscover evidence outside its broker scope.
+Inline has no specialist lanes and no integration pass, so commit-focused delegated sequencing is not applicable to it. Large scopes stay in one worker session; the agent pages evidence through the broker and must not rediscover evidence outside its broker scope.
 Report that explicitly alongside the resolved scope, using the existing
 `detected_scope` vocabulary rather than a new label.
 

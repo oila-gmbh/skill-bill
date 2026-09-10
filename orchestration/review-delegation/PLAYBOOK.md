@@ -12,9 +12,9 @@ explicit `mode:delegated` on `/bill-code-review` (or `skill-bill code-review
 --execution-mode delegated`). Goal and feature-task runs always review inline
 and never select it. The invoking agent fans the review out to
 specialist subagents inside its own harness and merges their findings. `inline`
-is the single-prompt review: the runtime launches one or more sequential bounded
-workers, each the declared `bill-code-review-inline` native agent, which reviews
-one runtime-owned chunk with no per-area fan-out. `auto` and an omitted mode both resolve to
+is the single-prompt review: the runtime launches one
+`bill-code-review-inline` native agent session with no per-area fan-out. Large
+evidence is broker-paged inside that session. `auto` and an omitted mode both resolve to
 `inline` for every pass and for a scope with no pass number, so only an explicit
 `delegated` selection reaches the fan-out.
 

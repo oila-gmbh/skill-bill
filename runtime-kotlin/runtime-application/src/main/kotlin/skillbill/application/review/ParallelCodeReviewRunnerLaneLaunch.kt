@@ -65,19 +65,6 @@ internal class ParallelCodeReviewRunnerLaneLaunch(
   private fun launchParentLane(args: LaunchParentLaneArgs): ParallelReviewLaneOutcome {
     if (args.launchRequests.isEmpty()) return parallelCodeReviewNoOpResumeOutcome(args.agentId)
     val selected = args.launchRequests.sortedBy { it.assignment.laneDecision.orderIndex }
-    if (args.resolvedMode == ResolvedReviewExecutionMode.INLINE) {
-      return inlineReviewChunks(selected)
-        .map { chunk -> launchParentLaneChunk(args, selected, chunk) }
-        .let(::aggregateInlineChunkOutcomes)
-    }
-    return launchParentLaneChunk(args, selected, null)
-  }
-
-  private fun launchParentLaneChunk(
-    args: LaunchParentLaneArgs,
-    selected: List<ReviewSpecialistLaunchRequest>,
-    chunk: ParallelCodeReviewInlineChunk?,
-  ): ParallelReviewLaneOutcome {
     val bundleStates = selected.map(::parallelCodeReviewGovernedLaunchFor).map { it.completionState }
     val launch = ParallelCodeReviewInlineParentLaunch(
       agentId = args.agentId,
@@ -91,15 +78,11 @@ internal class ParallelCodeReviewRunnerLaneLaunch(
           baseRevision = args.request.baseRevision,
           headRevision = args.request.headRevision,
           specPath = args.request.specPath,
-          chunkId = chunk?.id,
-          chunkIndex = chunk?.index,
-          chunkCount = chunk?.total,
         ),
       ),
       bundleState = parallelCodeReviewAggregateBundleCompletion(bundleStates),
-      chunk = chunk,
     )
-    return when (val bound = bindGovernedEvidence(selected, args.request, chunk)) {
+    return when (val bound = bindGovernedEvidence(selected, args.request)) {
       is ParallelCodeReviewGovernedEvidenceBind.Unbound -> unboundParentOutcome(launch, bound)
       is ParallelCodeReviewGovernedEvidenceBind.Bound -> launchedBoundParent(
         LaunchedBoundParentArgs(
@@ -158,14 +141,11 @@ internal class ParallelCodeReviewRunnerLaneLaunch(
   private fun bindGovernedEvidence(
     selected: List<ReviewSpecialistLaunchRequest>,
     request: ParallelCodeReviewRequest,
-    chunk: ParallelCodeReviewInlineChunk?,
   ): ParallelCodeReviewGovernedEvidenceBind {
     val broker = runCatching {
       parentEvidenceBroker(
         selected = selected,
         repoRoot = request.repoRoot,
-        visibleHunkIds = chunk?.hunkIds,
-        visibleTargetPaths = chunk?.targetPaths,
       )
     }
       .getOrElseRethrowingCancellation {

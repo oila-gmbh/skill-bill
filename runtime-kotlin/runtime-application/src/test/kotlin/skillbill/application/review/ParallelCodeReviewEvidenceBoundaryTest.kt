@@ -86,7 +86,7 @@ class ParallelCodeReviewEvidenceBoundaryTest {
   }
 
   @Test
-  fun `chunked inline prelaunch expansion authorizes only on the owning chunk broker`() {
+  fun `inline prelaunch expansion authorizes on the single parent broker`() {
     val fixture = prepareChunkedInlineRepository("review-chunked-expansion")
     val result = reviewHarness(
       ReviewHarnessConfig(
@@ -107,8 +107,10 @@ class ParallelCodeReviewEvidenceBoundaryTest {
         ),
       ).copy(baseRevision = fixture.revision, headRevision = fixture.revision),
     )
-    assertTrue(fixture.recorder.parentLaunches.size > 1)
-    val expansionChunks = fixture.recorder.parentLaunches.count { launch ->
+    assertEquals(1, fixture.recorder.parentLaunches.count { it.skillRunRequest.issueKey == "code-review" })
+    val expansionChunks = fixture.recorder.parentLaunches
+      .filter { it.skillRunRequest.issueKey == "code-review" }
+      .count { launch ->
       val broker = assertNotNull(launch.skillRunRequest.reviewEvidenceBroker)
       discoveryHasAuthorizedExpansion(BrokerBackedNativeReviewOperationProtocol(broker))
     }
@@ -118,7 +120,7 @@ class ParallelCodeReviewEvidenceBoundaryTest {
   }
 
   @Test
-  fun `chunked inline parent stays incomplete when a later chunk leaves required evidence undelivered`() {
+  fun `inline parent stays incomplete when required evidence remains undelivered`() {
     val fixture = prepareChunkedInlineRepository("review-chunked-partial")
     val result = reviewHarness(
       ReviewHarnessConfig(
@@ -126,14 +128,7 @@ class ParallelCodeReviewEvidenceBoundaryTest {
         diff = fixture.git("diff", "--cached"),
         diffResolver = fixture.resolver,
         simulateEvidenceReads = false,
-        response = { launch ->
-          val protocol = launch.skillRunRequest.nativeReviewOperations
-            ?: return@ReviewHarnessConfig RecordedWorkerResponse(stdout = "verdict: approved")
-          val lane = assertNotNull(launch.skillRunRequest.reviewEvidenceBroker).accounting().lane
-          val chunk = chunkIndexFromPrompt(launch.skillRunRequest.promptOverride.orEmpty())
-          if (chunk == null || chunk.index < chunk.total - 1) {
-            deliverScenarioEvidence(protocol, lane, "full")
-          }
+        response = { _ ->
           RecordedWorkerResponse(stdout = "verdict: approved")
         },
       ),
@@ -141,7 +136,7 @@ class ParallelCodeReviewEvidenceBoundaryTest {
     ).run(
       harnessRequest(
         repoRoot = fixture.repoRoot,
-        reviewRunId = "rvw-236-chunked-partial",
+        reviewRunId = "rvw-236-inline-partial",
         codeReviewMode = CodeReviewExecutionMode.INLINE,
         scope = ParallelReviewScope.STAGED,
         prelaunchExpansions = listOf(
@@ -150,7 +145,7 @@ class ParallelCodeReviewEvidenceBoundaryTest {
       ).copy(baseRevision = fixture.revision, headRevision = fixture.revision),
     )
 
-    assertTrue(fixture.recorder.parentLaunches.size > 1)
+    assertEquals(1, fixture.recorder.parentLaunches.count { it.skillRunRequest.issueKey == "code-review" })
     assertFalse(result.lane1.success)
     val accounting = assertNotNull(result.lane1.accounting)
     assertEquals(ReviewLaneReviewDisposition.INCOMPLETE, accounting.reviewDisposition)
@@ -160,15 +155,6 @@ class ParallelCodeReviewEvidenceBoundaryTest {
     assertFalse(assertNotNull(result.coverage).isCleanCoverage)
   }
 
-  private fun chunkIndexFromPrompt(prompt: String): ChunkPromptIndex? {
-    val match = Regex("inline-\\d+ \\((\\d+) of (\\d+)\\)").find(prompt) ?: return null
-    return ChunkPromptIndex(
-      index = match.groupValues[1].toInt() - 1,
-      total = match.groupValues[2].toInt(),
-    )
-  }
-
-  private data class ChunkPromptIndex(val index: Int, val total: Int)
 
   private fun discoveryHasAuthorizedExpansion(protocol: NativeReviewOperationProtocol): Boolean {
     var cursor: String? = null

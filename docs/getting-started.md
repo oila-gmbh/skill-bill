@@ -177,7 +177,7 @@ Choose standalone review execution explicitly with:
 /bill-code-review mode:delegated
 ```
 
-Omitting `mode:` is equivalent to `mode:inline`, the default reduced-depth review through sequential bounded `bill-code-review-inline` chunks; `mode:delegated` is the experimental full-depth specialist subagent fan-out, reached only by that explicit selection on `/bill-code-review`. `mode:auto` resolves to `inline` everywhere. Feature workflows review inline (`/bill-feature <issue-key> code-review:auto|inline`); delegated review is a standalone launch.
+Omitting `mode:` is equivalent to `mode:inline`, the default reduced-depth review in one `bill-code-review-inline` session; `mode:delegated` is the experimental full-depth specialist subagent fan-out, reached only by that explicit selection on `/bill-code-review`. `mode:auto` resolves to `inline` everywhere. Feature workflows review inline (`/bill-feature <issue-key> code-review:auto|inline`); delegated review is a standalone launch.
 
 ## Runtime Fallback Boundary
 

@@ -14,9 +14,6 @@ internal data class ParallelCodeReviewParentPromptRequest(
   val baseRevision: String? = null,
   val headRevision: String? = null,
   val specPath: Path? = null,
-  val chunkId: String? = null,
-  val chunkIndex: Int? = null,
-  val chunkCount: Int? = null,
 )
 
 object ParallelCodeReviewRunnerParentPrompt {
@@ -26,7 +23,6 @@ object ParallelCodeReviewRunnerParentPrompt {
     val inline = resolvedMode == ResolvedReviewExecutionMode.INLINE
     return buildString {
       append(modeFraming(resolvedMode))
-      appendChunkFraming(request)
       appendCursorDelegatedFanOut(selected, resolvedMode, request.agentId)
       appendLine("Detected stack: ${request.routedManifests.joinToString("+") { it.slug }.ifBlank { "generic" }}")
       appendRubrics(selected)
@@ -77,13 +73,6 @@ object ParallelCodeReviewRunnerParentPrompt {
     }
   }
 
-  private fun StringBuilder.appendChunkFraming(request: ParallelCodeReviewParentPromptRequest) {
-    val chunkId = request.chunkId ?: return
-    val index = requireNotNull(request.chunkIndex)
-    val count = requireNotNull(request.chunkCount)
-    appendLine("Current governed inline review chunk: $chunkId (${index + 1} of $count).")
-    appendLine("Review only the evidence exposed by this chunk and finish with the explicit verdict.")
-  }
 
   private fun StringBuilder.appendRubrics(selected: List<ReviewSpecialistLaunchRequest>) {
     val rubricLabel = selected.joinToString { launch ->
