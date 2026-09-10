@@ -44,10 +44,12 @@ blocks loudly; it never degrades to inline.
 
 `inline` is the single-prompt light tier: one review subagent launched by the
 driver as the declared `bill-code-review-inline` native agent, no per-area
-specialist workers, no nested baseline orchestrator, under a bounded budget at
-reduced depth. The worker traverses the delta exactly once against one combined
-checklist, holding all areas in mind simultaneously — it must never re-walk the
-same delta once per area. Never present it as equivalent to a delegated result.
+specialist workers, no nested baseline orchestrator, at reduced judgment depth.
+The worker traverses the delta exactly once against one combined checklist,
+holding all areas in mind simultaneously — it must never re-walk the same delta
+once per area. Evidence through the bound broker stays full: reduced depth does
+not authorize sampling or early stop. Never present it as equivalent to a
+delegated result.
 
 `auto` resolves to `inline` everywhere: a subtask's first review pass, a standalone
 review with no pass number, and every follow-up or remediation pass. Preserve and

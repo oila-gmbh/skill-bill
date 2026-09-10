@@ -1,5 +1,13 @@
 # Review Boundary History
 
+## [2026-09-10] Inline reduced-depth vs full evidence wording
+Areas: application/review, skills/bill-code-review-inline, skills/bill-code-review, orchestration/review-orchestrator, docs
+- Parent prompt and inline skill now state that reduced depth is judgment-only (one merged checklist, one walk) and does not authorize sampling, a page budget, or early stop.
+- Broker delivery stays mandatory: workspace git/shell/Grep/Read do not count; `verdict: approved` is forbidden while required units remain undelivered.
+- Docs and playbook drop “bounded budget” phrasing that invited partial evidence work.
+Feature flag: N/A
+Acceptance criteria: prompt and skill contract clarified; runtime coverage gate unchanged.
+
 ## [2026-09-10] SKILL-236 subtask 1: Single-session inline evidence and settlement
 Areas: application/review, runtime-infra-fs/launcher/review
 - Inline mode launches one parent worker session. Evidence stays broker-paged inside that session; the runtime no longer fans a large diff into sequential chunk agent processes.

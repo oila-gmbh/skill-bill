@@ -302,9 +302,11 @@ internal const val INLINE_FINDING_PARSE_SEAM: String = "attributeInlineFindings"
 
 internal const val PARALLEL_REVIEW_INLINE_DEPTH_DIRECTIVE: String =
   "Merge every routed rubric above into one combined checklist, then traverse the diff exactly " +
-    "once against it at reduced depth in this agent context, holding all rubrics in mind " +
+    "once against it at reduced judgment depth in this agent context, holding all rubrics in mind " +
     "simultaneously, and do not launch specialists. Never re-walk the diff once per rubric. " +
-    "Write free-form prose findings. Optional register lines are best-effort verification hints."
+    "Reduced depth is not a license to sample evidence or stop before the broker catalog is fully " +
+    "delivered — page and read every required unit. Write free-form prose findings. Optional " +
+    "register lines are best-effort verification hints."
 
 internal const val PARALLEL_REVIEW_DELEGATED_DEPTH_DIRECTIVE: String =
   "Assign each routed rubric above to its own specialist worker over that rubric's owned paths. " +

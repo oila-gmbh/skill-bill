@@ -4,7 +4,7 @@
 
 There are three review modes and telemetry reports which one produced a result.
 `inline` is the default light depth tier: one review subagent covering the routed
-areas at reduced depth under a bounded budget, with no specialist fan-out.
+areas at reduced judgment depth with full broker evidence delivery, with no specialist fan-out.
 `delegated` is the experimental full-depth tier, reached only by explicit
 selection: the reviewing agent fans the routed areas out to specialist subagents
 inside its own harness. `auto` and omission both resolve to `inline` for every

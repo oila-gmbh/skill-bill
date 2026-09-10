@@ -38,11 +38,17 @@ object ParallelCodeReviewRunnerParentPrompt {
       )
       appendLine(
         "Call read_evidence with {\"operation\":\"discover\",\"page_size\":16}. " +
-          "Continue with cursor=next_cursor. Read entries using operation=read and requests containing " +
+          "Keep discovering with cursor=next_cursor until next_cursor is null. " +
+          "For every returned entry, read with operation=read and requests that include " +
           "the returned path, selector, and expansion_id when present. Rubrics and " +
           "required guidance are already above. " +
           "request_expansion accepts a reachable path and reachability_reason. Recover from ordinary refusals " +
-          "using authorized selectors; report outstanding evidence and never approve incomplete coverage.",
+          "using authorized selectors. " +
+          "Broker delivery is mandatory and complete: git, shell, Grep, Read, and other workspace tools " +
+          "do not satisfy required evidence. Do not stop after a sample of pages. " +
+          "Do not emit `verdict: approved` while required units remain undelivered; " +
+          "if delivery cannot finish, end with `verdict: changes_requested`, name what remains, " +
+          "and do not claim complete coverage.",
       )
       appendLine(if (inline) PARALLEL_REVIEW_INLINE_DEPTH_DIRECTIVE else PARALLEL_REVIEW_DELEGATED_DEPTH_DIRECTIVE)
       appendLine(
@@ -67,7 +73,8 @@ object ParallelCodeReviewRunnerParentPrompt {
         appendLine("Lane: ${decision.lane}")
         appendLine(
           "Discover this lane through read_evidence with operation=discover, then read its exact selectors. " +
-            "Continue with next_cursor until it is null. Discovery alone does not deliver required evidence.",
+            "Continue with next_cursor until it is null, and read every required unit before you verdict. " +
+            "Discovery alone does not deliver required evidence.",
         )
       }
     }
@@ -115,11 +122,13 @@ object ParallelCodeReviewRunnerParentPrompt {
       appendLine("Run exactly one bill-code-review mode:inline review prompt in this context.")
       appendLine("Resolved execution mode: inline")
       appendLine(
-        "Depth: reduced. Merge the routed areas below into one combined checklist and traverse the " +
-          "diff exactly once against it, holding all areas in mind simultaneously, under a bounded " +
-          "budget. Never re-walk the diff once per area; coverage is accounted per area in your " +
-          "output, not by separate passes. This is not equivalent coverage to a full per-specialist " +
-          "review and must not be presented as one; state that specialist depth was not applied.",
+        "Depth: reduced means judgment depth only — one merged checklist and one walk of the delta, " +
+          "holding every routed area in mind at once, with no specialist fan-out. " +
+          "It does not mean partial evidence, sampling, a page budget, or stopping early. " +
+          "Never re-walk the diff once per area; area coverage is accounted in your output, not by " +
+          "separate passes. Evidence paging through the bound broker stays full and mandatory for " +
+          "the entire assigned catalog. This is not equivalent to a full per-specialist review and " +
+          "must not be presented as one; state that specialist depth was not applied.",
       )
     } else {
       appendLine("Run one bill-code-review mode:delegated review over the routed specialist fan-out.")

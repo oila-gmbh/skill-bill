@@ -12,6 +12,15 @@ The parent launches this declared agent rather than a general-purpose worker. Th
 
 Call `read_evidence` with `{"operation":"discover","page_size":16}` to discover the assignment. Continue with the returned `next_cursor` as `cursor` until it is null. Each entry contains the exact `path` and `selector` for a read, its rubric ownership, and an `expansion_id` when whole-file access is authorized. Call `read_evidence` with `operation: read` and a `requests` array of those selectors. Request a new whole-file authorization through `request_expansion` with a reachable path and a nonblank `reachability_reason`, then pass its `expansion_id` in the read. Discovery and authorization do not deliver evidence. An ordinary refusal can be corrected; any required evidence still missing makes coverage incomplete.
 
+## Evidence completeness
+
+Reduced depth changes how you judge the delta (one merged checklist, one walk). It does not shrink the evidence obligation.
+
+- Page discover until `next_cursor` is null, then read every required unit the broker returns.
+- Do not stop after a sample of pages because the diff is large or the “spec-critical” surface feels covered.
+- `git`, shell, Grep, Read, and other workspace tools are not a substitute; they do not count as governed delivery.
+- Do not emit `verdict: approved` while required units remain undelivered. If you cannot finish delivery, end with `verdict: changes_requested`, name what remains, and do not claim complete coverage.
+
 ## Authoritative Inputs
 
 Routing is already done. The parent supplies the resolved scope, the detected stack, the routed pack, and the exact rubric paths to read — the baseline plus every signal-bearing area it selected.
@@ -22,15 +31,17 @@ Scope is the delta the parent materialized. Do not substitute `origin/main...HEA
 
 ## Depth
 
-**One pass over the delta. Never re-walk it per area.**
+**One pass over the delta. Never re-walk it per area. Full broker evidence still.**
 
 The parent supplies the baseline, rubrics, and required companion guidance in the launch. Merge them into one checklist before reading changed code. Then traverse the delta exactly once, holding all areas in mind simultaneously — each changed hunk is judged against every applicable area's concerns at the moment you read it.
+
+Reduced depth means no specialist fan-out and no per-area re-walk. It does not mean sampling the catalog, skipping remaining discover pages, or approving on a partial read.
 
 This is explicitly forbidden: reading the delta with architecture in mind, then reading it again for performance, then again for security, and so on. Iterating areas over the same code is not thoroughness — it is the same review repeated N times at N times the cost, and it produces worse findings than one pass with the full checklist loaded, because a defect that only shows up where two areas intersect is invisible to both single-area passes.
 
 Areas are a coverage-accounting dimension in the *output*, not an iteration order for the *work*. The per-area checklist you return records which concerns you carried through that single pass; it is not a log of separate passes.
 
-Verification is the purpose: confirm the change does what it claims and catch the defects a careful reader finds on one attentive pass. This is not an audit of every area in depth. Signals focus the inspection within an area; they never remove a declared area from the checklist. Do not build a case for a marginal finding to justify having looked.
+Verification is the purpose: confirm the change does what it claims and catch the defects a careful reader finds on one attentive pass. This is not an audit of every area in specialist depth. Signals focus the inspection within an area; they never remove a declared area from the checklist. Do not build a case for a marginal finding to justify having looked.
 
 ## Commit-Focused Sequencing Does Not Apply Here
 
