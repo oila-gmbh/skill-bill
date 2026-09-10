@@ -13,6 +13,8 @@ import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 
 internal val workflowResumableStepStatuses = setOf("running", "blocked", "pending")
 
+private val REENTRANT_CONTINUE_STATUSES = setOf("reopened", "already_running")
+
 internal fun continueStatusFor(
   snapshot: WorkflowSnapshotView,
   resume: WorkflowResumeView,
@@ -194,7 +196,11 @@ internal fun buildContinueDecision(request: BuildContinueDecisionRequest): Workf
       continuationEntryPrompt = assembled.continuationEntryPrompt,
       compact = compact,
     ),
-    shouldReopen = request.actualContinueStatus == "reopened",
+    // `already_running` is a step left running by an interrupted attempt, not a live one: the
+    // process that opened it is gone by the time a continue reaches here. It has to be persisted
+    // like a reopen, because backoff and retry accounting key off attempt_count and a frozen
+    // counter re-runs the same step forever without escalating.
+    shouldReopen = request.actualContinueStatus in REENTRANT_CONTINUE_STATUSES,
     resumeStepId = resume.resumeStepId,
     nextAttemptCount = request.nextAttemptCount,
   )
