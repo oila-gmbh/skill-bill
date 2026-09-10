@@ -10,10 +10,11 @@ import java.nio.file.attribute.BasicFileAttributes
 
 internal fun checkpointFileIdentity(root: Path, path: String): ReviewCheckpointFileIdentity {
   requireRepositoryRelativePath(path)
-  val candidate = root.resolve(path).normalize()
-  require(candidate.startsWith(root)) { "Evidence path escapes the repository." }
-  var current = root
-  for (segment in root.relativize(candidate)) {
+  val realRoot = root.toRealPath()
+  val candidate = realRoot.resolve(path).normalize()
+  require(candidate.startsWith(realRoot)) { "Evidence path escapes the repository." }
+  var current = realRoot
+  for (segment in realRoot.relativize(candidate)) {
     current = current.resolve(segment)
     val attributes = try {
       Files.readAttributes(current, BasicFileAttributes::class.java, NOFOLLOW_LINKS)

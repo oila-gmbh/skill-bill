@@ -48,16 +48,17 @@ internal fun validateRepositoryMapping(root: Path, repositoryPath: String) {
 }
 
 internal fun resolveRepositoryFile(root: Path, normalized: String): Path? {
-  val candidate = root.resolve(normalized).normalize()
-  require(candidate.startsWith(root)) { "Evidence path escapes the repository." }
-  var component = root
-  root.relativize(candidate).forEach { segment ->
+  val realRoot = root.toRealPath()
+  val candidate = realRoot.resolve(normalized).normalize()
+  require(candidate.startsWith(realRoot)) { "Evidence path escapes the repository." }
+  var component = realRoot
+  realRoot.relativize(candidate).forEach { segment ->
     component = component.resolve(segment)
     if (!Files.exists(component, NOFOLLOW_LINKS)) return null
     require(!Files.isSymbolicLink(component)) { "Evidence paths must not contain symbolic links." }
   }
   val real = candidate.toRealPath()
-  require(real.startsWith(root) && Files.isRegularFile(real)) { "Evidence path must be a repository file." }
+  require(real.startsWith(realRoot) && Files.isRegularFile(real)) { "Evidence path must be a repository file." }
   return real
 }
 
