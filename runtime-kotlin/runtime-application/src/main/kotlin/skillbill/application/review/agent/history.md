@@ -1,12 +1,11 @@
 # Review Boundary History
 
-## [2026-09-10] SKILL-236 subtask 1: Chunk-scoped expansions and inline settlement
+## [2026-09-10] SKILL-236 subtask 1: Single-session inline evidence and settlement
 Areas: application/review, runtime-infra-fs/launcher/review
 - Inline mode launches one parent worker session. Evidence stays broker-paged inside that session; the runtime no longer fans a large diff into sequential chunk agent processes.
-- Inline chunk brokers authorize a prelaunch expansion only when its path is in that chunk's visibleTargetPaths. Delegated launches with null visibleTargetPaths still authorize every prelaunch expansion.
-- aggregateInlineChunkDisposition returns INCOMPLETE when any chunk is not COMPLETE, matching success AND. An earlier COMPLETE chunk no longer masks a later incomplete one.
+- Prelaunch expansions authorize against the parent broker assignment. Delegated launches with null visibleTargetPaths still authorize every prelaunch expansion.
 - handleFrame holds deliveryLock only for closing-state checks and pendingDeliveries. Broker I/O runs unlocked so close() can drain pending delivery confirmations.
-- Reusable: parentEvidenceBroker is the assignment-identity seam for chunked inline launch; keep expansion authorization aligned with the chunk's visible paths.
+- Reusable: parentEvidenceBroker is the assignment-identity seam for the single inline parent launch.
 - Limitation: AC-007 still needs ./install.sh refresh and installed CLI smoke.
 Feature flag: N/A
 Acceptance criteria: 6/7 implemented; AC-007 external prerequisites remain unconfirmed.
