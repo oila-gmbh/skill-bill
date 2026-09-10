@@ -83,16 +83,21 @@ internal fun gitLocalBranchHasUnpushedCommits(repoRoot: Path, branch: String): W
     return WorkflowGitOperationResult(status = "error", error = "Branch name is required to compare with origin.")
   }
   val remoteRef = "origin/$normalized"
-  val remote = runGitCommand(repoRoot, "rev-parse", "--verify", remoteRef)
-  if (!remote.ok) {
-    return WorkflowGitOperationResult(status = "ok", value = "true")
+  val hasRemoteCounterpart = runGitCommand(repoRoot, "rev-parse", "--verify", remoteRef).ok
+  // Missing origin counterpart does not make the branch unpushed: a branch freshly cut from an
+  // up-to-date base carries only commits the remote already has. Counting against every
+  // remote-tracking ref answers that case, so a new branch does not report phantom local work.
+  val ahead = if (hasRemoteCounterpart) {
+    runGitCommand(repoRoot, "rev-list", "--count", "$remoteRef..$normalized")
+  } else {
+    runGitCommand(repoRoot, "rev-list", "--count", normalized, "--not", "--remotes")
   }
-  val ahead = runGitCommand(repoRoot, "rev-list", "--count", "$remoteRef..$normalized")
+  val comparedTo = if (hasRemoteCounterpart) "'$remoteRef'" else "the remote-tracking refs"
   val count = ahead.value.trim().toIntOrNull()
   return when {
     !ahead.ok -> WorkflowGitOperationResult(
       status = "error",
-      error = "Could not compare local '$normalized' to '$remoteRef': ${ahead.error}",
+      error = "Could not compare local '$normalized' to $comparedTo: ${ahead.error}",
     )
     count == null -> WorkflowGitOperationResult(
       status = "error",
