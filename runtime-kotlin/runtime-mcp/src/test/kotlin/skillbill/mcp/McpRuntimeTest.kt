@@ -597,6 +597,9 @@ class McpFeatureTaskRuntimeWorkflowTest {
     assertSqliteTimestampShape(got["updated_at"].toString(), "task-runtime updated_at")
     assertEquals(opened["started_at"], got["started_at"])
     assertTrue(got["updated_at"].toString() >= opened["started_at"].toString())
+    val continued = payloads.getValue("continue")
+    assertSqliteTimestampShape(continued["updated_at"].toString(), "continue updated_at")
+    assertTrue(continued["updated_at"].toString() >= got["updated_at"].toString())
     assertGoldenPayload(
       "mcp-feature-task-runtime-workflow.json",
       mapOf("open" to opened) + payloads,
@@ -604,6 +607,7 @@ class McpFeatureTaskRuntimeWorkflowTest {
       "<WORKFLOW_ID>" to workflowId,
       "<STARTED_AT>" to opened["started_at"].toString(),
       "<UPDATED_AT>" to got["updated_at"].toString(),
+      "<CONTINUE_UPDATED_AT>" to payloads.getValue("continue")["updated_at"].toString(),
     )
     assertCompactUpdateAcknowledgementPayload(
       payloads.getValue("update"),

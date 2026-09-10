@@ -82,7 +82,9 @@ internal fun checkpoint(root: Path, paths: List<String>) = ReviewEvidenceCoordin
 )
 
 internal fun git(root: Path, vararg args: String): String {
-  val process = ProcessBuilder(listOf("git", "-C", root.toString()) + args).redirectErrorStream(true).start()
+  val process = ProcessBuilder(
+    listOf("git", "-C", root.toString(), "-c", "commit.gpgsign=false", "-c", "tag.gpgsign=false") + args,
+  ).redirectErrorStream(true).start()
   val output = process.inputStream.bufferedReader().readText()
   assertEquals(0, process.waitFor(), output)
   return output

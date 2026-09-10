@@ -544,7 +544,12 @@ fun committedReviewRequest(request: ParallelCodeReviewRequest, files: Map<String
     Files.writeString(file, body)
   }
   val resolver = reviewFileSystemDiffResolver()
-  fun git(vararg args: String) = requireNotNull(resolver.runProcess(listOf("git") + args, request.repoRoot))
+  fun git(vararg args: String) = requireNotNull(
+    resolver.runProcess(
+      listOf("git", "-c", "commit.gpgsign=false", "-c", "tag.gpgsign=false") + args,
+      request.repoRoot,
+    ),
+  )
   git("init", "--quiet")
   git("add", ".")
   git("-c", "user.name=Test", "-c", "user.email=test@example.invalid", "commit", "--quiet", "-m", "review evidence")

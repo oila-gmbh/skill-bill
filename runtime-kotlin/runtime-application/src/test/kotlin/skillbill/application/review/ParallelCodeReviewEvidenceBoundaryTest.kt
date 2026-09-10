@@ -40,7 +40,12 @@ class ParallelCodeReviewEvidenceBoundaryTest {
         ),
       )
       val resolver = reviewFileSystemDiffResolver()
-      fun git(vararg args: String) = assertNotNull(resolver.runProcess(listOf("git") + args, initial.repoRoot))
+      fun git(vararg args: String) = assertNotNull(
+        resolver.runProcess(
+          listOf("git", "-c", "commit.gpgsign=false", "-c", "tag.gpgsign=false") + args,
+          initial.repoRoot,
+        ),
+      )
       val (base, head) = prepareExpansionRepository(initial, resolver)
       val expected = if (scope == ParallelReviewScope.UNSTAGED) "worktree caller body" else "indexed caller body"
       val request = initial.copy(baseRevision = base, headRevision = head)
@@ -181,7 +186,12 @@ class ParallelCodeReviewEvidenceBoundaryTest {
   ): Pair<String, String> {
     val file = initial.repoRoot.resolve("src/secure/Auth.kt")
     Files.createDirectories(file.parent)
-    fun git(vararg args: String) = assertNotNull(resolver.runProcess(listOf("git") + args, initial.repoRoot))
+    fun git(vararg args: String) = assertNotNull(
+      resolver.runProcess(
+        listOf("git", "-c", "commit.gpgsign=false", "-c", "tag.gpgsign=false") + args,
+        initial.repoRoot,
+      ),
+    )
     git("init", "--quiet")
     val core = initial.repoRoot.resolve("src/core/Core.kt")
     Files.createDirectories(core.parent)
@@ -244,7 +254,12 @@ class ParallelCodeReviewEvidenceBoundaryTest {
   fun `preparation rejects a tracked unavailable entry replaced between checkpoint snapshots`() {
     val request = harnessRequest(scope = ParallelReviewScope.UNSTAGED)
     val resolver = reviewFileSystemDiffResolver()
-    fun git(vararg args: String) = assertNotNull(resolver.runProcess(listOf("git") + args, request.repoRoot))
+    fun git(vararg args: String) = assertNotNull(
+      resolver.runProcess(
+        listOf("git", "-c", "commit.gpgsign=false", "-c", "tag.gpgsign=false") + args,
+        request.repoRoot,
+      ),
+    )
     git("init", "--quiet")
     Files.writeString(request.repoRoot.resolve("A.kt"), "old")
     val link = request.repoRoot.resolve("unrelated-link")

@@ -13,7 +13,9 @@ internal data class ChunkedInlineFixture(
   val revision: String,
   val expansionPath: String,
 ) {
-  fun git(vararg args: String) = assertNotNull(resolver.runProcess(listOf("git") + args, repoRoot))
+  fun git(vararg args: String) = assertNotNull(
+    resolver.runProcess(listOf("git", "-c", "commit.gpgsign=false", "-c", "tag.gpgsign=false") + args, repoRoot),
+  )
 }
 
 internal fun chunkedInlineArchitectureSecurityManifests() = listOf(
