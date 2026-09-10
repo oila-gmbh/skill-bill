@@ -21,6 +21,10 @@ import skillbill.workflow.goal.model.GoalSubtaskBlockerDisposition
 import skillbill.workflow.goal.model.GoalSubtaskReviewRevision
 import skillbill.workflow.goal.model.GoalSubtaskReviewState
 import skillbill.workflow.goal.model.GoalSubtaskReviewedRevision
+import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_CHECKPOINT_IDENTITIES_ARTIFACT_KEY
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeCheckpointIdentity
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeGoalContinuationArtifact
+import skillbill.workflow.taskruntime.model.featureTaskRuntimeCheckpointIdentitiesFromArtifact
 
 class FeatureTaskRuntimeGoalReviewPassRecorder(
   private val database: DatabaseSessionFactory,
@@ -60,10 +64,17 @@ class FeatureTaskRuntimeGoalReviewPassRecorder(
     val artifacts = decodeArtifacts(record.artifactsJson)
     val state = reviewStateFromArtifacts(artifacts)
       ?: return@transaction null
-    check(input.reviewBaseSha == state.reviewBaseSha || input.reviewBaseSha == state.remediationBaseSha) {
-      "Goal-subtask review input does not match the durable review baseline or its recorded remediation base."
+    val activeParentSha = activeCheckpointParentSha(artifacts)
+    check(
+      input.reviewBaseSha == state.reviewBaseSha ||
+        input.reviewBaseSha == state.remediationBaseSha ||
+        input.reviewBaseSha == activeParentSha,
+    ) {
+      "Goal-subtask review input does not match the durable review baseline, its recorded remediation base, " +
+        "or the active checkpoint parent."
     }
-    val updated = state.copy(
+    val realigned = realignReviewBaseToActiveCheckpointParent(state, input.reviewBaseSha, activeParentSha)
+    val updated = realigned.copy(
       reviewInputArtifact = GOAL_SUBTASK_REVIEW_INPUT_ARTIFACT_KEY,
       reviewedDeltaDigest = input.deltaDigest,
     )
@@ -205,4 +216,37 @@ private fun reviewedRevisionFrom(artifacts: Map<String, Any?>): GoalSubtaskRevie
   val target = input["current_head_sha"] as? String ?: return null
   val tree = input["reviewed_tree_sha"] as? String ?: return null
   return runCatching { GoalSubtaskReviewedRevision(target, tree) }.getOrNull()
+}
+
+private fun activeCheckpointParentSha(artifacts: Map<String, Any?>): String? {
+  val continuation = continuationFromArtifacts(artifacts) ?: return null
+  return featureTaskRuntimeCheckpointIdentitiesFromArtifact(
+    artifacts[FEATURE_TASK_RUNTIME_CHECKPOINT_IDENTITIES_ARTIFACT_KEY],
+  )
+    .filter {
+      it.issueKey == continuation.issueKey &&
+        it.subtaskId == continuation.subtaskId.toString() &&
+        it.loopId == null
+    }
+    .maxByOrNull(FeatureTaskRuntimeCheckpointIdentity::sequenceNumber)
+    ?.parentSha
+    ?.trim()
+    ?.takeIf(String::isNotBlank)
+}
+
+private fun realignReviewBaseToActiveCheckpointParent(
+  state: GoalSubtaskReviewState,
+  inputBaseSha: String,
+  activeParentSha: String?,
+): GoalSubtaskReviewState {
+  if (
+    state.remediationBaseSha != null ||
+    state.completedPassCount > 0 ||
+    activeParentSha == null ||
+    inputBaseSha != activeParentSha ||
+    inputBaseSha == state.reviewBaseSha
+  ) {
+    return state
+  }
+  return state.copy(reviewBaseSha = inputBaseSha)
 }
