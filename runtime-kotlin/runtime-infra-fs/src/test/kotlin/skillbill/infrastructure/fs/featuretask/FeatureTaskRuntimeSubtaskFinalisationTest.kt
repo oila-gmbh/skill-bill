@@ -337,6 +337,7 @@ class FeatureTaskRuntimeSubtaskFinalisationTest {
     assertEquals(checkpointSha, git(repo.root, "rev-parse", "HEAD"))
     assertEquals(checkpointMessage, git(repo.root, "log", "-1", "--format=%B"))
     assertEquals(emptyList(), finalised.stagedPaths)
+    assertEquals(emptyList(), recordedCommits)
     assertEquals(checkpointSha, git(repo.remote, "rev-parse", branch))
   }
 

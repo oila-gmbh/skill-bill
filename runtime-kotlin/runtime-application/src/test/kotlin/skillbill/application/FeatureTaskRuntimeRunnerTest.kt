@@ -1418,9 +1418,8 @@ class FeatureTaskRuntimeRemediationGenerationTest {
       harness.goalContinuationRecorder.reviewStateRecorder.reviewState(WORKFLOW_ID),
     ).completedPassCount
 
-    assertIs<FeatureTaskRuntimeRunReport.Completed>(
-      harness.runner.run(harness.request().copy(requestedCodeReviewMode = CodeReviewExecutionMode.INLINE)),
-    )
+    val resumed = harness.runner.run(harness.request().copy(requestedCodeReviewMode = CodeReviewExecutionMode.INLINE))
+    assertIs<FeatureTaskRuntimeRunReport.Completed>(resumed, resumed.toString())
 
     assertEquals(
       settledLaunches,
