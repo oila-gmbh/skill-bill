@@ -231,7 +231,7 @@ class FeatureTaskRuntimeRemediationPassPromptTest {
   fun `review ceremony orders every severity into produced_outputs findings without Blocker-only filter`() {
     val prompt = composeReview(passNumber = 1, resolvedTier = CodeReviewExecutionMode.INLINE)
 
-    assertContains(prompt, "The runtime owns this review")
+    assertContains(prompt, "Fix every Blocker and Major")
     assertFalse(prompt.contains("Do not severity-filter the findings array"))
     assertFalse(
       prompt.contains("only unresolved actionable Blocker findings"),

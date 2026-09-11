@@ -23,7 +23,7 @@ class FeatureTaskRuntimePhasePromptComposerTest {
       promptComposerBriefingFor("review"),
     ) { copy(codeReviewMode = CodeReviewExecutionMode.INLINE) }
 
-    assertContains(prompt, "The runtime owns this review")
+    assertContains(prompt, "Fix every Blocker and Major")
     assertFalse(prompt.contains("Run `bill-code-review"))
     assertFalse(prompt.contains("parallel:claude"))
   }

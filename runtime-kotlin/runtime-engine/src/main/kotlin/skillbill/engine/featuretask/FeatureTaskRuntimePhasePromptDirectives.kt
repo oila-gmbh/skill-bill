@@ -257,9 +257,11 @@ val phaseDirectives: Map<String, String> = mapOf(
     "goes to an operator. Leaving a *carried* finding out is never an outcome: the round is sent " +
     "back for it. A refuted finding is the one exception, because it was never carried.",
   FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW to
-    "The runtime owns this review. Do not run bill-code-review, do not emit findings, and do not " +
-    "report unsatisfied acceptance criteria. Criterion-gap detection remains exclusive to the audit phase. " +
-    "Do not run `./gradlew check`, the pack collect-all gate, or `bill-code-check`; validate owns those.",
+    "Review the last commit against its first parent in this repository. Fix every Blocker and Major " +
+    "finding in this same session before you emit. Emit remaining findings and a verdict of approved or " +
+    "changes_requested. Do not run bill-code-review or launch review subagents. Criterion-gap detection " +
+    "remains exclusive to the audit phase. Do not run `./gradlew check`, the pack collect-all gate, or " +
+    "`bill-code-check`; validate owns those.",
   FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VERIFY_FINDINGS to
     "Verify every finding from the single preceding review pass against the subtask spec intent " +
     "projection and the scoped boundary-memory catalog in the briefing. Each finding receives a " +

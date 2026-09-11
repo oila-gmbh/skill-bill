@@ -1,8 +1,8 @@
 package skillbill.di
 
 import me.tatarka.inject.annotations.Provides
-import skillbill.application.review.ParallelCodeReviewRunner
 import skillbill.application.runtime.RuntimeSingleton
+import skillbill.engine.featuretask.FeatureTaskLastCommitReviewDriver
 import skillbill.engine.featuretask.FeatureTaskRuntimeReviewDriver
 import skillbill.engine.featuretask.model.DefaultFeatureTaskRuntimePhaseGateBranchPort
 import skillbill.engine.featuretask.model.DefaultFeatureTaskRuntimePhaseGateValidationPort
@@ -15,6 +15,7 @@ import skillbill.infrastructure.fs.JdkFeatureTaskRuntimeWorkerSupervisor
 import skillbill.infrastructure.sqlite.SqliteFeatureTaskPhaseSettlementRepository
 import skillbill.ports.db.DatabaseSessionFactory
 import skillbill.ports.featuretask.FeatureTaskPhaseSettlementRepository
+import skillbill.ports.goalrunner.runner.GoalRunnerSubtaskLauncher
 import skillbill.ports.system.CheckedOutBranchSource
 import skillbill.ports.taskruntime.FeatureTaskRuntimeRunInvariantsSource
 import skillbill.ports.taskruntime.FeatureTaskRuntimeSpecStatusWriter
@@ -22,8 +23,8 @@ import skillbill.ports.taskruntime.FeatureTaskRuntimeWorkerSupervisor
 
 internal interface RuntimeFeatureTaskProvides {
   @Provides @JvmSynthetic
-  fun featureTaskRuntimeReviewDriver(runner: ParallelCodeReviewRunner): FeatureTaskRuntimeReviewDriver =
-    FeatureTaskRuntimeReviewDriver(runner::run)
+  fun featureTaskRuntimeReviewDriver(launcher: GoalRunnerSubtaskLauncher): FeatureTaskRuntimeReviewDriver =
+    FeatureTaskLastCommitReviewDriver(launcher)
 
   @Provides @JvmSynthetic
   fun featureTaskPhaseSettlementRepository(database: DatabaseSessionFactory): FeatureTaskPhaseSettlementRepository =
