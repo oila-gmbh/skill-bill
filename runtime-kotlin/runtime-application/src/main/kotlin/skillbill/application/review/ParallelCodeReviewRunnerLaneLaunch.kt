@@ -42,6 +42,13 @@ internal class ParallelCodeReviewRunnerLaneLaunch(
   val sharedEvidenceLocatorReader = deps.sharedEvidenceLocatorReader
   private val failureHelpers = deps.failureHelpers
   private val activityStampWriter = deps.activityStampWriter
+  private val inlineCoverageContinuation = ParallelCodeReviewInlineCoverageContinuation(
+    parentReviewLauncher = parentReviewLauncher,
+    governedEvidenceEndpointBinder = governedEvidenceEndpointBinder,
+    failureHelpers = failureHelpers,
+    sliceOutcome = { args, outcome -> launchedParentOutcome(args.launch, outcome, args.budget, args.bound.broker) },
+    evidenceReadCallback = ::evidenceReadCallback,
+  )
 
   internal fun runLanes(initial: ParallelCodeReviewInitialRun): ParallelReviewLaneRunResult {
     val request = initial.request
@@ -109,7 +116,15 @@ internal class ParallelCodeReviewRunnerLaneLaunch(
             .distinct(),
         ),
       )
+      return launchedBoundParentSingleUse(args)
     }
+    if (args.resolvedMode == ResolvedReviewExecutionMode.INLINE) {
+      return inlineCoverageContinuation.run(args)
+    }
+    return launchedBoundParentSingleUse(args)
+  }
+
+  private fun launchedBoundParentSingleUse(args: LaunchedBoundParentArgs): ParallelReviewLaneOutcome {
     val outcome = args.bound.endpoint.use {
       parentReviewLauncher.launch(
         GoalRunnerSubtaskLaunchRequest(
@@ -138,6 +153,17 @@ internal class ParallelCodeReviewRunnerLaneLaunch(
     }
   }
 
+  private fun evidenceReadCallback(request: ParallelCodeReviewRequest): (() -> Unit)? =
+    request.activityWorkflowId?.takeIf(String::isNotBlank)?.let { workflowId ->
+      {
+        activityStampWriter.recordEvidenceRead(
+          workflowId = workflowId,
+          parentWorkflowId = request.activityParentWorkflowId,
+          dbOverride = null,
+        )
+      }
+    }
+
   private fun bindGovernedEvidence(
     selected: List<ReviewSpecialistLaunchRequest>,
     request: ParallelCodeReviewRequest,
@@ -162,19 +188,10 @@ internal class ParallelCodeReviewRunnerLaneLaunch(
         )
       }
     return runCatching {
-      val onEvidenceRead = request.activityWorkflowId?.takeIf(String::isNotBlank)?.let { workflowId ->
-        {
-          activityStampWriter.recordEvidenceRead(
-            workflowId = workflowId,
-            parentWorkflowId = request.activityParentWorkflowId,
-            dbOverride = null,
-          )
-        }
-      }
       ParallelCodeReviewGovernedEvidenceBind.Bound(
         broker,
         protocol,
-        governedEvidenceEndpointBinder.bind(broker.accounting().lane, protocol, onEvidenceRead),
+        governedEvidenceEndpointBinder.bind(broker.accounting().lane, protocol, evidenceReadCallback(request)),
       )
     }.getOrElseRethrowingCancellation {
       ParallelCodeReviewGovernedEvidenceBind.Unbound(
@@ -201,25 +218,6 @@ internal class ParallelCodeReviewRunnerLaneLaunch(
       budgetDimension = bundleState.budgetDimension,
       unreviewedUnits = bundleState.unreviewedUnits,
       unboundSeam = unbound.seam,
-    )
-  }
-
-  private fun unsupportedParentOutcome(
-    launch: ParallelCodeReviewInlineParentLaunch,
-    outcome: UnsupportedAgentRunLaunch,
-  ): ParallelReviewLaneOutcome {
-    val bundleState = launch.bundleState
-    return ParallelReviewLaneOutcome(
-      success = false,
-      rawOutput = "",
-      failureReason = "unsupported agent: ${outcome.reason}",
-      accounting = inlineParentAccounting(launch, UNSUPPORTED_PROVIDER_TERMINAL_STATUS, null, null),
-      reviewDisposition = bundleState.disposition,
-      bundleCompositionDigest = bundleState.bundleCompositionDigest,
-      segmentAccounting = bundleState.segments,
-      unreviewedSegmentIds = bundleState.unreviewedSegmentIds,
-      budgetDimension = bundleState.budgetDimension,
-      unreviewedUnits = bundleState.unreviewedUnits,
     )
   }
 
@@ -285,12 +283,31 @@ internal class ParallelCodeReviewRunnerLaneLaunch(
   }
 }
 
+internal fun unsupportedParentOutcome(
+  launch: ParallelCodeReviewInlineParentLaunch,
+  outcome: UnsupportedAgentRunLaunch,
+): ParallelReviewLaneOutcome {
+  val bundleState = launch.bundleState
+  return ParallelReviewLaneOutcome(
+    success = false,
+    rawOutput = "",
+    failureReason = "unsupported agent: ${outcome.reason}",
+    accounting = inlineParentAccounting(launch, UNSUPPORTED_PROVIDER_TERMINAL_STATUS, null, null),
+    reviewDisposition = bundleState.disposition,
+    bundleCompositionDigest = bundleState.bundleCompositionDigest,
+    segmentAccounting = bundleState.segments,
+    unreviewedSegmentIds = bundleState.unreviewedSegmentIds,
+    budgetDimension = bundleState.budgetDimension,
+    unreviewedUnits = bundleState.unreviewedUnits,
+  )
+}
+
 private inline fun <T> Result<T>.getOrElseRethrowingCancellation(onFailure: () -> T): T {
   exceptionOrNull()?.let { if (it is CancellationException) throw it }
   return getOrElse { onFailure() }
 }
 
-private fun inlineParentAccounting(
+internal fun inlineParentAccounting(
   launch: ParallelCodeReviewInlineParentLaunch,
   terminalStatus: String,
   outcome: AgentRunLaunchFacts?,

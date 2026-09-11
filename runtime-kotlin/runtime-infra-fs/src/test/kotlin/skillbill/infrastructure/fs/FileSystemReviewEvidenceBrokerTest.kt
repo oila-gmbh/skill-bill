@@ -5,6 +5,7 @@ import skillbill.ports.review.BrokerBackedNativeReviewOperationProtocol
 import skillbill.ports.review.model.ReviewEvidenceBatchRequest
 import skillbill.ports.review.model.ReviewEvidenceBrokerBinding
 import skillbill.ports.review.model.ReviewEvidenceCoordinates
+import skillbill.ports.review.model.ReviewEvidenceDiscoveryRequest
 import skillbill.ports.review.model.ReviewEvidenceRequest
 import skillbill.ports.review.model.ReviewEvidenceSource
 import skillbill.ports.review.model.ReviewExpansionAuthorizationRequest
@@ -29,6 +30,34 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class FileSystemReviewEvidenceBrokerTest {
+  @Test fun `discover omits confirmed selectors while cursors stay on the full entry list`() {
+    val root = repo("A.kt" to "one", "B.kt" to "two", "C.kt" to "three")
+    val hunks = listOf("A.kt", "B.kt", "C.kt").map { path ->
+      ReviewChangedHunk(path, 1, 1, 1, 1, Files.readString(root.resolve(path)))
+    }
+    val assigned = assignment(listOf("A.kt", "B.kt", "C.kt")).copy(assignedHunks = hunks.map { it.hunkId })
+    val broker = FileSystemReviewEvidenceBroker(
+      ReviewEvidenceBrokerBinding(
+        root,
+        assigned,
+        "security",
+        policy(),
+        projectedHunks = hunks,
+      ),
+    )
+    val firstSelector = "hunk:head:${hunks.first().hunkId}"
+    broker.confirmDelivery(requireNotNull(broker.readBatch(batch("A.kt")).deliveryReceipt))
+    val remaining = broker.discover(ReviewEvidenceDiscoveryRequest(pageSize = 2)).entries
+    assertEquals(2, remaining.size)
+    assertTrue(remaining.none { it.selector == firstSelector })
+    assertEquals(
+      setOf("hunk:head:${hunks[1].hunkId}", "hunk:head:${hunks[2].hunkId}"),
+      remaining.map {
+        it.selector
+      }.toSet(),
+    )
+  }
+
   @Test fun `assigned reads return only projected hunk bodies and confirmed target is single use`() {
     val root = repo("A.kt" to "outside\nowned\noutside")
     val hunk = ReviewChangedHunk("A.kt", 2, 1, 2, 1, "@@ -2 +2 @@\n-owned\n+changed")

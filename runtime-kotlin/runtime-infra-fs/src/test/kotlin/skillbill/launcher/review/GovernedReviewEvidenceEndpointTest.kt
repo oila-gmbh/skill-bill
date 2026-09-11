@@ -30,8 +30,13 @@ class GovernedReviewEvidenceEndpointTest {
   private class RecordingProtocol : NativeReviewOperationProtocol {
     val reads = mutableListOf<ReviewEvidenceBatchRequest>()
     var malformed = 0
+    var finishDeliverySessionCount = 0
     override fun recordMalformedRequest() {
       malformed += 1
+    }
+
+    override fun finishDeliverySession() {
+      finishDeliverySessionCount += 1
     }
 
     override fun authorizeExpansion(request: ReviewExpansionAuthorizationRequest): ReviewExpansionRecord =
@@ -149,6 +154,19 @@ class GovernedReviewEvidenceEndpointTest {
     } finally {
       System.setProperty("java.io.tmpdir", previousTempRoot)
     }
+  }
+
+  @Test
+  fun `unbindListener tears down the socket without finishing the delivery session`() {
+    val protocol = RecordingProtocol()
+    val endpoint = GovernedReviewEvidenceEndpoint.bind("architecture", protocol, listOf("/bin/true"))
+    assertTrue(Files.exists(endpoint.descriptor.socketPath))
+    endpoint.unbindListener()
+    assertFalse(Files.exists(endpoint.descriptor.socketPath))
+    assertFalse(Files.exists(endpoint.descriptor.mcpConfigPath))
+    assertEquals(0, protocol.finishDeliverySessionCount)
+    endpoint.close()
+    assertEquals(1, protocol.finishDeliverySessionCount)
   }
 
   @Test

@@ -26,47 +26,7 @@ object ParallelCodeReviewRunnerParentPrompt {
       appendCursorDelegatedFanOut(selected, resolvedMode, request.agentId)
       appendLine("Detected stack: ${request.routedManifests.joinToString("+") { it.slug }.ifBlank { "generic" }}")
       appendRubrics(selected)
-      val resolvedBase = request.baseRevision ?: selected.firstOrNull()?.packet?.baseRevision ?: "unspecified"
-      val resolvedHead = request.headRevision ?: selected.firstOrNull()?.packet?.headRevision ?: "unspecified"
-      appendLine(
-        "The immutable review pair is base=$resolvedBase " +
-          "target=$resolvedHead. " +
-          "The governing spec is ${request.specPath ?: "the resolved spec projection"}. " +
-          "Read committed content on demand " +
-          "through the bound broker with read_evidence and request_expansion. " +
-          "Do not expect paths, hunk spans, or hunk bodies in this launch prompt.",
-      )
-      appendLine(
-        "Call read_evidence with {\"operation\":\"discover\",\"page_size\":16}. " +
-          "Keep discovering with cursor=next_cursor until next_cursor is null. " +
-          "For every returned entry, read with operation=read and requests that include " +
-          "the returned path, selector, and expansion_id when present. Rubrics and " +
-          "required guidance are already above. " +
-          "request_expansion accepts a reachable path and reachability_reason. Recover from ordinary refusals " +
-          "using authorized selectors. " +
-          "Broker delivery is mandatory and complete: git, shell, Grep, Read, and other workspace tools " +
-          "do not satisfy required evidence. Do not stop after a sample of pages. " +
-          "Do not emit `verdict: approved` while required units remain undelivered; " +
-          "if delivery cannot finish, end with `verdict: changes_requested`, name what remains, " +
-          "and do not claim complete coverage.",
-      )
-      appendLine(if (inline) PARALLEL_REVIEW_INLINE_DEPTH_DIRECTIVE else PARALLEL_REVIEW_DELEGATED_DEPTH_DIRECTIVE)
-      appendLine(
-        "Return free-form review prose and end with an explicit verdict line: " +
-          "`verdict: approved` or `verdict: changes_requested` (needs_fix is accepted as changes_requested). " +
-          "There is no findings-register format gate and no $PARALLEL_REVIEW_NO_FINDINGS_TOKEN requirement — " +
-          "missing or imperfect register lines never fail the review.",
-      )
-      appendLine(
-        "When you have concrete defects, also emit optional `[F-XXX]` register lines so claim " +
-          "verification can re-check them: " +
-          "'[F-XXX] Severity | Confidence | specialist=<skill name from Resolved rubric> | " +
-          "commits=<sha>[,<sha>] | path=\"<repo-relative path>\" | line=<positive integer> | description'. " +
-          "Use only the bare skill name for specialist — never copy the [paths=...;add-ons=...;origins=...] " +
-          "annotation from the routed rubric catalog. Imperfect lines remain part of the prose result " +
-          "and never block settlement; parsed lines are optional verification enrichment.",
-      )
-      appendLine()
+      appendReviewInstructions(request, selected, inline)
       selected.forEach { launch ->
         val decision = launch.assignment.laneDecision
         appendLine("## Assigned bundle: ${decision.specialistSkillName}")
@@ -80,6 +40,53 @@ object ParallelCodeReviewRunnerParentPrompt {
     }
   }
 
+  private fun StringBuilder.appendReviewInstructions(
+    request: ParallelCodeReviewParentPromptRequest,
+    selected: List<ReviewSpecialistLaunchRequest>,
+    inline: Boolean,
+  ) {
+    val resolvedBase = request.baseRevision ?: selected.firstOrNull()?.packet?.baseRevision ?: "unspecified"
+    val resolvedHead = request.headRevision ?: selected.firstOrNull()?.packet?.headRevision ?: "unspecified"
+    appendLine(
+      "The immutable review pair is base=$resolvedBase " +
+        "target=$resolvedHead. " +
+        "The governing spec is ${request.specPath ?: "the resolved spec projection"}. " +
+        "Read committed content on demand " +
+        "through the bound broker with read_evidence and request_expansion. " +
+        "Do not expect paths, hunk spans, or hunk bodies in this launch prompt.",
+    )
+    appendLine(
+      "Call read_evidence with {\"operation\":\"discover\",\"page_size\":16}. " +
+        "Keep discovering with cursor=next_cursor until next_cursor is null. " +
+        "For every returned entry, read with operation=read and requests that include " +
+        "the returned path, selector, and expansion_id when present. Rubrics and " +
+        "required guidance are already above. " +
+        "request_expansion accepts a reachable path and reachability_reason. Recover from ordinary refusals " +
+        "using authorized selectors. " +
+        "Broker delivery is mandatory and complete: git, shell, Grep, Read, and other workspace tools " +
+        "do not satisfy required evidence. Do not stop after a sample of pages. " +
+        "Do not emit `verdict: approved` while required units remain undelivered; " +
+        "if delivery cannot finish, end with `verdict: changes_requested`, name what remains, " +
+        "and do not claim complete coverage.",
+    )
+    appendLine(if (inline) PARALLEL_REVIEW_INLINE_DEPTH_DIRECTIVE else PARALLEL_REVIEW_DELEGATED_DEPTH_DIRECTIVE)
+    appendLine(
+      "Return free-form review prose and end with an explicit verdict line: " +
+        "`verdict: approved` or `verdict: changes_requested` (needs_fix is accepted as changes_requested). " +
+        "There is no findings-register format gate and no $PARALLEL_REVIEW_NO_FINDINGS_TOKEN requirement — " +
+        "missing or imperfect register lines never fail the review.",
+    )
+    appendLine(
+      "When you have concrete defects, also emit optional `[F-XXX]` register lines so claim " +
+        "verification can re-check them: " +
+        "'[F-XXX] Severity | Confidence | specialist=<skill name from Resolved rubric> | " +
+        "commits=<sha>[,<sha>] | path=\"<repo-relative path>\" | line=<positive integer> | description'. " +
+        "Use only the bare skill name for specialist — never copy the [paths=...;add-ons=...;origins=...] " +
+        "annotation from the routed rubric catalog. Imperfect lines remain part of the prose result " +
+        "and never block settlement; parsed lines are optional verification enrichment.",
+    )
+    appendLine()
+  }
 
   private fun StringBuilder.appendRubrics(selected: List<ReviewSpecialistLaunchRequest>) {
     val rubricLabel = selected.joinToString { launch ->

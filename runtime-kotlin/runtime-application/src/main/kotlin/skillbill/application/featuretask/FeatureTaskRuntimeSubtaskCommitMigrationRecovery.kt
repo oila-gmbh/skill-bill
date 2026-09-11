@@ -1,7 +1,6 @@
 package skillbill.application.featuretask
 
 import skillbill.application.featuretask.model.FeatureTaskRuntimeSubtaskCommitIdentity
-import skillbill.error.FeatureTaskRuntimeSubtaskCommitReconciliationError
 import skillbill.ports.workflow.gitops.commitMessage
 import skillbill.ports.workflow.gitops.deleteCheckpointRef
 import skillbill.ports.workflow.gitops.resolveCheckpointRef
@@ -9,15 +8,6 @@ import skillbill.ports.workflow.gitops.restoreIndexState
 import skillbill.ports.workflow.gitops.updateCheckpointRef
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_CHECKPOINT_REF_NAMESPACE
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeCheckpointIdentity
-
-internal data class SubtaskMigrationRollbackRequest(
-  val headSha: String,
-  val stagedPaths: List<String>,
-  val snapshot: String,
-  val originalIdentities: List<FeatureTaskRuntimeCheckpointIdentity>? = null,
-  val replacementRefName: String? = null,
-  val replacementRefTarget: String? = null,
-)
 
 internal fun rollbackSubtaskMigration(runLoop: FeatureTaskRuntimeRunLoop, request: SubtaskMigrationRollbackRequest) {
   resetMigrationHead(runLoop, request.headSha)
@@ -177,40 +167,4 @@ private fun preservedMigrationParent(
   val parent = runLoop.phaseGates.gitOperations.resolveCommit(runLoop.request.repoRoot, "$target^")
   return message.ok && FeatureTaskRuntimeSubtaskCommitIdentity(checkpoint.issueKey, checkpoint.subtaskId)
     .matches(message.value.orEmpty()) && parent.ok && parent.value.orEmpty().trim() == expected
-}
-
-internal data class SubtaskMigrationRefusalRequest(
-  val precedingPhaseId: String,
-  val branch: String,
-  val blockedReason: (String, String) -> String,
-  val reason: String,
-  val cause: Throwable? = null,
-)
-
-internal fun refuseSubtaskMigration(
-  runLoop: FeatureTaskRuntimeRunLoop,
-  request: SubtaskMigrationRefusalRequest,
-): Boolean {
-  val error = FeatureTaskRuntimeSubtaskCommitReconciliationError(
-    workflowId = runLoop.request.workflowId,
-    issueKey = runLoop.request.issueKey,
-    subtaskId = runLoop.request.goalContinuation?.subtaskId?.toString() ?: "unknown",
-    reason = request.reason,
-    cause = request.cause,
-  )
-  runCatching {
-    runLoop.diagnostics.warning(
-      "record_kind=${if (request.reason.contains("normaliz")) "migration" else "refusal"} " +
-        "seam=FeatureTaskRuntimeSubtaskCommitMigrationNormalizer value_used='${request.branch}' " +
-        "value_expected=provable active subtask commit span cause=${request.reason}",
-      error,
-    )
-  }
-  return runLoop.collaborators.checkpointContinued6.blockCheckpoint(
-    runLoop,
-    request.precedingPhaseId,
-    request.branch,
-    error.message.orEmpty(),
-    request.blockedReason,
-  )
 }

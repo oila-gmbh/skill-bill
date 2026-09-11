@@ -5,6 +5,8 @@ import skillbill.ports.review.model.GovernedReviewEvidenceEndpointDescriptor
 /** A bound endpoint. Closing it unbinds the listener and removes the per-launch directory. */
 interface GovernedReviewEvidenceEndpointHandle : AutoCloseable {
   val descriptor: GovernedReviewEvidenceEndpointDescriptor
+
+  fun unbindListener() = Unit
 }
 
 /**

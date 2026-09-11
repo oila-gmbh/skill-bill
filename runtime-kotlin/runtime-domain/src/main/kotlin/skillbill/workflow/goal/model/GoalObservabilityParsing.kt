@@ -13,6 +13,7 @@ fun goalObservabilityLatestEventFromArtifacts(
 ): GoalObservabilityEvent? = artifacts[GOAL_OBSERVABILITY_LATEST_EVENT_ARTIFACT_KEY]
   ?.let { raw -> goalObservabilityEventFromArtifact(raw, GOAL_OBSERVABILITY_LATEST_EVENT_ARTIFACT_KEY, validator) }
 
+@OpenBoundaryMap("Goal observability latest-event liveness parse seam")
 fun goalObservabilityLatestEventForLiveness(
   artifacts: Map<String, Any?>,
   validator: GoalObservabilityEventValidator,

@@ -23,7 +23,6 @@ import skillbill.workflow.goal.model.GoalSubtaskReviewState
 import skillbill.workflow.goal.model.GoalSubtaskReviewedRevision
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_CHECKPOINT_IDENTITIES_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeCheckpointIdentity
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeGoalContinuationArtifact
 import skillbill.workflow.taskruntime.model.featureTaskRuntimeCheckpointIdentitiesFromArtifact
 
 class FeatureTaskRuntimeGoalReviewPassRecorder(
@@ -239,14 +238,18 @@ private fun realignReviewBaseToActiveCheckpointParent(
   inputBaseSha: String,
   activeParentSha: String?,
 ): GoalSubtaskReviewState {
-  if (
-    state.remediationBaseSha != null ||
-    state.completedPassCount > 0 ||
-    activeParentSha == null ||
-    inputBaseSha != activeParentSha ||
-    inputBaseSha == state.reviewBaseSha
-  ) {
+  if (reviewBaseDoesNotNeedRealignment(state, inputBaseSha, activeParentSha)) {
     return state
   }
   return state.copy(reviewBaseSha = inputBaseSha)
+}
+
+private fun reviewBaseDoesNotNeedRealignment(
+  state: GoalSubtaskReviewState,
+  inputBaseSha: String,
+  activeParentSha: String?,
+): Boolean {
+  if (state.remediationBaseSha != null || state.completedPassCount > 0) return true
+  if (activeParentSha == null || inputBaseSha != activeParentSha) return true
+  return inputBaseSha == state.reviewBaseSha
 }

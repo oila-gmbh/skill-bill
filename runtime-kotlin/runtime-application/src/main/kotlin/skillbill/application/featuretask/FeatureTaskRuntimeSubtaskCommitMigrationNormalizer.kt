@@ -202,29 +202,39 @@ private fun settleMigration(request: MigrationSettlementRequest): Boolean {
 private fun migrationSettlementValidationFailure(request: MigrationSettlementRequest): String? {
   val context = request.context
   val durableBase = context.resolved.reviewBaseSha?.trim().takeIf { !it.isNullOrBlank() }
-    ?: return "the active subtask span has no durable base SHA; operator decision: identify the span base before " +
-      "normalizing"
-  val baseSha = migrationSpanBaseSha(durableBase, context.headSha, request.active, request.runLoop)
-    ?: return "the durable subtask base '$durableBase' collapsed onto HEAD without a recoverable checkpoint parent; " +
-      "operator decision: identify the exact active span before normalizing"
-  val baseReachability = request.runLoop.phaseGates.gitOperations.isCommitAncestor(
-    request.runLoop.request.repoRoot,
-    baseSha,
-    context.headSha,
-  )
-  if (!baseReachability.ok || baseReachability.value != "true") {
-    return "the durable subtask base '$baseSha' is not a proven ancestor of HEAD '${context.headSha}'; " +
-      "operator decision: identify the exact active span before normalizing"
+  val baseSha = durableBase?.let {
+    migrationSpanBaseSha(it, context.headSha, request.active, request.runLoop)
   }
-  val spanRequest = SubtaskCommitSpanFailureRequest(
-    repoRoot = request.runLoop.request.repoRoot,
-    baseSha = baseSha,
-    headSha = context.headSha,
-    branch = request.branch,
-    identity = context.identity,
-    checkpoints = request.active,
-  )
-  return spanFailureForMigration(request.runLoop, spanRequest)
+  val baseReachability = baseSha?.let {
+    request.runLoop.phaseGates.gitOperations.isCommitAncestor(
+      request.runLoop.request.repoRoot,
+      it,
+      context.headSha,
+    )
+  }
+  return when {
+    request.active.isEmpty() && durableBase == context.headSha -> null
+    durableBase == null ->
+      "the active subtask span has no durable base SHA; operator decision: identify the span base before " +
+        "normalizing"
+    baseSha == null ->
+      "the durable subtask base '$durableBase' collapsed onto HEAD without a recoverable checkpoint parent; " +
+        "operator decision: identify the exact active span before normalizing"
+    baseReachability == null || !baseReachability.ok || baseReachability.value != "true" ->
+      "the durable subtask base '$baseSha' is not a proven ancestor of HEAD '${context.headSha}'; " +
+        "operator decision: identify the exact active span before normalizing"
+    else -> spanFailureForMigration(
+      request.runLoop,
+      SubtaskCommitSpanFailureRequest(
+        repoRoot = request.runLoop.request.repoRoot,
+        baseSha = baseSha,
+        headSha = context.headSha,
+        branch = request.branch,
+        identity = context.identity,
+        checkpoints = request.active,
+      ),
+    )
+  }
 }
 
 internal fun migrationSpanBaseSha(
@@ -362,11 +372,3 @@ private fun settleAccumulatedMigration(request: MigrationSettlementRequest): Boo
     ),
   )
 }
-
-private fun refusalRequest(
-  precedingPhaseId: String,
-  branch: String,
-  blockedReason: (String, String) -> String,
-  reason: String,
-  cause: Throwable? = null,
-) = SubtaskMigrationRefusalRequest(precedingPhaseId, branch, blockedReason, reason, cause)
