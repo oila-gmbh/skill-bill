@@ -1,8 +1,8 @@
 package skillbill.infrastructure.fs
 
-import skillbill.nativeagent.rendering.discoverRepoNativeAgentSourceFiles
+import skillbill.infrastructure.fs.nativeagent.rendering.discoverRepoNativeAgentSourceFiles
+import skillbill.infrastructure.fs.scaffold.platformpack.discoverPlatformPackManifests
 import skillbill.review.plan.ReviewLaunchPlanPolicy
-import skillbill.scaffold.platformpack.discoverPlatformPackManifests
 import java.nio.file.Files
 import java.nio.file.Path
 
@@ -14,7 +14,7 @@ fun validatePlannedNativeAgentWorkers(repoRoot: Path): List<String> {
   }
   val issues = mutableListOf<String>()
   val sources = discoverRepoNativeAgentSourceFiles(root).flatMap { path ->
-    runCatching { skillbill.nativeagent.composition.parseNativeAgentSourceFile(path) }
+    runCatching { skillbill.infrastructure.fs.nativeagent.composition.parseNativeAgentSourceFile(path) }
       .getOrElse { emptyList() }
   }
   val manifests = runCatching { discoverPlatformPackManifests(packsRoot) }

@@ -1,17 +1,24 @@
 package skillbill.infrastructure.fs.featuretask
 
-import skillbill.application.featuretask.FeatureTaskRuntimeGoalContinuationRecorder
-import skillbill.application.featuretask.model.RemediationBaseCoherent
 import skillbill.application.workflow.model.WorkflowFamily
-import skillbill.application.workflow.toRecord
-import skillbill.error.FeatureTaskRuntimeSubtaskCommitReconciliationError
+import skillbill.contracts.JsonCodec
+import skillbill.engine.featuretask.FeatureTaskRuntimeGoalContinuationRecorder
+import skillbill.engine.featuretask.model.RemediationBaseBlocked
+import skillbill.engine.featuretask.model.RemediationBaseCoherent
 import skillbill.infrastructure.fs.GitWorkflowGitOperations
 import skillbill.ports.diagnostics.NoopRuntimeDiagnostics
+import skillbill.ports.workflow.gitops.GoalSubtaskReviewGitOperations
 import skillbill.ports.workflow.gitops.WorkflowGitOperations
+import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewBaseline
+import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewBaselineResult
+import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewInputResult
 import skillbill.ports.workflow.gitops.model.WorkflowGitOperationResult
+import skillbill.ports.workflow.gitops.model.WorkflowGitOperationStatus
+import skillbill.ports.workflow.toRecord
 import skillbill.review.context.model.CodeReviewExecutionMode
 import skillbill.workflow.engine.WorkflowEngine
 import skillbill.workflow.engine.model.WorkflowUpdateInput
+import skillbill.workflow.goal.model.GOAL_REVIEW_BASE_RECOVERIES_ARTIFACT_KEY
 import skillbill.workflow.goal.model.GOAL_SUBTASK_REVIEW_RESULTS_ARTIFACT_KEY
 import skillbill.workflow.goal.model.GOAL_SUBTASK_REVIEW_STATE_ARTIFACT_KEY
 import skillbill.workflow.goal.model.GoalSubtaskReviewState
@@ -29,7 +36,6 @@ import java.time.Clock
 import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertEquals
-import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertNotEquals
@@ -60,11 +66,11 @@ class RemediationBaseReconciliationUnderAmendTest {
     val coherent = assertIs<RemediationBaseCoherent>(result)
     assertEquals(preFixSha, coherent.state?.remediationBaseSha)
     val ancestry = git.isCommitAncestor(fixture.repoRoot, preFixSha, fixture.postRemediationSha)
-    assertFalse(ancestry.ok && ancestry.value == "true")
+    assertFalse(ancestry is WorkflowGitOperationResult.Ok && ancestry.value == "true")
   }
 
   @Test
-  fun `unresolvable checkpoint ref refuses instead of guessing a reachable base`() {
+  fun `unresolvable checkpoint ref recovers the nearest reachable base instead of blocking`() {
     val fixture = amendRemediationFixture()
     val head = git(fixture.repoRoot, "rev-parse", "HEAD")
     val ref = featureTaskRuntimeCheckpointRefName(issueKey, subtaskId, 1)
@@ -78,12 +84,25 @@ class RemediationBaseReconciliationUnderAmendTest {
     val repository = FeatureTaskGitIntegrationWorkflowRepository()
     val recorder = recorderWith(state, listOf(identity), repository)
 
-    val refusal = assertFailsWith<FeatureTaskRuntimeSubtaskCommitReconciliationError> {
-      recorder.remediationReconciler.reconcileRemediationBaseCoherence(workflowId, realGitOps(), fixture.repoRoot)
-    }
-    assertContains(refusal.message.orEmpty(), "resolved to a blank Git object")
-    assertEquals(fixture.preRemediationSha, recorder.reviewStateRecorder.reviewState(workflowId)?.remediationBaseSha)
-    assertEquals(head, git(fixture.repoRoot, "rev-parse", "HEAD"))
+    val coherent = assertIs<RemediationBaseCoherent>(
+      recorder.remediationReconciler.reconcileRemediationBaseCoherence(workflowId, realGitOps(), fixture.repoRoot),
+    )
+    val mergeBase = git(fixture.repoRoot, "merge-base", fixture.preRemediationSha, head)
+    assertEquals(mergeBase, coherent.state?.remediationBaseSha)
+    val persisted = recorder.reviewStateRecorder.reviewState(workflowId)?.remediationBaseSha
+    assertEquals(mergeBase, persisted)
+    assertNotEquals(head, persisted)
+    assertNotEquals(fixture.preRemediationSha, persisted)
+    val evidence = requireNotNull(
+      JsonCodec.anyToStringAnyMapList(
+        repository.taskRuntimeArtifacts(workflowId)[GOAL_REVIEW_BASE_RECOVERIES_ARTIFACT_KEY],
+      ),
+    )
+    val entry = evidence.first()
+    assertEquals("FeatureTaskRuntimeGoalContinuationRecorder.reconcileRemediationBaseCoherence", entry["seam"])
+    assertEquals(fixture.preRemediationSha, entry["original_sha"])
+    assertEquals(mergeBase, entry["replacement_sha"])
+    assertEquals("base_not_ancestor", entry["failure_reason"])
   }
 
   @Test
@@ -101,16 +120,30 @@ class RemediationBaseReconciliationUnderAmendTest {
     val repository = FeatureTaskGitIntegrationWorkflowRepository()
     val recorder = recorderWith(state, listOf(identity), repository)
 
-    val refusal = assertFailsWith<FeatureTaskRuntimeSubtaskCommitReconciliationError> {
+    val blocked = assertIs<RemediationBaseBlocked>(
       recorder.remediationReconciler.reconcileRemediationBaseCoherence(
         workflowId,
         gitOpsWithoutBaselineRecovery(),
         fixture.repoRoot,
-      )
-    }
-    assertContains(refusal.message.orEmpty(), "checkpoint ref could not be read")
+      ),
+    )
+    assertContains(blocked.operatorGuidance, workflowId)
+    assertContains(blocked.operatorGuidance, goalBranch)
+    assertContains(blocked.operatorGuidance, ref)
+    assertContains(blocked.operatorGuidance, "skill-bill goal repair $issueKey --subtask")
+    assertFalse(blocked.operatorGuidance.contains("--issue-key"))
     assertEquals(fixture.preRemediationSha, recorder.reviewStateRecorder.reviewState(workflowId)?.remediationBaseSha)
     assertNotEquals(head, recorder.reviewStateRecorder.reviewState(workflowId)?.remediationBaseSha)
+    val evidence = requireNotNull(
+      JsonCodec.anyToStringAnyMapList(
+        repository.taskRuntimeArtifacts(workflowId)[GOAL_REVIEW_BASE_RECOVERIES_ARTIFACT_KEY],
+      ),
+    )
+    val entry = evidence.single()
+    assertEquals("FeatureTaskRuntimeGoalContinuationRecorder.reconcileRemediationBaseCoherence", entry["seam"])
+    assertEquals(ref, entry["value_used"])
+    assertEquals("resolvable review_fix checkpoint ref commit", entry["value_expected"])
+    assertNotNull(entry["cause"])
   }
 
   @Test
@@ -121,18 +154,18 @@ class RemediationBaseReconciliationUnderAmendTest {
     val state = remediationState(remediationBaseSha = fixture.preRemediationSha)
     val recorder = recorderWith(state, emptyList())
 
-    val blocked = assertFailsWith<FeatureTaskRuntimeSubtaskCommitReconciliationError> {
+    val blocked = assertIs<RemediationBaseBlocked>(
       recorder.remediationReconciler.reconcileRemediationBaseCoherence(
         workflowId,
         gitOpsWithoutBaselineRecovery(),
         fixture.repoRoot,
-      )
-    }
-    assertFalse(
-      blocked.message.orEmpty().contains("also failed to resolve"),
-      "a stored base that still resolves must not be reported as unresolvable: ${blocked.message.orEmpty()}",
+      ),
     )
-    assertContains(blocked.message.orEmpty(), "baseline recovery requires a git adapter")
+    assertFalse(
+      blocked.operatorGuidance.contains("also failed to resolve"),
+      "a stored base that still resolves must not be reported as unresolvable: ${blocked.operatorGuidance}",
+    )
+    assertContains(blocked.operatorGuidance, "not reachable from the branch")
   }
 
   @Test
@@ -163,7 +196,7 @@ class RemediationBaseReconciliationUnderAmendTest {
     val recorder = recorderWith(state, emptyList())
     val git = object : WorkflowGitOperations by realGitOps() {
       override fun headCommitSha(repoRoot: Path): WorkflowGitOperationResult =
-        WorkflowGitOperationResult(status = "error", error = "HEAD read forbidden on cheap path")
+        WorkflowGitOperationResult.Failed(error = "HEAD read forbidden on cheap path")
     }
     val result = recorder.remediationReconciler.reconcileRemediationBaseCoherence(workflowId, git, repoRoot)
     assertIs<RemediationBaseCoherent>(result)
@@ -390,7 +423,7 @@ class RemediationBaseReconciliationUnderAmendTest {
     identities: List<FeatureTaskRuntimeCheckpointIdentity>,
   ) {
     val head = realGitOps().headCommitSha(repoRoot)
-    if (!head.ok || head.value.trim() != commitSha.trim()) return
+    if (head !is WorkflowGitOperationResult.Ok || head.value.trim() != commitSha.trim()) return
     val predecessor = when {
       identityRecorded -> {
         val current = identities.lastOrNull { it.commitSha == commitSha }
@@ -411,7 +444,9 @@ class RemediationBaseReconciliationUnderAmendTest {
           parentSha?.trim()?.takeIf(String::isNotBlank)
         } else {
           val resolved = realGitOps().resolveCommit(repoRoot, predecessorCommitSha)
-          resolved.value.orEmpty().trim().takeIf { resolved.ok && it.isNotBlank() } ?: parentSha?.trim()
+          resolved.value.orEmpty().trim()
+            .takeIf { resolved is WorkflowGitOperationResult.Ok && it.isNotBlank() }
+            ?: parentSha?.trim()
         }
       }
     }
@@ -439,7 +474,20 @@ class RemediationBaseReconciliationUnderAmendTest {
     return output
   }
 
-  private fun gitOpsWithoutBaselineRecovery(): WorkflowGitOperations = object : WorkflowGitOperations by realGitOps() {}
+  private fun gitOpsWithoutBaselineRecovery(): WorkflowGitOperations = object : WorkflowGitOperations by realGitOps() {
+    override val goalSubtaskReviewOperations: GoalSubtaskReviewGitOperations =
+      object : GoalSubtaskReviewGitOperations {
+        override fun captureBaseline(repoRoot: Path, expectedBranch: String): GoalSubtaskReviewBaselineResult =
+          GoalSubtaskReviewBaselineResult(status = WorkflowGitOperationStatus.ERROR, error = "unsupported")
+
+        override fun buildInput(
+          repoRoot: Path,
+          baseline: GoalSubtaskReviewBaseline,
+          expectedBranch: String,
+        ): GoalSubtaskReviewInputResult =
+          GoalSubtaskReviewInputResult(status = WorkflowGitOperationStatus.ERROR, error = "unsupported")
+      }
+  }
 
   private fun realGitOps(): WorkflowGitOperations = GitWorkflowGitOperations()
 }

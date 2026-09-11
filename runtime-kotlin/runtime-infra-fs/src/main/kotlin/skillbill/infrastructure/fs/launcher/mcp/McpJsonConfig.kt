@@ -1,0 +1,60 @@
+package skillbill.infrastructure.fs.launcher.mcp
+
+import skillbill.contracts.JsonCodec
+import skillbill.infrastructure.fs.launcher.process.atomicWriteString
+import skillbill.install.model.McpMutationResult
+import skillbill.ports.repository.toFileLocation
+import java.nio.file.Files
+import java.nio.file.Path
+
+internal object McpJsonConfig {
+  fun register(agent: String, path: Path, command: String): McpMutationResult {
+    val beforeContent = if (Files.exists(path)) Files.readString(path) else ""
+    val settings = readJsonObject(path).toMutableMap()
+    val servers = mutableStringAnyMap(settings["mcpServers"])
+    servers["skill-bill"] = linkedMapOf(
+      "type" to "stdio",
+      "command" to command,
+      "args" to emptyList<String>(),
+    )
+    settings["mcpServers"] = servers
+    val afterContent = JsonCodec.mapToJsonString(settings) + "\n"
+    val changed = beforeContent != afterContent
+    if (changed) {
+      writeJson(path, settings)
+    }
+    return McpMutationResult(agent, path.toFileLocation(), changed = changed)
+  }
+
+  fun unregister(agent: String, path: Path): McpMutationResult {
+    val settings = readJsonObject(path).toMutableMap()
+    val servers = mutableStringAnyMap(settings["mcpServers"])
+    val changed = servers.remove("skill-bill") != null
+    if (changed) {
+      if (servers.isEmpty()) {
+        settings.remove("mcpServers")
+      } else {
+        settings["mcpServers"] = servers
+      }
+      writeJson(path, settings)
+    }
+    return McpMutationResult(agent, path.toFileLocation(), changed = changed)
+  }
+}
+
+internal fun readJsonObject(path: Path): Map<String, Any?> {
+  val raw = if (Files.exists(path)) Files.readString(path) else ""
+  return if (raw.isBlank()) {
+    linkedMapOf()
+  } else {
+    JsonCodec.anyToStringAnyMap(JsonCodec.parseObjectOrNull(raw)?.let(JsonCodec::jsonElementToValue))
+      ?: throw IllegalArgumentException("Invalid JSON config at '$path'.")
+  }
+}
+
+internal fun writeJson(path: Path, settings: Map<String, Any?>) {
+  atomicWriteString(path, JsonCodec.mapToJsonString(settings) + "\n")
+}
+
+internal fun mutableStringAnyMap(value: Any?): MutableMap<String, Any?> =
+  JsonCodec.anyToStringAnyMap(value)?.toMutableMap() ?: linkedMapOf()

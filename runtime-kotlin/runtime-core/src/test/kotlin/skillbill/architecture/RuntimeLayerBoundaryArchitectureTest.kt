@@ -91,10 +91,10 @@ class RuntimeLayerBoundaryArchitectureTest {
         "skillbill.infrastructure",
         "skillbill.review.ReviewRuntime",
         "skillbill.review.TriageRuntime",
-        "skillbill.telemetry.config.TelemetryConfigRuntime",
-        "skillbill.telemetry.config.TelemetryConfigMutationRuntime",
-        "skillbill.telemetry.http.TelemetryHttpRuntime",
-        "skillbill.telemetry.http.TelemetryRemoteStatsRuntime",
+        "skillbill.application.telemetry.config.TelemetryConfigRuntime",
+        "skillbill.application.telemetry.config.TelemetryConfigMutationRuntime",
+        "skillbill.application.telemetry.http.TelemetryHttpRuntime",
+        "skillbill.application.telemetry.http.TelemetryRemoteStatsRuntime",
       )
     assertNoBannedImports(
       files = applicationFiles,
@@ -334,10 +334,10 @@ class RuntimeLayerBoundaryArchitectureTest {
       listOf(
         "skillbill.db",
         "skillbill.review",
-        "skillbill.telemetry.config.TelemetryConfigRuntime",
-        "skillbill.telemetry.http.TelemetryHttpRuntime",
-        "skillbill.telemetry.http.TelemetryRemoteStatsRuntime",
-        "skillbill.telemetry.sync.TelemetrySyncRuntime",
+        "skillbill.application.telemetry.config.TelemetryConfigRuntime",
+        "skillbill.application.telemetry.http.TelemetryHttpRuntime",
+        "skillbill.application.telemetry.http.TelemetryRemoteStatsRuntime",
+        "skillbill.application.telemetry.sync.TelemetrySyncRuntime",
         "skillbill.learnings.LearningStore",
         "skillbill.learnings.LearningsRuntime",
       ),
@@ -354,8 +354,8 @@ class RuntimeLayerBoundaryArchitectureTest {
         "skillbill.review",
         "skillbill.learnings.LearningStore",
         "skillbill.learnings.LearningsRuntime",
-        "skillbill.telemetry.config.TelemetryConfigRuntime",
-        "skillbill.telemetry.http.TelemetryRemoteStatsRuntime",
+        "skillbill.application.telemetry.config.TelemetryConfigRuntime",
+        "skillbill.application.telemetry.http.TelemetryRemoteStatsRuntime",
       ),
     )
   }

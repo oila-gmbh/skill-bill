@@ -1,0 +1,186 @@
+package skillbill.engine.featuretask
+
+import me.tatarka.inject.annotations.Inject
+import skillbill.engine.featuretask.model.FeatureTaskContinuationCandidate
+import skillbill.engine.featuretask.model.FeatureTaskContinuationLiveness
+import skillbill.engine.featuretask.model.FeatureTaskContinuationLookupQuery
+import skillbill.engine.featuretask.model.FeatureTaskContinuationLookupResult
+import skillbill.error.InvalidFeatureTaskExecutionIdentitySchemaError
+import skillbill.error.LegacyProseWorkflowError
+import skillbill.ports.db.DatabaseSessionFactory
+import skillbill.ports.featuretask.model.FeatureTaskRuntimeWorkerOwnership
+import skillbill.ports.persistence.UnitOfWork
+import skillbill.ports.workflow.FeatureTaskExecutionIdentityPolicy
+import skillbill.ports.workflow.model.FeatureTaskExecutionIdentity
+import skillbill.ports.workflow.model.FeatureTaskRouteScope
+import skillbill.ports.workflow.model.FeatureTaskWorkflowCandidate
+import skillbill.ports.workflow.model.FeatureTaskWorkflowMode
+import skillbill.ports.workflow.model.toSnapshot
+import skillbill.workflow.decomposition.DecompositionManifestValidator
+import skillbill.workflow.engine.WorkflowEngine
+import skillbill.workflow.engine.WorkflowSnapshotValidator
+import skillbill.workflow.model.WorkflowStatus
+import skillbill.workflow.model.workflowStatus
+import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
+
+@Inject
+class FeatureTaskContinuationLookupService(
+  private val database: DatabaseSessionFactory,
+  workflowSnapshotValidator: WorkflowSnapshotValidator,
+  private val decompositionManifestValidator: DecompositionManifestValidator,
+) {
+  private val engine = WorkflowEngine(workflowSnapshotValidator)
+
+  fun claim(candidate: FeatureTaskContinuationCandidate): Boolean = database.transaction { unitOfWork ->
+    unitOfWork.workflowStates.claimFeatureTaskContinuation(candidate.workflowId, candidate.updatedAt)
+  }
+
+  fun lookup(
+    issueKey: String,
+    repositoryIdentity: String,
+    workflowId: String? = null,
+  ): FeatureTaskContinuationLookupResult = lookup(
+    FeatureTaskContinuationLookupQuery(
+      issueKey = issueKey,
+      repositoryIdentity = repositoryIdentity,
+      workflowId = workflowId,
+      routeScope = FeatureTaskRouteScope.STANDALONE,
+    ),
+  )
+
+  fun lookupGoalChild(
+    issueKey: String,
+    repositoryIdentity: String,
+    workflowId: String,
+  ): FeatureTaskContinuationLookupResult = lookup(
+    FeatureTaskContinuationLookupQuery(
+      issueKey = issueKey,
+      repositoryIdentity = repositoryIdentity,
+      workflowId = workflowId,
+      routeScope = FeatureTaskRouteScope.GOAL_CHILD,
+    ),
+  )
+
+  fun lookupIfPresent(
+    issueKey: String,
+    repositoryIdentity: String,
+    workflowId: String? = null,
+  ): FeatureTaskContinuationLookupResult = lookup(
+    FeatureTaskContinuationLookupQuery(
+      issueKey = issueKey,
+      repositoryIdentity = repositoryIdentity,
+      workflowId = workflowId,
+      routeScope = FeatureTaskRouteScope.STANDALONE,
+      readIfPresent = true,
+    ),
+  )
+
+  private fun lookup(query: FeatureTaskContinuationLookupQuery): FeatureTaskContinuationLookupResult {
+    val lookup = { unitOfWork: UnitOfWork ->
+      executeFeatureTaskContinuationLookup(
+        query = query,
+        unitOfWork = unitOfWork,
+        decompositionManifestValidator = decompositionManifestValidator,
+        project = ::project,
+        classify = ::classify,
+      )
+    }
+    return if (query.readIfPresent) {
+      database.readIfPresent(lookup) ?: FeatureTaskContinuationLookupResult.NoMatch
+    } else {
+      database.read(lookup)
+    }
+  }
+
+  private fun project(
+    candidate: FeatureTaskWorkflowCandidate,
+    ownership: FeatureTaskRuntimeWorkerOwnership?,
+    routeScope: FeatureTaskRouteScope,
+  ): FeatureTaskContinuationCandidate {
+    val identity = requireNotNull(candidate.identity) {
+      invalidIdentity(candidate, "missing immutable execution identity")
+    }
+    FeatureTaskExecutionIdentityPolicy.validate(identity)
+    if (identity.routeScope != routeScope) {
+      invalidIdentity(
+        candidate,
+        "${routeScope.wireValue} lookup returned route_scope '${identity.routeScope.wireValue}'",
+      )
+    }
+    if (identityConflictsWithWorkflow(identity, candidate)) {
+      invalidIdentity(candidate, "immutable identity conflicts with workflow snapshot")
+    }
+    // SKILL-175: the prose engine is retired. A PROSE-mode candidate is quarantined here rather than
+    // classified as resumable — continuation of a legacy prose row must loud-fail, not degrade into a
+    // (deleted) prose definition or reinterpret the row as a runtime candidate.
+    if (identity.mode == FeatureTaskWorkflowMode.PROSE) {
+      throw LegacyProseWorkflowError(candidate.workflow.workflowId, candidate.workflow.issueKey)
+    }
+    val definition = FeatureTaskRuntimePhaseWorkflowDefinition.definition
+    engine.snapshotView(definition, candidate.workflow.toSnapshot())
+    val status = candidate.workflow.workflowStatus
+    val typedStatus = status.workflowStatus()
+    return FeatureTaskContinuationCandidate(
+      workflowId = candidate.workflow.workflowId,
+      mode = identity.mode,
+      status = status,
+      currentStep = candidate.workflow.currentStepId,
+      governedSpecPath = identity.governedSpecPath,
+      updatedAt = candidate.workflow.updatedAt,
+      liveness = if (typedStatus == WorkflowStatus.RUNNING) {
+        ownership?.let {
+          FeatureTaskContinuationLiveness(
+            classification = "worker_ownership_recorded",
+            lastEvidenceAt = it.heartbeatAt,
+            evidence = "Runtime worker ownership is fenced at generation ${it.generation}; exact process liveness " +
+              "must be verified before takeover.",
+          )
+        } ?: FeatureTaskContinuationLiveness(
+          classification = "ownership_unavailable",
+          lastEvidenceAt = candidate.workflow.updatedAt,
+          evidence = "The workflow is running without verifiable worker ownership; operator repair is required.",
+        )
+      } else {
+        null
+      },
+      summary = when {
+        typedStatus == WorkflowStatus.RUNNING -> "Workflow is already running; inspect liveness before recovery."
+        typedStatus in TERMINAL_STATUSES -> "Workflow is terminal with status '$status'."
+        else -> "Resume from '${candidate.workflow.currentStepId}' using durable workflow artifacts."
+      },
+    )
+  }
+
+  private fun identityConflictsWithWorkflow(
+    identity: FeatureTaskExecutionIdentity,
+    candidate: FeatureTaskWorkflowCandidate,
+  ): Boolean {
+    val workflow = candidate.workflow
+    val modeConflicts = workflow.mode?.let { it != identity.mode } ?: false
+    return identity.workflowId != workflow.workflowId ||
+      modeConflicts ||
+      identity.normalizedIssueKey != workflow.issueKey?.trim()?.uppercase()
+  }
+
+  private fun invalidIdentity(candidate: FeatureTaskWorkflowCandidate, reason: String): Nothing =
+    throw InvalidFeatureTaskExecutionIdentitySchemaError(candidate.workflow.workflowId, reason)
+
+  private fun classify(candidates: List<FeatureTaskContinuationCandidate>): FeatureTaskContinuationLookupResult {
+    if (candidates.isEmpty()) return FeatureTaskContinuationLookupResult.NoMatch
+    val eligible = candidates.filterNot { it.status.workflowStatus() in TERMINAL_STATUSES }
+    if (eligible.size > 1) return FeatureTaskContinuationLookupResult.Ambiguous(candidates)
+    if (eligible.size == 1) {
+      val candidate = eligible.single()
+      return if (candidate.status.workflowStatus() == WorkflowStatus.RUNNING) {
+        FeatureTaskContinuationLookupResult.AlreadyRunning(candidate)
+      } else {
+        FeatureTaskContinuationLookupResult.Resumable(candidate)
+      }
+    }
+    return FeatureTaskContinuationLookupResult.TerminalOnly(candidates)
+  }
+
+  private companion object {
+    val TERMINAL_STATUSES = setOf(WorkflowStatus.COMPLETED, WorkflowStatus.FAILED, WorkflowStatus.ABANDONED)
+  }
+}

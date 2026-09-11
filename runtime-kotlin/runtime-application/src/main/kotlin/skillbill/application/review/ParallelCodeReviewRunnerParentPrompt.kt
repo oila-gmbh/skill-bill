@@ -3,104 +3,65 @@ package skillbill.application.review
 import skillbill.application.review.model.ReviewSpecialistLaunchRequest
 import skillbill.application.review.model.ReviewWorkerKind
 import skillbill.review.context.model.ResolvedReviewExecutionMode
+import skillbill.review.context.model.structuredString
 import skillbill.scaffold.model.PlatformManifest
-import java.nio.file.Path
-
-internal data class ParallelCodeReviewParentPromptRequest(
-  val selected: List<ReviewSpecialistLaunchRequest>,
-  val routedManifests: List<PlatformManifest>,
-  val resolvedMode: ResolvedReviewExecutionMode,
-  val agentId: String,
-  val baseRevision: String? = null,
-  val headRevision: String? = null,
-  val specPath: Path? = null,
-)
 
 object ParallelCodeReviewRunnerParentPrompt {
-  internal fun build(request: ParallelCodeReviewParentPromptRequest): String {
-    val selected = request.selected
-    val resolvedMode = request.resolvedMode
+  fun build(
+    selected: List<ReviewSpecialistLaunchRequest>,
+    routedManifests: List<PlatformManifest>,
+    resolvedMode: ResolvedReviewExecutionMode,
+    agentId: String,
+  ): String {
     val inline = resolvedMode == ResolvedReviewExecutionMode.INLINE
     return buildString {
       append(modeFraming(resolvedMode))
-      appendCursorDelegatedFanOut(selected, resolvedMode, request.agentId)
-      appendLine("Detected stack: ${request.routedManifests.joinToString("+") { it.slug }.ifBlank { "generic" }}")
-      appendRubrics(selected)
-      appendReviewInstructions(request, selected, inline)
+      appendCursorDelegatedFanOut(selected, resolvedMode, agentId)
+      appendLine("Detected stack: ${routedManifests.joinToString("+") { it.slug }.ifBlank { "generic" }}")
+      val rubricLabel = selected.joinToString { launch ->
+        val decision = launch.assignment.laneDecision
+        "${decision.specialistSkillName}" +
+          "[paths=${launch.assignment.assignedPaths.joinToString(",") { structuredString(it) }};" +
+          "add-ons=${decision.addOns.joinToString("+").ifBlank { "none" }};" +
+          "origins=${decision.originLayerChains.joinToString("|") { it.joinToString("->") }}]"
+      }.ifBlank { "code-review" }
+      appendLine("Authoritative routed rubric identities: $rubricLabel")
+      selected.forEach { launch ->
+        val decision = launch.assignment.laneDecision
+        appendLine()
+        appendLine("## Resolved rubric: ${decision.specialistSkillName}")
+        appendLine("Owned paths: ${launch.assignment.assignedPaths.joinToString(",") { structuredString(it) }}")
+        launch.rubrics.forEach { rubric -> appendLine(rubric.body) }
+      }
+      appendLine(
+        "Use the assigned bundle below as authoritative. Fetch every body through the bound broker " +
+          "by calling read_evidence with an owned repository-relative path exactly as spelled in " +
+          "'Owned paths'. The evidence_locator store_path and payload_file identify a hunk inside " +
+          "the broker's own store; they are not read_evidence arguments and passing one is refused.",
+      )
+      appendLine(if (inline) PARALLEL_REVIEW_INLINE_DEPTH_DIRECTIVE else PARALLEL_REVIEW_DELEGATED_DEPTH_DIRECTIVE)
+      appendLine(
+        "Return free-form review prose and end with an explicit verdict line: " +
+          "`verdict: approved` or `verdict: changes_requested` (needs_fix is accepted as changes_requested). " +
+          "There is no findings-register format gate and no $PARALLEL_REVIEW_NO_FINDINGS_TOKEN requirement — " +
+          "missing or imperfect register lines never fail the review.",
+      )
+      appendLine(
+        "When you have concrete defects, also emit optional `[F-XXX]` register lines so claim " +
+          "verification can re-check them: " +
+          "'[F-XXX] Severity | Confidence | specialist=<skill name from Resolved rubric> | " +
+          "commits=<sha>[,<sha>] | path=\"<repo-relative path>\" | line=<positive integer> | description'. " +
+          "Use only the bare skill name for specialist — never copy the [paths=...;add-ons=...;origins=...] " +
+          "annotation from the routed rubric catalog. Imperfect lines remain part of the prose result " +
+          "and never block settlement; parsed lines are optional verification enrichment.",
+      )
+      appendLine()
       selected.forEach { launch ->
         val decision = launch.assignment.laneDecision
         appendLine("## Assigned bundle: ${decision.specialistSkillName}")
-        appendLine("Lane: ${decision.lane}")
-        appendLine(
-          "Discover this lane through read_evidence with operation=discover, then read its exact selectors. " +
-            "Continue with next_cursor until it is null, and read every required unit before you verdict. " +
-            "Discovery alone does not deliver required evidence.",
-        )
+        appendLine("Owned paths: ${launch.assignment.assignedPaths.joinToString(",") { structuredString(it) }}")
+        appendAssignedBundleEvidence(launch)
       }
-    }
-  }
-
-  private fun StringBuilder.appendReviewInstructions(
-    request: ParallelCodeReviewParentPromptRequest,
-    selected: List<ReviewSpecialistLaunchRequest>,
-    inline: Boolean,
-  ) {
-    val resolvedBase = request.baseRevision ?: selected.firstOrNull()?.packet?.baseRevision ?: "unspecified"
-    val resolvedHead = request.headRevision ?: selected.firstOrNull()?.packet?.headRevision ?: "unspecified"
-    appendLine(
-      "The immutable review pair is base=$resolvedBase " +
-        "target=$resolvedHead. " +
-        "The governing spec is ${request.specPath ?: "the resolved spec projection"}. " +
-        "Read committed content on demand " +
-        "through the bound broker with read_evidence and request_expansion. " +
-        "Do not expect paths, hunk spans, or hunk bodies in this launch prompt.",
-    )
-    appendLine(
-      "Call read_evidence with {\"operation\":\"discover\",\"page_size\":16}. " +
-        "Keep discovering with cursor=next_cursor until next_cursor is null. " +
-        "For every returned entry, read with operation=read and requests that include " +
-        "the returned path, selector, and expansion_id when present. Rubrics and " +
-        "required guidance are already above. " +
-        "request_expansion accepts a reachable path and reachability_reason. Recover from ordinary refusals " +
-        "using authorized selectors. " +
-        "Broker delivery is mandatory and complete: git, shell, Grep, Read, and other workspace tools " +
-        "do not satisfy required evidence. Do not stop after a sample of pages. " +
-        "Do not emit `verdict: approved` while required units remain undelivered; " +
-        "if delivery cannot finish, end with `verdict: changes_requested`, name what remains, " +
-        "and do not claim complete coverage.",
-    )
-    appendLine(if (inline) PARALLEL_REVIEW_INLINE_DEPTH_DIRECTIVE else PARALLEL_REVIEW_DELEGATED_DEPTH_DIRECTIVE)
-    appendLine(
-      "Return free-form review prose and end with an explicit verdict line: " +
-        "`verdict: approved` or `verdict: changes_requested` (needs_fix is accepted as changes_requested). " +
-        "There is no findings-register format gate and no $PARALLEL_REVIEW_NO_FINDINGS_TOKEN requirement — " +
-        "missing or imperfect register lines never fail the review.",
-    )
-    appendLine(
-      "When you have concrete defects, also emit optional `[F-XXX]` register lines so claim " +
-        "verification can re-check them: " +
-        "'[F-XXX] Severity | Confidence | specialist=<skill name from Resolved rubric> | " +
-        "commits=<sha>[,<sha>] | path=\"<repo-relative path>\" | line=<positive integer> | description'. " +
-        "Use only the bare skill name for specialist — never copy the [paths=...;add-ons=...;origins=...] " +
-        "annotation from the routed rubric catalog. Imperfect lines remain part of the prose result " +
-        "and never block settlement; parsed lines are optional verification enrichment.",
-    )
-    appendLine()
-  }
-
-  private fun StringBuilder.appendRubrics(selected: List<ReviewSpecialistLaunchRequest>) {
-    val rubricLabel = selected.joinToString { launch ->
-      val decision = launch.assignment.laneDecision
-      "${decision.specialistSkillName}" +
-        "[lane=${decision.lane};add-ons=${decision.addOns.joinToString("+").ifBlank { "none" }}]"
-    }.ifBlank { "code-review" }
-    appendLine("Authoritative routed rubric identities: $rubricLabel")
-    selected.forEach { launch ->
-      val decision = launch.assignment.laneDecision
-      appendLine()
-      appendLine("## Resolved rubric: ${decision.specialistSkillName}")
-      appendLine("Review lane: ${decision.lane}")
-      launch.rubrics.forEach { rubric -> appendLine(rubric.body) }
     }
   }
 
@@ -129,13 +90,11 @@ object ParallelCodeReviewRunnerParentPrompt {
       appendLine("Run exactly one bill-code-review mode:inline review prompt in this context.")
       appendLine("Resolved execution mode: inline")
       appendLine(
-        "Depth: reduced means judgment depth only — one merged checklist and one walk of the delta, " +
-          "holding every routed area in mind at once, with no specialist fan-out. " +
-          "It does not mean partial evidence, sampling, a page budget, or stopping early. " +
-          "Never re-walk the diff once per area; area coverage is accounted in your output, not by " +
-          "separate passes. Evidence paging through the bound broker stays full and mandatory for " +
-          "the entire assigned catalog. This is not equivalent to a full per-specialist review and " +
-          "must not be presented as one; state that specialist depth was not applied.",
+        "Depth: reduced. Merge the routed areas below into one combined checklist and traverse the " +
+          "diff exactly once against it, holding all areas in mind simultaneously, under a bounded " +
+          "budget. Never re-walk the diff once per area; coverage is accounted per area in your " +
+          "output, not by separate passes. This is not equivalent coverage to a full per-specialist " +
+          "review and must not be presented as one; state that specialist depth was not applied.",
       )
     } else {
       appendLine("Run one bill-code-review mode:delegated review over the routed specialist fan-out.")
@@ -144,6 +103,26 @@ object ParallelCodeReviewRunnerParentPrompt {
         "Depth: full. Launch one specialist worker per resolved rubric below. Pass each specialist's " +
           "raw return through unchanged — do not require a register shape from them. You alone author " +
           "the final review prose and verdict from whatever they returned.",
+      )
+    }
+  }
+
+  private fun StringBuilder.appendAssignedBundleEvidence(launch: ReviewSpecialistLaunchRequest) {
+    parallelCodeReviewGovernedLaunchFor(launch).deliveredEntries.forEach { entry ->
+      val hunk = entry.hunk
+      val locator = hunk.evidenceLocator
+      appendLine(
+        "### Commit ${structuredString(entry.commitSha)} (order=${entry.orderIndex}, " +
+          "path=${structuredString(hunk.path)})",
+      )
+      appendLine("Subject: ${structuredString(entry.subject.replace("\r\n", "\n"))}")
+      appendLine("hunk_id: ${hunk.hunkId}")
+      appendLine("spans: -${hunk.oldStart},${hunk.oldCount} +${hunk.newStart},${hunk.newCount}")
+      appendLine("content_digest: ${hunk.contentDigest}")
+      appendLine(
+        "evidence_locator: store_path=${structuredString(locator.storePath)} " +
+          "payload_file=${structuredString(locator.payloadFile)} " +
+          "hunk_header=${structuredString(locator.hunkHeader)}",
       )
     }
   }

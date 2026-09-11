@@ -4,19 +4,6 @@ import me.tatarka.inject.annotations.Component
 import me.tatarka.inject.annotations.Provides
 import skillbill.application.agentrun.AgentRunService
 import skillbill.application.config.ConfigResolutionService
-import skillbill.application.featuretask.FeatureTaskContinuationLookupService
-import skillbill.application.featuretask.FeatureTaskRuntimePhaseRecorder
-import skillbill.application.featuretask.FeatureTaskRuntimeRunner
-import skillbill.application.featuretask.FeatureTaskRuntimeStaleWorkflowService
-import skillbill.application.featuretask.FeatureTaskRuntimeStatusService
-import skillbill.application.featuretask.FeatureTaskRuntimeWorkerCoordinator
-import skillbill.application.goalplanning.GoalPlanningPreparationCheckpoint
-import skillbill.application.goalrunner.GoalOperatorDecisionService
-import skillbill.application.goalrunner.GoalPreflightService
-import skillbill.application.goalrunner.GoalRunner
-import skillbill.application.goalrunner.GoalRunnerStatusService
-import skillbill.application.goalrunner.findings.UnaddressedFindingsLedgerService
-import skillbill.application.goalrunner.planning.GoalPlanningLogService
 import skillbill.application.install.ExternalAddonOverlayService
 import skillbill.application.install.InstallService
 import skillbill.application.learning.LearningService
@@ -30,9 +17,21 @@ import skillbill.application.system.SystemService
 import skillbill.application.system.UninstallFileSystemService
 import skillbill.application.telemetry.LifecycleTelemetryService
 import skillbill.application.telemetry.TelemetryService
-import skillbill.application.work.IdeStatusService
 import skillbill.application.work.WorkListService
 import skillbill.application.workflow.WorkflowService
+import skillbill.engine.featuretask.FeatureTaskContinuationLookupService
+import skillbill.engine.featuretask.FeatureTaskRuntimePhaseRecorder
+import skillbill.engine.featuretask.FeatureTaskRuntimeRunner
+import skillbill.engine.featuretask.FeatureTaskRuntimeStatusService
+import skillbill.engine.featuretask.FeatureTaskRuntimeWorkerCoordinator
+import skillbill.engine.goalplanning.GoalPlanningPreparationCheckpoint
+import skillbill.engine.goalrunner.GoalOperatorDecisionService
+import skillbill.engine.goalrunner.GoalPreflightService
+import skillbill.engine.goalrunner.GoalRunner
+import skillbill.engine.goalrunner.GoalRunnerStatusService
+import skillbill.engine.goalrunner.findings.UnaddressedFindingsLedgerService
+import skillbill.engine.goalrunner.planning.GoalPlanningLogService
+import skillbill.engine.work.IdeStatusService
 import skillbill.model.EnvironmentContext
 import skillbill.model.OptionalCallbacks
 import skillbill.model.RuntimeContext
@@ -60,33 +59,42 @@ import skillbill.ports.validation.RepoValidationGateway
 abstract class RuntimeComponent(
   private val inputRuntimeContext: RuntimeContext,
 ) :
-  RuntimeTelemetryInstallProvides,
-  RuntimeInstallLauncherProvides,
-  RuntimeGoalRunnerPlanningProvides,
-  RuntimeDiagnosticsReviewProvides,
-  RuntimeGoalRunnerScaffoldProvides,
-  RuntimeScaffoldWorkflowProvides,
-  RuntimeReviewWorkflowProvides,
+  RuntimeInstallTargetProvides,
+  RuntimeInstallPlanProvides,
+  RuntimeTelemetryProvides,
+  RuntimeGoalPlanningProvides,
+  RuntimeGoalPlanningSweepProvides,
+  RuntimeGoalRunnerStoreProvides,
+  RuntimeGoalRunnerLaunchProvides,
+  RuntimeReviewLaunchProvides,
+  RuntimeReviewAddonCatalogProvides,
+  RuntimeReviewEvidenceProvides,
+  RuntimeFeatureTaskProvides,
+  RuntimeFeatureSpecProvides,
+  RuntimeWorkflowProvides,
   RuntimeWorkflowValidatorProvides,
-  RuntimeFeatureTaskGoalValidatorProvides,
-  RuntimeCompositionMiscProvides,
-  RuntimeGoalRunnerWorkflowProvides,
-  RuntimeGoalRunnerBoundaryProvides,
-  RuntimeReviewFeatureTaskGateProvides {
+  RuntimeFeatureTaskValidatorProvides,
+  RuntimeScaffoldProvides,
+  RuntimeScaffoldValidationProvides,
+  RuntimeDiagnosticsProvides {
   @Provides @JvmSynthetic
   fun runtimeContext(): RuntimeContext = RuntimeBootstrapBindings.runtimeContext(inputRuntimeContext)
 
   @Provides @JvmSynthetic
-  fun environmentContext(ctx: RuntimeContext): EnvironmentContext = RuntimeBootstrapBindings.environmentContext(ctx)
+  fun environmentContext(ctx: RuntimeContext): EnvironmentContext = ctx.environment
 
   @Provides @JvmSynthetic
-  fun transportContext(ctx: RuntimeContext): TransportContext = RuntimeBootstrapBindings.transportContext(ctx)
+  fun transportContext(ctx: RuntimeContext): TransportContext = ctx.transport
 
   @Provides @JvmSynthetic
-  fun workflowOpsContext(ctx: RuntimeContext): WorkflowOpsContext = RuntimeBootstrapBindings.workflowOpsContext(ctx)
+  fun workflowOpsContext(ctx: RuntimeContext): WorkflowOpsContext = ctx.workflowOps
 
   @Provides @JvmSynthetic
-  fun optionalCallbacks(ctx: RuntimeContext): OptionalCallbacks = RuntimeBootstrapBindings.optionalCallbacks(ctx)
+  fun optionalCallbacks(ctx: RuntimeContext): OptionalCallbacks = ctx.callbacks
+
+  @Provides @JvmSynthetic
+  fun repositoryEnclosingRootPort(): RepositoryEnclosingRootPort =
+    RuntimeBootstrapBindings.repositoryEnclosingRootPort()
 
   @Provides @RuntimeSingleton @JvmSynthetic
   fun databaseSessionFactory(context: EnvironmentContext): DatabaseSessionFactory =
@@ -107,7 +115,6 @@ abstract class RuntimeComponent(
   abstract val agentRunService: AgentRunService
   abstract val featureTaskRuntimePhaseRecorder: FeatureTaskRuntimePhaseRecorder
   abstract val featureTaskRuntimeRunner: FeatureTaskRuntimeRunner
-  abstract val featureTaskRuntimeStaleWorkflowService: FeatureTaskRuntimeStaleWorkflowService
   abstract val featureTaskRuntimeStatusService: FeatureTaskRuntimeStatusService
   abstract val featureTaskRuntimeWorkerCoordinator: FeatureTaskRuntimeWorkerCoordinator
   abstract val goalPlanningPreparationCheckpoint: GoalPlanningPreparationCheckpoint

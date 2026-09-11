@@ -2,6 +2,8 @@ package skillbill.workflow.taskruntime
 
 import skillbill.contracts.workflow.WORKFLOW_STATE_CONTRACT_VERSION
 import skillbill.workflow.engine.model.WorkflowDefinition
+import skillbill.workflow.model.WorkflowStatus
+import skillbill.workflow.model.WorkflowStepStatus
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_RECORDS_ARTIFACT_KEY
 
 internal object FeatureTaskRuntimePhaseWorkflowGraph {
@@ -11,9 +13,21 @@ internal object FeatureTaskRuntimePhaseWorkflowGraph {
     workflowIdPrefix = "wftr",
     defaultSessionPrefix = "ftr",
     contractVersion = WORKFLOW_STATE_CONTRACT_VERSION,
-    workflowStatuses = setOf("pending", "running", "completed", "failed", "abandoned", "blocked", "paused"),
-    stepStatuses = setOf("pending", "running", "completed", "failed", "blocked", "skipped", "paused"),
-    terminalStatuses = setOf("completed", "failed", "abandoned"),
+    workflowStatuses = setOf(
+      WorkflowStatus.PENDING.wireValue,
+      WorkflowStatus.RUNNING.wireValue,
+      WorkflowStatus.COMPLETED.wireValue,
+      WorkflowStatus.FAILED.wireValue,
+      WorkflowStatus.ABANDONED.wireValue,
+      WorkflowStatus.BLOCKED.wireValue,
+      WorkflowStatus.PAUSED.wireValue,
+    ),
+    stepStatuses = WorkflowStepStatus.entries.map(WorkflowStepStatus::wireValue).toSet(),
+    terminalStatuses = setOf(
+      WorkflowStatus.COMPLETED.wireValue,
+      WorkflowStatus.FAILED.wireValue,
+      WorkflowStatus.ABANDONED.wireValue,
+    ),
     defaultInitialStepId = FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PREPLAN,
     stepIds =
     listOf(

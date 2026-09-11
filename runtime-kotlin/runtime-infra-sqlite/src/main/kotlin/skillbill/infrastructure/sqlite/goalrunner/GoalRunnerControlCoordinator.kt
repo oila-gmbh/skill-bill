@@ -1,19 +1,18 @@
 package skillbill.infrastructure.sqlite.goalrunner
 import skillbill.goalrunner.model.GoalRunnerControlState
 import skillbill.goalrunner.model.GoalRunnerExecutionLease
+import skillbill.infrastructure.sqlite.workflow.decompositionRuntime
 import skillbill.ports.db.DatabaseSessionFactory
 import skillbill.ports.goalrunner.acquireExecutionLease
 import skillbill.ports.goalrunner.executionLease
 import skillbill.ports.goalrunner.heartbeatExecutionLease
-import skillbill.ports.goalrunner.persistence.migrateLegacyGoalRunnerControls
-import skillbill.ports.goalrunner.persistence.pauseAtOperatorBoundary
 import skillbill.ports.goalrunner.releaseExecutionLease
 import skillbill.ports.goalrunner.runner.model.GoalRunnerCompletionPersistenceResult
 import skillbill.ports.goalrunner.runner.model.GoalRunnerLaunchAuthorization
 import skillbill.ports.goalrunner.runner.model.GoalRunnerManifestState
 import skillbill.ports.persistence.UnitOfWork
-import skillbill.ports.workflow.persistence.decompositionRuntime
-import skillbill.ports.workflow.persistence.model.WorkflowFamily
+import skillbill.ports.workflow.get
+import skillbill.ports.workflow.model.WorkflowFamily
 import skillbill.workflow.decomposition.DecompositionManifestValidator
 import java.time.Clock
 
@@ -23,71 +22,56 @@ internal class GoalRunnerControlCoordinator(
   internal val clock: Clock,
   internal val saveProjection: (UnitOfWork, GoalRunnerManifestState) -> SavedManifestProjection,
 ) {
-  fun controlState(parentWorkflowId: String, dbPathOverride: String?): GoalRunnerControlState =
-    database.read(dbPathOverride) { unitOfWork -> unitOfWork.goalRunnerControls.controlState(parentWorkflowId) }
+  fun controlState(parentWorkflowId: String): GoalRunnerControlState =
+    database.read { unitOfWork -> unitOfWork.goalRunnerControls.controlState(parentWorkflowId) }
 
-  fun persistControlState(
-    parentWorkflowId: String,
-    state: GoalRunnerControlState,
-    dbPathOverride: String?,
-  ): GoalRunnerControlState = database.transaction(dbPathOverride) { unitOfWork ->
-    unitOfWork.goalRunnerControls.persistControlState(parentWorkflowId, state)
-  }
+  fun persistControlState(parentWorkflowId: String, state: GoalRunnerControlState): GoalRunnerControlState =
+    database.transaction { unitOfWork ->
+      unitOfWork.goalRunnerControls.persistControlState(parentWorkflowId, state)
+    }
 
-  fun executionLease(parentWorkflowId: String, dbPathOverride: String?): GoalRunnerExecutionLease? =
-    database.read(dbPathOverride) { unitOfWork -> unitOfWork.goalRunnerControls.executionLease(parentWorkflowId) }
+  fun executionLease(parentWorkflowId: String): GoalRunnerExecutionLease? =
+    database.read { unitOfWork -> unitOfWork.goalRunnerControls.executionLease(parentWorkflowId) }
 
   fun acquireExecutionLease(
     parentWorkflowId: String,
     lease: GoalRunnerExecutionLease,
     expectedOwnerToken: String?,
-    dbPathOverride: String?,
-  ): Boolean = database.transaction(dbPathOverride) { unitOfWork ->
+  ): Boolean = database.transaction { unitOfWork ->
     reconcileControlStateForManifest(unitOfWork, parentWorkflowId, decompositionManifestValidator)
     unitOfWork.goalRunnerControls.acquireExecutionLease(parentWorkflowId, lease, expectedOwnerToken)
   }
 
-  fun heartbeatExecutionLease(
-    parentWorkflowId: String,
-    lease: GoalRunnerExecutionLease,
-    dbPathOverride: String?,
-  ): Boolean = database.transaction(dbPathOverride) { unitOfWork ->
-    reconcileControlStateForManifest(unitOfWork, parentWorkflowId, decompositionManifestValidator)
-    unitOfWork.goalRunnerControls.heartbeatExecutionLease(parentWorkflowId, lease)
-  }
+  fun heartbeatExecutionLease(parentWorkflowId: String, lease: GoalRunnerExecutionLease): Boolean =
+    database.transaction { unitOfWork ->
+      reconcileControlStateForManifest(unitOfWork, parentWorkflowId, decompositionManifestValidator)
+      unitOfWork.goalRunnerControls.heartbeatExecutionLease(parentWorkflowId, lease)
+    }
 
-  fun releaseExecutionLease(
-    parentWorkflowId: String,
-    ownerToken: String,
-    generation: Long,
-    dbPathOverride: String?,
-  ): Boolean = database.transaction(dbPathOverride) { unitOfWork ->
-    unitOfWork.goalRunnerControls.releaseExecutionLease(parentWorkflowId, ownerToken, generation)
-  }
+  fun releaseExecutionLease(parentWorkflowId: String, ownerToken: String, generation: Long): Boolean =
+    database.transaction { unitOfWork ->
+      unitOfWork.goalRunnerControls.releaseExecutionLease(parentWorkflowId, ownerToken, generation)
+    }
 
-  fun authorizeSubtaskLaunch(
-    state: GoalRunnerManifestState,
-    subtaskId: Int,
-    dbPathOverride: String?,
-  ): GoalRunnerLaunchAuthorization = database.transaction(dbPathOverride) { unitOfWork ->
-    require(subtaskId > 0) { "subtaskId must be positive." }
-    val existing = requireParent(unitOfWork, state.parentWorkflowId)
-    val controls = unitOfWork.goalRunnerControls.controlState(existing.workflowId)
-    val manifest = existing.decompositionRuntime(decompositionManifestValidator) ?: state.manifest
-    GoalRunnerLaunchAuthorization(
-      authorized = !controls.requiresPauseBoundary(manifest),
-      controlState = controls,
-      spawnAuthorization = spawnAuthorization(state, dbPathOverride),
-    )
-  }
+  fun authorizeSubtaskLaunch(state: GoalRunnerManifestState, subtaskId: Int): GoalRunnerLaunchAuthorization =
+    database.transaction { unitOfWork ->
+      require(subtaskId > 0) { "subtaskId must be positive." }
+      val existing = requireParent(unitOfWork, state.parentWorkflowId)
+      val controls = unitOfWork.goalRunnerControls.controlState(existing.workflowId)
+      val manifest = existing.decompositionRuntime(decompositionManifestValidator) ?: state.manifest
+      GoalRunnerLaunchAuthorization(
+        authorized = !controls.requiresPauseBoundary(manifest),
+        controlState = controls,
+        spawnAuthorization = spawnAuthorization(state),
+      )
+    }
 
   fun pauseNow(
     parentWorkflowId: String,
     reason: String,
     pausedAt: String,
     overwriteExistingReason: Boolean,
-    dbPathOverride: String?,
-  ): GoalRunnerControlState? = database.transaction(dbPathOverride) { unitOfWork ->
+  ): GoalRunnerControlState? = database.transaction { unitOfWork ->
     val parent = WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, parentWorkflowId)
       ?: return@transaction null
     migrateLegacyGoalRunnerControls(unitOfWork, parent)
@@ -107,30 +91,28 @@ internal class GoalRunnerControlCoordinator(
     )
   }
 
-  fun pauseAtBoundary(state: GoalRunnerManifestState, dbPathOverride: String?): GoalRunnerManifestState =
-    database.transaction(dbPathOverride) { unitOfWork ->
-      val parent = requireParent(unitOfWork, state.parentWorkflowId)
-      val controls = unitOfWork.goalRunnerControls.controlState(parent.workflowId)
-      val authoritativeManifest = parent.decompositionRuntime(decompositionManifestValidator) ?: state.manifest
-      val authoritativeState = state.copy(manifest = authoritativeManifest)
-      val targetReached = controls.targetReached(authoritativeState)
-      val pausedControls = if (controls.requiresPauseBoundary(authoritativeManifest)) {
-        controls.pauseAtOperatorBoundary(clock.instant().toString(), targetReached)
-      } else {
-        controls
-      }
-      val saved = saveProjection(unitOfWork, authoritativeState)
-      if (pausedControls != controls) {
-        unitOfWork.goalRunnerControls.persistControlState(parent.workflowId, pausedControls)
-      }
-      saved.state.copy(controlState = pausedControls)
+  fun pauseAtBoundary(state: GoalRunnerManifestState): GoalRunnerManifestState = database.transaction { unitOfWork ->
+    val parent = requireParent(unitOfWork, state.parentWorkflowId)
+    val controls = unitOfWork.goalRunnerControls.controlState(parent.workflowId)
+    val authoritativeManifest = parent.decompositionRuntime(decompositionManifestValidator) ?: state.manifest
+    val authoritativeState = state.copy(manifest = authoritativeManifest)
+    val targetReached = controls.targetReached(authoritativeState)
+    val pausedControls = if (controls.requiresPauseBoundary(authoritativeManifest)) {
+      controls.pauseAtOperatorBoundary(clock.instant().toString(), targetReached)
+    } else {
+      controls
     }
+    val saved = saveProjection(unitOfWork, authoritativeState)
+    if (pausedControls != controls) {
+      unitOfWork.goalRunnerControls.persistControlState(parent.workflowId, pausedControls)
+    }
+    saved.state.copy(controlState = pausedControls)
+  }
 
   fun saveCompletedSubtaskAtBoundary(
     state: GoalRunnerManifestState,
     subtaskId: Int,
-    dbPathOverride: String?,
-  ): GoalRunnerCompletionPersistenceResult = database.transaction(dbPathOverride) { unitOfWork ->
+  ): GoalRunnerCompletionPersistenceResult = database.transaction { unitOfWork ->
     val parent = requireParent(unitOfWork, state.parentWorkflowId)
     val controls = unitOfWork.goalRunnerControls.controlState(parent.workflowId)
     val persistedManifest = parent.decompositionRuntime(decompositionManifestValidator) ?: state.manifest

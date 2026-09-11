@@ -6,5 +6,5 @@ object ProducerOutputEvidenceSchemaPaths {
   const val REPOSITORY_PATH: String =
     "orchestration/contracts/producer-output-evidence-schema.yaml"
   const val CLASSPATH_RESOURCE: String =
-    "skillbill/contracts/producer-output-evidence-schema.yaml"
+    "skillbill/infrastructure/fs/contracts/producer-output-evidence-schema.yaml"
 }

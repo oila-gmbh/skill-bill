@@ -1,13 +1,16 @@
 package skillbill.application.workflow
 
 import skillbill.application.workflow.model.WorkflowUpdateResult
-import skillbill.contracts.JsonSupport
+import skillbill.contracts.JsonCodec
 import skillbill.ports.persistence.UnitOfWork
 import skillbill.ports.workflow.model.WorkflowStateRecord
+import skillbill.ports.workflow.save
 import skillbill.workflow.engine.WorkflowEngine
 import skillbill.workflow.engine.model.WorkflowStateSnapshot
 import skillbill.workflow.engine.model.WorkflowUpdateAcknowledgementView
 import skillbill.workflow.engine.model.WorkflowUpdateInput
+import skillbill.workflow.engine.model.isTerminalStatus
+import skillbill.workflow.model.workflowStatus
 import java.time.OffsetDateTime
 import java.time.ZoneOffset
 
@@ -20,7 +23,7 @@ class WorkflowServiceFeatureTaskAbandon(
     normalizedReason: String,
   ): WorkflowUpdateResult {
     val family = WorkflowFamily.TASK_RUNTIME
-    if (existing.workflowStatus in family.definition.terminalStatuses) {
+    if (family.definition.isTerminalStatus(existing.workflowStatus)) {
       return WorkflowUpdateResult.Error(
         existing.workflowId,
         "Runtime workflow '${existing.workflowId}' is already terminal with status '${existing.workflowStatus}'.",
@@ -49,7 +52,7 @@ class WorkflowServiceFeatureTaskAbandon(
     existing: WorkflowStateRecord,
     normalizedReason: String,
   ): WorkflowUpdateResult {
-    if (existing.workflowStatus in FEATURE_TASK_TERMINAL_STATUSES) {
+    if (existing.workflowStatus.workflowStatus() in FEATURE_TASK_TERMINAL_STATUSES) {
       return WorkflowUpdateResult.Error(
         existing.workflowId,
         "Feature-task workflow '${existing.workflowId}' is already terminal with status '${existing.workflowStatus}'.",
@@ -64,7 +67,7 @@ class WorkflowServiceFeatureTaskAbandon(
     )
     val updated = existing.copy(
       workflowStatus = "abandoned",
-      artifactsJson = JsonSupport.mapToJsonString(artifacts),
+      artifactsJson = JsonCodec.mapToJsonString(artifacts),
       finishedAt = abandonedAt,
     )
     unitOfWork.workflowStates.terminalizeLegacyProseFeatureTaskWorkflow(updated)

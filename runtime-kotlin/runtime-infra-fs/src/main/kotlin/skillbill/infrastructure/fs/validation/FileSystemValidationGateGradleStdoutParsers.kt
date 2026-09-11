@@ -50,7 +50,7 @@ internal object FileSystemValidationGateGradleStdoutParsers {
       val column = match.groupValues[QUALITY_TOOL_COLUMN_GROUP]
       val message = match.groupValues[QUALITY_TOOL_MESSAGE_GROUP].trim()
       val rule = match.groupValues[QUALITY_TOOL_RULE_GROUP].trim()
-      val relative = FileSystemValidationGateGradlePathSupport.repoRelativeQualityPath(repo, rawPath)
+      val relative = FileSystemValidationGateGradlePaths.repoRelativeQualityPath(repo, rawPath)
       val module = relative.substringBefore('/').ifBlank { "<quality>" }
       ValidationGateFinding(
         module = module,
@@ -95,14 +95,14 @@ internal object FileSystemValidationGateGradleStdoutParsers {
       stdout.lineSequence().forEach { rawLine ->
         val line = rawLine.trim()
         GRADLE_TASK_FAILED_LINE.matchEntire(line)?.let { match ->
-          val (module, task) = FileSystemValidationGateGradlePathSupport.parseGradleTaskPath(match.groupValues[1])
+          val (module, task) = FileSystemValidationGateGradlePaths.parseGradleTaskPath(match.groupValues[1])
           if (task == "projectHealth") {
             currentModule = module
           }
           return@forEach
         }
         GRADLE_TASK_FAILURE_HEADER.matchEntire(line)?.let { match ->
-          val (module, task) = FileSystemValidationGateGradlePathSupport.parseGradleTaskPath(match.groupValues[1])
+          val (module, task) = FileSystemValidationGateGradlePaths.parseGradleTaskPath(match.groupValues[1])
           if (task == "projectHealth") {
             currentModule = module
           }
@@ -122,8 +122,8 @@ internal object FileSystemValidationGateGradleStdoutParsers {
             module = module,
             ruleOrTestId = "incorrectConfiguration",
             message = "$requiredConfiguration($dependencyCoordinate) (was $actualConfiguration)",
-            location = FileSystemValidationGateGradlePathSupport.filePathFromAdviceBlock(line)?.let { path ->
-              FileSystemValidationGateGradlePathSupport.repoRelativeAdvicePath(path)
+            location = FileSystemValidationGateGradlePaths.filePathFromAdviceBlock(line)?.let { path ->
+              FileSystemValidationGateGradlePaths.repoRelativeAdvicePath(path)
             },
           ),
         )
@@ -137,14 +137,14 @@ internal object FileSystemValidationGateGradleStdoutParsers {
       stdout.lineSequence().forEach { rawLine ->
         val line = rawLine.trim()
         GRADLE_TASK_FAILED_LINE.matchEntire(line)?.let { match ->
-          val (module, task) = FileSystemValidationGateGradlePathSupport.parseGradleTaskPath(match.groupValues[1])
+          val (module, task) = FileSystemValidationGateGradlePaths.parseGradleTaskPath(match.groupValues[1])
           if (task == "architectureCheck") {
             currentModule = module
           }
           return@forEach
         }
         GRADLE_TASK_FAILURE_HEADER.matchEntire(line)?.let { match ->
-          val (module, task) = FileSystemValidationGateGradlePathSupport.parseGradleTaskPath(match.groupValues[1])
+          val (module, task) = FileSystemValidationGateGradlePaths.parseGradleTaskPath(match.groupValues[1])
           if (task == "architectureCheck") {
             currentModule = module
           }
@@ -165,8 +165,8 @@ internal object FileSystemValidationGateGradleStdoutParsers {
             module = module,
             ruleOrTestId = "forbidden_project_dependency",
             message = line,
-            location = FileSystemValidationGateGradlePathSupport.filePathFromAdviceBlock(line)?.let { path ->
-              FileSystemValidationGateGradlePathSupport.repoRelativeAdvicePath(path)
+            location = FileSystemValidationGateGradlePaths.filePathFromAdviceBlock(line)?.let { path ->
+              FileSystemValidationGateGradlePaths.repoRelativeAdvicePath(path)
             },
           ),
         )
@@ -179,7 +179,7 @@ internal object FileSystemValidationGateGradleStdoutParsers {
       stdout.lineSequence().forEach { rawLine ->
         val line = rawLine.trim()
         val match = GRADLE_TASK_FAILURE_HEADER.matchEntire(line) ?: return@forEach
-        val (module, task) = FileSystemValidationGateGradlePathSupport.parseGradleTaskPath(match.groupValues[1])
+        val (module, task) = FileSystemValidationGateGradlePaths.parseGradleTaskPath(match.groupValues[1])
         val taskKey = "${module.ifBlank { GRADLE_ROOT_MODULE }}|$task"
         if (taskKey in coveredTaskKeys) return@forEach
         add(
@@ -195,7 +195,7 @@ internal object FileSystemValidationGateGradleStdoutParsers {
 
   fun parseGradleKotlinCompilerStdout(repoRoot: Path, stdout: String): List<ValidationGateFinding> {
     val repo = repoRoot.toAbsolutePath().normalize()
-    val canonicalRepo = FileSystemValidationGateGradlePathSupport.canonicalizeExisting(repo)
+    val canonicalRepo = FileSystemValidationGateGradlePaths.canonicalizeExisting(repo)
     val repoPrefixes = listOf(
       canonicalRepo.toUri().toString().removeSuffix("/"),
       repo.toUri().toString().removeSuffix("/"),
@@ -218,7 +218,7 @@ internal object FileSystemValidationGateGradleStdoutParsers {
         message = message.replace(prefix, "")
       }
       message = message.trim()
-      val relative = FileSystemValidationGateGradlePathSupport.repoRelativeCompilerPath(
+      val relative = FileSystemValidationGateGradlePaths.repoRelativeCompilerPath(
         repo,
         canonicalRepo,
         Path.of(rawPath),

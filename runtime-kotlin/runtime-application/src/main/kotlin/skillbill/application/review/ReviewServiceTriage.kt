@@ -2,7 +2,7 @@ package skillbill.application.review
 
 import skillbill.application.review.model.TriageResult
 import skillbill.application.review.model.TriageResultKind
-import skillbill.application.telemetry.feedbackTelemetryOptions
+import skillbill.application.telemetry.settings.feedbackTelemetryOptions
 import skillbill.ports.db.DatabaseSessionFactory
 import skillbill.ports.review.ReviewRepository
 import skillbill.ports.telemetry.TelemetrySettingsProvider
@@ -18,14 +18,13 @@ internal data class TriageReviewRequest(
   val runId: String,
   val decisions: List<String>,
   val listOnly: Boolean,
-  val dbOverride: String?,
   val listWhenNoDecisions: Boolean,
   val routedSkillPlatformSlugs: Map<String, String>,
 )
 
 internal fun triageReview(request: TriageReviewRequest): TriageResult =
   if (request.listOnly || (request.decisions.isEmpty() && request.listWhenNoDecisions)) {
-    request.database.read(request.dbOverride) { unitOfWork ->
+    request.database.read { unitOfWork ->
       val numberedFindings = unitOfWork.reviews.fetchNumberedFindings(request.runId)
       TriageResult(
         kind = TriageResultKind.LIST,
@@ -35,7 +34,7 @@ internal fun triageReview(request: TriageReviewRequest): TriageResult =
       )
     }
   } else {
-    request.database.transaction(request.dbOverride) { unitOfWork ->
+    request.database.transaction { unitOfWork ->
       val numberedFindings = unitOfWork.reviews.fetchNumberedFindings(request.runId)
       val applied = applyTriageDecisions(
         TriageDecisionsRequest(

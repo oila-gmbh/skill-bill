@@ -1,6 +1,7 @@
 package skillbill.review.plan
 
 import org.junit.jupiter.api.Test
+import skillbill.model.FileLocation
 import skillbill.review.plan.model.ReviewRoutingChangedFile
 import skillbill.scaffold.model.CodeReviewBaselineLayer
 import skillbill.scaffold.model.CodeReviewComposition
@@ -9,7 +10,6 @@ import skillbill.scaffold.model.CodeReviewCompositionScope
 import skillbill.scaffold.model.DeclaredFiles
 import skillbill.scaffold.model.PlatformManifest
 import skillbill.scaffold.model.RoutingSignals
-import java.nio.file.Path
 import kotlin.test.assertEquals
 
 class ReviewStackRoutingTest {
@@ -232,12 +232,12 @@ class ReviewStackRoutingTest {
     fallback: Boolean = false,
   ) = PlatformManifest(
     slug = slug,
-    packRoot = Path.of("platform-packs", slug),
+    packRoot = FileLocation("platform-packs/$slug"),
     contractVersion = "1.3",
     routingSignals = RoutingSignals(strong = path, tieBreakers = emptyList(), path = path, content = content),
     declaredCodeReviewAreas = emptyList(),
     declaredFiles = DeclaredFiles(
-      baseline = Path.of("platform-packs", slug, "code-review", "bill-$slug-code-review", "content.md"),
+      baseline = FileLocation("platform-packs/$slug/code-review/bill-$slug-code-review/content.md"),
       areas = emptyMap(),
     ),
     areaMetadata = emptyMap(),

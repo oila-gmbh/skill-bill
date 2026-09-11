@@ -7,6 +7,7 @@ import skillbill.ports.scaffold.catalog.model.ScaffoldShowResult
 import skillbill.ports.scaffold.model.ScaffoldSkillStatus
 import skillbill.ports.scaffold.repo.model.ScaffoldUpgradeResult
 import skillbill.ports.scaffold.repo.model.ScaffoldValidateResult
+import skillbill.ports.scaffold.repo.model.ScaffoldValidationMode
 import skillbill.ports.scaffold.source.model.ScaffoldEditWithBodyFileResult
 import skillbill.ports.scaffold.source.model.ScaffoldFillResult
 import skillbill.ports.scaffold.source.model.ScaffoldSaveExactContentResult
@@ -19,13 +20,13 @@ import skillbill.ports.scaffold.source.model.ScaffoldSaveExactContentResult
  * SKILL-52.1 subtask 3 typed only the top-level scalars and carried the rest of the
  * wire shape verbatim through an `@OpenBoundaryMap` `payload` field. SKILL-52.3
  * subtask 3 retired that field: every wire key is now rebuilt here from typed fields in
- * the EXACT producer key order the prior `skillbill.scaffold.AuthoringOperations`
+ * the EXACT producer key order the prior `skillbill.infrastructure.fs.scaffold.AuthoringOperations`
  * raw-map producers emitted. The byte-equivalence contract is locked by
  * `runtime-cli/src/test/kotlin/skillbill/cli/CliScaffoldRuntimeTest.kt`
  * (field-by-field + key-order assertions) and `AuthoringOperationsTest.kt`.
  *
  * Both success and error envelope paths flow through `authoringResult { ... }` /
- * `errorResult(...)` in `ScaffoldCliPayloadHelpers.kt`; errors are surfaced by the catch
+ * `errorResult(...)` in `ScaffoldCliPayloadRuns.kt`; errors are surfaced by the catch
  * blocks in `authoringResult` and do not pass through these mappers.
  */
 internal fun ScaffoldListResult.toCliMap(): Map<String, Any?> = linkedMapOf(
@@ -50,13 +51,13 @@ internal fun ScaffoldExplainResult.toCliMap(): Map<String, Any?> {
 }
 
 internal fun ScaffoldValidateResult.toCliMap(): Map<String, Any?> {
-  val map = linkedMapOf<String, Any?>("repo_root" to repoRoot, "mode" to mode)
-  if (mode == "selected") {
+  val map = linkedMapOf<String, Any?>("repo_root" to repoRoot, "mode" to mode.wireValue)
+  if (mode == ScaffoldValidationMode.SELECTED) {
     map["skill_names"] = skillNames ?: emptyList<String>()
   }
-  map["status"] = status
+  map["status"] = status.wireValue
   map["issues"] = issues
-  if (mode == "selected") {
+  if (mode == ScaffoldValidationMode.SELECTED) {
     map["suggested_commands"] = suggestedCommands ?: emptyList<String>()
   }
   return map

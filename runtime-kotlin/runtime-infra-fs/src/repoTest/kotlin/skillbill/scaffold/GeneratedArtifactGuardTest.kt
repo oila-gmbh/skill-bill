@@ -1,6 +1,6 @@
-package skillbill.scaffold
+package skillbill.infrastructure.fs.scaffold
 
-import skillbill.scaffold.pointer.validateGeneratedArtifactGuard
+import skillbill.infrastructure.fs.scaffold.pointer.validateGeneratedArtifactGuard
 import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.test.AfterTest

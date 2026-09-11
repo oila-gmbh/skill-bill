@@ -1,6 +1,19 @@
 package skillbill.review.context.model
 
-enum class ReviewOperationKind { FILE_READ, SHELL_COMMAND, SEARCH, MCP_TOOL, RUBRIC_READ, CONTRACT_READ, RULES_READ }
+enum class ReviewOperationKind(val wireValue: String) {
+  FILE_READ("file_read"),
+  SHELL_COMMAND("shell_command"),
+  SEARCH("search"),
+  MCP_TOOL("mcp_tool"),
+  RUBRIC_READ("rubric_read"),
+  CONTRACT_READ("contract_read"),
+  RULES_READ("rules_read"),
+  ;
+
+  companion object {
+    fun fromWire(value: String): ReviewOperationKind? = entries.firstOrNull { it.wireValue == value }
+  }
+}
 
 data class ReviewRequestedOperation(
   val kind: ReviewOperationKind,

@@ -25,6 +25,7 @@ include(
   "runtime-contracts",
   "runtime-core",
   "runtime-domain",
+  "runtime-engine",
   "runtime-infra-fs",
   "runtime-infra-http",
   "runtime-infra-sqlite",

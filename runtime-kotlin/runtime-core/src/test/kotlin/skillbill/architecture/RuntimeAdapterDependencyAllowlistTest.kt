@@ -164,9 +164,16 @@ class RuntimeAdapterDependencyAllowlistTest {
         "runtime-application",
         "runtime-contracts",
         "runtime-domain",
+        "runtime-engine",
         "runtime-infra-fs",
         "runtime-infra-http",
         "runtime-infra-sqlite",
+        "runtime-ports",
+      ),
+      "runtime-engine" to setOf(
+        "runtime-application",
+        "runtime-contracts",
+        "runtime-domain",
         "runtime-ports",
       ),
       "runtime-domain" to setOf("runtime-contracts"),
@@ -178,6 +185,7 @@ class RuntimeAdapterDependencyAllowlistTest {
         "runtime-contracts",
         "runtime-core",
         "runtime-domain",
+        "runtime-engine",
         "runtime-ports",
       ),
       "runtime-mcp" to setOf(
@@ -185,15 +193,17 @@ class RuntimeAdapterDependencyAllowlistTest {
         "runtime-contracts",
         "runtime-core",
         "runtime-domain",
+        "runtime-engine",
         "runtime-ports",
       ),
       "runtime-ports" to setOf("runtime-contracts", "runtime-domain"),
     )
 
     val TEST_FIXTURES_PROJECT_DEPENDENCIES: Map<String, Set<String>> = mapOf(
-      "runtime-application" to setOf("runtime-infra-fs", "runtime-infra-sqlite", "runtime-ports"),
+      "runtime-application" to setOf("runtime-domain", "runtime-infra-fs", "runtime-infra-sqlite", "runtime-ports"),
       "runtime-contracts" to emptySet(),
       "runtime-core" to emptySet(),
+      "runtime-engine" to setOf("runtime-application", "runtime-domain", "runtime-infra-sqlite", "runtime-ports"),
       "runtime-domain" to emptySet(),
       "runtime-infra-fs" to emptySet(),
       "runtime-infra-http" to emptySet(),

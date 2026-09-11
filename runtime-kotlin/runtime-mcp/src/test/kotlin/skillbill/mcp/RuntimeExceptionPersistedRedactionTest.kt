@@ -1,8 +1,8 @@
 package skillbill.mcp
 
 import skillbill.application.telemetry.enqueueRuntimeException
-import skillbill.db.core.DatabaseRuntime
-import skillbill.db.telemetry.TelemetryOutboxStore
+import skillbill.infrastructure.sqlite.core.DatabaseRuntime
+import skillbill.infrastructure.sqlite.telemetry.TelemetryOutboxStore
 import java.nio.file.Files
 import java.sql.Connection
 import kotlin.test.Test

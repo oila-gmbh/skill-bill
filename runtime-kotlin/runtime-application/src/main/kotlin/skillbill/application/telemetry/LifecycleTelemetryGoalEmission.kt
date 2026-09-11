@@ -7,44 +7,49 @@ import skillbill.application.telemetry.model.GoalStartedRequest
 import skillbill.application.telemetry.model.GoalSubtaskFinishedRequest
 import skillbill.application.telemetry.model.QualityCheckFinishedRequest
 import skillbill.application.telemetry.model.QualityCheckStartedRequest
+import skillbill.application.telemetry.settings.telemetrySettingsOrNull
 import skillbill.ports.db.DatabaseSessionFactory
 import skillbill.ports.telemetry.TelemetrySettingsProvider
 import skillbill.review.normalizeRoutedSkill
 import skillbill.review.normalizeStackLabel
 import skillbill.telemetry.model.TelemetrySettings
+import skillbill.workflow.model.WorkflowStatus
+import skillbill.workflow.model.WorkflowStepStatus
+import skillbill.workflow.model.workflowStatus
+import skillbill.workflow.model.workflowStepStatus
 
 class LifecycleTelemetryGoalEmission(
   private val database: DatabaseSessionFactory,
   private val settingsProvider: TelemetrySettingsProvider,
 ) : GoalLifecycleTelemetryEmitter {
-  override fun goalStarted(request: GoalStartedRequest, dbOverride: String?) {
+  override fun goalStarted(request: GoalStartedRequest) {
     enabledStandaloneResult(settingsProvider, request.workflowId) { settings ->
-      database.transaction(dbOverride) { unitOfWork ->
+      database.transaction { unitOfWork ->
         unitOfWork.lifecycleTelemetry.goalStarted(request.toRecord(), settings.level)
       }
     }
   }
 
-  override fun goalSubtaskFinished(request: GoalSubtaskFinishedRequest, dbOverride: String?) {
+  override fun goalSubtaskFinished(request: GoalSubtaskFinishedRequest) {
     enabledStandaloneResult(settingsProvider, request.workflowId) { settings ->
       val reconciledRequest = request.reconcileBlockedReason()
-      database.transaction(dbOverride) { unitOfWork ->
+      database.transaction { unitOfWork ->
         unitOfWork.lifecycleTelemetry.goalSubtaskFinished(reconciledRequest.toRecord(), settings.level)
       }
     }
   }
 
-  override fun goalFinished(request: GoalFinishedRequest, dbOverride: String?) {
+  override fun goalFinished(request: GoalFinishedRequest) {
     enabledStandaloneResult(settingsProvider, request.workflowId) { settings ->
-      database.transaction(dbOverride) { unitOfWork ->
+      database.transaction { unitOfWork ->
         unitOfWork.lifecycleTelemetry.goalFinished(request.toRecord(), settings.level)
       }
     }
   }
 
-  override fun goalIssueFinished(request: GoalIssueFinishedRequest, dbOverride: String?) {
+  override fun goalIssueFinished(request: GoalIssueFinishedRequest) {
     enabledStandaloneResult(settingsProvider, request.parentWorkflowId) { settings ->
-      database.transaction(dbOverride) { unitOfWork ->
+      database.transaction { unitOfWork ->
         unitOfWork.lifecycleTelemetry.goalIssueFinished(request.toRecord(), settings.level)
       }
     }
@@ -66,7 +71,7 @@ internal fun enabledStandaloneResult(
 }
 
 internal fun FeatureTaskRuntimeFinishedRequest.reconcileBlockedRuntimeFields(): FeatureTaskRuntimeFinishedRequest {
-  if (completionStatus != "blocked") {
+  if (completionStatus.workflowStatus() != WorkflowStatus.BLOCKED) {
     return this
   }
   return copy(
@@ -80,7 +85,8 @@ internal fun FeatureTaskRuntimeFinishedRequest.reconcileBlockedRuntimeFields(): 
 }
 
 internal fun Map<String, String>.firstIncompletePhase(): String =
-  entries.firstOrNull { it.value != "completed" }?.key?.takeIf(String::isNotBlank) ?: "unknown"
+  entries.firstOrNull { it.value.workflowStepStatus() != WorkflowStepStatus.COMPLETED }?.key?.takeIf(String::isNotBlank)
+    ?: "unknown"
 
 internal fun QualityCheckStartedRequest.normalizedLabels(): QualityCheckStartedRequest {
   val stack = normalizeStackLabel(detectedStack)
@@ -103,7 +109,7 @@ internal fun QualityCheckFinishedRequest.normalizedLabels(): QualityCheckFinishe
 }
 
 internal fun GoalSubtaskFinishedRequest.reconcileBlockedReason(): GoalSubtaskFinishedRequest {
-  if (status != "blocked") {
+  if (status.workflowStatus() != WorkflowStatus.BLOCKED) {
     return this
   }
   return copy(

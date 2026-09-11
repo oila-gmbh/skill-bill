@@ -1,4 +1,4 @@
-package skillbill.scaffold
+package skillbill.infrastructure.fs.scaffold
 
 import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.dataformat.yaml.YAMLMapper

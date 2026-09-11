@@ -1,10 +1,17 @@
 package skillbill.infrastructure.fs
 
 import me.tatarka.inject.annotations.Inject
-import skillbill.agentaddon.AgentAddonDeliveryResolver
 import skillbill.agentaddon.model.AgentAddonCatalogueEntry
 import skillbill.error.MissingAgentAddonDeclarationError
-import skillbill.install.nativeagent.installNativeAgentCompositionContext
+import skillbill.infrastructure.fs.agentaddon.AgentAddonDeliveryResolver
+import skillbill.infrastructure.fs.install.nativeagent.installNativeAgentCompositionContext
+import skillbill.infrastructure.fs.scaffold.authoring.AuthoringOperations
+import skillbill.infrastructure.fs.scaffold.authoring.AuthoringRenderResult
+import skillbill.infrastructure.fs.scaffold.authoring.recommendedCommands
+import skillbill.infrastructure.fs.scaffold.authoring.renderAuthoringTarget
+import skillbill.infrastructure.fs.scaffold.catalog.ScaffoldCatalog
+import skillbill.infrastructure.fs.scaffold.runtime.scaffold
+import skillbill.model.toPath
 import skillbill.ports.scaffold.ScaffoldCatalogGateway
 import skillbill.ports.scaffold.ScaffoldGateway
 import skillbill.ports.scaffold.UnsupportedScaffoldGateway
@@ -13,24 +20,21 @@ import skillbill.ports.scaffold.catalog.model.ScaffoldExplainSkill
 import skillbill.ports.scaffold.catalog.model.ScaffoldListResult
 import skillbill.ports.scaffold.catalog.model.ScaffoldShowResult
 import skillbill.ports.scaffold.model.PilotedPlatformPackProjection
+import skillbill.ports.scaffold.model.ScaffoldCompletionStatus
 import skillbill.ports.scaffold.model.ScaffoldRenderBlock
 import skillbill.ports.scaffold.model.ScaffoldRenderResult
 import skillbill.ports.scaffold.model.ScaffoldSkillStatus
 import skillbill.ports.scaffold.repo.model.ScaffoldUpgradeResult
 import skillbill.ports.scaffold.repo.model.ScaffoldValidateResult
+import skillbill.ports.scaffold.repo.model.ScaffoldValidationMode
+import skillbill.ports.scaffold.repo.model.ScaffoldValidationStatus
 import skillbill.ports.scaffold.source.model.ScaffoldEditWithBodyFileResult
 import skillbill.ports.scaffold.source.model.ScaffoldFillResult
 import skillbill.ports.scaffold.source.model.ScaffoldSaveExactContentResult
-import skillbill.scaffold.authoring.AuthoringOperations
-import skillbill.scaffold.authoring.AuthoringRenderResult
-import skillbill.scaffold.authoring.recommendedCommands
-import skillbill.scaffold.authoring.renderAuthoringTarget
-import skillbill.scaffold.catalog.ScaffoldCatalog
 import skillbill.scaffold.model.command.ScaffoldCommandRequest
-import skillbill.scaffold.runtime.scaffold
 import java.nio.file.Files
 import java.nio.file.Path
-import skillbill.agentaddon.inspectAgentAddons as inspectFsAgentAddons
+import skillbill.infrastructure.fs.agentaddon.inspectAgentAddons as inspectFsAgentAddons
 
 private const val CONTENT_PREVIEW_MAX_CHARS = 500
 
@@ -115,8 +119,12 @@ class FileSystemScaffoldGateway(
     val result = AuthoringOperations.validate(repoRoot, skillNames)
     return ScaffoldValidateResult(
       repoRoot = result.repoRoot,
-      mode = result.mode,
-      status = result.status,
+      mode = requireNotNull(ScaffoldValidationMode.fromWire(result.mode)) {
+        "Unknown scaffold validation mode '${result.mode}'."
+      },
+      status = requireNotNull(ScaffoldValidationStatus.fromWire(result.status)) {
+        "Unknown scaffold validation status '${result.status}'."
+      },
       issues = result.issues,
       skillNames = result.skillNames,
       suggestedCommands = result.suggestedCommands,
@@ -194,7 +202,7 @@ private fun requireAgentAddonEntry(repoRoot: Path, identity: String): AgentAddon
     )
 
 private fun AgentAddonCatalogueEntry.toSkillStatus(repoRoot: Path, contentMode: String): ScaffoldSkillStatus {
-  val contentText = Files.readString(contentPath)
+  val contentText = Files.readString(contentPath.toPath())
   return ScaffoldSkillStatus(
     skillName = identity,
     packageName = "agent-addons",
@@ -203,7 +211,7 @@ private fun AgentAddonCatalogueEntry.toSkillStatus(repoRoot: Path, contentMode: 
     area = "",
     contentFile = contentPath.toString(),
     renderCommand = "skill-bill render bill-feature --repo-root ${repoRoot.toAbsolutePath().normalize()}",
-    completionStatus = "authored",
+    completionStatus = ScaffoldCompletionStatus.AUTHORED,
     sectionCount = 0,
     sections = emptyList(),
     recommendedCommands = listOf("skill-bill validate", "skill-bill render bill-feature"),

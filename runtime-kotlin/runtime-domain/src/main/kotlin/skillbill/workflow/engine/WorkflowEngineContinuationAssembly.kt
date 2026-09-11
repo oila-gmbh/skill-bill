@@ -9,26 +9,31 @@ import skillbill.workflow.engine.model.WorkflowResumeView
 import skillbill.workflow.engine.model.WorkflowSnapshotView
 import skillbill.workflow.engine.model.WorkflowStateSnapshot
 import skillbill.workflow.engine.model.WorkflowStepState
+import skillbill.workflow.model.WorkflowContinueStatus
+import skillbill.workflow.model.WorkflowResumeMode
+import skillbill.workflow.model.WorkflowStatus
+import skillbill.workflow.model.WorkflowStepStatus
+import skillbill.workflow.model.workflowStatus
+import skillbill.workflow.model.workflowStepStatus
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 
-internal val workflowResumableStepStatuses = setOf("running", "blocked", "pending")
-
-private val REENTRANT_CONTINUE_STATUSES = setOf("reopened", "already_running")
+internal val workflowResumableStepStatuses =
+  setOf(WorkflowStepStatus.RUNNING, WorkflowStepStatus.BLOCKED, WorkflowStepStatus.PENDING)
 
 internal fun continueStatusFor(
   snapshot: WorkflowSnapshotView,
   resume: WorkflowResumeView,
   currentStep: WorkflowStepState?,
-): String {
+): WorkflowContinueStatus {
   val alreadyRunning =
-    snapshot.workflowStatus == "running" &&
+    snapshot.workflowStatus.workflowStatus() == WorkflowStatus.RUNNING &&
       snapshot.currentStepId == resume.resumeStepId &&
-      currentStep?.status == "running"
+      currentStep?.status?.workflowStepStatus() == WorkflowStepStatus.RUNNING
   return when {
-    resume.resumeMode == "done" -> "done"
-    resume.canResume && alreadyRunning -> "already_running"
-    resume.canResume -> "reopened"
-    else -> "blocked"
+    resume.resumeMode == WorkflowResumeMode.DONE -> WorkflowContinueStatus.DONE
+    resume.canResume && alreadyRunning -> WorkflowContinueStatus.ALREADY_RUNNING
+    resume.canResume -> WorkflowContinueStatus.REOPENED
+    else -> WorkflowContinueStatus.BLOCKED
   }
 }
 
@@ -79,16 +84,16 @@ internal data class ContinueAssemblyContext(
 
 internal data class AssembleContinueTextsRequest(
   val context: ContinueAssemblyContext,
-  val continueStatus: String,
+  val continueStatus: WorkflowContinueStatus,
   val sessionSummary: Map<String, Any?>,
   val nextAttemptCount: Int,
 )
 
 internal data class BuildContinueDecisionRequest(
   val context: ContinueAssemblyContext,
-  val continueStatus: String,
+  val continueStatus: WorkflowContinueStatus,
   val workflowStatusBeforeContinue: String,
-  val actualContinueStatus: String,
+  val actualContinueStatus: WorkflowContinueStatus,
   val nextAttemptCount: Int,
   val sessionSummary: Map<String, Any?>,
 )
@@ -196,11 +201,7 @@ internal fun buildContinueDecision(request: BuildContinueDecisionRequest): Workf
       continuationEntryPrompt = assembled.continuationEntryPrompt,
       compact = compact,
     ),
-    // `already_running` is a step left running by an interrupted attempt, not a live one: the
-    // process that opened it is gone by the time a continue reaches here. It has to be persisted
-    // like a reopen, because backoff and retry accounting key off attempt_count and a frozen
-    // counter re-runs the same step forever without escalating.
-    shouldReopen = request.actualContinueStatus in REENTRANT_CONTINUE_STATUSES,
+    shouldReopen = request.actualContinueStatus == WorkflowContinueStatus.REOPENED,
     resumeStepId = resume.resumeStepId,
     nextAttemptCount = request.nextAttemptCount,
   )

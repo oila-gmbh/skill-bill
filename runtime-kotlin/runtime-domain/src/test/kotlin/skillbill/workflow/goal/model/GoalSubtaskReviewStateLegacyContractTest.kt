@@ -45,4 +45,9 @@ class GoalSubtaskReviewStateLegacyContractTest {
   fun `the durable contract version is 0_7`() {
     assertEquals("0.7", GOAL_SUBTASK_REVIEW_STATE_CONTRACT_VERSION)
   }
+
+  @Test
+  fun `serialized records emit the durable contract version`() {
+    assertEquals(GOAL_SUBTASK_REVIEW_STATE_CONTRACT_VERSION, currentRecord()["contract_version"])
+  }
 }

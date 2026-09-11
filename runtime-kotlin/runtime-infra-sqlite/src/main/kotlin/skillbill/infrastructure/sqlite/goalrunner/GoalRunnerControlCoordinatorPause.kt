@@ -2,13 +2,12 @@ package skillbill.infrastructure.sqlite.goalrunner
 
 import skillbill.goalrunner.model.GOAL_PAUSE_REASON_OPERATOR_REQUEST
 import skillbill.goalrunner.model.GoalRunnerControlState
-import skillbill.ports.goalrunner.persistence.goalRepositoryIdentity
-import skillbill.ports.goalrunner.persistence.migrateLegacyGoalRunnerControls
+import skillbill.infrastructure.sqlite.workflow.findDecomposedParentWorkflow
 import skillbill.ports.goalrunner.runner.model.GoalRunnerPausePersistenceResult
 import skillbill.ports.persistence.UnitOfWork
-import skillbill.ports.workflow.persistence.findDecomposedParentWorkflow
-import skillbill.ports.workflow.persistence.model.WorkflowFamily
-import skillbill.ports.workflow.persistence.toSnapshot
+import skillbill.ports.workflow.get
+import skillbill.ports.workflow.model.WorkflowFamily
+import skillbill.ports.workflow.model.toSnapshot
 import java.nio.file.Path
 
 internal fun GoalRunnerControlCoordinator.persistPauseRequest(
@@ -30,21 +29,18 @@ internal fun GoalRunnerControlCoordinator.persistPauseRequest(
   }
 }
 
-internal fun GoalRunnerControlCoordinator.requestPause(
-  parentWorkflowId: String,
-  dbPathOverride: String?,
-): GoalRunnerControlState? = database.transaction(dbPathOverride) { unitOfWork ->
-  WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, parentWorkflowId)?.let { parent ->
-    migrateLegacyGoalRunnerControls(unitOfWork, parent)
-    persistPauseRequest(unitOfWork, parentWorkflowId)
+internal fun GoalRunnerControlCoordinator.requestPause(parentWorkflowId: String): GoalRunnerControlState? =
+  database.transaction { unitOfWork ->
+    WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, parentWorkflowId)?.let { parent ->
+      migrateLegacyGoalRunnerControls(unitOfWork, parent)
+      persistPauseRequest(unitOfWork, parentWorkflowId)
+    }
   }
-}
 
 internal fun GoalRunnerControlCoordinator.requestPauseByIssueKey(
   issueKey: String,
-  dbPathOverride: String?,
   repoRoot: Path?,
-): GoalRunnerPausePersistenceResult? = database.transaction(dbPathOverride) { unitOfWork ->
+): GoalRunnerPausePersistenceResult? = database.transaction { unitOfWork ->
   val parent = unitOfWork.workflowStates.findDecomposedParentWorkflow(
     issueKey,
     decompositionManifestValidator,

@@ -1,7 +1,8 @@
 package skillbill.infrastructure.fs
 
-import skillbill.contracts.JsonSupport
+import skillbill.contracts.JsonCodec
 import skillbill.error.ExternalAddonConfigError
+import skillbill.model.toPath
 import skillbill.ports.agentaddon.model.ExternalAgentAddonSourceConfigRequest
 import skillbill.telemetry.CONFIG_ENVIRONMENT_KEY
 import java.nio.file.Files
@@ -30,7 +31,7 @@ class FileExternalAgentAddonSourceConfigStoreTest {
       ExternalAgentAddonSourceConfigRequest(home, mapOf(CONFIG_ENVIRONMENT_KEY to configPath(home).toString())),
     )
 
-    assertEquals(listOf(agentRoot.toAbsolutePath().normalize()), result.sources.map { it.path })
+    assertEquals(listOf(agentRoot.toAbsolutePath().normalize()), result.sources.map { it.path.toPath() })
   }
 
   @Test
@@ -76,6 +77,6 @@ class FileExternalAgentAddonSourceConfigStoreTest {
   private fun configPath(home: Path): Path = home.resolve("config.json")
 
   private fun writeConfig(home: Path, payload: Map<String, Any?>) {
-    Files.writeString(configPath(home), JsonSupport.mapToJsonString(payload) + "\n")
+    Files.writeString(configPath(home), JsonCodec.mapToJsonString(payload) + "\n")
   }
 }

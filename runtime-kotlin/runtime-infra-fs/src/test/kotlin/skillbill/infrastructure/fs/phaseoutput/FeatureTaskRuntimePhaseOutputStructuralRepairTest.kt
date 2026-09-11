@@ -1,6 +1,6 @@
 package skillbill.infrastructure.fs.phaseoutput
 
-import skillbill.contracts.JsonSupport
+import skillbill.contracts.JsonCodec
 import skillbill.infrastructure.fs.FeatureTaskRuntimePhaseOutputValidatorAdapter
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutputFailureCode
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutputFormat
@@ -54,7 +54,7 @@ class FeatureTaskRuntimePhaseOutputStructuralRepairTest {
       repaired.normalizedOutput.canonicalJson.contains("\"reconciled_state\""),
       "the report itself is the producer's evidence and must be kept, one level down",
     )
-    val produced = requireNotNull(JsonSupport.anyToStringAnyMap(repaired.normalizedOutput.envelope["produced_outputs"]))
+    val produced = requireNotNull(JsonCodec.anyToStringAnyMap(repaired.normalizedOutput.envelope["produced_outputs"]))
     assertEquals("Implement prose with former receipt stuffed inside.", produced["value"])
     assertEquals(mapOf("reconciled" to true), produced["reconciled_state"])
     assertEquals(
@@ -86,7 +86,7 @@ class FeatureTaskRuntimePhaseOutputStructuralRepairTest {
       repaired.normalizedOutput.envelope["summary"],
       "the paragraph nearest the envelope describes the state the envelope reports",
     )
-    val produced = requireNotNull(JsonSupport.anyToStringAnyMap(repaired.normalizedOutput.envelope["produced_outputs"]))
+    val produced = requireNotNull(JsonCodec.anyToStringAnyMap(repaired.normalizedOutput.envelope["produced_outputs"]))
     assertEquals("Implement prose with former receipt stuffed inside.", produced["value"])
     assertEquals(listOf("a/B.kt"), produced["changed_paths"], "legacy sibling keys beside value survive")
   }
@@ -135,7 +135,7 @@ class FeatureTaskRuntimePhaseOutputStructuralRepairTest {
       else -> error("the complete envelope must decide the response, got $result")
     }
     assertEquals("Plan output.", envelope["summary"])
-    val produced = requireNotNull(JsonSupport.anyToStringAnyMap(envelope["produced_outputs"]))
+    val produced = requireNotNull(JsonCodec.anyToStringAnyMap(envelope["produced_outputs"]))
     assertEquals("Plan prose.", produced["value"], "the draft must not win")
   }
 
@@ -171,7 +171,7 @@ class FeatureTaskRuntimePhaseOutputStructuralRepairTest {
     val result = adapter.validatePhaseOutput(collision, "implement")
 
     val repaired = assertIs<FeatureTaskRuntimePhaseOutputValidationResult.AcceptedAfterRepair>(result)
-    val produced = requireNotNull(JsonSupport.anyToStringAnyMap(repaired.normalizedOutput.envelope["produced_outputs"]))
+    val produced = requireNotNull(JsonCodec.anyToStringAnyMap(repaired.normalizedOutput.envelope["produced_outputs"]))
     assertEquals("Implement prose.", produced["value"])
     assertEquals(
       mapOf("reconciled" to true, "evidence" to "stated"),
@@ -228,7 +228,7 @@ class FeatureTaskRuntimePhaseOutputStructuralRepairTest {
     assertEquals(sha256(malformed), repaired.evidence.originalDigest)
     assertEquals(sha256(validNestedJson), repaired.evidence.repairedDigest)
     val producedOutputs = requireNotNull(
-      JsonSupport.anyToStringAnyMap(repaired.normalizedOutput.envelope["produced_outputs"]),
+      JsonCodec.anyToStringAnyMap(repaired.normalizedOutput.envelope["produced_outputs"]),
     )
     assertEquals("Plan prose.", producedOutputs["value"])
     assertEquals(listOf(mapOf("id" to "task-1")), producedOutputs["notes"])
@@ -316,7 +316,7 @@ class FeatureTaskRuntimePhaseOutputStructuralRepairTest {
 
     val repaired = assertIs<FeatureTaskRuntimePhaseOutputValidationResult.AcceptedAfterRepair>(result)
     val producedOutputs = requireNotNull(
-      JsonSupport.anyToStringAnyMap(repaired.normalizedOutput.envelope["produced_outputs"]),
+      JsonCodec.anyToStringAnyMap(repaired.normalizedOutput.envelope["produced_outputs"]),
     )
     assertEquals("Plan prose A.", producedOutputs["value"])
     assertEquals(listOf("n-0", "n-1"), producedOutputs["notes"])
@@ -504,7 +504,7 @@ class FeatureTaskRuntimePhaseOutputStructuralRepairTest {
       FeatureTaskRuntimePhaseOutputRepairOperation.RESTORE_EXPECTED_SHAPE,
       repaired.evidence.operation,
     )
-    val produced = requireNotNull(JsonSupport.anyToStringAnyMap(repaired.normalizedOutput.envelope["produced_outputs"]))
+    val produced = requireNotNull(JsonCodec.anyToStringAnyMap(repaired.normalizedOutput.envelope["produced_outputs"]))
     assertEquals(null, produced["verdict"])
   }
 

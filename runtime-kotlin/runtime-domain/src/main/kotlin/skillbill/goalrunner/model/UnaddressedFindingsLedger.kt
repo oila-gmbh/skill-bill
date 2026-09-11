@@ -5,8 +5,10 @@ import skillbill.review.model.ReviewFindingCitation
 import skillbill.review.model.ReviewIssueCategory
 import skillbill.review.model.ReviewScopeDisposition
 import skillbill.review.model.ReviewSeverityAdjustment
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeReviewSeverity
 
-val UNADDRESSED_FINDING_SEVERITIES: Set<String> = setOf("blocker", "major", "minor", "nit")
+val UNADDRESSED_FINDING_SEVERITIES: Set<String> =
+  FeatureTaskRuntimeReviewSeverity.entries.mapTo(linkedSetOf()) { it.wireValue }
 val UNADDRESSED_FINDING_CATEGORIES: Set<String> = ReviewIssueCategory.entries.mapTo(linkedSetOf()) { it.wireValue }
 val UNADDRESSED_FINDING_DEFAULT_CATEGORY: String = ReviewIssueCategory.OTHER.wireValue
 

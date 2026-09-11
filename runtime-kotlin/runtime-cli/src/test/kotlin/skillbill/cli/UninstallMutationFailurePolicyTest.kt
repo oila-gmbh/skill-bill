@@ -11,7 +11,6 @@ import skillbill.cli.model.ExternalCommandRunner
 import skillbill.cli.system.DesktopRemoval
 import skillbill.cli.system.LauncherRemoval
 import skillbill.cli.system.UninstallCommand
-import skillbill.cli.system.UninstallDependencies
 import skillbill.cli.system.UninstallMutationRecorder
 import skillbill.cli.system.UninstallPlan
 import skillbill.cli.system.cleanupMcpRegistrations
@@ -41,6 +40,7 @@ import skillbill.ports.install.nativeagent.InstallNativeAgentLinkPort
 import skillbill.ports.install.nativeagent.model.InstallNativeAgentLinkOperationRequest
 import skillbill.ports.install.nativeagent.model.InstallNativeAgentLinkOperationResult
 import skillbill.ports.install.nativeagent.model.InstallNativeAgentUnlinkOperationResult
+import skillbill.ports.repository.toFileLocation
 import skillbill.ports.system.HostPlatformPort
 import skillbill.ports.system.UninstallPathsPort
 import java.io.IOException
@@ -127,7 +127,7 @@ class UninstallMutationFailurePolicyTest {
     val command = UninstallCommand(
       state = state,
       inputs = CliRunInputs(
-        dbPathOverride = null,
+        databasePath = null,
         stdinText = null,
         environment = emptyMap(),
         externalCommandRunner = ExternalCommandRunner { ExternalCommandResult(exitCode = 0, output = "") },
@@ -137,14 +137,12 @@ class UninstallMutationFailurePolicyTest {
         liveStdout = {},
         liveStderr = {},
       ),
-      deps = UninstallDependencies(
-        installAgentService = InstallAgentService(StubInstallAgentTargetPort),
-        installNativeAgentLinkPort = StubInstallNativeAgentLinkPort,
-        installMcpRegistrationPort = mcpRegistrationPort,
-        uninstallFileSystem = UninstallFileSystemService(AbsentUninstallPathsPort),
-        hostPlatform = StubUninstallHostPlatformPort,
-        diagnostics = RecordingRuntimeDiagnostics(),
-      ),
+      installAgentService = InstallAgentService(StubInstallAgentTargetPort),
+      installNativeAgentLinkPort = StubInstallNativeAgentLinkPort,
+      installMcpRegistrationPort = mcpRegistrationPort,
+      uninstallFileSystem = UninstallFileSystemService(AbsentUninstallPathsPort),
+      hostPlatform = StubUninstallHostPlatformPort,
+      diagnostics = RecordingRuntimeDiagnostics(),
     )
     CommandLineParser.parseAndRun(command, listOf("--yes")) { parsed -> parsed.run() }
     return assertNotNull(state.result)
@@ -254,6 +252,6 @@ private object SucceedingMcpRegistrationPort : InstallMcpRegistrationPort {
 
   override fun unregisterMcp(request: InstallMcpUnregistrationRequest): InstallMcpRegistrationResult =
     InstallMcpRegistrationResult(
-      McpMutationResult(agent = request.agent, configPath = ABSENT_PATH, changed = false),
+      McpMutationResult(agent = request.agent, configPath = ABSENT_PATH.toFileLocation(), changed = false),
     )
 }

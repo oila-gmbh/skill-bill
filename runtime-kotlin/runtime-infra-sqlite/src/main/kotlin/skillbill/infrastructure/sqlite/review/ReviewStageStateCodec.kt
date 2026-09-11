@@ -1,11 +1,11 @@
 package skillbill.infrastructure.sqlite.review
 
-import skillbill.contracts.JsonSupport
+import skillbill.contracts.JsonCodec
 import skillbill.review.model.ParallelReviewMergedFinding
 import skillbill.review.model.ParallelReviewSeverity
 import skillbill.review.model.ReviewFindingCitation
 
-internal fun encodePassClaims(findings: List<ParallelReviewMergedFinding>): String = JsonSupport.mapToJsonString(
+internal fun encodePassClaims(findings: List<ParallelReviewMergedFinding>): String = JsonCodec.mapToJsonString(
   mapOf(
     "findings" to findings.map { finding ->
       mapOf(
@@ -26,13 +26,13 @@ internal fun encodePassClaims(findings: List<ParallelReviewMergedFinding>): Stri
 )
 
 internal fun decodePassClaims(raw: String): List<ParallelReviewMergedFinding> {
-  val root = JsonSupport.parseObjectOrNull(raw)
-    ?.let(JsonSupport::jsonElementToValue)
-    ?.let(JsonSupport::anyToStringAnyMap)
+  val root = JsonCodec.parseObjectOrNull(raw)
+    ?.let(JsonCodec::jsonElementToValue)
+    ?.let(JsonCodec::anyToStringAnyMap)
     ?: return emptyList()
   val items = root["findings"] as? List<*> ?: return emptyList()
   return items.mapNotNull { item ->
-    val map = JsonSupport.anyToStringAnyMap(item) ?: return@mapNotNull null
+    val map = JsonCodec.anyToStringAnyMap(item) ?: return@mapNotNull null
     val fNumber = map["f_number"] as? String ?: return@mapNotNull null
     val severityName = map["severity"] as? String ?: return@mapNotNull null
     val severity = runCatching { ParallelReviewSeverity.valueOf(severityName) }.getOrNull()

@@ -2,11 +2,6 @@ package skillbill.application
 
 import skillbill.application.decomposition.DecompositionManifestWriter
 import skillbill.application.decomposition.loadDecompositionManifest
-import skillbill.application.featuretask.FeatureTaskRuntimePhaseRecorder
-import skillbill.application.featuretask.featureTaskRuntimePhaseRecorder
-import skillbill.application.featuretask.model.FeatureTaskRuntimePhaseLaunchBriefing
-import skillbill.application.featuretask.model.FeatureTaskRuntimePhaseLedgerRequest
-import skillbill.application.featuretask.model.FeatureTaskRuntimePhaseStateRequest
 import skillbill.application.review.ReviewService
 import skillbill.application.telemetry.TelemetryLevelMutationService
 import skillbill.application.telemetry.TelemetryService
@@ -16,12 +11,16 @@ import skillbill.application.telemetry.model.GoalSubtaskFinishedRequest
 import skillbill.application.workflow.WorkflowService
 import skillbill.application.workflow.model.WorkflowFamilyKind
 import skillbill.application.workflow.model.WorkflowOpenResult
-import skillbill.application.workflow.model.WorkflowServiceDeps
 import skillbill.application.workflow.model.WorkflowServiceOpenFeatureTaskArgs
 import skillbill.application.workflow.model.WorkflowUpdateRequest
 import skillbill.application.workflow.openFeatureTask
-import skillbill.contracts.JsonSupport
+import skillbill.contracts.JsonCodec
 import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_PERSISTENCE_CONTRACT_VERSION
+import skillbill.engine.featuretask.FeatureTaskRuntimePhaseRecorder
+import skillbill.engine.featuretask.featureTaskRuntimePhaseRecorder
+import skillbill.engine.featuretask.model.FeatureTaskRuntimePhaseLaunchBriefing
+import skillbill.engine.featuretask.model.FeatureTaskRuntimePhaseLedgerRequest
+import skillbill.engine.featuretask.model.FeatureTaskRuntimePhaseStateRequest
 import skillbill.error.MissingCompositionLayerError
 import skillbill.infrastructure.fs.DecompositionManifestValidatorAdapter
 import skillbill.infrastructure.fs.FeatureTaskRuntimeHandoffEnvelopeValidatorInfraAdapter
@@ -43,6 +42,8 @@ import skillbill.ports.goalrunner.EmptyGoalRunnerControlRepository
 import skillbill.ports.learning.LearningRepository
 import skillbill.ports.learning.model.LearningResolution
 import skillbill.ports.persistence.UnitOfWork
+import skillbill.ports.persistence.UnitOfWorkDefaults
+import skillbill.ports.repository.toFileLocation
 import skillbill.ports.review.ReviewAttributionPort
 import skillbill.ports.review.ReviewInputSource
 import skillbill.ports.review.ReviewRepository
@@ -64,9 +65,10 @@ import skillbill.ports.workflow.WorkflowStateRepository
 import skillbill.ports.workflow.WorkflowStatsRepository
 import skillbill.ports.workflow.gitops.NoopWorkflowGitOperations
 import skillbill.ports.workflow.gitops.RepositoryFingerprintGitOperations
-import skillbill.ports.workflow.gitops.RepositoryFingerprintGitOperationsProvider
 import skillbill.ports.workflow.gitops.WorkflowGitOperations
+import skillbill.ports.workflow.gitops.WorkflowGitOperationsTestBase
 import skillbill.ports.workflow.gitops.model.WorkflowGitOperationResult
+import skillbill.ports.workflow.gitops.model.WorkflowGitOperationStatus
 import skillbill.ports.workflow.gitops.model.WorkflowSelectedDiffHunksRequest
 import skillbill.ports.workflow.gitops.model.WorkflowSelectedDiffHunksResult
 import skillbill.ports.workflow.gitops.model.WorkflowWorktreeActivityResult
@@ -96,6 +98,7 @@ import skillbill.telemetry.model.TelemetryProxyCapabilities
 import skillbill.telemetry.model.TelemetryRemoteStatsResult
 import skillbill.telemetry.model.TelemetrySettings
 import skillbill.workflow.goal.NoopGoalObservabilityEventValidator
+import skillbill.workflow.model.WorkflowStepStatus
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_GOAL_CONTINUATION_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_BRIEFINGS_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_RECORDS_ARTIFACT_KEY
@@ -143,14 +146,12 @@ internal fun WorkflowService.openTestFeatureTask(
   kind: WorkflowFamilyKind,
   sessionId: String = "",
   currentStepId: String? = null,
-  dbOverride: String? = null,
   issueKey: String = "SKILL-120",
 ): WorkflowOpenResult = openFeatureTask(
   WorkflowServiceOpenFeatureTaskArgs(
     kind = kind,
     sessionId = sessionId,
     currentStepId = currentStepId,
-    dbOverride = dbOverride,
     issueKey = issueKey,
     repositoryIdentity = "repo-root-realpath-v1:/test/repository",
     governedSpecPath = ".feature-specs/$issueKey/spec.md",
@@ -200,23 +201,23 @@ internal class FakeDatabaseSessionFactory(
   val calls = mutableListOf<String>()
   private val dbPath = Path.of("/fake/metrics.db")
 
-  override fun resolveDbPath(dbOverride: String?): Path = dbPath
+  override fun resolveDbPath(): Path = dbPath
 
-  override fun databaseExists(dbOverride: String?): Boolean = true
+  override fun databaseExists(): Boolean = true
 
-  override fun <T> read(dbOverride: String?, block: (UnitOfWork) -> T): T {
+  override fun <T> read(block: (UnitOfWork) -> T): T {
     calls += "read"
     return block(fakeUnitOfWork())
   }
 
-  override fun <T> selfManagedWrite(dbOverride: String?, block: (UnitOfWork) -> T): T = transaction(dbOverride, block)
+  override fun <T> selfManagedWrite(block: (UnitOfWork) -> T): T = transaction(block)
 
-  override fun <T> transaction(dbOverride: String?, block: (UnitOfWork) -> T): T {
+  override fun <T> transaction(block: (UnitOfWork) -> T): T {
     calls += "transaction"
     return block(fakeUnitOfWork())
   }
 
-  private fun fakeUnitOfWork(): UnitOfWork = object : UnitOfWork {
+  private fun fakeUnitOfWork(): UnitOfWork = object : UnitOfWorkDefaults() {
     override val dbPath: Path = this@FakeDatabaseSessionFactory.dbPath
     override val reviews: ReviewRepository = this@FakeDatabaseSessionFactory.reviews
     override val learnings: LearningRepository = this@FakeDatabaseSessionFactory.learnings
@@ -599,7 +600,7 @@ internal class FakeTelemetrySettingsProvider(
   private val enabled: Boolean,
 ) : TelemetrySettingsProvider {
   override fun load(materialize: Boolean): TelemetrySettings = TelemetrySettings(
-    configPath = Path.of("/fake/config.json"),
+    configPath = Path.of("/fake/config.json").toFileLocation(),
     level = if (enabled) "anonymous" else "off",
     enabled = enabled,
     installId = if (enabled) "fake-install-id" else "",
@@ -686,7 +687,6 @@ internal fun blockedGoalChildRetryFixture(): BlockedGoalChildRetryFixture {
     service.openTestFeatureTask(
       WorkflowFamilyKind.TASK_RUNTIME,
       sessionId = "ftr-goal-child",
-      dbOverride = null,
       issueKey = "SKILL-51",
     ) as WorkflowOpenResult.Ok
     ).workflowId
@@ -709,7 +709,6 @@ internal fun blockedGoalChildRetryFixture(): BlockedGoalChildRetryFixture {
           ).toArtifactMap(),
       ),
     ),
-    dbOverride = null,
   )
   testPhaseRecorder(database).recordRuntimePhase(
     childWorkflowId,
@@ -740,7 +739,7 @@ internal fun createDecompositionWorkflow(
   subtaskTwo: Path?,
   executionModel: String = "same_branch_commit_per_subtask",
 ): String {
-  val opened = service.openTestFeatureTask(WorkflowFamilyKind.TASK_RUNTIME, sessionId = "ftr-001", dbOverride = null)
+  val opened = service.openTestFeatureTask(WorkflowFamilyKind.TASK_RUNTIME, sessionId = "ftr-001")
     as WorkflowOpenResult.Ok
   val workflowId = opened.workflowId
   service.update(
@@ -752,7 +751,6 @@ internal fun createDecompositionWorkflow(
       stepUpdates = listOf(mapOf("step_id" to "plan", "status" to "completed", "attempt_count" to 1)),
       artifactsPatch = decompositionPlanPatch(parentSpec, subtaskOne, subtaskTwo, executionModel),
     ),
-    dbOverride = null,
   )
   return workflowId
 }
@@ -773,7 +771,6 @@ internal fun markDecompositionSubtaskBlocked(service: WorkflowService, workflowI
         "blocked_reason" to "Validation failed.",
       ),
     ),
-    dbOverride = null,
   )
 }
 
@@ -790,7 +787,6 @@ internal fun markDecompositionSubtaskSkipped(service: WorkflowService, workflowI
         FEATURE_TASK_RUNTIME_PHASE_RECORDS_ARTIFACT_KEY to completedPhaseRecords("implement", "commit_push"),
       ),
     ),
-    dbOverride = null,
   )
 }
 
@@ -807,7 +803,6 @@ internal fun markDecompositionSubtaskComplete(service: WorkflowService, workflow
         FEATURE_TASK_RUNTIME_PHASE_RECORDS_ARTIFACT_KEY to completedPhaseRecords("implement", "commit_push"),
       ),
     ),
-    dbOverride = null,
   )
 }
 
@@ -889,9 +884,9 @@ internal fun statusSection(path: Path): String {
 }
 
 internal fun decodeArtifactsForTest(artifactsJson: String): Map<String, Any?> =
-  JsonSupport.parseObjectOrNull(artifactsJson)
-    ?.let(JsonSupport::jsonElementToValue)
-    ?.let(JsonSupport::anyToStringAnyMap)
+  JsonCodec.parseObjectOrNull(artifactsJson)
+    ?.let(JsonCodec::jsonElementToValue)
+    ?.let(JsonCodec::anyToStringAnyMap)
     .orEmpty()
 
 internal fun FeatureTaskRuntimePhaseRecorder.appendPlanLedger(
@@ -942,9 +937,9 @@ internal fun FeatureTaskRuntimePhaseRecorder.recordRuntimePhase(
   ),
 )
 internal fun expectedStepStatusForRecord(record: FeatureTaskRuntimePhaseRecord): String = when {
-  record.status == "blocked" -> "blocked"
+  record.status == WorkflowStepStatus.BLOCKED -> "blocked"
   record.finishedAt != null -> "completed"
-  else -> record.status
+  else -> record.status.wireValue
 }
 
 internal fun decodeStepsForTest(
@@ -952,8 +947,8 @@ internal fun decodeStepsForTest(
   workflowId: String,
 ): List<Pair<String, String>> {
   val stepsJson = requireNotNull(repository.getFeatureTaskRuntimeWorkflow(workflowId)).stepsJson
-  val element = JsonSupport.json.parseToJsonElement(stepsJson)
-  return (JsonSupport.jsonElementToValue(element) as List<*>).map { raw ->
+  val element = JsonCodec.json.parseToJsonElement(stepsJson)
+  return (JsonCodec.jsonElementToValue(element) as List<*>).map { raw ->
     val item = raw as Map<*, *>
     item["step_id"].toString() to item["status"].toString()
   }
@@ -977,16 +972,14 @@ internal fun testWorkflowService(
   database: DatabaseSessionFactory,
   gitOperations: WorkflowGitOperations = NoopWorkflowGitOperations,
 ): WorkflowService = WorkflowService(
-  WorkflowServiceDeps(
-    database = database,
-    gitOperations = gitOperations,
-    decompositionManifestStore = FileSystemDecompositionManifestFileStore(),
-    workflowSnapshotValidator = WorkflowSnapshotValidatorInfraAdapter(),
-    decompositionManifestValidator = DecompositionManifestValidatorAdapter(),
-    decompositionManifestWriter = DecompositionManifestWriter(),
-    repositoryRoot = RepositoryRoot(Path.of("").toAbsolutePath().normalize()),
-    goalObservabilityEventValidator = NoopGoalObservabilityEventValidator,
-  ),
+  database = database,
+  gitOperations = gitOperations,
+  decompositionManifestStore = FileSystemDecompositionManifestFileStore(),
+  workflowSnapshotValidator = WorkflowSnapshotValidatorInfraAdapter(),
+  decompositionManifestValidator = DecompositionManifestValidatorAdapter(),
+  decompositionManifestWriter = DecompositionManifestWriter(),
+  repositoryRoot = RepositoryRoot(Path.of("").toAbsolutePath().normalize()),
+  goalObservabilityEventValidator = NoopGoalObservabilityEventValidator,
 )
 
 internal fun loadTestDecompositionManifest(path: Path) =
@@ -1052,32 +1045,32 @@ internal class InMemoryWorkflowStateRepository(
 internal class FakeWorkflowGitOperations(
   private val commitSha: String = "commit-sha",
   private val commitError: String = "",
-) : WorkflowGitOperations, RepositoryFingerprintGitOperationsProvider {
+) : WorkflowGitOperationsTestBase() {
   val checkouts = mutableListOf<String>()
   val baseValidations = mutableListOf<String>()
   val commits = mutableListOf<String>()
 
   override fun checkoutBranch(repoRoot: Path, branch: String, baseBranch: String?): WorkflowGitOperationResult {
     checkouts += "$branch@${baseBranch.orEmpty()}"
-    return WorkflowGitOperationResult(status = "ok", value = branch)
+    return WorkflowGitOperationResult.Ok(value = branch)
   }
 
   override fun branchExists(repoRoot: Path, branch: String): WorkflowGitOperationResult =
-    WorkflowGitOperationResult(status = "ok", value = "true")
+    WorkflowGitOperationResult.Ok(value = "true")
 
   override fun currentBranch(repoRoot: Path): WorkflowGitOperationResult =
-    WorkflowGitOperationResult(status = "ok", value = checkouts.lastOrNull()?.substringBefore("@").orEmpty())
+    WorkflowGitOperationResult.Ok(value = checkouts.lastOrNull()?.substringBefore("@").orEmpty())
 
   override fun createCommit(repoRoot: Path, message: String): WorkflowGitOperationResult {
     commits += message
     if (commitError.isNotBlank()) {
-      return WorkflowGitOperationResult(status = "error", error = commitError)
+      return WorkflowGitOperationResult.Failed(error = commitError)
     }
-    return WorkflowGitOperationResult(status = "ok", value = commitSha)
+    return WorkflowGitOperationResult.Ok(value = commitSha)
   }
 
   override fun headCommitSha(repoRoot: Path): WorkflowGitOperationResult =
-    WorkflowGitOperationResult(status = "ok", value = commitSha)
+    WorkflowGitOperationResult.Ok(value = commitSha)
 
   override fun validateBranchBase(
     repoRoot: Path,
@@ -1085,24 +1078,23 @@ internal class FakeWorkflowGitOperations(
     expectedBaseBranch: String,
   ): WorkflowGitOperationResult {
     baseValidations += "$branch@$expectedBaseBranch"
-    return WorkflowGitOperationResult(status = "ok", value = expectedBaseBranch)
+    return WorkflowGitOperationResult.Ok(value = expectedBaseBranch)
   }
 
-  override fun worktreeStatus(repoRoot: Path): WorkflowGitOperationResult =
-    WorkflowGitOperationResult(status = "ok", value = "")
+  override fun worktreeStatus(repoRoot: Path): WorkflowGitOperationResult = WorkflowGitOperationResult.Ok(value = "")
 
   override fun worktreeActivity(repoRoot: Path): WorkflowWorktreeActivityResult =
-    WorkflowWorktreeActivityResult(status = "ok")
+    WorkflowWorktreeActivityResult(status = WorkflowGitOperationStatus.OK)
 
   override fun selectedDiffHunks(
     repoRoot: Path,
     request: WorkflowSelectedDiffHunksRequest,
-  ): WorkflowSelectedDiffHunksResult = WorkflowSelectedDiffHunksResult(status = "ok")
+  ): WorkflowSelectedDiffHunksResult = WorkflowSelectedDiffHunksResult(status = WorkflowGitOperationStatus.OK)
 
   override val repositoryFingerprintOperations: RepositoryFingerprintGitOperations =
     object : RepositoryFingerprintGitOperations {
       override fun repositoryFingerprint(repoRoot: Path): WorkflowGitOperationResult =
-        WorkflowGitOperationResult(status = "ok", value = "test-repository-fingerprint")
+        WorkflowGitOperationResult.Ok(value = "test-repository-fingerprint")
     }
 }
 
@@ -1146,7 +1138,7 @@ internal fun testPhaseRecorder(database: DatabaseSessionFactory) = featureTaskRu
 
 internal fun openTaskRuntimeWorkflow(database: DatabaseSessionFactory): String = (
   testWorkflowService(database)
-    .openTestFeatureTask(WorkflowFamilyKind.TASK_RUNTIME, sessionId = "ftr-envelope", dbOverride = null)
+    .openTestFeatureTask(WorkflowFamilyKind.TASK_RUNTIME, sessionId = "ftr-envelope")
     as WorkflowOpenResult.Ok
   ).workflowId
 
@@ -1193,16 +1185,16 @@ internal fun corruptDurableEnvelope(
   val record = requireNotNull(workflowRepository.getFeatureTaskRuntimeWorkflow(workflowId))
   val artifacts = decodeArtifactsForTest(record.artifactsJson).toMutableMap()
   val briefings = requireNotNull(
-    JsonSupport.anyToStringAnyMap((artifacts[FEATURE_TASK_RUNTIME_PHASE_BRIEFINGS_ARTIFACT_KEY])),
+    JsonCodec.anyToStringAnyMap((artifacts[FEATURE_TASK_RUNTIME_PHASE_BRIEFINGS_ARTIFACT_KEY])),
   ).toMutableMap()
-  val briefing = requireNotNull(JsonSupport.anyToStringAnyMap((briefings.getValue("implement")))).toMutableMap()
+  val briefing = requireNotNull(JsonCodec.anyToStringAnyMap((briefings.getValue("implement")))).toMutableMap()
   briefing["handoff_envelope"] = corrupt(
-    requireNotNull(JsonSupport.anyToStringAnyMap(briefing.getValue("handoff_envelope"))),
+    requireNotNull(JsonCodec.anyToStringAnyMap(briefing.getValue("handoff_envelope"))),
   )
   briefings["implement"] = briefing
   artifacts[FEATURE_TASK_RUNTIME_PHASE_BRIEFINGS_ARTIFACT_KEY] = briefings
   workflowRepository.saveFeatureTaskRuntimeWorkflow(
-    record.copy(artifactsJson = JsonSupport.mapToJsonString(artifacts)),
+    record.copy(artifactsJson = JsonCodec.mapToJsonString(artifacts)),
   )
 }
 

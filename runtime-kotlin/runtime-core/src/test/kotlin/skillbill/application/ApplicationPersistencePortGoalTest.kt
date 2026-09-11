@@ -124,7 +124,7 @@ class ApplicationPersistencePortGoalTest {
       NoopRuntimeDiagnostics,
     )
 
-    val result: GoalStatsResult = service.goalStats(dbOverride = null)
+    val result: GoalStatsResult = service.goalStats()
 
     assertEquals(listOf("read"), database.calls)
     assertEquals("/fake/metrics.db", result.dbPath)

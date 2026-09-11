@@ -8,15 +8,6 @@ import com.github.ajalt.clikt.parameters.options.option
 import com.github.ajalt.clikt.parameters.options.required
 import com.github.ajalt.clikt.parameters.types.int
 import me.tatarka.inject.annotations.Inject
-import skillbill.application.featuretask.model.FeatureTaskContinuationCandidate
-import skillbill.application.goalrunner.GoalPreflightService
-import skillbill.application.goalrunner.findings.UnaddressedFindingsLedgerService
-import skillbill.application.goalrunner.model.GoalPreflightRequest
-import skillbill.application.goalrunner.model.GoalPreflightResult
-import skillbill.application.goalrunner.planning.GoalPlanningLogService
-import skillbill.application.goalrunner.planning.model.GoalPlanningLog
-import skillbill.application.goalrunner.planning.model.GoalPlanningLogAttempt
-import skillbill.application.goalrunner.planning.model.GoalPlanningLogRequest
 import skillbill.application.review.RuntimeOwnedReviewMode
 import skillbill.cli.kernel.CliRunState
 import skillbill.cli.kernel.DocumentedCliCommand
@@ -24,6 +15,15 @@ import skillbill.cli.kernel.formatOption
 import skillbill.cli.kernel.invokingAgentResolutionHelp
 import skillbill.cli.kernel.requireSupportedOptionalAgentId
 import skillbill.cli.model.CliRunInputs
+import skillbill.engine.featuretask.model.FeatureTaskContinuationCandidate
+import skillbill.engine.goalrunner.GoalPreflightService
+import skillbill.engine.goalrunner.findings.UnaddressedFindingsLedgerService
+import skillbill.engine.goalrunner.model.GoalPreflightRequest
+import skillbill.engine.goalrunner.model.GoalPreflightResult
+import skillbill.engine.goalrunner.planning.GoalPlanningLogService
+import skillbill.engine.goalrunner.planning.model.GoalPlanningLog
+import skillbill.engine.goalrunner.planning.model.GoalPlanningLogAttempt
+import skillbill.engine.goalrunner.planning.model.GoalPlanningLogRequest
 import skillbill.goalrunner.model.UnaddressedFindingsLedger
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFindingVerificationDisposition
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairLedger
@@ -72,7 +72,6 @@ class GoalPreflightCommand(
         agentOverrideId = agentOverrideId,
         requestedReviewMode = parseCodeReviewMode(codeReviewMode),
         requestedAgentAddonSlugs = agentAddonSlugs,
-        dbPathOverride = inputs.dbPathOverride,
         userHome = inputs.userHome,
         environment = inputs.environment,
       ),
@@ -194,7 +193,6 @@ class GoalPlanningLogCommand(
       GoalPlanningLogRequest(
         issueKey = issueKey,
         repoRoot = repoRoot?.let(Path::of),
-        dbPathOverride = inputs.dbPathOverride,
         subtaskId = subtask,
         failuresOnly = failuresOnly,
       ),
@@ -279,9 +277,9 @@ class GoalFindingsCommand(
   private val issueKey by option("--issue-key", help = "Parent issue key.").required()
 
   override fun run() {
-    val ledger = ledgerService.ledger(issueKey, inputs.dbPathOverride)
-    val repairLedgers = ledgerService.repairLedgersByWorkflow(issueKey, inputs.dbPathOverride)
-    val verificationDispositions = ledgerService.verificationDispositions(issueKey, inputs.dbPathOverride)
+    val ledger = ledgerService.ledger(issueKey)
+    val repairLedgers = ledgerService.repairLedgersByWorkflow(issueKey)
+    val verificationDispositions = ledgerService.verificationDispositions(issueKey)
     state.completeText(
       findingsText(ledger, repairLedgers, verificationDispositions),
       findingsPayload(ledger, repairLedgers, verificationDispositions),

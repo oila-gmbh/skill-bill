@@ -1,23 +1,23 @@
 package skillbill.review
 
 import skillbill.SAMPLE_REVIEW
-import skillbill.contracts.JsonSupport
-import skillbill.db.telemetry.LifecycleTelemetryStore
-import skillbill.db.telemetry.TelemetryOutboxStore
-import skillbill.db.telemetry.listJson
+import skillbill.contracts.JsonCodec
 import skillbill.infrastructure.sqlite.SQLiteLearningStore
 import skillbill.infrastructure.sqlite.review.ReviewFinishedPayloadBuildRequest
 import skillbill.infrastructure.sqlite.review.ReviewRuntime
 import skillbill.infrastructure.sqlite.review.ReviewStatsRuntime
 import skillbill.infrastructure.sqlite.review.TriageRuntime
+import skillbill.infrastructure.sqlite.telemetry.LifecycleTelemetryStore
+import skillbill.infrastructure.sqlite.telemetry.TelemetryOutboxStore
+import skillbill.infrastructure.sqlite.telemetry.listJson
 import skillbill.learnings.learningPayload
 import skillbill.learnings.learningSummaryPayload
 import skillbill.learnings.model.CreateLearningRequest
 import skillbill.learnings.model.LearningScope
 import skillbill.learnings.model.LearningSourceValidation
 import skillbill.learnings.model.RejectedLearningSourceOutcome
+import skillbill.ports.review.toReviewFinishedTelemetryPayload
 import skillbill.ports.telemetry.model.TelemetryOutboxRecord
-import skillbill.ports.telemetry.model.toReviewFinishedTelemetryPayload
 import skillbill.review.model.FeedbackRequest
 import skillbill.review.model.FeedbackTelemetryOptions
 import skillbill.review.model.ImportedReview
@@ -90,7 +90,7 @@ class ReviewStatsRuntimeTest {
     connection.use {
       TelemetryOutboxStore(connection).enqueue(
         "skillbill_review_finished",
-        JsonSupport.mapToJsonString(
+        JsonCodec.mapToJsonString(
           mapOf(
             "review_run_id" to "rvw-cross-tab",
             "platform_slug" to "kotlin",
@@ -155,7 +155,7 @@ class ReviewStatsRuntimeTest {
     connection.use {
       TelemetryOutboxStore(connection).enqueue(
         "skillbill_review_finished",
-        JsonSupport.mapToJsonString(
+        JsonCodec.mapToJsonString(
           mapOf(
             "review_run_id" to "rvw-detail-outcomes",
             "platform_slug" to "kotlin",
@@ -321,7 +321,7 @@ class ReviewStatsRuntimeTest {
         listOf("skillbill_feature_task_runtime_started", "skillbill_feature_task_runtime_finished"),
         pending.map { it.eventName },
       )
-      val finishedPayload = JsonSupport.parseObjectOrNull(
+      val finishedPayload = JsonCodec.parseObjectOrNull(
         pending.single { it.eventName == "skillbill_feature_task_runtime_finished" }.payloadJson,
       )
       assertFeatureTaskRuntimeFinishedPayload(finishedPayload, includeAuditCounters = true)
@@ -512,9 +512,9 @@ private fun recordFindingOutcome(
 
 private fun telemetryPayloads(records: List<TelemetryOutboxRecord>, eventName: String): List<Map<String, Any?>> =
   records.filter { it.eventName == eventName }.map { record ->
-    JsonSupport.parseObjectOrNull(record.payloadJson)
-      ?.let(JsonSupport::jsonElementToValue)
-      ?.let(JsonSupport::anyToStringAnyMap)
+    JsonCodec.parseObjectOrNull(record.payloadJson)
+      ?.let(JsonCodec::jsonElementToValue)
+      ?.let(JsonCodec::anyToStringAnyMap)
       ?: emptyMap()
   }
 
@@ -567,7 +567,7 @@ private fun cacheSkillLearning(connection: Connection, reviewRunId: String, revi
     connection = connection,
     reviewSessionId = reviewSessionId,
     learningsJson =
-    JsonSupport.mapToJsonString(
+    JsonCodec.mapToJsonString(
       mapOf(
         "applied_learning_count" to 1,
         "applied_learning_references" to listOf(learningPayload["reference"]),
@@ -721,7 +721,7 @@ private fun insertFeatureVerifySession(connection: Connection) {
     connection.use {
       TelemetryOutboxStore(connection).enqueue(
         "skillbill_review_finished",
-        JsonSupport.mapToJsonString(
+        JsonCodec.mapToJsonString(
           mapOf(
             "review_run_id" to "rvw-contract-mapper",
             "platform_slug" to "kotlin",

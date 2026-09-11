@@ -23,6 +23,7 @@ dependencies {
   implementation(project(":runtime-contracts"))
   implementation(project(":runtime-core"))
   implementation(project(":runtime-domain"))
+  implementation(project(":runtime-engine"))
   implementation(project(":runtime-ports"))
   implementation(libs.kotlin.inject.runtime)
   implementation(libs.kotlinx.serialization.json)
@@ -48,6 +49,7 @@ dependencies {
   // helper so dedicated parity/violations tests can locate the canonical
   // schema YAML on disk without re-declaring a local helper (C8).
   testImplementation(testFixtures(project(":runtime-core")))
+  testImplementation(testFixtures(project(":runtime-ports")))
   testImplementation(libs.junit.jupiter)
   testImplementation(libs.kotlin.test)
 }
@@ -90,7 +92,11 @@ val copyTelemetryEventSchema =
   tasks.register<Copy>("copyTelemetryEventSchema") {
     val schemaPath = canonicalTelemetryEventSchemaPath
     from(schemaPath)
-    into(layout.buildDirectory.dir("generated/skillbill-contracts/skillbill/contracts"))
+    into(
+      layout.buildDirectory.dir(
+        "generated/skillbill-contracts/skillbill/infrastructure/fs/contracts",
+      ),
+    )
     inputs.file(schemaPath)
     doFirst {
       require(File(schemaPath).exists()) {
@@ -124,7 +130,7 @@ tasks.named("processTestResources") {
 // installDist) -> `runtimeZip`. The Badass `jre` task only links the trimmed JDK (no app
 // code), so a `jre.dependsOn(processResources)` hook is a no-op for bundling the resource
 // and is intentionally NOT used. installDist already bundles the resource into the
-// runtime-mcp jar at skillbill/contracts/telemetry-event-schema.yaml, so no extra wiring
+// runtime-mcp jar at skillbill/infrastructure/fs/contracts/telemetry-event-schema.yaml, so no extra wiring
 // is needed here.
 runtimeImage {
   imageBaseName.set("runtime-mcp")

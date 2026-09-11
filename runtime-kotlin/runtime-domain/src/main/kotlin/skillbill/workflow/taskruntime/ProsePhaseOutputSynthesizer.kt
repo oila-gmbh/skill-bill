@@ -1,16 +1,17 @@
 package skillbill.workflow.taskruntime
 
 import skillbill.boundary.OpenBoundaryMap
+import skillbill.contracts.SharedPayloadKeys
 import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_CONTRACT_VERSION
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PLAN
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PREPLAN
 import skillbill.workflow.taskruntime.model.SettlementEnvelopeRequest
+import skillbill.workflow.taskruntime.model.SettlementStatus
 
 object ProsePhaseOutputSynthesizer {
   private val PROSE_PHASE_IDS: Set<String> = setOf(PHASE_PREPLAN, PHASE_PLAN, PHASE_IMPLEMENT, PHASE_AUDIT)
-  private val STATUS_TOKENS: Set<String> = setOf("completed", "blocked", "failed")
   private val AUDIT_VERDICTS: Set<String> = setOf("satisfied", "gaps_found")
 
   fun isProsePhase(phaseId: String): Boolean = phaseId in PROSE_PHASE_IDS
@@ -27,7 +28,6 @@ object ProsePhaseOutputSynthesizer {
     require(isProsePhase(request.phaseId)) { "phaseId must be a prose phase, was '${request.phaseId}'." }
     require(request.value.any { !it.isWhitespace() }) { "value must be non-blank." }
     require(request.summary.any { !it.isWhitespace() }) { "summary must be non-blank." }
-    require(request.status in STATUS_TOKENS) { "status must be one of $STATUS_TOKENS." }
     return stampEnvelope(request)
   }
 
@@ -43,7 +43,9 @@ object ProsePhaseOutputSynthesizer {
       summary = ProsePhaseOutputRecover.recoverSummary(parsed, valueAndVerdict.first),
       prompt = ProsePhaseOutputRecover.recoverPrompt(parsed),
       verdict = valueAndVerdict.second,
-      failureDisposition = if (status == "blocked" || status == "failed") {
+      failureDisposition = if (
+        status == SettlementStatus.BLOCKED.wireValue || status == SettlementStatus.FAILED.wireValue
+      ) {
         ProsePhaseOutputRecover.recoverFailureDisposition(parsed)
       } else {
         null
@@ -56,9 +58,9 @@ object ProsePhaseOutputSynthesizer {
     phaseOutputText: String,
     phaseId: String,
   ): Pair<String, String?>? {
-    val value = ProsePhaseOutputRecover.directValue(parsed)
-      ?: ProsePhaseOutputRecover.recoverLegacyValue(parsed)
-      ?: return null
+    val existingValue = ProsePhaseOutputRecover.directValue(parsed)
+    val value = existingValue ?: ProsePhaseOutputRecover.recoverLegacyValue(parsed) ?: return null
+    if (existingValue != null && phaseId != PHASE_AUDIT) return null
     val verdict = if (phaseId == PHASE_AUDIT) {
       ProsePhaseOutputRecover.recoverAuditVerdict(parsed, phaseOutputText) ?: return null
     } else {
@@ -68,25 +70,26 @@ object ProsePhaseOutputSynthesizer {
   }
 
   private fun stampEnvelope(request: SettlementEnvelopeRequest): Map<String, Any?> {
-    val produced = linkedMapOf<String, Any?>("value" to request.value)
+    val produced = linkedMapOf<String, Any?>(SharedPayloadKeys.VALUE to request.value)
     if (!request.prompt.isNullOrBlank()) {
-      produced["prompt"] = request.prompt
+      produced[SharedPayloadKeys.PROMPT] = request.prompt
     }
     val envelope = linkedMapOf<String, Any?>(
-      "contract_version" to FEATURE_TASK_RUNTIME_CONTRACT_VERSION,
-      "phase_id" to request.phaseId,
-      "status" to request.status,
-      "summary" to request.summary,
-      "produced_outputs" to produced,
+      SharedPayloadKeys.CONTRACT_VERSION to FEATURE_TASK_RUNTIME_CONTRACT_VERSION,
+      SharedPayloadKeys.PHASE_ID to request.phaseId,
+      SharedPayloadKeys.STATUS to request.status.wireValue,
+      SharedPayloadKeys.SUMMARY to request.summary,
+      SharedPayloadKeys.PRODUCED_OUTPUTS to produced,
     )
     if (request.phaseId == PHASE_AUDIT) {
       val resolved = requireNotNull(request.verdict?.takeIf { it in AUDIT_VERDICTS }) {
         "audit settlement requires verdict in $AUDIT_VERDICTS."
       }
-      envelope["verdict"] = resolved
+      envelope[SharedPayloadKeys.VERDICT] = resolved
     }
-    if ((request.status == "blocked" || request.status == "failed") && !request.failureDisposition.isNullOrBlank()) {
-      envelope["failure_disposition"] = request.failureDisposition
+    val settledAsFailure = request.status == SettlementStatus.BLOCKED || request.status == SettlementStatus.FAILED
+    if (settledAsFailure && !request.failureDisposition.isNullOrBlank()) {
+      envelope[SharedPayloadKeys.FAILURE_DISPOSITION] = request.failureDisposition
     }
     return envelope
   }

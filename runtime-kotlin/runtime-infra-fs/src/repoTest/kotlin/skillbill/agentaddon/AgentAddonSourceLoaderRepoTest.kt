@@ -1,5 +1,6 @@
-package skillbill.agentaddon
+package skillbill.infrastructure.fs.agentaddon
 
+import skillbill.model.toPath
 import skillbill.testing.repoRootFromTest
 import java.nio.file.Files
 import kotlin.test.Test
@@ -11,14 +12,16 @@ class AgentAddonSourceLoaderRepoTest {
   fun `shipped execution budget declaration has governed source shape and guidance`() {
     val repo = repoRootFromTest()
     val declaration = requireAgentAddon(repo, "execution-budget")
-    val content = Files.readString(declaration.contentPath)
+    val content = Files.readString(declaration.contentPath.toPath())
 
     assertEquals("1.0", declaration.contractVersion)
     assertEquals(listOf("codex"), declaration.agents)
     assertEquals(listOf("bill-feature"), declaration.consumers.map { it.id })
     assertEquals(
       listOf("agent-addon.yaml", "content.md"),
-      Files.list(declaration.addonRoot).use { files -> files.map { it.fileName.toString() }.sorted().toList() },
+      Files.list(
+        declaration.addonRoot.toPath(),
+      ).use { files -> files.map { it.fileName.toString() }.sorted().toList() },
     )
     assertTrue(content.contains("stopping boundary"))
     assertTrue(content.contains("PR babysitting"))

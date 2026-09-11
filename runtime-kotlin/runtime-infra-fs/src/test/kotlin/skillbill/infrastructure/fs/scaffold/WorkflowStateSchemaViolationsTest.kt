@@ -1,0 +1,259 @@
+package skillbill.infrastructure.fs.scaffold
+
+import com.fasterxml.jackson.databind.JsonNode
+import com.fasterxml.jackson.databind.ObjectMapper
+import skillbill.error.InvalidWorkflowStateSchemaError
+import skillbill.infrastructure.fs.contracts.workflow.CanonicalWorkflowStateSchemaValidator
+import skillbill.infrastructure.fs.contracts.workflow.WorkflowStateSchemaValidator
+import skillbill.infrastructure.fs.contracts.workflow.extractOffendingValueFromInstance
+import kotlin.test.Test
+import kotlin.test.assertContains
+import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
+
+/**
+ * SKILL-48 Subtask 2a AC5: per-violation loud-fail coverage for the
+ * highest-signal rules in the canonical schema. Each case asserts both
+ * the exception type (`InvalidWorkflowStateSchemaError`) and that the
+ * loud-fail message names the offending field path so a future
+ * regression cannot silently swallow validation errors.
+ */
+class WorkflowStateSchemaViolationsTest {
+
+  private val validator: WorkflowStateSchemaValidator = CanonicalWorkflowStateSchemaValidator()
+
+  @Test
+  fun `unknown step status enum value loud-fails`() {
+    // The schema's per-skill `oneOf` block emits many sub-errors when a
+    // snapshot fails to match either branch. We assert that the
+    // exception type is the typed `InvalidWorkflowStateSchemaError` and
+    // that the loud-fail message references either the offending step
+    // field or the enum constraint that catches it. Asserting one
+    // specific path would couple the test to networknt's reporting
+    // order across library upgrades.
+    val snapshot = baseTaskRuntimeSnapshot().toMutableMap().apply {
+      put(
+        "steps",
+        listOf(
+          linkedMapOf<String, Any?>(
+            "step_id" to "assess",
+            "status" to "frobnicated",
+            "attempt_count" to 1,
+          ),
+        ),
+      )
+    }
+    val error = assertFailsWith<InvalidWorkflowStateSchemaError> {
+      validator.validate(snapshot, "bill-feature-task")
+    }
+    val message = error.message.orEmpty()
+    // The offending value `frobnicated` must surface somewhere in the
+    // loud-fail message so a regression that silently swallows the
+    // value name is caught.
+    assertContains(message, "frobnicated")
+  }
+
+  @Test
+  fun `missing required field loud-fails`() {
+    val snapshot = baseTaskRuntimeSnapshot().toMutableMap().apply {
+      remove("current_step_id")
+    }
+    val error = assertFailsWith<InvalidWorkflowStateSchemaError> {
+      validator.validate(snapshot, "bill-feature-task")
+    }
+    // Either the explicit `current_step_id` required-property error
+    // or the per-skill `oneOf` branch failure must surface. Both
+    // mention `current_step_id` in their detail message.
+    assertContains(error.message.orEmpty(), "current_step_id")
+  }
+
+  @Test
+  fun `additional unknown top-level property loud-fails with the offending key`() {
+    val snapshot = baseTaskRuntimeSnapshot().toMutableMap().apply {
+      put("extra_field", "x")
+    }
+    val error = assertFailsWith<InvalidWorkflowStateSchemaError> {
+      validator.validate(snapshot, "bill-feature-task")
+    }
+    val message = error.message.orEmpty()
+    assertContains(message, "extra_field")
+  }
+
+  @Test
+  fun `wrong contract_version loud-fails with contract_version path`() {
+    val snapshot = baseTaskRuntimeSnapshot().toMutableMap().apply {
+      put("contract_version", "999")
+    }
+    val error = assertFailsWith<InvalidWorkflowStateSchemaError> {
+      validator.validate(snapshot, "bill-feature-task")
+    }
+    assertContains(error.message.orEmpty(), "contract_version")
+  }
+
+  @Test
+  fun `extractOffendingValueFromInstance reads array index from JSON-Pointer-format instanceLocation`() {
+    // F-303: networknt's older builds report instanceLocation in
+    // JSON-Pointer form (`/steps/0/status`) instead of JSONPath form
+    // (`$.steps[0].status`). The dotted path becomes `steps.0.status`
+    // and `JsonNode.path("0")` on an array used to return MissingNode,
+    // so offending-value extraction silently returned the empty string.
+    // Pin the fixed behaviour: pure-integer segments index the array.
+    val snapshot = baseTaskRuntimeSnapshot().toMutableMap().apply {
+      put(
+        "steps",
+        listOf(
+          linkedMapOf<String, Any?>(
+            "step_id" to "assess",
+            "status" to "frobnicated",
+            "attempt_count" to 1,
+          ),
+        ),
+      )
+    }
+    val instance = ObjectMapper().valueToTree<JsonNode>(snapshot)
+    val offendingValue = extractOffendingValueFromInstance(instance, "/steps/0/status")
+    assertEquals("frobnicated", offendingValue)
+  }
+
+  @Test
+  fun `per-skill workflow_status enum mismatch loud-fails`() {
+    // `blocked` is valid for `bill-feature-task` but NOT for
+    // `bill-feature-verify` — the per-skill `oneOf` branch must reject
+    // it. The schema currently has the verify branch declaring a 5-
+    // value enum without `blocked`.
+    val snapshot = baseVerifySnapshot().toMutableMap().apply {
+      put("workflow_status", "blocked")
+    }
+    val error = assertFailsWith<InvalidWorkflowStateSchemaError> {
+      validator.validate(snapshot, "bill-feature-verify")
+    }
+    val message = error.message.orEmpty()
+    // The message must reference `workflow_status` or the offending
+    // value `blocked` so the per-skill enum failure is unmistakable.
+    assertContains(message, "workflow_status")
+  }
+
+  @Test
+  fun `unknown top-level property on a feature-task-runtime snapshot loud-fails with the offending key`() {
+    // F-014: the experimental feature-task-runtime branch relies on the top-level
+    // additionalProperties:false to reject unknown fields; pin that it does.
+    val snapshot = baseTaskRuntimeSnapshot().toMutableMap().apply {
+      put("rogue_field", "x")
+    }
+    val error = assertFailsWith<InvalidWorkflowStateSchemaError> {
+      validator.validate(snapshot, "bill-feature-task")
+    }
+    assertContains(error.message.orEmpty(), "rogue_field")
+  }
+
+  @Test
+  fun `unknown step field on a feature-task-runtime snapshot loud-fails`() {
+    // The branch's steps[].items allOf includes $defs/step (additionalProperties:false),
+    // so an unknown per-step field must loud-fail.
+    val snapshot = baseTaskRuntimeSnapshot().toMutableMap().apply {
+      put(
+        "steps",
+        listOf(
+          linkedMapOf<String, Any?>(
+            "step_id" to "plan",
+            "status" to "running",
+            "attempt_count" to 1,
+            "rogue_step_field" to "x",
+          ),
+        ),
+      )
+    }
+    val error = assertFailsWith<InvalidWorkflowStateSchemaError> {
+      validator.validate(snapshot, "bill-feature-task")
+    }
+    assertContains(error.message.orEmpty(), "rogue_step_field")
+  }
+
+  @Test
+  fun `paused validates on the runtime branch and loud-fails on the verify branch`() {
+    // SKILL-141 Subtask 1 AC-001: `paused` is the non-terminal parent status for a decomposed goal.
+    // SKILL-142 AC-014 extends it to the runtime branch, where a child pauses for the bounded
+    // operator decision. Feature-verify has no pause and must still reject it.
+    validator.validate(
+      baseTaskRuntimeSnapshot().toMutableMap().apply { put("workflow_status", "paused") },
+      "bill-feature-task",
+    )
+
+    val verifyError = assertFailsWith<InvalidWorkflowStateSchemaError> {
+      validator.validate(
+        baseVerifySnapshot().toMutableMap().apply { put("workflow_status", "paused") },
+        "bill-feature-verify",
+      )
+    }
+    assertContains(verifyError.message.orEmpty(), "workflow_status")
+  }
+
+  @Test
+  fun `plan_fix step id loud-fails on feature-task-runtime snapshots`() {
+    val currentStep = baseTaskRuntimeSnapshot().toMutableMap().apply {
+      put("current_step_id", "plan_fix")
+    }
+    val currentStepError = assertFailsWith<InvalidWorkflowStateSchemaError> {
+      validator.validate(currentStep, "bill-feature-task")
+    }
+    assertContains(currentStepError.message.orEmpty(), "plan_fix")
+
+    val stepsSnapshot = baseTaskRuntimeSnapshot().toMutableMap().apply {
+      put(
+        "steps",
+        listOf(
+          linkedMapOf<String, Any?>(
+            "step_id" to "plan_fix",
+            "status" to "pending",
+            "attempt_count" to 0,
+          ),
+        ),
+      )
+    }
+    val stepsError = assertFailsWith<InvalidWorkflowStateSchemaError> {
+      validator.validate(stepsSnapshot, "bill-feature-task")
+    }
+    assertContains(stepsError.message.orEmpty(), "plan_fix")
+  }
+
+  private fun baseTaskRuntimeSnapshot(): Map<String, Any?> = linkedMapOf(
+    "workflow_id" to "wftr-19700101-000000-aaaa",
+    "session_id" to "",
+    "workflow_name" to "bill-feature-task",
+    "mode" to "runtime",
+    "contract_version" to "0.3",
+    "workflow_status" to "running",
+    "current_step_id" to "plan",
+    "steps" to listOf(
+      linkedMapOf<String, Any?>(
+        "step_id" to "plan",
+        "status" to "running",
+        "attempt_count" to 1,
+      ),
+    ),
+    "artifacts" to emptyMap<String, Any?>(),
+    "started_at" to "",
+    "updated_at" to "",
+    "finished_at" to "",
+  )
+
+  private fun baseVerifySnapshot(): Map<String, Any?> = linkedMapOf(
+    "workflow_id" to "wfv-19700101-000000-aaaa",
+    "session_id" to "",
+    "workflow_name" to "bill-feature-verify",
+    "contract_version" to "0.3",
+    "workflow_status" to "running",
+    "current_step_id" to "gather_diff",
+    "steps" to listOf(
+      linkedMapOf<String, Any?>(
+        "step_id" to "gather_diff",
+        "status" to "running",
+        "attempt_count" to 1,
+      ),
+    ),
+    "artifacts" to emptyMap<String, Any?>(),
+    "started_at" to "",
+    "updated_at" to "",
+    "finished_at" to "",
+  )
+}

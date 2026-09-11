@@ -1,19 +1,19 @@
 package skillbill.infrastructure.fs
 
 import me.tatarka.inject.annotations.Inject
-import skillbill.install.nativeagent.InstallNativeAgentOperations
-import skillbill.install.plan.buildInstallStagingIntent
-import skillbill.install.plan.codexAgentsPath
-import skillbill.install.plan.collectInstallPlanningFacts
-import skillbill.install.plan.materializeSelectedPlatformSkills
-import skillbill.install.reconcile.ReconcileSourceRoots
-import skillbill.install.reconcile.applyReconciliation
-import skillbill.install.reconcile.computeReconciliationPlan
-import skillbill.install.runtime.InstallOperations
-import skillbill.install.runtime.linkInstalledSkill
-import skillbill.install.staging.installedSkillsCacheRoot
-import skillbill.install.support.InstallCleanupOperations
-import skillbill.launcher.mcp.McpRegistrationOperations
+import skillbill.infrastructure.fs.install.nativeagent.InstallNativeAgentOperations
+import skillbill.infrastructure.fs.install.plan.buildInstallStagingIntent
+import skillbill.infrastructure.fs.install.plan.codexAgentsPath
+import skillbill.infrastructure.fs.install.plan.collectInstallPlanningFacts
+import skillbill.infrastructure.fs.install.plan.materializeSelectedPlatformSkills
+import skillbill.infrastructure.fs.install.reconcile.ReconcileSourceRoots
+import skillbill.infrastructure.fs.install.reconcile.applyReconciliation
+import skillbill.infrastructure.fs.install.reconcile.computeReconciliationPlan
+import skillbill.infrastructure.fs.install.runtime.InstallOperations
+import skillbill.infrastructure.fs.install.runtime.linkInstalledSkill
+import skillbill.infrastructure.fs.install.staging.installedSkillsCacheRoot
+import skillbill.infrastructure.fs.install.support.InstallCleanupOperations
+import skillbill.infrastructure.fs.launcher.mcp.McpRegistrationOperations
 import skillbill.ports.install.agent.InstallAgentTargetPort
 import skillbill.ports.install.agent.model.ClaudeConfigRootsRequest
 import skillbill.ports.install.agent.model.ClaudeConfigRootsResult
@@ -64,8 +64,8 @@ import skillbill.ports.install.reconcile.model.InstallReconcileApplyResult
 import skillbill.ports.install.reconcile.model.InstallReconcileRequest
 import skillbill.ports.install.reconcile.model.InstallReconcileResult
 import skillbill.ports.telemetry.TelemetryConfigStore
-import skillbill.install.nativeagent.NativeAgentLinkOverrides as FsNativeAgentLinkOverrides
-import skillbill.install.nativeagent.NativeAgentLinkRequest as FsNativeAgentLinkRequest
+import skillbill.infrastructure.fs.install.nativeagent.NativeAgentLinkOverrides as FsNativeAgentLinkOverrides
+import skillbill.infrastructure.fs.install.nativeagent.NativeAgentLinkRequest as FsNativeAgentLinkRequest
 
 @Inject
 class FileSystemInstallPlanningFacts : InstallPlanningFactsPort {

@@ -11,6 +11,7 @@ import skillbill.application.review.RequestedReviewMode
 import skillbill.application.review.model.ParallelCodeReviewRequest
 import skillbill.application.review.model.ParallelCodeReviewResult
 import skillbill.application.review.model.ParallelReviewLaneStatus
+import skillbill.application.review.model.ReviewPrelaunchExpansion
 import skillbill.application.review.model.StackDetectionException
 import skillbill.application.review.model.UsageValidationException
 import skillbill.application.review.toBoundedPayload
@@ -21,7 +22,7 @@ import skillbill.cli.kernel.invokingAgentResolutionHelp
 import skillbill.cli.kernel.requireInvokingAgentId
 import skillbill.cli.model.CliExecutionResult
 import skillbill.cli.model.CliRunInputs
-import skillbill.contracts.JsonSupport
+import skillbill.contracts.JsonCodec
 import skillbill.error.ReviewAggregationIntegrityError
 import skillbill.error.ShellContentContractException
 import java.nio.file.Path
@@ -119,7 +120,7 @@ open class CodeReviewDriverCommand(
       reviewRunId = reviewRunId?.takeIf(String::isNotBlank),
       baseRevision = resolvedBase,
       headRevision = resolvedHead,
-      prelaunchExpansions = expandFiles.map(::parseReviewPrelaunchExpansion),
+      prelaunchExpansions = expandFiles.map(::parseExpansion),
       baselineUntrackedPolicy = ParallelCodeReviewRequest.baselineUntrackedPolicy(
         baselineUntrackedIncludes,
         baselineUntrackedExcludes,
@@ -146,6 +147,19 @@ open class CodeReviewDriverCommand(
 
   private fun suppliedDiffPath(): Path? = diffFile?.let { value ->
     Path.of(value).toAbsolutePath().normalize()
+  }
+
+  private fun parseExpansion(value: String): ReviewPrelaunchExpansion {
+    val laneSeparator = value.indexOf(':')
+    val reasonSeparator = value.indexOf('=', startIndex = laneSeparator + 1)
+    if (laneSeparator <= 0 || reasonSeparator <= laneSeparator + 1 || reasonSeparator == value.lastIndex) {
+      throw UsageError("--expand-file must use LANE:PATH=REACHABILITY_REASON with non-blank values.")
+    }
+    return ReviewPrelaunchExpansion(
+      lane = value.substring(0, laneSeparator),
+      path = value.substring(laneSeparator + 1, reasonSeparator),
+      reachabilityReason = value.substring(reasonSeparator + 1),
+    )
   }
 }
 
@@ -200,7 +214,7 @@ private fun writeParallelReviewResult(state: CliRunState, result: ParallelCodeRe
     result.accountingSummary?.let { summary ->
       appendLine()
       append("# Review accounting — ")
-      append(JsonSupport.mapToJsonString(summary.toBoundedPayload()))
+      append(JsonCodec.mapToJsonString(summary.toBoundedPayload()))
     }
   }
   state.result = CliExecutionResult(exitCode = exitCode, stdout = output)

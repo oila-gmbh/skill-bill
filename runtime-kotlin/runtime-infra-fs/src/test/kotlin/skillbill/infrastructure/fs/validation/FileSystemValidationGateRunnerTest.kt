@@ -1,9 +1,7 @@
 package skillbill.infrastructure.fs.validation
 
-import skillbill.ports.time.JvmSystemClock
-import skillbill.ports.validation.model.ValidationGateCacheMode
+import skillbill.contracts.time.JvmSystemClock
 import skillbill.ports.validation.model.ValidationGateFindingParseMode
-import skillbill.ports.validation.model.ValidationGateRunOutcome
 import skillbill.ports.validation.model.ValidationGateRunRequest
 import skillbill.scaffold.model.ValidationGateCompilerDiagnosticsFormat
 import skillbill.scaffold.model.ValidationGateCompilerDiagnosticsLocator
@@ -12,6 +10,8 @@ import skillbill.scaffold.model.ValidationGateExecutedWorkFormat
 import skillbill.scaffold.model.ValidationGateExecutedWorkSignal
 import skillbill.scaffold.model.ValidationGateFindingsFormat
 import skillbill.scaffold.model.ValidationGateFindingsLocator
+import skillbill.workflow.taskruntime.model.ValidationGateCacheMode
+import skillbill.workflow.taskruntime.model.ValidationGateRunOutcome
 import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.attribute.FileTime

@@ -1,4 +1,4 @@
-package skillbill.scaffold
+package skillbill.infrastructure.fs.scaffold
 
 import skillbill.error.ContractVersionMismatchError
 import skillbill.error.InvalidManifestSchemaError
@@ -7,11 +7,12 @@ import skillbill.error.InvalidSkillMdShapeError
 import skillbill.error.MissingContentFileError
 import skillbill.error.MissingManifestError
 import skillbill.error.MissingRequiredSectionError
-import skillbill.scaffold.platformpack.loadPlatformManifest
-import skillbill.scaffold.platformpack.loadPlatformPack
-import skillbill.scaffold.platformpack.loadQualityCheckContent
-import skillbill.scaffold.runtime.SHELL_CONTRACT_VERSION
-import skillbill.scaffold.validation.validateSkillMdShape
+import skillbill.infrastructure.fs.scaffold.platformpack.loadPlatformManifest
+import skillbill.infrastructure.fs.scaffold.platformpack.loadPlatformPack
+import skillbill.infrastructure.fs.scaffold.platformpack.loadQualityCheckContent
+import skillbill.infrastructure.fs.scaffold.runtime.SHELL_CONTRACT_VERSION
+import skillbill.infrastructure.fs.scaffold.validation.validateSkillMdShape
+import skillbill.model.toPath
 import skillbill.testing.repoRootFromTest
 import skillbill.testing.seedConformingPlatformPack
 import java.nio.file.Files
@@ -34,7 +35,7 @@ class ShellContentLoaderParityTest {
     assertEquals(SHELL_CONTRACT_VERSION, pack.contractVersion)
     assertEquals(listOf("architecture"), pack.declaredCodeReviewAreas)
     assertEquals(listOf(".valid-pack", "*.valid-pack"), pack.routingSignals.strong)
-    assertEquals("bill-valid-pack-code-review", pack.declaredFiles.baseline?.parent?.name)
+    assertEquals("bill-valid-pack-code-review", pack.declaredFiles.baseline?.toPath()?.parent?.name)
   }
 
   @Test
@@ -44,7 +45,7 @@ class ShellContentLoaderParityTest {
     val pack = loadPlatformPack(repo.resolve("platform-packs/code-review-and-quality-check"))
     val contentPath = loadQualityCheckContent(pack)
 
-    assertEquals(pack.declaredQualityCheckFile, contentPath)
+    assertEquals(pack.declaredQualityCheckFile?.toPath(), contentPath)
     assertTrue(Files.isRegularFile(contentPath))
   }
 

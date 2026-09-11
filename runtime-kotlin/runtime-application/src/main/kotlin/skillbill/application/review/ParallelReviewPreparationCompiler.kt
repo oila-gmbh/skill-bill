@@ -14,7 +14,6 @@ import skillbill.ports.review.ReviewLaneSelectionPort
 import skillbill.ports.review.ReviewLearningsPort
 import skillbill.ports.review.ReviewScopeResolverPort
 import skillbill.ports.review.ReviewStackRoutingPort
-import skillbill.ports.review.model.ReviewEvidenceCoordinates
 import skillbill.ports.review.model.ReviewExpansionAuthorizationRequest
 import skillbill.ports.review.model.ReviewFactPorts
 import skillbill.ports.review.model.ReviewLaneSelection
@@ -79,11 +78,8 @@ object ParallelReviewPreparationCompiler {
         routes = routes,
         selection = selection,
         revisionId = revisionId,
-        deps = PrepareReviewCompileDeps(
-          budget = budget,
-          envelopeValidator = envelopeValidator,
-          hunkLocatorReader = hunkLocatorReader,
-        ),
+        envelopeValidator = envelopeValidator,
+        hunkLocatorReader = hunkLocatorReader,
       ),
     )
     return launchRequests(input, preparation, routes, budget, specialistContract)
@@ -136,8 +132,8 @@ object ParallelReviewPreparationCompiler {
 
   private fun prepareReview(compileInput: PrepareReviewCompileInput) = ReviewPreparationService(
     reviewFactPorts(compileInput.input, compileInput.hunks, compileInput.selection),
-    compileInput.deps.envelopeValidator,
-    compileInput.deps.hunkLocatorReader,
+    compileInput.envelopeValidator,
+    compileInput.hunkLocatorReader,
   ).prepare(
     ReviewPreparationRequest(
       reviewId = compileInput.input.reviewRunId ?: "code-review-${compileInput.revisionId}",
@@ -238,7 +234,6 @@ object ParallelReviewPreparationCompiler {
           route.workerKind == ReviewWorkerKind.PROVIDER_NATIVE
         },
         repoRoot = input.repoRoot,
-        evidenceCoordinates = input.evidenceCoordinates,
         prelaunchExpansions = input.prelaunchExpansions
           .filter {
             it.lane == PARALLEL_REVIEW_SELECTOR ||
@@ -269,11 +264,6 @@ private data class PrepareReviewCompileInput(
   val routes: List<SpecialistRoute>,
   val selection: ReviewLaneSelection,
   val revisionId: String,
-  val deps: PrepareReviewCompileDeps,
-)
-
-private data class PrepareReviewCompileDeps(
-  val budget: ReviewContextBudgetPolicy,
   val envelopeValidator: ReviewContextEnvelopeValidator,
   val hunkLocatorReader: FeatureTaskRuntimeSharedEvidenceLocatorReadPort,
 )
@@ -322,7 +312,6 @@ internal data class ParallelReviewPreparationInput(
   val reviewRunId: String? = null,
   val baseRevision: String,
   val headRevision: String,
-  val evidenceCoordinates: ReviewEvidenceCoordinates = ReviewEvidenceCoordinates.Committed(headRevision),
   val prelaunchExpansions: List<ReviewPrelaunchExpansion> = emptyList(),
   val baselineUntrackedPolicy: ReviewBaselineUntrackedPolicy = ReviewBaselineUntrackedPolicy.EMPTY,
   val specIntentResolution: SpecIntentResolution =

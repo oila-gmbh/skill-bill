@@ -1,0 +1,110 @@
+package skillbill.engine
+
+import skillbill.engine.featuretask.FeatureTaskRuntimeAttemptBudgets
+import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
+import kotlin.test.Test
+import kotlin.test.assertContains
+import kotlin.test.assertEquals
+import kotlin.test.assertTrue
+
+class FeatureTaskRuntimeAttemptBudgetsTest {
+  @Test
+  fun `output-gate retries cap at one and process-failure stays at three`() {
+    assertEquals(1, FeatureTaskRuntimeAttemptBudgets.MAX_OUTPUT_GATE_RETRY_ATTEMPTS)
+    assertEquals(1, FeatureTaskRuntimeAttemptBudgets.MAX_FORMAT_RETRY_ATTEMPTS)
+    assertEquals(3, FeatureTaskRuntimeAttemptBudgets.MAX_PROCESS_FAILURE_ATTEMPTS)
+  }
+
+  @Test
+  fun `a phase that keeps dying before its output gate blocks on its own budget, not a repair loop`() {
+    val below = FeatureTaskRuntimeAttemptBudgets.processFailureBlockReason(
+      FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VALIDATE,
+      processFailureCount = FeatureTaskRuntimeAttemptBudgets.MAX_PROCESS_FAILURE_ATTEMPTS - 1,
+      lastFailureReason = "agent exited with non-zero status 1",
+    )
+    assertEquals(null, below)
+
+    val blocked = requireNotNull(
+      FeatureTaskRuntimeAttemptBudgets.processFailureBlockReason(
+        FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VALIDATE,
+        processFailureCount = FeatureTaskRuntimeAttemptBudgets.MAX_PROCESS_FAILURE_ATTEMPTS,
+        lastFailureReason = "agent exited with non-zero status 1",
+      ),
+    )
+    assertContains(blocked, "failed to execute")
+    assertContains(blocked, "No repair attempt was consumed.")
+    assertContains(blocked, "agent exited with non-zero status 1")
+    assertTrue(!blocked.contains("invalid output"), blocked)
+    assertTrue(!blocked.contains("fix loop"), blocked)
+  }
+
+  @Test
+  fun `the first schema-invalid output blocks instead of relaunching`() {
+    val reason = FeatureTaskRuntimeAttemptBudgets.outputGateBlockReason("audit", 1)
+    assertContains(requireNotNull(reason), "cap=1")
+    assertContains(reason, "blocks rather than relaunching")
+  }
+
+  @Test
+  fun `a round that drops findings is sent back while it keeps closing them, and blocks when it stalls`() {
+    val phase = FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT_FIX
+    val firstOmission = setOf("F-001", "F-003")
+
+    assertEquals(
+      null,
+      FeatureTaskRuntimeAttemptBudgets.findingCoverageBlockReason(phase, firstOmission, priorOmitted = null),
+    )
+    assertEquals(
+      null,
+      FeatureTaskRuntimeAttemptBudgets.findingCoverageBlockReason(phase, setOf("F-003"), firstOmission),
+    )
+
+    val stalled = requireNotNull(
+      FeatureTaskRuntimeAttemptBudgets.findingCoverageBlockReason(phase, firstOmission, firstOmission),
+    )
+    assertContains(stalled, "F-001, F-003")
+    assertContains(stalled, "attempted_unresolved")
+
+    val substituted = requireNotNull(
+      FeatureTaskRuntimeAttemptBudgets.findingCoverageBlockReason(phase, setOf("F-002"), setOf("F-001")),
+    )
+    assertContains(substituted, "no progress on coverage")
+  }
+
+  @Test
+  fun `a finding reported unresolved gets one more fix attempt and blocks on the second report`() {
+    val phase = FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT_FIX
+    val detail = "F-001 (the migration path has no owner)"
+
+    assertEquals(
+      null,
+      FeatureTaskRuntimeAttemptBudgets.unresolvedFindingBlockReason(
+        phase,
+        unresolved = setOf("F-001"),
+        priorUnresolved = emptySet(),
+        detail = detail,
+      ),
+    )
+    assertEquals(
+      null,
+      FeatureTaskRuntimeAttemptBudgets.unresolvedFindingBlockReason(
+        phase,
+        unresolved = setOf("F-002"),
+        priorUnresolved = setOf("F-001"),
+        detail = detail,
+      ),
+    )
+
+    val repeated = requireNotNull(
+      FeatureTaskRuntimeAttemptBudgets.unresolvedFindingBlockReason(
+        phase,
+        unresolved = setOf("F-001", "F-003"),
+        priorUnresolved = setOf("F-001"),
+        detail = detail,
+      ),
+    )
+    assertContains(repeated, "F-001")
+    assertTrue(!repeated.contains("F-003"), "only the repeated finding exhausted its retry: $repeated")
+    assertContains(repeated, detail)
+  }
+}

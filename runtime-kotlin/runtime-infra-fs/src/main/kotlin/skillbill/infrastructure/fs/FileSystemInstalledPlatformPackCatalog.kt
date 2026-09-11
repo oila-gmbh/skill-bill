@@ -1,12 +1,12 @@
 package skillbill.infrastructure.fs
 
 import me.tatarka.inject.annotations.Inject
-import skillbill.install.nativeagent.NativeAgentLinkInventory
+import skillbill.infrastructure.fs.install.nativeagent.NativeAgentLinkInventory
+import skillbill.infrastructure.fs.scaffold.platformpack.loadPlatformManifest
+import skillbill.infrastructure.fs.scaffold.platformpack.validatePlatformPackFallbacks
 import skillbill.model.EnvironmentContext
 import skillbill.ports.scaffold.install.InstalledPlatformPackCatalogPort
 import skillbill.scaffold.model.PlatformManifest
-import skillbill.scaffold.platformpack.loadPlatformManifest
-import skillbill.scaffold.platformpack.validatePlatformPackFallbacks
 import java.nio.file.Files
 
 /**

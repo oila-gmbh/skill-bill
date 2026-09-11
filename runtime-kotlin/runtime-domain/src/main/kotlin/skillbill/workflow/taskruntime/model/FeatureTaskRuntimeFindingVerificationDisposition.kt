@@ -1,7 +1,7 @@
 package skillbill.workflow.taskruntime.model
 
 import skillbill.boundary.OpenBoundaryMap
-import skillbill.contracts.JsonSupport
+import skillbill.contracts.JsonCodec
 import skillbill.error.InvalidFeatureTaskRuntimeFindingVerificationRecordError
 
 enum class FeatureTaskRuntimeFindingVerificationDispositionVerdict(val wireValue: String) {
@@ -71,7 +71,7 @@ data class FeatureTaskRuntimeFindingVerificationDisposition(
         "$path must be an array of finding verification dispositions.",
       )
       return entries.mapIndexed { index, entry ->
-        val map = JsonSupport.anyToStringAnyMap(entry)
+        val map = JsonCodec.anyToStringAnyMap(entry)
           ?: throw InvalidFeatureTaskRuntimeFindingVerificationRecordError(
             "$path[$index] must be an object.",
           )

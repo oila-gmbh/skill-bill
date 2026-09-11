@@ -1,6 +1,6 @@
 package skillbill.application.telemetry
 
-import skillbill.contracts.JsonSupport
+import skillbill.contracts.JsonCodec
 import skillbill.ports.telemetry.TelemetryOutboxRepository
 
 const val RUNTIME_EXCEPTION_EVENT = "skillbill_runtime_exception"
@@ -25,7 +25,7 @@ fun enqueueRuntimeException(
     "error_message" to if (unredacted) error.message.orEmpty().take(MAX_MESSAGE_LENGTH) else REDACTED_ERROR_MESSAGE,
     "stack_trace" to redactedStackTrace(error, unredacted),
   )
-  outbox.enqueue(RUNTIME_EXCEPTION_EVENT, JsonSupport.mapToJsonString(payload))
+  outbox.enqueue(RUNTIME_EXCEPTION_EVENT, JsonCodec.mapToJsonString(payload))
 }
 
 private fun redactedStackTrace(error: Exception, unredacted: Boolean): String = error.stackTrace

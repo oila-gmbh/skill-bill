@@ -1,7 +1,7 @@
 package skillbill.infrastructure.fs
 
 import me.tatarka.inject.annotations.Inject
-import skillbill.contracts.workflow.FeatureTaskRuntimePlanningProjectionSchemaValidator
+import skillbill.infrastructure.fs.contracts.workflow.FeatureTaskRuntimePlanningProjectionSchemaValidator
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePlanningProjectionValidator
 
 /**

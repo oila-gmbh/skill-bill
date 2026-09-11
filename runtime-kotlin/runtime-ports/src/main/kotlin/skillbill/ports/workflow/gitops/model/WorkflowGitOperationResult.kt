@@ -1,16 +1,41 @@
 package skillbill.ports.workflow.gitops.model
 
-data class WorkflowGitOperationResult(
-  val status: String,
-  val value: String = "",
-  val error: String = "",
-) {
-  val ok: Boolean get() = status == "ok"
+sealed interface WorkflowGitOperationResult {
+  val value: String
+  val error: String
+  val wireValue: String
+  val ok: Boolean get() = this is Ok
+  val status: String get() = wireValue
 
-  fun recordsNothingToCommit(): Boolean {
-    val text = "$error $value"
-    return NOTHING_TO_COMMIT_MARKERS.any { marker -> marker in text }
+  data class Ok(
+    override val value: String = "",
+    override val error: String = "",
+  ) : WorkflowGitOperationResult {
+    override val wireValue: String = "ok"
   }
+
+  data class Failed(
+    override val error: String = "",
+    override val value: String = "",
+  ) : WorkflowGitOperationResult {
+    override val wireValue: String = "error"
+  }
+
+  companion object {
+    operator fun invoke(status: String, value: String = "", error: String = ""): WorkflowGitOperationResult =
+      fromWire(status, value, error)
+
+    fun fromWire(status: String, value: String = "", error: String = ""): WorkflowGitOperationResult = when (status) {
+      "ok" -> Ok(value = value, error = error)
+      "error" -> Failed(error = error.ifBlank { status }, value = value)
+      else -> Failed(error = error.ifBlank { status }, value = value)
+    }
+  }
+}
+
+fun WorkflowGitOperationResult.recordsNothingToCommit(): Boolean {
+  val text = "$error $value"
+  return NOTHING_TO_COMMIT_MARKERS.any { marker -> marker in text }
 }
 
 private val NOTHING_TO_COMMIT_MARKERS = listOf(

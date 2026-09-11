@@ -35,7 +35,7 @@ object TelemetryEventSchemaPaths {
 
   /** Classpath resource path where runtime-mcp bundles the schema for runtime loads. */
   const val CLASSPATH_RESOURCE: String =
-    "skillbill/contracts/telemetry-event-schema.yaml"
+    "skillbill/infrastructure/fs/contracts/telemetry-event-schema.yaml"
 
   /**
    * SKILL-48 Subtask 2d (mirrors SKILL-47 C7): expected value of the

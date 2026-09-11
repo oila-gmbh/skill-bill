@@ -1,5 +1,6 @@
 package skillbill.application.reviewevidence
 
+import skillbill.application.reviewevidence.model.FeatureTaskRuntimeSharedReviewEvidenceResolved
 import skillbill.ports.diff.DiffResolverPort
 import skillbill.ports.taskruntime.FeatureTaskRuntimeSharedEvidenceResolverPort
 import skillbill.ports.taskruntime.model.FeatureTaskRuntimeSharedEvidenceDerivation
@@ -13,35 +14,11 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeSharedEvidenceOutc
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeSharedReviewEvidenceReference
 import java.nio.file.Path
 
-/**
- * One successful shared-evidence resolve: the prompt-visible reference plus the content-free
- * measurement the recorder enqueues for this consumer.
- */
-internal data class FeatureTaskRuntimeSharedReviewEvidenceResolved(
-  val reference: FeatureTaskRuntimeSharedReviewEvidenceReference,
-  val measurement: FeatureTaskRuntimeSharedEvidenceMeasurement,
-)
-
-/**
- * Resolves the shared review evidence a phase launch delivers, keyed on the launch's own repository
- * checkpoint fingerprint.
- *
- * Reuse and re-derivation are entirely the port's derive-once semantics: an artifact stored at the
- * requested fingerprint is served without touching the repository, and an absent, unreadable, or
- * fingerprint-mismatched one re-derives. That is why no invalidation concept lives here — re-entry
- * through `audit_gap` or `review_fix` reuses exactly when the freshly resolved fingerprint is
- * unchanged, and remediation that moved the tree changes the fingerprint and therefore re-derives.
- *
- * Resolution lives in the application layer because it touches git and the filesystem; `runtime-domain`
- * receives only the resolved value. A resolution that cannot produce a store path returns null so the
- * non-required declaration is omitted and the launch still succeeds. A fingerprint contradiction from
- * the port is a broken store invariant and propagates — it must never become a silent null omit.
- */
 class FeatureTaskRuntimeSharedReviewEvidenceResolver(
   private val sharedEvidenceResolver: FeatureTaskRuntimeSharedEvidenceResolverPort,
   private val diffResolver: DiffResolverPort,
 ) {
-  internal fun resolve(
+  fun resolve(
     repoRoot: Path,
     workflowId: String?,
     checkpoint: FeatureTaskRuntimeRepositoryCheckpoint?,

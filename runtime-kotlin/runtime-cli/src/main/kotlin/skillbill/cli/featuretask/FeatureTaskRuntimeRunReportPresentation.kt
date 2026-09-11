@@ -1,7 +1,8 @@
 package skillbill.cli.featuretask
 
-import skillbill.application.featuretask.model.FeatureTaskRuntimeRunReport
-import skillbill.application.featuretask.model.FeatureTaskRuntimeSubtaskOutcome
+import skillbill.engine.featuretask.model.FeatureTaskRuntimeRunReport
+import skillbill.engine.featuretask.model.FeatureTaskRuntimeSubtaskOutcome
+import skillbill.workflow.model.DecompositionStatus
 
 internal fun FeatureTaskRuntimeRunReport.toRuntimeRunCliMap(): Map<String, Any?> = when (this) {
   is FeatureTaskRuntimeRunReport.Completed -> linkedMapOf(
@@ -59,7 +60,7 @@ internal fun Map<String, Any?>.withSubtaskOutcome(outcome: FeatureTaskRuntimeSub
         linkedMapOf(
           "issue_key" to outcome.issueKey,
           "subtask_id" to outcome.subtaskId,
-          "status" to outcome.status,
+          "status" to outcome.status.wireValue,
           "commit_sha" to outcome.commitSha,
           "workflow_id" to outcome.workflowId,
           "blocked_reason" to outcome.blockedReason,
@@ -73,7 +74,8 @@ internal fun Map<String, Any?>.withSubtaskOutcome(outcome: FeatureTaskRuntimeSub
 
 internal fun Map<String, Any?>.runtimeRunExitCode(): Int = if (isTerminalSuccessStatus()) 0 else 1
 
-internal fun Map<String, Any?>.isTerminalSuccessStatus(): Boolean = this["status"] in setOf("complete", "decomposed")
+internal fun Map<String, Any?>.isTerminalSuccessStatus(): Boolean =
+  this["status"] in setOf(DecompositionStatus.COMPLETE.wireValue, "decomposed")
 
 internal fun runtimeRunText(payload: Map<String, Any?>): String = buildString {
   appendLine("feature-task-runtime: ${payload["issue_key"]}")

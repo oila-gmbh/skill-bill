@@ -4,6 +4,7 @@ import skillbill.review.model.FeatureTaskRuntimeWorkflowStats
 import skillbill.review.model.FeatureVerifyWorkflowStats
 import skillbill.review.model.GoalWorkflowStats
 import skillbill.review.model.NumberedFinding
+import skillbill.review.model.ReviewExecutionMode
 import skillbill.review.model.ReviewFindingStats
 import skillbill.review.model.ReviewFinishedTelemetry
 import skillbill.review.model.ReviewHealthStats
@@ -17,7 +18,7 @@ data class ReviewPreviewResult(
   val routedSkill: String?,
   val detectedScope: String?,
   val detectedStack: String?,
-  val executionMode: String?,
+  val executionMode: ReviewExecutionMode?,
 )
 
 data class ImportedReviewResult(

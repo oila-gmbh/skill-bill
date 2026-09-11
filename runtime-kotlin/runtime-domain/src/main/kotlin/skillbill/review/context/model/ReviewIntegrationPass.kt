@@ -73,6 +73,10 @@ enum class ReviewIntegrationTerminalOutcome {
   /** Only a completed pass is a durable boundary; anything else must be re-run on resume. */
   val isDurablyComplete: Boolean
     get() = this == COMPLETED || this == SKIPPED_NOT_APPLICABLE || this == NO_OP_RESUME
+
+  companion object {
+    fun fromWire(value: String): ReviewIntegrationTerminalOutcome? = entries.firstOrNull { it.wireValue == value }
+  }
 }
 
 /**

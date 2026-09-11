@@ -9,10 +9,14 @@ class FeatureTaskRuntimeAuditRepairNonProgressTest {
   @Test
   fun `satisfied current verdict is not blocked`() {
     val decision = detectAuditRepairNonProgress(
-      previousHadGaps = true,
-      currentHasGaps = false,
-      previousRepositoryFingerprint = "same",
-      currentRepositoryFingerprint = "same",
+      previous = FeatureTaskRuntimeAuditRepairSnapshot(
+        hasGaps = true,
+        repositoryFingerprint = "same",
+      ),
+      current = FeatureTaskRuntimeAuditRepairSnapshot(
+        hasGaps = false,
+        repositoryFingerprint = "same",
+      ),
     )
     assertFalse(decision.blocked)
     assertEquals(null, decision.reason)
@@ -21,10 +25,14 @@ class FeatureTaskRuntimeAuditRepairNonProgressTest {
   @Test
   fun `first gaps comparison is not blocked`() {
     val decision = detectAuditRepairNonProgress(
-      previousHadGaps = false,
-      currentHasGaps = true,
-      previousRepositoryFingerprint = UNPROVEN_REPOSITORY_FINGERPRINT,
-      currentRepositoryFingerprint = UNPROVEN_REPOSITORY_FINGERPRINT,
+      previous = FeatureTaskRuntimeAuditRepairSnapshot(
+        hasGaps = false,
+        repositoryFingerprint = UNPROVEN_REPOSITORY_FINGERPRINT,
+      ),
+      current = FeatureTaskRuntimeAuditRepairSnapshot(
+        hasGaps = true,
+        repositoryFingerprint = UNPROVEN_REPOSITORY_FINGERPRINT,
+      ),
     )
     assertFalse(decision.blocked)
     assertEquals(null, decision.reason)
@@ -33,10 +41,14 @@ class FeatureTaskRuntimeAuditRepairNonProgressTest {
   @Test
   fun `recurring gaps with an unchanged fingerprint blocks`() {
     val decision = detectAuditRepairNonProgress(
-      previousHadGaps = true,
-      currentHasGaps = true,
-      previousRepositoryFingerprint = "same",
-      currentRepositoryFingerprint = "same",
+      previous = FeatureTaskRuntimeAuditRepairSnapshot(
+        hasGaps = true,
+        repositoryFingerprint = "same",
+      ),
+      current = FeatureTaskRuntimeAuditRepairSnapshot(
+        hasGaps = true,
+        repositoryFingerprint = "same",
+      ),
     )
     assertTrue(decision.blocked)
     assertTrue(requireNotNull(decision.reason).contains("envelope verdict is still gaps_found"))
@@ -46,10 +58,14 @@ class FeatureTaskRuntimeAuditRepairNonProgressTest {
   @Test
   fun `unproven previous fingerprint fails closed`() {
     val decision = detectAuditRepairNonProgress(
-      previousHadGaps = true,
-      currentHasGaps = true,
-      previousRepositoryFingerprint = UNPROVEN_REPOSITORY_FINGERPRINT,
-      currentRepositoryFingerprint = "changed",
+      previous = FeatureTaskRuntimeAuditRepairSnapshot(
+        hasGaps = true,
+        repositoryFingerprint = UNPROVEN_REPOSITORY_FINGERPRINT,
+      ),
+      current = FeatureTaskRuntimeAuditRepairSnapshot(
+        hasGaps = true,
+        repositoryFingerprint = "changed",
+      ),
     )
     assertTrue(decision.blocked)
   }
@@ -57,42 +73,67 @@ class FeatureTaskRuntimeAuditRepairNonProgressTest {
   @Test
   fun `a proven repository change continues`() {
     val decision = detectAuditRepairNonProgress(
-      previousHadGaps = true,
-      currentHasGaps = true,
-      previousRepositoryFingerprint = "before",
-      currentRepositoryFingerprint = "after",
+      previous = FeatureTaskRuntimeAuditRepairSnapshot(
+        hasGaps = true,
+        repositoryFingerprint = "before",
+      ),
+      current = FeatureTaskRuntimeAuditRepairSnapshot(
+        hasGaps = true,
+        repositoryFingerprint = "after",
+      ),
     )
     assertFalse(decision.blocked)
     assertEquals(null, decision.reason)
   }
 
   @Test
-  fun `same unresolved criteria continue when repository fingerprint changes`() {
+  fun `changed unresolved criterion set proves progress even when fingerprint is unchanged`() {
     val decision = detectAuditRepairNonProgress(
-      previousCriterionRefs = setOf("AC-002", "AC-003"),
-      currentCriterionRefs = setOf("AC-002", "AC-003"),
-      previousRepositoryFingerprint = "before",
-      currentRepositoryFingerprint = "after",
+      previous = FeatureTaskRuntimeAuditRepairSnapshot(
+        hasGaps = true,
+        repositoryFingerprint = "same",
+        criterionRefs = setOf("AC-001", "AC-002"),
+      ),
+      current = FeatureTaskRuntimeAuditRepairSnapshot(
+        hasGaps = true,
+        repositoryFingerprint = "same",
+        criterionRefs = setOf("AC-002"),
+      ),
     )
     assertFalse(decision.blocked)
   }
 
   @Test
-  fun `cleared criterion permits another remediation attempt`() {
+  fun `unchanged unresolved criterion set with changed repository continues`() {
     val decision = detectAuditRepairNonProgress(
-      previousCriterionRefs = setOf("AC-002", "AC-003"),
-      currentCriterionRefs = setOf("AC-003"),
-      previousRepositoryFingerprint = "same",
-      currentRepositoryFingerprint = "same",
+      previous = FeatureTaskRuntimeAuditRepairSnapshot(
+        hasGaps = true,
+        repositoryFingerprint = "before",
+        criterionRefs = setOf("AC-001"),
+      ),
+      current = FeatureTaskRuntimeAuditRepairSnapshot(
+        hasGaps = true,
+        repositoryFingerprint = "after",
+        criterionRefs = setOf("AC-001"),
+      ),
     )
     assertFalse(decision.blocked)
+    assertEquals(null, decision.reason)
   }
 
   @Test
-  fun `legacy gaps marker fails closed`() {
+  fun `unchanged unresolved criterion set with unchanged repository blocks`() {
     val decision = detectAuditRepairNonProgress(
-      previousCriterionRefs = setOf(FeatureTaskRuntimeAuditGapProgress.HAD_GAPS_MARKER),
-      currentCriterionRefs = setOf("AC-002"),
+      previous = FeatureTaskRuntimeAuditRepairSnapshot(
+        hasGaps = true,
+        repositoryFingerprint = "same",
+        criterionRefs = setOf("AC-001"),
+      ),
+      current = FeatureTaskRuntimeAuditRepairSnapshot(
+        hasGaps = true,
+        repositoryFingerprint = "same",
+        criterionRefs = setOf("AC-001"),
+      ),
     )
     assertTrue(decision.blocked)
   }

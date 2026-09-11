@@ -1,7 +1,8 @@
 package skillbill.application.workflow
 
 import me.tatarka.inject.annotations.Inject
-import skillbill.application.decomposition.DecompositionManifestProjectionSupport
+import skillbill.application.decomposition.DecompositionManifestWriteGuard
+import skillbill.application.decomposition.DecompositionManifestWriter
 import skillbill.application.workflow.model.BuildFeatureTaskExecutionIdentityArgs
 import skillbill.application.workflow.model.ContinueExistingWorkflowArgs
 import skillbill.application.workflow.model.DecompositionRuntimeWriteArgs
@@ -15,29 +16,42 @@ import skillbill.application.workflow.model.WorkflowLatestResult
 import skillbill.application.workflow.model.WorkflowListResult
 import skillbill.application.workflow.model.WorkflowOpenResult
 import skillbill.application.workflow.model.WorkflowResumeResult
-import skillbill.application.workflow.model.WorkflowServiceDeps
 import skillbill.application.workflow.model.WorkflowServiceOpenArgs
 import skillbill.application.workflow.model.WorkflowUpdateRequest
 import skillbill.application.workflow.model.WorkflowUpdateResult
 import skillbill.contracts.issuekey.normalizeIssueKey
+import skillbill.model.RepositoryRoot
+import skillbill.ports.db.DatabaseSessionFactory
+import skillbill.ports.workflow.decomposition.DecompositionManifestStore
+import skillbill.ports.workflow.get
+import skillbill.ports.workflow.gitops.WorkflowGitOperations
+import skillbill.ports.workflow.gitops.model.WorkflowGitOperationResult
 import skillbill.ports.workflow.gitops.repositoryFingerprint
+import skillbill.ports.workflow.latest
+import skillbill.ports.workflow.list
 import skillbill.ports.workflow.model.FeatureTaskWorkflowMode
+import skillbill.ports.workflow.model.toSnapshot
+import skillbill.ports.workflow.save
+import skillbill.workflow.decomposition.DecompositionManifestValidator
 import skillbill.workflow.engine.WorkflowEngine
+import skillbill.workflow.engine.WorkflowSnapshotValidator
+import skillbill.workflow.goal.GoalObservabilityEventValidator
 
 @Inject
-class WorkflowService(deps: WorkflowServiceDeps) {
-  private val database = deps.database
-  private val gitOperations = deps.gitOperations
-  private val decompositionManifestStore = deps.decompositionManifestStore
-  private val workflowSnapshotValidator = deps.workflowSnapshotValidator
-  private val decompositionManifestValidator = deps.decompositionManifestValidator
-  private val decompositionManifestWriter = deps.decompositionManifestWriter
-  private val repositoryRoot = deps.repositoryRoot
-  val goalObservabilityEventValidator = deps.goalObservabilityEventValidator
+class WorkflowService(
+  private val database: DatabaseSessionFactory,
+  private val gitOperations: WorkflowGitOperations,
+  private val decompositionManifestStore: DecompositionManifestStore,
+  workflowSnapshotValidator: WorkflowSnapshotValidator,
+  private val decompositionManifestValidator: DecompositionManifestValidator,
+  private val decompositionManifestWriter: DecompositionManifestWriter,
+  private val repositoryRoot: RepositoryRoot,
+  val goalObservabilityEventValidator: GoalObservabilityEventValidator,
+) {
 
   private val engine: WorkflowEngine = WorkflowEngine(workflowSnapshotValidator) {
     val resolved = gitOperations.repositoryFingerprint(repositoryRoot.path)
-    check(resolved.ok) { resolved.error }
+    check(resolved is WorkflowGitOperationResult.Ok) { resolved.error }
     resolved.value.orEmpty()
   }
   private val featureTaskAbandon = WorkflowServiceFeatureTaskAbandon(engine)
@@ -82,7 +96,6 @@ class WorkflowService(deps: WorkflowServiceDeps) {
         workflowId = workflowId,
         effectiveSessionId = effectiveSessionId,
         stepId = stepId,
-        dbOverride = args.dbOverride,
         issueKey = args.issueKey,
         executionIdentity = executionIdentity,
         engine = engine,
@@ -91,18 +104,14 @@ class WorkflowService(deps: WorkflowServiceDeps) {
     )
   }
 
-  fun update(
-    kind: WorkflowFamilyKind,
-    request: WorkflowUpdateRequest,
-    dbOverride: String? = null,
-  ): WorkflowUpdateResult {
+  fun update(kind: WorkflowFamilyKind, request: WorkflowUpdateRequest): WorkflowUpdateResult {
     val family = kind.workflowFamily()
     val input = request.toWorkflowUpdateInput()
     WorkflowEngine.validateUpdate(family.definition, input)?.let { error ->
       return WorkflowUpdateResult.Error(request.workflowId, error)
     }
     var projectionArtifactsJson: String? = null
-    val result = database.transaction(dbOverride) { unitOfWork ->
+    val result = database.transaction { unitOfWork ->
       val existing = family.get(unitOfWork.workflowStates, request.workflowId)
         ?: return@transaction WorkflowUpdateResult.Error(
           request.workflowId,
@@ -142,7 +151,7 @@ class WorkflowService(deps: WorkflowServiceDeps) {
       buildUpdateOk(engine, family.definition, updated, effectiveInput, unitOfWork.dbPath.toString())
     }
     projectionArtifactsJson?.let { artifactsJson ->
-      DecompositionManifestProjectionSupport.requireWritten(
+      DecompositionManifestWriteGuard.requireWritten(
         decompositionManifestWriter.writeProjectionFromWorkflowState(
           repositoryRoot.path,
           artifactsJson,
@@ -155,7 +164,7 @@ class WorkflowService(deps: WorkflowServiceDeps) {
     return result
   }
 
-  fun abandonFeatureTaskRuntime(workflowId: String, reason: String, dbOverride: String? = null): WorkflowUpdateResult {
+  fun abandonFeatureTaskRuntime(workflowId: String, reason: String): WorkflowUpdateResult {
     val normalizedReason = reason.trim()
     if (normalizedReason.isEmpty() || normalizedReason.length > MAX_ABANDONMENT_REASON_LENGTH) {
       return WorkflowUpdateResult.Error(
@@ -163,7 +172,7 @@ class WorkflowService(deps: WorkflowServiceDeps) {
         "Abandonment reason must contain 1..$MAX_ABANDONMENT_REASON_LENGTH characters.",
       )
     }
-    return database.transaction(dbOverride) { unitOfWork ->
+    return database.transaction { unitOfWork ->
       val existingRecord = unitOfWork.workflowStates.getFeatureTaskWorkflow(workflowId)
         ?: return@transaction WorkflowUpdateResult.Error(
           workflowId,
@@ -185,12 +194,8 @@ class WorkflowService(deps: WorkflowServiceDeps) {
     }
   }
 
-  fun retryBlockedFeatureTaskRuntimePhase(
-    workflowId: String,
-    phaseId: String,
-    reason: String,
-    dbOverride: String? = null,
-  ): WorkflowUpdateResult = blockedPhaseRetry.retry(database, workflowId, phaseId, reason, dbOverride)
+  fun retryBlockedFeatureTaskRuntimePhase(workflowId: String, phaseId: String, reason: String): WorkflowUpdateResult =
+    blockedPhaseRetry.retry(database, workflowId, phaseId, reason)
 
   fun repairFeatureTaskRuntimeIdentity(args: RepairFeatureTaskRuntimeIdentityArgs): WorkflowUpdateResult {
     val workflowId = args.workflowId
@@ -202,7 +207,7 @@ class WorkflowService(deps: WorkflowServiceDeps) {
       )
     }
     val normalizedIssueKey = requireNotNull(normalizeIssueKey(args.issueKey)).uppercase()
-    return database.transaction(args.dbOverride) { unitOfWork ->
+    return database.transaction { unitOfWork ->
       featureTaskIdentityRepair.repair(
         FeatureTaskIdentityRepairArgs(
           unitOfWork = unitOfWork,
@@ -216,24 +221,23 @@ class WorkflowService(deps: WorkflowServiceDeps) {
     }
   }
 
-  fun get(kind: WorkflowFamilyKind, workflowId: String, dbOverride: String? = null): WorkflowGetResult =
-    database.read(dbOverride) { unitOfWork ->
-      val family = kind.workflowFamily()
-      val record = family.get(unitOfWork.workflowStates, workflowId)
-        ?: return@read WorkflowGetResult.Error(
-          workflowId,
-          "Unknown workflow_id '$workflowId'.",
-          unitOfWork.dbPath.toString(),
-        )
-      WorkflowGetResult.Ok(
-        workflowId = record.workflowId,
-        dbPath = unitOfWork.dbPath.toString(),
-        snapshot = engine.snapshotView(family.definition, record),
+  fun get(kind: WorkflowFamilyKind, workflowId: String): WorkflowGetResult = database.read { unitOfWork ->
+    val family = kind.workflowFamily()
+    val record = family.get(unitOfWork.workflowStates, workflowId)
+      ?: return@read WorkflowGetResult.Error(
+        workflowId,
+        "Unknown workflow_id '$workflowId'.",
+        unitOfWork.dbPath.toString(),
       )
-    }
+    WorkflowGetResult.Ok(
+      workflowId = record.workflowId,
+      dbPath = unitOfWork.dbPath.toString(),
+      snapshot = engine.snapshotView(family.definition, record),
+    )
+  }
 
-  fun list(kind: WorkflowFamilyKind, limit: Int = DEFAULT_LIST_LIMIT, dbOverride: String? = null): WorkflowListResult =
-    database.read(dbOverride) { unitOfWork ->
+  fun list(kind: WorkflowFamilyKind, limit: Int = DEFAULT_LIST_LIMIT): WorkflowListResult =
+    database.read { unitOfWork ->
       val family = kind.workflowFamily()
       val rows = family.list(unitOfWork.workflowStates, limit)
       WorkflowListResult(
@@ -243,44 +247,37 @@ class WorkflowService(deps: WorkflowServiceDeps) {
       )
     }
 
-  fun latest(kind: WorkflowFamilyKind, dbOverride: String? = null): WorkflowLatestResult =
-    database.read(dbOverride) { unitOfWork ->
-      val family = kind.workflowFamily()
-      val record = family.latest(unitOfWork.workflowStates)
-        ?: return@read WorkflowLatestResult.Error(
-          dbPath = unitOfWork.dbPath.toString(),
-          error = "No ${family.humanName} workflows found.",
-        )
-      WorkflowLatestResult.Ok(
+  fun latest(kind: WorkflowFamilyKind): WorkflowLatestResult = database.read { unitOfWork ->
+    val family = kind.workflowFamily()
+    val record = family.latest(unitOfWork.workflowStates)
+      ?: return@read WorkflowLatestResult.Error(
         dbPath = unitOfWork.dbPath.toString(),
-        summary = engine.summaryView(family.definition, record),
+        error = "No ${family.humanName} workflows found.",
       )
-    }
+    WorkflowLatestResult.Ok(
+      dbPath = unitOfWork.dbPath.toString(),
+      summary = engine.summaryView(family.definition, record),
+    )
+  }
 
-  fun resume(kind: WorkflowFamilyKind, workflowId: String, dbOverride: String? = null): WorkflowResumeResult =
-    database.read(dbOverride) { unitOfWork ->
-      val family = kind.workflowFamily()
-      val record = family.get(unitOfWork.workflowStates, workflowId)
-        ?: return@read WorkflowResumeResult.Error(
-          workflowId,
-          "Unknown workflow_id '$workflowId'.",
-          unitOfWork.dbPath.toString(),
-        )
-      WorkflowResumeResult.Ok(
-        workflowId = record.workflowId,
-        dbPath = unitOfWork.dbPath.toString(),
-        resume = engine.resumeView(family.definition, record),
+  fun resume(kind: WorkflowFamilyKind, workflowId: String): WorkflowResumeResult = database.read { unitOfWork ->
+    val family = kind.workflowFamily()
+    val record = family.get(unitOfWork.workflowStates, workflowId)
+      ?: return@read WorkflowResumeResult.Error(
+        workflowId,
+        "Unknown workflow_id '$workflowId'.",
+        unitOfWork.dbPath.toString(),
       )
-    }
+    WorkflowResumeResult.Ok(
+      workflowId = record.workflowId,
+      dbPath = unitOfWork.dbPath.toString(),
+      resume = engine.resumeView(family.definition, record),
+    )
+  }
 
-  fun continueWorkflow(
-    kind: WorkflowFamilyKind,
-    workflowId: String,
-    subtaskId: Int? = null,
-    dbOverride: String? = null,
-  ): WorkflowContinueResult {
+  fun continueWorkflow(kind: WorkflowFamilyKind, workflowId: String, subtaskId: Int? = null): WorkflowContinueResult {
     var projectionArtifactsJson: String? = null
-    val result = database.transaction(dbOverride) { unitOfWork ->
+    val result = database.transaction { unitOfWork ->
       val family = kind.workflowFamily()
       var record = family.get(unitOfWork.workflowStates, workflowId)
       if (record == null && family == WorkflowFamily.TASK_RUNTIME) {
@@ -315,7 +312,7 @@ class WorkflowService(deps: WorkflowServiceDeps) {
       }.result
     }
     projectionArtifactsJson?.let { artifactsJson ->
-      DecompositionManifestProjectionSupport.requireWritten(
+      DecompositionManifestWriteGuard.requireWritten(
         decompositionManifestWriter.writeProjectionFromWorkflowState(
           repositoryRoot.path,
           artifactsJson,

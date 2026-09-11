@@ -7,64 +7,37 @@ data class FeatureTaskRuntimeAuditRepairProgressDecision(
   val reason: String?,
 )
 
-fun detectAuditRepairNonProgress(
-  previousHadGaps: Boolean,
-  currentHasGaps: Boolean,
-  previousRepositoryFingerprint: String,
-  currentRepositoryFingerprint: String,
-): FeatureTaskRuntimeAuditRepairProgressDecision {
-  if (!currentHasGaps) {
-    return FeatureTaskRuntimeAuditRepairProgressDecision(blocked = false, reason = null)
-  }
-  if (!previousHadGaps) {
-    return FeatureTaskRuntimeAuditRepairProgressDecision(blocked = false, reason = null)
-  }
-  val repositoryUnchanged = previousRepositoryFingerprint == currentRepositoryFingerprint
-  val previousUnproven = previousRepositoryFingerprint == UNPROVEN_REPOSITORY_FINGERPRINT
-  val blocked = repositoryUnchanged || previousUnproven
-  return FeatureTaskRuntimeAuditRepairProgressDecision(
-    blocked = blocked,
-    reason = if (blocked) {
-      "Audit made no progress: the envelope verdict is still gaps_found and the " +
-        "repository fingerprint is unchanged."
-    } else {
-      null
-    },
-  )
-}
+data class FeatureTaskRuntimeAuditRepairSnapshot(
+  val hasGaps: Boolean,
+  val repositoryFingerprint: String,
+  val criterionRefs: Set<String> = emptySet(),
+)
 
 fun detectAuditRepairNonProgress(
-  previousCriterionRefs: Set<String>,
-  currentCriterionRefs: Set<String>,
-  previousRepositoryFingerprint: String? = null,
-  currentRepositoryFingerprint: String? = null,
+  previous: FeatureTaskRuntimeAuditRepairSnapshot,
+  current: FeatureTaskRuntimeAuditRepairSnapshot,
 ): FeatureTaskRuntimeAuditRepairProgressDecision {
-  if (currentCriterionRefs.isEmpty()) {
-    return FeatureTaskRuntimeAuditRepairProgressDecision(
-      blocked = true,
-      reason = "Audit made no progress: the current unresolved criterion set is unavailable.",
-    )
+  if (!current.hasGaps) {
+    return FeatureTaskRuntimeAuditRepairProgressDecision(blocked = false, reason = null)
   }
-  val previousRefs = previousCriterionRefs - FeatureTaskRuntimeAuditGapProgress.HAD_GAPS_MARKER
-  if (previousRefs.isEmpty()) {
-    return FeatureTaskRuntimeAuditRepairProgressDecision(
-      blocked = true,
-      reason = "Audit made no progress: the previous unresolved criterion set is unavailable.",
-    )
+  if (!previous.hasGaps) {
+    return FeatureTaskRuntimeAuditRepairProgressDecision(blocked = false, reason = null)
   }
-  val criteriaUnchanged = (previousRefs - currentCriterionRefs).isEmpty()
-  val repositoryChanged = previousRepositoryFingerprint != null &&
-    currentRepositoryFingerprint != null &&
-    previousRepositoryFingerprint != currentRepositoryFingerprint
-  val blocked = criteriaUnchanged && !repositoryChanged
+  val criterionSetUnchanged = previous.criterionRefs.isNotEmpty() &&
+    current.criterionRefs.isNotEmpty() &&
+    previous.criterionRefs == current.criterionRefs
+  val repositoryUnchanged = previous.repositoryFingerprint == current.repositoryFingerprint
+  val previousUnproven = previous.repositoryFingerprint == UNPROVEN_REPOSITORY_FINGERPRINT
+  val criterionRefsAvailable = previous.criterionRefs.isNotEmpty() && current.criterionRefs.isNotEmpty()
+  val blocked = previousUnproven || (repositoryUnchanged && (!criterionRefsAvailable || criterionSetUnchanged))
   return FeatureTaskRuntimeAuditRepairProgressDecision(
     blocked = blocked,
     reason = if (blocked) {
-      if (repositoryChanged) {
-        "Audit made no progress: the unresolved criterion set did not shrink even though repository " +
-          "evidence changed."
+      if (criterionSetUnchanged) {
+        "Audit made no progress: the envelope verdict is still gaps_found, the unresolved criterion " +
+          "set is unchanged, and the repository fingerprint is unchanged."
       } else {
-        "Audit made no progress: the unresolved criterion set did not shrink and repository fingerprint " +
+        "Audit made no progress: the envelope verdict is still gaps_found and the repository fingerprint " +
           "is unchanged."
       }
     } else {

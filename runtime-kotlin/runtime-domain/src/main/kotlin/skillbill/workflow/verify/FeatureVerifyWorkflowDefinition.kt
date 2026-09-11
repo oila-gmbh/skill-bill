@@ -3,6 +3,8 @@ package skillbill.workflow.verify
 import skillbill.contracts.workflow.WORKFLOW_STATE_CONTRACT_VERSION
 import skillbill.workflow.engine.model.WorkflowDefinition
 import skillbill.workflow.engine.model.WorkflowInputProjectionDeclaration
+import skillbill.workflow.model.WorkflowStatus
+import skillbill.workflow.model.WorkflowStepStatus
 
 object FeatureVerifyWorkflowDefinition {
   private val criteriaFields = setOf(
@@ -42,9 +44,26 @@ object FeatureVerifyWorkflowDefinition {
     workflowIdPrefix = "wfv",
     defaultSessionPrefix = "fvr",
     contractVersion = WORKFLOW_STATE_CONTRACT_VERSION,
-    workflowStatuses = setOf("pending", "running", "completed", "failed", "abandoned"),
-    stepStatuses = setOf("pending", "running", "completed", "failed", "blocked", "skipped"),
-    terminalStatuses = setOf("completed", "failed", "abandoned"),
+    workflowStatuses = setOf(
+      WorkflowStatus.PENDING.wireValue,
+      WorkflowStatus.RUNNING.wireValue,
+      WorkflowStatus.COMPLETED.wireValue,
+      WorkflowStatus.FAILED.wireValue,
+      WorkflowStatus.ABANDONED.wireValue,
+    ),
+    stepStatuses = setOf(
+      WorkflowStepStatus.PENDING.wireValue,
+      WorkflowStepStatus.RUNNING.wireValue,
+      WorkflowStepStatus.COMPLETED.wireValue,
+      WorkflowStepStatus.FAILED.wireValue,
+      WorkflowStepStatus.BLOCKED.wireValue,
+      WorkflowStepStatus.SKIPPED.wireValue,
+    ),
+    terminalStatuses = setOf(
+      WorkflowStatus.COMPLETED.wireValue,
+      WorkflowStatus.FAILED.wireValue,
+      WorkflowStatus.ABANDONED.wireValue,
+    ),
     defaultInitialStepId = "gather_diff",
     stepIds =
     listOf(

@@ -27,7 +27,7 @@ data class ReviewAccountingInput(
   val lane: String,
   val assignmentDigest: String,
   val counters: ReviewAccountingCounters = ReviewAccountingCounters(),
-  val terminalOutcome: String = "completed",
+  val terminalOutcome: ReviewAccountingTerminalOutcome = ReviewAccountingTerminalOutcome.COMPLETED,
   val bundleCompositionDigest: String? = null,
   val segmentAccounting: List<ReviewLaneSegmentAccounting> = emptyList(),
   val unreviewedSegmentIds: List<String> = emptyList(),
@@ -44,7 +44,8 @@ data class ReviewAccountingNode(
   val assignmentDigest: String,
   val counters: ReviewAccountingCounters,
   val inclusiveCounters: ReviewAccountingCounters,
-  val terminalOutcome: String,
+  val terminalOutcome: ReviewAccountingTerminalOutcome,
+  /** Bundle composition this lane actually reviewed, so result records preserve it. */
   val bundleCompositionDigest: String?,
   val segmentAccounting: List<ReviewLaneSegmentAccounting>,
   val unreviewedSegmentIds: List<String>,
@@ -90,22 +91,35 @@ data class ReviewParentAnalysisConsumption(
 
 data class ReviewIntegrationAccounting(
   val commitSequenceDigest: String,
-  val terminalOutcome: String,
+  val terminalOutcome: ReviewIntegrationTerminalOutcome,
   val summarizedLaneCount: Int,
   val findingCount: Int,
   val counters: ReviewAccountingCounters = ReviewAccountingCounters(),
   val skipReason: String? = null,
 ) {
+  constructor(
+    commitSequenceDigest: String,
+    terminalOutcome: String,
+    summarizedLaneCount: Int,
+    findingCount: Int,
+    counters: ReviewAccountingCounters = ReviewAccountingCounters(),
+    skipReason: String? = null,
+  ) : this(
+    commitSequenceDigest,
+    requireNotNull(ReviewIntegrationTerminalOutcome.fromWire(terminalOutcome)) {
+      "Unknown integration outcome '$terminalOutcome'."
+    },
+    summarizedLaneCount,
+    findingCount,
+    counters,
+    skipReason,
+  )
   init {
-    require(commitSequenceDigest.isNotBlank() && terminalOutcome.isNotBlank())
+    require(commitSequenceDigest.isNotBlank())
     require(summarizedLaneCount >= 0 && findingCount >= 0)
-    if (terminalOutcome == SKIPPED_NOT_APPLICABLE) {
+    if (terminalOutcome == ReviewIntegrationTerminalOutcome.SKIPPED_NOT_APPLICABLE) {
       require(!skipReason.isNullOrBlank()) { "A skipped integration pass must record why." }
     }
-  }
-
-  companion object {
-    const val SKIPPED_NOT_APPLICABLE: String = "skipped_not_applicable"
   }
 }
 

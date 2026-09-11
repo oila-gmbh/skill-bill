@@ -24,7 +24,7 @@ object IdeStatusSchemaPaths {
     "orchestration/contracts/ide-status-schema.yaml"
 
   const val CLASSPATH_RESOURCE: String =
-    "skillbill/contracts/ide-status-schema.yaml"
+    "skillbill/infrastructure/fs/contracts/ide-status-schema.yaml"
 
   const val EXPECTED_SCHEMA_ID: String =
     "https://skill-bill.dev/contracts/ide-status-schema.yaml"

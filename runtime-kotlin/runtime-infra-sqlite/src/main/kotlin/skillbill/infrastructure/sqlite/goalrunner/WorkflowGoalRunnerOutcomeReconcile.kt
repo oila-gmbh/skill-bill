@@ -1,61 +1,39 @@
 package skillbill.infrastructure.sqlite.goalrunner
 
-import skillbill.error.InvalidWorkflowStateSchemaError
+import skillbill.goalrunner.STALENESS_EVIDENCE_WINDOW
+import skillbill.goalrunner.declaredProgressEventFrom
 import skillbill.goalrunner.model.GoalRunnerStoredOutcome
 import skillbill.goalrunner.model.GoalRunnerTerminalStatus
-import skillbill.ports.diagnostics.NoopRuntimeDiagnostics
-import skillbill.ports.diagnostics.RuntimeDiagnostics
-import skillbill.ports.goalrunner.persistence.STALENESS_EVIDENCE_WINDOW
-import skillbill.ports.goalrunner.persistence.authoritativeOutcomesBySubtask
-import skillbill.ports.goalrunner.persistence.declaredProgressEventFrom
-import skillbill.ports.goalrunner.persistence.goalContinuation
+import skillbill.goalrunner.parseInstantOrNull
+import skillbill.goalrunner.terminalOutcomeFor
+import skillbill.infrastructure.sqlite.decomposition.decodeArtifacts
 import skillbill.ports.goalrunner.persistence.model.GoalContinuationCandidate
 import skillbill.ports.goalrunner.persistence.model.GoalRunnerBlockWrite
 import skillbill.ports.goalrunner.persistence.model.StaleRunningCandidatesBlockRequest
-import skillbill.ports.goalrunner.persistence.parseInstantOrNull
-import skillbill.ports.goalrunner.persistence.staleRunningReason
-import skillbill.ports.goalrunner.persistence.terminalOutcomeFor
 import skillbill.ports.goalrunner.runner.model.GoalRunnerReconcileGate
 import skillbill.ports.persistence.UnitOfWork
 import skillbill.ports.workflow.WorkflowStateRepository
-import skillbill.ports.workflow.decomposition.runtime.decodeArtifacts
 import skillbill.ports.workflow.gitops.WorkflowGitOperations
-import skillbill.ports.workflow.model.FeatureTaskRuntimeSnapshot
-import skillbill.ports.workflow.persistence.model.WorkflowFamily
-import skillbill.ports.workflow.persistence.toSnapshot
+import skillbill.ports.workflow.list
+import skillbill.ports.workflow.model.WorkflowFamily
 import skillbill.workflow.engine.WorkflowEngine
 import skillbill.workflow.goal.GoalObservabilityEventValidator
-import skillbill.workflow.goal.model.goalObservabilityLatestEventForLiveness
+import skillbill.workflow.goal.model.goalObservabilityLatestEventFromArtifacts
+import skillbill.workflow.model.WorkflowStatus
+import skillbill.workflow.model.workflowStatus
 import java.nio.file.Path
 import java.time.Clock
 import java.time.Duration
 import java.time.Instant
 
-internal data class WorkflowGoalRunnerOutcomeReconcileRuntime(
-  val engine: WorkflowEngine,
-  val gitOperations: WorkflowGitOperations,
-  val goalObservabilityEventValidator: GoalObservabilityEventValidator,
-  val clock: Clock,
-  val diagnostics: RuntimeDiagnostics = NoopRuntimeDiagnostics,
-)
-
-internal data class WorkflowGoalRunnerOutcomeReconcilePersistence(
-  val blockWrites: WorkflowGoalRunnerBlockWrites,
-  val terminalPersistence: WorkflowGoalRunnerOutcomeTerminalPersistence,
-)
-
 internal class WorkflowGoalRunnerOutcomeReconcile(
-  runtime: WorkflowGoalRunnerOutcomeReconcileRuntime,
-  persistence: WorkflowGoalRunnerOutcomeReconcilePersistence,
+  private val engine: WorkflowEngine,
+  private val gitOperations: WorkflowGitOperations,
+  private val goalObservabilityEventValidator: GoalObservabilityEventValidator,
+  private val blockWrites: WorkflowGoalRunnerBlockWrites,
+  private val terminalPersistence: WorkflowGoalRunnerOutcomeTerminalPersistence,
+  private val clock: Clock,
 ) {
-  private val engine = runtime.engine
-  private val gitOperations = runtime.gitOperations
-  private val goalObservabilityEventValidator = runtime.goalObservabilityEventValidator
-  private val blockWrites = persistence.blockWrites
-  private val terminalPersistence = persistence.terminalPersistence
-  private val clock = runtime.clock
-  private val diagnostics = runtime.diagnostics
-
   fun reconcileAuthoritativeOutcomesInTransaction(
     unitOfWork: UnitOfWork,
     issueKey: String,
@@ -146,7 +124,7 @@ internal class WorkflowGoalRunnerOutcomeReconcile(
     activeSet: Set<String>,
     gate: GoalRunnerReconcileGate,
   ): Boolean {
-    if (candidate.snapshot.workflowStatus != "running") return false
+    if (candidate.snapshot.workflowStatus.workflowStatus() != WorkflowStatus.RUNNING) return false
     if (candidate.outcome?.status == GoalRunnerTerminalStatus.COMPLETE) return false
     val authoritative = initialAuthoritative[candidate.goalContinuation.subtaskId]
     val inactive = candidate.snapshot.workflowId !in activeSet
@@ -164,11 +142,8 @@ internal class WorkflowGoalRunnerOutcomeReconcile(
     workflowStates: WorkflowStateRepository,
     issueKey: String,
     repoRoot: Path? = null,
-  ): List<GoalContinuationCandidate> = workflowStates.listFeatureTaskRuntimeSnapshots(Int.MAX_VALUE).mapNotNull { raw ->
-    val ownership = snapshotOwnership(raw, issueKey)
-    try {
-      val snapshot = raw.workflow.toSnapshot()
-      val family = WorkflowFamily.TASK_RUNTIME
+  ): List<GoalContinuationCandidate> = listOf(WorkflowFamily.TASK_RUNTIME).flatMap { family ->
+    family.list(workflowStates, Int.MAX_VALUE).mapNotNull { snapshot ->
       engine.snapshotView(family.definition, snapshot)
       val artifacts = decodeArtifacts(snapshot.artifactsJson)
       val goalContinuation = goalContinuation(artifacts) ?: return@mapNotNull null
@@ -183,23 +158,7 @@ internal class WorkflowGoalRunnerOutcomeReconcile(
           repoRoot?.let { root -> gitOperations.headCommitSha(root).measuredCommitSha() }
         },
       )
-    } catch (error: InvalidWorkflowStateSchemaError) {
-      if (ownership != SnapshotOwnership.EXPLICIT_MISMATCH) {
-        throw error
-      }
-      diagnostics.warning(
-        "Skipped stale feature-task workflow '${raw.workflow.workflowId}': " +
-          "schema validation failed (${redactedWorkflowStateFailure(error)}).",
-      )
-      null
     }
-  }
-
-  private fun snapshotOwnership(snapshot: FeatureTaskRuntimeSnapshot, issueKey: String): SnapshotOwnership = when {
-    snapshot.workflow.issueKey?.trim()?.uppercase() == issueKey.trim().uppercase() ||
-      snapshot.identity?.normalizedIssueKey == issueKey.trim().uppercase() -> SnapshotOwnership.REQUESTED
-    snapshot.workflow.issueKey.isNullOrBlank() && snapshot.identity == null -> SnapshotOwnership.UNKNOWN
-    else -> SnapshotOwnership.EXPLICIT_MISMATCH
   }
 
   private fun candidateIsStale(candidate: GoalContinuationCandidate): Boolean = runCatching {
@@ -214,24 +173,7 @@ internal class WorkflowGoalRunnerOutcomeReconcile(
   private fun candidateLivenessInstants(candidate: GoalContinuationCandidate): List<Instant> {
     val artifacts = decodeArtifacts(candidate.snapshot.artifactsJson)
     val declared = declaredProgressEventFrom(artifacts)?.timestamp
-    val observed = goalObservabilityLatestEventForLiveness(artifacts, goalObservabilityEventValidator)?.timestamp
+    val observed = goalObservabilityLatestEventFromArtifacts(artifacts, goalObservabilityEventValidator)?.timestamp
     return listOfNotNull(declared, observed, candidate.snapshot.updatedAt).mapNotNull(::parseInstantOrNull)
-  }
-}
-
-private enum class SnapshotOwnership {
-  REQUESTED,
-  EXPLICIT_MISMATCH,
-  UNKNOWN,
-}
-
-private fun redactedWorkflowStateFailure(error: InvalidWorkflowStateSchemaError): String {
-  val type = error::class.simpleName.orEmpty()
-  val message = error.message.orEmpty()
-  return when {
-    "malformed JSON" in message -> "$type: malformed JSON"
-    "must decode to a JSON array" in message -> "$type: malformed JSON"
-    "must decode to a JSON object" in message -> "$type: malformed JSON"
-    else -> type
   }
 }

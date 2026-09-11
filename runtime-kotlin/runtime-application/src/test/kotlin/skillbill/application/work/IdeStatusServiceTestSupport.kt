@@ -1,25 +1,28 @@
 package skillbill.application.work
 
 import skillbill.application.TestRepositoryEnclosingRoot
-import skillbill.application.featuretask.AcceptingFeatureTaskRuntimeHandoffEnvelopeValidator
-import skillbill.application.featuretask.AcceptingFeatureTaskRuntimeHandoffFoundationValidator
-import skillbill.application.featuretask.FeatureTaskRuntimeDecomposeTerminalRecorder
-import skillbill.application.featuretask.FeatureTaskRuntimeRunInvariantsStore
-import skillbill.application.featuretask.FeatureTaskRuntimeStatusService
-import skillbill.application.featuretask.featureTaskRuntimePhaseRecorder
-import skillbill.application.goalrunner.goalRepositoryIdentity
-import skillbill.application.goalrunner.goalRunnerStatusServiceDeps
-import skillbill.application.goalrunner.testGoalRunnerStatusService
 import skillbill.application.idestatus.model.IdeStatusRequest
 import skillbill.application.idestatus.model.IdeStatusResult
 import skillbill.application.testHarnessClock
-import skillbill.contracts.JsonSupport
+import skillbill.contracts.JsonCodec
 import skillbill.contracts.workflow.IDE_STATUS_CONTRACT_VERSION
+import skillbill.engine.featuretask.AcceptingFeatureTaskRuntimeHandoffEnvelopeValidator
+import skillbill.engine.featuretask.AcceptingFeatureTaskRuntimeHandoffFoundationValidator
+import skillbill.engine.featuretask.FeatureTaskRuntimeDecomposeTerminalRecorder
+import skillbill.engine.featuretask.FeatureTaskRuntimeRunInvariantsStore
+import skillbill.engine.featuretask.FeatureTaskRuntimeStatusService
+import skillbill.engine.featuretask.featureTaskRuntimePhaseRecorder
+import skillbill.engine.goalrunner.GoalRunnerStatusTestPorts
+import skillbill.engine.goalrunner.goalRepositoryIdentity
+import skillbill.engine.goalrunner.testGoalRunnerStatusService
+import skillbill.engine.work.IdeStatusProjector
+import skillbill.engine.work.IdeStatusService
 import skillbill.error.InvalidWorkflowStateSchemaError
 import skillbill.goalrunner.model.GoalPlanningStatusSnapshot
 import skillbill.goalrunner.model.GoalPlanningStatusState
 import skillbill.goalrunner.model.GoalRunnerControlState
 import skillbill.goalrunner.model.GoalRunnerExecutionLease
+import skillbill.goalrunner.model.GoalRunnerObservabilityRecordRequest
 import skillbill.goalrunner.model.GoalRunnerStoredOutcome
 import skillbill.goalrunner.model.GoalRunnerSupervisionEvent
 import skillbill.goalrunner.model.GoalRunnerWorkerSubtaskRequestOutcome
@@ -30,11 +33,11 @@ import skillbill.ports.goalrunner.EmptyGoalPlanningPreparationRepository
 import skillbill.ports.goalrunner.EmptyGoalRunnerControlRepository
 import skillbill.ports.goalrunner.GoalRunnerControlRepository
 import skillbill.ports.goalrunner.runner.GoalRunnerManifestStore
+import skillbill.ports.goalrunner.runner.GoalRunnerManifestStoreDefaults
 import skillbill.ports.goalrunner.runner.GoalRunnerWorkflowOutcomeStore
 import skillbill.ports.goalrunner.runner.model.GoalRunnerAttemptLedgerRecordRequest
 import skillbill.ports.goalrunner.runner.model.GoalRunnerLedgerSequenceWatermarks
 import skillbill.ports.goalrunner.runner.model.GoalRunnerManifestState
-import skillbill.ports.goalrunner.runner.model.GoalRunnerObservabilityRecordRequest
 import skillbill.ports.goalrunner.runner.model.GoalRunnerProgressEventRecordRequest
 import skillbill.ports.goalrunner.runner.model.GoalRunnerReconcileGate
 import skillbill.ports.goalrunner.runner.model.GoalRunnerWorkflowProgress
@@ -42,6 +45,7 @@ import skillbill.ports.idestatus.IdeStatusValidator
 import skillbill.ports.idestatus.NoopIdeStatusValidator
 import skillbill.ports.learning.LearningRepository
 import skillbill.ports.persistence.UnitOfWork
+import skillbill.ports.persistence.UnitOfWorkDefaults
 import skillbill.ports.review.ReviewRepository
 import skillbill.ports.system.CheckedOutBranchSource
 import skillbill.ports.telemetry.LifecycleTelemetryRepository
@@ -62,6 +66,7 @@ import skillbill.workflow.decomposition.model.CurrentSubtaskIntent
 import skillbill.workflow.decomposition.model.DecompositionManifest
 import skillbill.workflow.decomposition.model.DecompositionSubtask
 import skillbill.workflow.engine.WorkflowSnapshotValidator
+import skillbill.workflow.engine.model.WorkflowStateSnapshot
 import skillbill.workflow.goal.model.GoalSubtaskReviewPassResult
 import skillbill.workflow.goal.model.GoalSubtaskReviewState
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
@@ -78,14 +83,17 @@ import java.time.ZoneOffset
 internal val ideStatusObservedAt: Instant = Instant.parse("2026-08-06T12:00:00Z")
 internal val ideStatusClock: Clock = Clock.fixed(ideStatusObservedAt, ZoneOffset.UTC)
 
+internal fun testGoalRepositoryIdentity(repoRoot: Path): String =
+  goalRepositoryIdentity(repoRoot, TestRepositoryEnclosingRoot)
+
 internal fun goalWireMapUnderControls(
   fixtureName: String,
   controlState: GoalRunnerControlState,
   assertSnapshot: (IdeStatusResult) -> Unit,
 ): Map<String, Any?> {
   val fixture = gitRepoFixture(fixtureName)
-  val identity = goalRepositoryIdentity(fixture)
-  val service = service(
+  val identity = testGoalRepositoryIdentity(fixture)
+  val service = ideStatusService(
     goalOnlyDatabase(),
     manifestStore = StubGoalManifestStore(
       goalManifestState(fixture, identity, childWorkflowId = "w-child")
@@ -189,13 +197,13 @@ internal fun goalManifestState(fixture: Path, identity: String, childWorkflowId:
     repoRoot = fixture,
   )
 
-internal fun service(
+internal fun ideStatusService(
   database: TrackingDatabase,
   manifestStore: GoalRunnerManifestStore = EmptyManifestStore,
   outcomeStore: GoalRunnerWorkflowOutcomeStore = EmptyOutcomeStore,
 ): IdeStatusService {
   val snapshotValidator = object : WorkflowSnapshotValidator {
-    override fun validate(snapshot: Map<String, Any?>, slug: String) = Unit
+    override fun validate(snapshot: WorkflowStateSnapshot, slug: String) = Unit
   }
   val phaseRecorder = featureTaskRuntimePhaseRecorder(
     database,
@@ -213,12 +221,11 @@ internal fun service(
   val projector = IdeStatusProjector(
     workflowSnapshotValidator = snapshotValidator,
     goalRunnerStatusService = testGoalRunnerStatusService(
-      goalRunnerStatusServiceDeps(
-        manifestStore = manifestStore,
-        outcomeStore = outcomeStore,
-        phaseRecorder = phaseRecorder,
-      ).copy(
-        clock = ideStatusClock,
+      manifestStore = manifestStore,
+      outcomeStore = outcomeStore,
+      phaseRecorder = phaseRecorder,
+      clock = ideStatusClock,
+      ports = GoalRunnerStatusTestPorts(
         runtimeStatusService = runtimeStatusService,
       ),
     ),
@@ -330,7 +337,7 @@ internal fun blockedQualityGateChildArtifacts(
 }
 
 internal fun phaseRecordsArtifactsJson(vararg records: Pair<String, Map<String, Any?>>): String =
-  JsonSupport.mapToJsonString(
+  JsonCodec.mapToJsonString(
     mapOf(FEATURE_TASK_RUNTIME_PHASE_RECORDS_ARTIFACT_KEY to records.toMap()),
   )
 
@@ -398,26 +405,26 @@ internal class TrackingDatabase(
   var writeCalls: Int = 0
     internal set
 
-  override fun resolveDbPath(dbOverride: String?): Path = Path.of("/fake/ide-status.db")
+  override fun resolveDbPath(): Path = Path.of("/fake/ide-status.db")
 
-  override fun databaseExists(dbOverride: String?): Boolean = exists
+  override fun databaseExists(): Boolean = exists
 
-  override fun <T> read(dbOverride: String?, block: (UnitOfWork) -> T): T {
+  override fun <T> read(block: (UnitOfWork) -> T): T {
     readCalls += 1
     return block(unitOfWork())
   }
 
-  override fun <T> selfManagedWrite(dbOverride: String?, block: (UnitOfWork) -> T): T {
+  override fun <T> selfManagedWrite(block: (UnitOfWork) -> T): T {
     writeCalls += 1
     return block(unitOfWork())
   }
 
-  override fun <T> transaction(dbOverride: String?, block: (UnitOfWork) -> T): T {
+  override fun <T> transaction(block: (UnitOfWork) -> T): T {
     writeCalls += 1
     return block(unitOfWork())
   }
 
-  internal fun unitOfWork(): UnitOfWork = object : UnitOfWork {
+  internal fun unitOfWork(): UnitOfWork = object : UnitOfWorkDefaults() {
     override val dbPath: Path = Path.of("/fake/ide-status.db")
     override val workflowStates = workflows
     override val workList: WorkListRepository = object : WorkListRepository {
@@ -520,10 +527,10 @@ internal class StubGoalManifestStore(
   internal val state: GoalRunnerManifestState,
   internal val planning: GoalPlanningStatusSnapshot? = null,
   internal val lease: GoalRunnerExecutionLease? = null,
-) : GoalRunnerManifestStore {
-  override fun executionLease(parentWorkflowId: String, dbPathOverride: String?): GoalRunnerExecutionLease? = lease
+) : GoalRunnerManifestStoreDefaults() {
+  override fun executionLease(parentWorkflowId: String): GoalRunnerExecutionLease? = lease
 
-  override fun loadByIssueKey(issueKey: String, dbPathOverride: String?, repoRoot: Path?): GoalRunnerManifestState? =
+  override fun loadByIssueKey(issueKey: String, repoRoot: Path?): GoalRunnerManifestState? =
     state.takeIf { it.manifest.issueKey.equals(issueKey, ignoreCase = true) }
 
   override fun planningStatus(
@@ -531,73 +538,45 @@ internal class StubGoalManifestStore(
     orderedSubtaskIds: List<Int>,
     blockedSubtaskId: Int?,
     blockedReason: String?,
-    dbPathOverride: String?,
   ): GoalPlanningStatusSnapshot? = planning
 
-  override fun save(state: GoalRunnerManifestState, dbPathOverride: String?): GoalRunnerManifestState = state
+  override fun save(state: GoalRunnerManifestState): GoalRunnerManifestState = state
 
   override fun acquireExecutionLease(
     parentWorkflowId: String,
     lease: GoalRunnerExecutionLease,
     expectedOwnerToken: String?,
-    dbPathOverride: String?,
   ): Boolean = false
 
-  override fun heartbeatExecutionLease(
-    parentWorkflowId: String,
-    lease: GoalRunnerExecutionLease,
-    dbPathOverride: String?,
-  ): Boolean = false
+  override fun heartbeatExecutionLease(parentWorkflowId: String, lease: GoalRunnerExecutionLease): Boolean = false
 
-  override fun releaseExecutionLease(
-    parentWorkflowId: String,
-    ownerToken: String,
-    generation: Long,
-    dbPathOverride: String?,
-  ): Boolean = false
+  override fun releaseExecutionLease(parentWorkflowId: String, ownerToken: String, generation: Long): Boolean = false
 }
 
-internal object EmptyManifestStore : GoalRunnerManifestStore {
-  override fun loadByIssueKey(issueKey: String, dbPathOverride: String?, repoRoot: Path?): GoalRunnerManifestState? =
-    null
+internal object EmptyManifestStore : GoalRunnerManifestStoreDefaults() {
+  override fun loadByIssueKey(issueKey: String, repoRoot: Path?): GoalRunnerManifestState? = null
 
-  override fun save(state: GoalRunnerManifestState, dbPathOverride: String?): GoalRunnerManifestState = state
+  override fun save(state: GoalRunnerManifestState): GoalRunnerManifestState = state
 
   override fun acquireExecutionLease(
     parentWorkflowId: String,
     lease: GoalRunnerExecutionLease,
     expectedOwnerToken: String?,
-    dbPathOverride: String?,
   ): Boolean = false
 
-  override fun heartbeatExecutionLease(
-    parentWorkflowId: String,
-    lease: GoalRunnerExecutionLease,
-    dbPathOverride: String?,
-  ): Boolean = false
+  override fun heartbeatExecutionLease(parentWorkflowId: String, lease: GoalRunnerExecutionLease): Boolean = false
 
-  override fun releaseExecutionLease(
-    parentWorkflowId: String,
-    ownerToken: String,
-    generation: Long,
-    dbPathOverride: String?,
-  ): Boolean = false
+  override fun releaseExecutionLease(parentWorkflowId: String, ownerToken: String, generation: Long): Boolean = false
 }
 
 internal object EmptyOutcomeStore : GoalRunnerWorkflowOutcomeStore {
-  override fun terminalOutcome(
-    workflowId: String,
-    issueKey: String,
-    subtaskId: Int,
-    dbPathOverride: String?,
-  ): GoalRunnerStoredOutcome? = null
+  override fun terminalOutcome(workflowId: String, issueKey: String, subtaskId: Int): GoalRunnerStoredOutcome? = null
 
   override fun recoverAndPersistTerminalOutcome(
     workflowId: String,
     issueKey: String,
     subtaskId: Int,
     repoRoot: Path,
-    dbPathOverride: String?,
   ): GoalRunnerStoredOutcome? = null
 
   override fun recoverMissingResultPrefixOutput(
@@ -605,7 +584,6 @@ internal object EmptyOutcomeStore : GoalRunnerWorkflowOutcomeStore {
     issueKey: String,
     subtaskId: Int,
     output: Map<String, Any?>,
-    dbPathOverride: String?,
   ): GoalRunnerStoredOutcome? = null
 
   override fun reconcileAuthoritativeOutcomes(
@@ -613,7 +591,6 @@ internal object EmptyOutcomeStore : GoalRunnerWorkflowOutcomeStore {
     activeWorkflowIds: Set<String>,
     gate: GoalRunnerReconcileGate,
     repoRoot: Path?,
-    dbPathOverride: String?,
   ): Map<Int, GoalRunnerStoredOutcome> = emptyMap()
 
   override fun markBlocked(
@@ -621,52 +598,37 @@ internal object EmptyOutcomeStore : GoalRunnerWorkflowOutcomeStore {
     blockedReason: String,
     lastResumableStep: String,
     supervisionEvent: GoalRunnerSupervisionEvent?,
-    dbPathOverride: String?,
   ): String? = null
 
-  override fun progress(workflowId: String, dbPathOverride: String?): GoalRunnerWorkflowProgress? = null
+  override fun progress(workflowId: String): GoalRunnerWorkflowProgress? = null
 
-  override fun recordObservabilityEvent(
-    request: GoalRunnerObservabilityRecordRequest,
-    dbPathOverride: String?,
-  ): Boolean = false
+  override fun recordObservabilityEvent(request: GoalRunnerObservabilityRecordRequest): Boolean = false
 
-  override fun recordProgressEvent(request: GoalRunnerProgressEventRecordRequest, dbPathOverride: String?): Boolean =
-    false
+  override fun recordProgressEvent(request: GoalRunnerProgressEventRecordRequest): Boolean = false
 
-  override fun recordAttemptLedgerEntry(
-    request: GoalRunnerAttemptLedgerRecordRequest,
-    dbPathOverride: String?,
-  ): Boolean = false
+  override fun recordAttemptLedgerEntry(request: GoalRunnerAttemptLedgerRecordRequest): Boolean = false
 
   override fun recordWorkerSubtaskRequestOutcomes(
     workflowId: String,
     outcomes: List<GoalRunnerWorkerSubtaskRequestOutcome>,
-    dbPathOverride: String?,
   ): Boolean = false
 
-  override fun ledgerSequenceWatermarks(
-    issueKey: String,
-    dbPathOverride: String?,
-  ): GoalRunnerLedgerSequenceWatermarks = GoalRunnerLedgerSequenceWatermarks()
+  override fun ledgerSequenceWatermarks(issueKey: String): GoalRunnerLedgerSequenceWatermarks =
+    GoalRunnerLedgerSequenceWatermarks()
 
   override fun reopenBlockedPhaseForOperatorResume(
     workflowId: String,
     preferredPhaseId: String,
     reason: String,
-    dbPathOverride: String?,
   ): Boolean = false
 
-  override fun goalSubtaskReviewState(workflowId: String, dbPathOverride: String?): GoalSubtaskReviewState? = null
+  override fun goalSubtaskReviewState(workflowId: String): GoalSubtaskReviewState? = null
 
-  override fun unemittedGoalReviewPasses(
-    workflowId: String,
-    dbPathOverride: String?,
-  ): List<GoalSubtaskReviewPassResult> = emptyList()
+  override fun unemittedGoalReviewPasses(workflowId: String): List<GoalSubtaskReviewPassResult> = emptyList()
 
-  override fun acknowledgeGoalReviewPass(workflowId: String, passNumber: Int, dbPathOverride: String?): Boolean = false
+  override fun acknowledgeGoalReviewPass(workflowId: String, passNumber: Int): Boolean = false
 
-  override fun progressEvents(workflowId: String, dbPathOverride: String?): List<Map<String, Any?>> = emptyList()
+  override fun progressEvents(workflowId: String): List<Map<String, Any?>> = emptyList()
 
-  override fun childWorkflowLoopIterations(workflowId: String, dbPathOverride: String?): Map<String, Int> = emptyMap()
+  override fun childWorkflowLoopIterations(workflowId: String): Map<String, Int> = emptyMap()
 }

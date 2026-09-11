@@ -1,9 +1,9 @@
 package skillbill.application.workflow.model
 
-import skillbill.ports.goalrunner.runner.model.GoalObservabilityProgressInput as PProgressInput
-import skillbill.ports.goalrunner.runner.model.GoalObservabilityRuntimeEventInput as PRuntimeEventInput
-import skillbill.ports.goalrunner.runner.model.GoalObservabilityWorktreeActivity as PWorktreeActivity
-import skillbill.ports.workflow.persistence.model.WorkflowFamily as PWorkflowFamily
+import skillbill.goalrunner.model.GoalObservabilityProgressInput as PProgressInput
+import skillbill.goalrunner.model.GoalObservabilityRuntimeEventInput as PRuntimeEventInput
+import skillbill.goalrunner.model.GoalObservabilityWorktreeActivity as PWorktreeActivity
+import skillbill.ports.workflow.model.WorkflowFamily as PWorkflowFamily
 
 typealias WorkflowFamily = PWorkflowFamily
 typealias GoalObservabilityProgressInput = PProgressInput

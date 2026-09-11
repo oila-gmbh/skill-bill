@@ -36,7 +36,6 @@ data class GoalRunnerRepairRequest(
   val issueKey: String,
   val apply: Boolean = false,
   val subtaskId: Int? = null,
-  val dbPathOverride: String? = null,
   val repoRoot: Path? = null,
 ) {
   init {
@@ -66,7 +65,6 @@ data class GoalRunnerChildWedgeDiagnosisRequest(
   val subtaskId: Int,
   val subtasks: List<DecompositionSubtask>,
   val repoRoot: Path,
-  val dbPathOverride: String? = null,
 )
 
 data class GoalRunnerChildWedgeRepairRequest(
@@ -75,7 +73,6 @@ data class GoalRunnerChildWedgeRepairRequest(
   val subtaskId: Int,
   val wedgeClasses: List<GoalRunnerWedgeClass>,
   val repoRoot: Path,
-  val dbPathOverride: String? = null,
 )
 
 data class GoalRunnerChildRepairApplyRequest(

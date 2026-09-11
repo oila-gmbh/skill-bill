@@ -1,6 +1,6 @@
 package skillbill.ports.review.model
 
-import skillbill.contracts.JsonSupport
+import skillbill.contracts.JsonCodec
 import skillbill.error.InvalidReviewContextSchemaError
 import skillbill.review.context.model.ReviewEvidenceLimits
 import skillbill.review.context.model.ReviewExpansionRecord
@@ -42,7 +42,7 @@ internal object GovernedReviewEvidenceCodecWireParsing {
     ReviewEvidenceLimits.field(value)
     return value
   }
-  private fun asMap(raw: Any?): Map<String, Any?> = raw?.let(JsonSupport::anyToStringAnyMap)
+  private fun asMap(raw: Any?): Map<String, Any?> = raw?.let(JsonCodec::anyToStringAnyMap)
     ?: throw InvalidReviewContextSchemaError("review-evidence", "Each read selector must be an object.")
 
   private fun optionalString(source: Map<String, Any?>, key: String): String? = source[key]?.let { value ->

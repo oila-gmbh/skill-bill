@@ -1,4 +1,4 @@
-package skillbill.contracts.workflow
+package skillbill.infrastructure.fs.contracts.workflow
 
 import org.yaml.snakeyaml.Yaml
 import skillbill.contracts.goalplanning.GoalVerificationBoundaryCaps

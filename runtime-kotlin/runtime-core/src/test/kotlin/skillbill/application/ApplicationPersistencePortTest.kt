@@ -32,7 +32,7 @@ class ApplicationPersistencePortTest {
     val database = FakeDatabaseSessionFactory(learnings = learningRepository)
     val service = LearningService(database)
 
-    val result = service.list(status = "active", dbOverride = null)
+    val result = service.list(status = "active")
 
     assertEquals(listOf("read"), database.calls)
     assertEquals("/fake/metrics.db", result.dbPath)
@@ -61,7 +61,6 @@ class ApplicationPersistencePortTest {
           fromRun = "rvw-1",
           fromFinding = "F-1",
         ),
-        dbOverride = null,
       )
 
     assertEquals(listOf("transaction"), database.calls)
@@ -86,7 +85,6 @@ class ApplicationPersistencePortTest {
           fromRun = "rvw-1",
           fromFinding = "F-1",
         ),
-        dbOverride = null,
       )
     }
   }
@@ -117,7 +115,6 @@ class ApplicationPersistencePortTest {
         runId = "rvw-1",
         decisions = listOf("all fix - patched"),
         listOnly = false,
-        dbOverride = null,
       )
 
     assertEquals(listOf("transaction"), database.calls)
@@ -134,7 +131,7 @@ class ApplicationPersistencePortTest {
     val reviewRepository = FakeReviewRepository()
     val database = FakeDatabaseSessionFactory(reviews = reviewRepository)
 
-    laneReviewService(database, reviewText(findings = true)).importReview(input = "-", dbOverride = null)
+    laneReviewService(database, reviewText(findings = true)).importReview(input = "-")
 
     val lanes = reviewRepository.savedReviews.single().planLanes
     assertEquals(
@@ -143,8 +140,8 @@ class ApplicationPersistencePortTest {
     )
     assertEquals("kmp", lanes.first().packSlug)
     assertEquals("architecture", lanes.first().area)
-    assertEquals("resolved", lanes.first().resolutionState)
-    assertEquals("unresolved", lanes.last().resolutionState)
+    assertEquals("resolved", lanes.first().resolutionState.wireValue)
+    assertEquals("unresolved", lanes.last().resolutionState.wireValue)
   }
 
   // AC-002/AC-005/AC-006: a run that produced no findings still records its lanes and its terminal
@@ -154,12 +151,15 @@ class ApplicationPersistencePortTest {
     val reviewRepository = FakeReviewRepository()
     val database = FakeDatabaseSessionFactory(reviews = reviewRepository)
 
-    laneReviewService(database, reviewText(findings = false)).importReview(input = "-", dbOverride = null)
+    laneReviewService(database, reviewText(findings = false)).importReview(input = "-")
 
     val saved = reviewRepository.savedReviews.single()
     assertEquals(emptyList(), saved.findings)
     assertEquals(listOf("bill-kmp-code-review-architecture", "narrated-only"), saved.planLanes.map { it.laneSkillName })
-    assertEquals(listOf<Pair<String, String?>>("rvw-lane-app-001" to "inline"), reviewRepository.terminalStateWrites)
+    assertEquals(
+      listOf<Pair<String, String?>>("rvw-lane-app-001" to "inline"),
+      reviewRepository.terminalStateWrites,
+    )
   }
 
   @Test
@@ -179,12 +179,15 @@ class ApplicationPersistencePortTest {
       NoopRuntimeDiagnostics,
     )
 
-    service.importReview(input = "-", dbOverride = null)
+    service.importReview(input = "-")
 
     val lanes = reviewRepository.savedReviews.single().planLanes
     assertEquals(listOf("architecture", "narrated-only"), lanes.map { it.laneSkillName })
-    assertTrue(lanes.all { it.resolutionState == "unresolved" })
-    assertEquals(listOf<Pair<String, String?>>("rvw-lane-app-001" to "inline"), reviewRepository.terminalStateWrites)
+    assertTrue(lanes.all { it.resolutionState.wireValue == "unresolved" })
+    assertEquals(
+      listOf<Pair<String, String?>>("rvw-lane-app-001" to "inline"),
+      reviewRepository.terminalStateWrites,
+    )
   }
 
   // A partially staged catalog — the routed pack composes a baseline layer that is not installed —
@@ -206,12 +209,15 @@ class ApplicationPersistencePortTest {
       NoopRuntimeDiagnostics,
     )
 
-    service.importReview(input = "-", dbOverride = null)
+    service.importReview(input = "-")
 
     val lanes = reviewRepository.savedReviews.single().planLanes
     assertEquals(listOf("architecture", "narrated-only"), lanes.map { it.laneSkillName })
-    assertTrue(lanes.all { it.resolutionState == "unresolved" })
-    assertEquals(listOf<Pair<String, String?>>("rvw-lane-app-001" to "inline"), reviewRepository.terminalStateWrites)
+    assertTrue(lanes.all { it.resolutionState.wireValue == "unresolved" })
+    assertEquals(
+      listOf<Pair<String, String?>>("rvw-lane-app-001" to "inline"),
+      reviewRepository.terminalStateWrites,
+    )
   }
 
   @Test
@@ -249,7 +255,7 @@ class ApplicationPersistencePortTest {
         ),
       )
 
-    val result = service.sync(dbOverride = null)
+    val result = service.sync()
 
     assertEquals(listOf("transaction", "read", "read", "transaction", "read", "read"), database.calls)
     assertEquals(listOf("anonymous"), reconciliationRepository.levels)
@@ -293,7 +299,7 @@ class ApplicationPersistencePortTest {
         ),
       )
 
-    service.autoSync(dbOverride = null)
+    service.autoSync()
 
     assertEquals("transaction", database.calls.first())
     assertEquals(listOf("anonymous"), reconciliationRepository.levels)
@@ -334,7 +340,7 @@ class ApplicationPersistencePortTest {
         ),
       )
 
-    service.autoSync(dbOverride = null)
+    service.autoSync()
 
     assertEquals("transaction", database.calls.first())
     assertEquals(listOf(RUNTIME_EXCEPTION_EVENT), outboxRepository.enqueuedEventNames)
@@ -345,12 +351,12 @@ class ApplicationPersistencePortTest {
   fun `manual sync forces reconciliation each flush while auto sync keeps the periodic cadence guard`() {
     val manualReconciliation = RecordingTelemetryReconciliationRepository()
     telemetrySyncService(manualReconciliation).run {
-      sync(dbOverride = null)
-      sync(dbOverride = null)
+      sync()
+      sync()
     }
 
     val autoReconciliation = RecordingTelemetryReconciliationRepository()
-    telemetrySyncService(autoReconciliation).autoSync(dbOverride = null)
+    telemetrySyncService(autoReconciliation).autoSync()
 
     assertEquals(listOf(0L, 0L), manualReconciliation.cadenceSeconds)
     assertEquals(listOf(100, 100), manualReconciliation.requests.map { it.maximumBatchSize })

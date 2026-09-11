@@ -1,0 +1,166 @@
+package skillbill.infrastructure.fs.nativeagent
+
+import skillbill.infrastructure.fs.nativeagent.composition.NativeAgentSource
+import skillbill.infrastructure.fs.nativeagent.rendering.NativeAgentProvider
+import kotlin.test.Test
+import kotlin.test.assertEquals
+
+class NativeAgentRenderSnapshotTest {
+  private val source = NativeAgentSource(
+    name = "bill-snapshot-demo",
+    description = "Snapshot demo agent.",
+    body = "# Snapshot Demo\n\nFirst line.\nSecond: line with colon.",
+  )
+
+  // Description that forces yamlNeedsQuoting + exercises the escape table
+  // (contains ": ", a literal newline, and a backslash).
+  private val quotedSource = NativeAgentSource(
+    name = "bill-snapshot-quoted",
+    description = "Edge: case\nwith back\\slash",
+    body = "# Snapshot Quoted\n\nBody line.",
+  )
+
+  @Test
+  fun `claude render is byte-exact`() {
+    val expected = """
+      ---
+      name: bill-snapshot-demo
+      description: Snapshot demo agent.
+      ---
+
+      # Snapshot Demo
+
+      First line.
+      Second: line with colon.
+
+    """.trimIndent()
+
+    assertEquals(expected, NativeAgentProvider.Claude.render(source))
+  }
+
+  @Test
+  fun `codex render is byte-exact`() {
+    val expected = """
+      name = "bill-snapshot-demo"
+      description = "Snapshot demo agent."
+
+      developer_instructions = ${'"'}${'"'}${'"'}
+      # Snapshot Demo
+
+      First line.
+      Second: line with colon.
+      ${'"'}${'"'}${'"'}
+
+    """.trimIndent()
+
+    assertEquals(expected, NativeAgentProvider.Codex.render(source))
+  }
+
+  @Test
+  fun `junie render is byte-exact`() {
+    val expected = """
+      ---
+      name: bill-snapshot-demo
+      description: Snapshot demo agent.
+      ---
+
+      # Snapshot Demo
+
+      First line.
+      Second: line with colon.
+
+    """.trimIndent()
+
+    assertEquals(expected, NativeAgentProvider.Junie.render(source))
+  }
+
+  @Test
+  fun `claude render is byte-exact when description forces yaml quoting`() {
+    val expected = """
+      ---
+      name: bill-snapshot-quoted
+      description: "Edge: case\nwith back\\slash"
+      ---
+
+      # Snapshot Quoted
+
+      Body line.
+
+    """.trimIndent()
+
+    assertEquals(expected, NativeAgentProvider.Claude.render(quotedSource))
+  }
+
+  @Test
+  fun `codex render is byte-exact when description has special chars`() {
+    val expected = """
+      name = "bill-snapshot-quoted"
+      description = "Edge: case\nwith back\\slash"
+
+      developer_instructions = ${'"'}${'"'}${'"'}
+      # Snapshot Quoted
+
+      Body line.
+      ${'"'}${'"'}${'"'}
+
+    """.trimIndent()
+
+    assertEquals(expected, NativeAgentProvider.Codex.render(quotedSource))
+  }
+
+  @Test
+  fun `junie render is byte-exact when description forces yaml quoting`() {
+    val expected = """
+      ---
+      name: bill-snapshot-quoted
+      description: "Edge: case\nwith back\\slash"
+      ---
+
+      # Snapshot Quoted
+
+      Body line.
+
+    """.trimIndent()
+
+    assertEquals(expected, NativeAgentProvider.Junie.render(quotedSource))
+  }
+
+  @Test
+  fun `cursor render is byte-exact`() {
+    // This source declares no toolset, so there is no capability to project and Cursor emits
+    // name+description only.
+    val expected = """
+      ---
+      name: bill-snapshot-demo
+      description: Snapshot demo agent.
+      ---
+
+      # Snapshot Demo
+
+      First line.
+      Second: line with colon.
+
+    """.trimIndent()
+
+    assertEquals(expected, NativeAgentProvider.Cursor.render(source))
+    assertEquals("bill-snapshot-demo.md", NativeAgentProvider.Cursor.fileName("bill-snapshot-demo"))
+  }
+
+  @Test
+  fun `cursor render is byte-exact when description forces yaml quoting`() {
+    // Cursor shares yamlScalar with Claude; description line must match and round-trip.
+    val expected = """
+      ---
+      name: bill-snapshot-quoted
+      description: "Edge: case\nwith back\\slash"
+      ---
+
+      # Snapshot Quoted
+
+      Body line.
+
+    """.trimIndent()
+
+    assertEquals(expected, NativeAgentProvider.Cursor.render(quotedSource))
+  }
+}

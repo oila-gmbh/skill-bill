@@ -1,16 +1,16 @@
 package skillbill.infrastructure.fs
 
 import me.tatarka.inject.annotations.Inject
-import skillbill.nativeagent.composition.NativeAgentCompositionContext
+import skillbill.infrastructure.fs.nativeagent.composition.NativeAgentCompositionContext
+import skillbill.infrastructure.fs.scaffold.authoring.renderAuthoredContentBody
+import skillbill.infrastructure.fs.scaffold.runtime.ReleaseRefMetadata
+import skillbill.infrastructure.fs.scaffold.runtime.RepoValidationIssue
+import skillbill.infrastructure.fs.scaffold.runtime.RepoValidationIssueSeverity
+import skillbill.infrastructure.fs.scaffold.runtime.RepoValidationReport
+import skillbill.infrastructure.fs.scaffold.runtime.RepoValidationRuntime
 import skillbill.ports.config.RepoLocalConfigPort
 import skillbill.ports.config.model.ReadRepoLocalConfigRequest
 import skillbill.ports.validation.RepoValidationGateway
-import skillbill.scaffold.authoring.renderAuthoredContentBody
-import skillbill.scaffold.runtime.ReleaseRefMetadata
-import skillbill.scaffold.runtime.RepoValidationIssue
-import skillbill.scaffold.runtime.RepoValidationIssueSeverity
-import skillbill.scaffold.runtime.RepoValidationReport
-import skillbill.scaffold.runtime.RepoValidationRuntime
 import java.nio.file.Path
 import skillbill.ports.validation.model.ReleaseRefMetadata as PortReleaseRefMetadata
 import skillbill.ports.validation.model.RepoValidationIssue as PortRepoValidationIssue

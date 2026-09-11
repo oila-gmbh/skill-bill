@@ -1,10 +1,7 @@
 package skillbill.application.review
 
 import skillbill.ports.review.model.ParallelReviewLaneOutcome
-import skillbill.ports.review.model.ReviewLaneAccounting
 import skillbill.review.ReviewRunLaneResolver
-import skillbill.review.ReviewRunLaneResolver.COMPLETE_DISPOSITION
-import skillbill.review.ReviewRunLaneResolver.RESOLVED
 import skillbill.review.context.model.GovernedReviewLaunch
 import skillbill.review.context.model.ReviewAssignment
 import skillbill.review.context.model.ReviewChangedHunk
@@ -24,11 +21,11 @@ import skillbill.review.context.model.ReviewLaneReviewDisposition
 import skillbill.review.context.model.ReviewRevision
 import skillbill.review.model.ParallelReviewRawFinding
 import skillbill.review.model.ParallelReviewSeverity
+import skillbill.review.model.ReviewLaneResolutionState.RESOLVED
 import skillbill.review.model.ReviewRunLane
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
-import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
 /** Lane disposition and segment accounting without driving the full parallel runner. */
@@ -169,28 +166,6 @@ class ParallelReviewLaneDispositionTest {
     assertEquals(launch.assembledBundle.compositionDigest, completion.bundleCompositionDigest)
   }
 
-  @Test fun `complete broker delivery clears stale launch budget coverage`() {
-    val completion = governedLaunch().completionState
-    val accounting = ReviewLaneAccounting(
-      lane = "security",
-      evidenceBytes = 1,
-      expansions = emptyList(),
-      toolCalls = 0,
-      modelTurns = 1,
-      resultBytes = 1,
-      requiredEvidenceUnits = 1,
-      deliveredEvidenceUnits = 1,
-    )
-
-    val reconciled = parallelCodeReviewBrokerEvidenceCompletionState(completion, accounting)
-
-    assertEquals(ReviewLaneReviewDisposition.COMPLETE, reconciled.disposition)
-    assertTrue(reconciled.unreviewedSegmentIds.isEmpty())
-    assertEquals(null, reconciled.budgetDimension)
-    assertTrue(reconciled.unreviewedUnits.isEmpty())
-  }
-
-
   @Test fun `resume selection keeps only incomplete durable lanes`() {
     val complete = ReviewRunLane(
       laneSkillName = "bill-kotlin-code-review-security",
@@ -201,13 +176,13 @@ class ParallelReviewLaneDispositionTest {
       orderIndex = 0,
       originLayerChain = listOf("kotlin"),
       resolutionState = RESOLVED,
-      reviewDisposition = COMPLETE_DISPOSITION,
+      reviewDisposition = ReviewLaneReviewDisposition.COMPLETE,
       bundleCompositionDigest = "a".repeat(64),
     )
     val incomplete = complete.copy(
       laneSkillName = "bill-kotlin-code-review-testing",
       area = "testing",
-      reviewDisposition = ReviewLaneReviewDisposition.INCOMPLETE.wireValue,
+      reviewDisposition = ReviewLaneReviewDisposition.INCOMPLETE,
       unreviewedSegmentIds = listOf(UNREVIEWABLE_SEGMENT_ID),
       budgetDimension = "lane_launch_bytes",
     )

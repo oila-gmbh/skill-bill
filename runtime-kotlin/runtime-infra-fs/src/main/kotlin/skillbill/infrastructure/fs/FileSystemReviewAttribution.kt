@@ -1,13 +1,13 @@
 package skillbill.infrastructure.fs
 
 import me.tatarka.inject.annotations.Inject
+import skillbill.infrastructure.fs.scaffold.platformpack.declaredCodeReviewSkillNames
+import skillbill.infrastructure.fs.scaffold.platformpack.discoverPlatformPackManifests
 import skillbill.ports.review.ReviewAttributionPort
 import skillbill.ports.scaffold.install.InstalledPlatformPackCatalogPort
 import skillbill.review.plan.ReviewLaunchPlanPolicy
 import skillbill.review.plan.model.ReviewLaunchPlan
 import skillbill.scaffold.model.PlatformManifest
-import skillbill.scaffold.platformpack.declaredCodeReviewSkillNames
-import skillbill.scaffold.platformpack.discoverPlatformPackManifests
 import java.nio.file.Files
 import java.nio.file.Path
 

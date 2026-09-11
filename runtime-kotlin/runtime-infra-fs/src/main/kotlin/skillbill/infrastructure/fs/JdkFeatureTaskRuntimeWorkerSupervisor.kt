@@ -106,9 +106,6 @@ class JdkFeatureTaskRuntimeWorkerSupervisor(
     ownership: FeatureTaskRuntimeWorkerOwnership,
     local: FeatureTaskRuntimeProcessIdentity,
   ): FeatureTaskRuntimeProcessInspection {
-    val handle = ProcessHandle.of(ownership.pid).orElse(null)
-      ?: return FeatureTaskRuntimeProcessInspection.NotRunning
-
     if (ownership.hostIdentity != local.hostIdentity) {
       return FeatureTaskRuntimeProcessInspection.OwnershipMismatch(
         "Worker ownership belongs to a different host.",
@@ -118,6 +115,8 @@ class JdkFeatureTaskRuntimeWorkerSupervisor(
       return FeatureTaskRuntimeProcessInspection.NotRunning
     }
 
+    val handle = ProcessHandle.of(ownership.pid).orElse(null)
+      ?: return FeatureTaskRuntimeProcessInspection.NotRunning
     val birth = processBirthToken(handle)
     return when {
       birth == null ->

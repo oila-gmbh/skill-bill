@@ -7,7 +7,7 @@ import com.github.ajalt.clikt.parameters.options.option
 import me.tatarka.inject.annotations.Inject
 import skillbill.cli.kernel.DocumentedCliCommand
 
-internal fun ParameterHolder.dbPathOverrideOption() = option(
+internal fun ParameterHolder.databasePathOption() = option(
   "--db",
   help = "Optional SQLite path. Defaults to SKILL_BILL_DB or the standard local state path.",
 )
@@ -26,7 +26,7 @@ class SkillBillCommand(
     "scaffold governed skills, and inspect telemetry.",
 ) {
   init {
-    registerOption(dbPathOverrideOption())
+    registerOption(databasePathOption())
     registerOption(userHomeOverrideOption())
     completionOption()
     subcommands(commands.rootCommands)

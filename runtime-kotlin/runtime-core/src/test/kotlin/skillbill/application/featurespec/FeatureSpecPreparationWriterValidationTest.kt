@@ -2,9 +2,9 @@ package skillbill.application.featurespec
 
 import skillbill.application.decomposition.DecompositionManifestWriter
 import skillbill.application.decomposition.loadDecompositionManifest
-import skillbill.application.goalrunner.model.GoalRunnerStatusRequest
 import skillbill.di.RuntimeComponent
 import skillbill.di.create
+import skillbill.engine.goalrunner.model.GoalRunnerStatusRequest
 import skillbill.featurespec.model.FeatureSpecPreparationDecision
 import skillbill.featurespec.model.FeatureSpecPreparationMode
 import skillbill.featurespec.model.FeatureSpecSubtaskPreparation
@@ -30,11 +30,9 @@ class FeatureSpecPreparationWriterValidationTest {
   @Test
   fun `one subtask preparation writes schema valid manifest and is goal readable`() {
     val repoRoot = Files.createTempDirectory("skillbill-feature-spec-goal-readable")
-    val dbPath = repoRoot.resolve("metrics.db")
     val component =
       RuntimeComponent::class.create(
         RuntimeContext(
-          dbPathOverride = dbPath.toString(),
           environment = emptyMap(),
           userHome = repoRoot,
         ),
@@ -52,7 +50,6 @@ class FeatureSpecPreparationWriterValidationTest {
       GoalRunnerStatusRequest(
         issueKey = "SKILL-59",
         invokedAgentId = "codex",
-        dbPathOverride = dbPath.toString(),
         repoRoot = repoRoot,
       ),
     )

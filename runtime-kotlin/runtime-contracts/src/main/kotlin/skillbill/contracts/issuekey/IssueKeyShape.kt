@@ -4,7 +4,7 @@ import org.yaml.snakeyaml.Yaml
 import skillbill.error.InvalidIssueKeySchemaError
 
 const val ISSUE_KEY_SCHEMA_ID: String = "https://skill-bill.dev/contracts/issue-key-schema.yaml"
-const val ISSUE_KEY_SCHEMA_RESOURCE: String = "skillbill/contracts/issue-key-schema.yaml"
+const val ISSUE_KEY_SCHEMA_RESOURCE: String = "skillbill/infrastructure/fs/contracts/issue-key-schema.yaml"
 const val ISSUE_KEY_SCHEMA_REPO_PATH: String = "orchestration/contracts/issue-key-schema.yaml"
 
 val MAX_ISSUE_KEY_LENGTH: Int get() = IssueKeyShape.maxLength

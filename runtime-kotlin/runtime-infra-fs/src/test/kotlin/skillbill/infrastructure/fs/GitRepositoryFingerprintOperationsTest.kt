@@ -1,15 +1,15 @@
 package skillbill.infrastructure.fs
 
 import skillbill.ports.workflow.gitops.NoopWorkflowGitOperations
-import skillbill.ports.workflow.gitops.WorkflowGitOperations
+import skillbill.ports.workflow.gitops.model.WorkflowGitOperationResult
 import skillbill.ports.workflow.gitops.repositoryFingerprint
 import skillbill.workflow.taskruntime.model.MAX_REPOSITORY_FINGERPRINT_LENGTH
 import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
+import kotlin.test.assertNotEquals
 import kotlin.test.assertTrue
 
 class GitRepositoryFingerprintOperationsTest {
@@ -23,9 +23,9 @@ class GitRepositoryFingerprintOperationsTest {
     Files.writeString(repoRoot.resolve("tracked.txt"), "base\nchanged\nagain\n")
     val later = operations.repositoryFingerprint(repoRoot)
 
-    assertTrue(before.ok, before.error)
-    assertTrue(after.ok, after.error)
-    assertTrue(later.ok, later.error)
+    assertTrue(before is WorkflowGitOperationResult.Ok, before.error)
+    assertTrue(after is WorkflowGitOperationResult.Ok, after.error)
+    assertTrue(later is WorkflowGitOperationResult.Ok, later.error)
     assertFalse(before.value == after.value)
     assertFalse(after.value == later.value)
     assertEquals(later.value, operations.repositoryFingerprint(repoRoot).value)
@@ -45,7 +45,7 @@ class GitRepositoryFingerprintOperationsTest {
 
     val fingerprint = GitWorkflowGitOperations().repositoryFingerprint(repoRoot)
 
-    assertTrue(fingerprint.ok, fingerprint.error)
+    assertTrue(fingerprint is WorkflowGitOperationResult.Ok, fingerprint.error)
     assertTrue(
       fingerprint.value.orEmpty().length <= MAX_REPOSITORY_FINGERPRINT_LENGTH,
       fingerprint.value.orEmpty(),
@@ -59,7 +59,7 @@ class GitRepositoryFingerprintOperationsTest {
 
     val fingerprint = GitWorkflowGitOperations().repositoryFingerprint(repoRoot)
 
-    assertTrue(fingerprint.ok, fingerprint.error)
+    assertTrue(fingerprint is WorkflowGitOperationResult.Ok, fingerprint.error)
   }
 
   @Test
@@ -73,8 +73,8 @@ class GitRepositoryFingerprintOperationsTest {
     Files.writeString(outside, "outside-two\n")
     val after = operations.repositoryFingerprint(repoRoot)
 
-    assertTrue(before.ok, before.error)
-    assertTrue(after.ok, after.error)
+    assertTrue(before is WorkflowGitOperationResult.Ok, before.error)
+    assertTrue(after is WorkflowGitOperationResult.Ok, after.error)
     assertEquals(before.value, after.value)
   }
 
@@ -88,8 +88,8 @@ class GitRepositoryFingerprintOperationsTest {
     Files.write(large, ByteArray(3 * 1024 * 1024) { 1 })
     val after = operations.repositoryFingerprint(repoRoot)
 
-    assertTrue(before.ok, before.error)
-    assertTrue(after.ok, after.error)
+    assertTrue(before is WorkflowGitOperationResult.Ok, before.error)
+    assertTrue(after is WorkflowGitOperationResult.Ok, after.error)
     assertFalse(before.value == after.value)
   }
 
@@ -102,16 +102,17 @@ class GitRepositoryFingerprintOperationsTest {
 
     val fingerprint = GitWorkflowGitOperations().repositoryFingerprint(repoRoot)
 
-    assertTrue(fingerprint.ok, fingerprint.error)
+    assertTrue(fingerprint is WorkflowGitOperationResult.Ok, fingerprint.error)
   }
 
   @Test
-  fun `repository fingerprint has no silent fallback for adapters that do not implement it`() {
-    val repoRoot = Files.createTempDirectory("skillbill-fingerprint-missing")
-    val withoutFingerprint = object : WorkflowGitOperations by NoopWorkflowGitOperations {}
+  fun `repository fingerprint comes from the git adapter, never a stand-in default`() {
+    val repoRoot = initRepo("skillbill-fingerprint-adapter")
 
-    assertFailsWith<IllegalStateException> { withoutFingerprint.repositoryFingerprint(repoRoot) }
-    assertTrue(NoopWorkflowGitOperations.repositoryFingerprint(repoRoot).ok)
+    val fingerprint = GitWorkflowGitOperations().repositoryFingerprint(repoRoot)
+
+    assertTrue(fingerprint is WorkflowGitOperationResult.Ok, fingerprint.error)
+    assertNotEquals(NoopWorkflowGitOperations.repositoryFingerprint(repoRoot).value, fingerprint.value)
   }
 
   private fun initRepo(prefix: String): Path {

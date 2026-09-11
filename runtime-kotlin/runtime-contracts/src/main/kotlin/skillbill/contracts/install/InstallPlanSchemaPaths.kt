@@ -36,7 +36,7 @@ object InstallPlanSchemaPaths {
 
   /** Classpath resource path where runtime-contracts bundles the schema for runtime loads. */
   const val CLASSPATH_RESOURCE: String =
-    "skillbill/contracts/install-plan-schema.yaml"
+    "skillbill/infrastructure/fs/contracts/install-plan-schema.yaml"
 
   /**
    * SKILL-48 Subtask 2b (mirrors SKILL-47 C7): expected value of the

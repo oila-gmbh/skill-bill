@@ -1,8 +1,7 @@
 package skillbill.application
 
-import skillbill.application.goalplanning.GoalPlanningPreparationCheckpoint
-import skillbill.application.goalplanning.sha256HexUtf8
 import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_CONTRACT_VERSION
+import skillbill.engine.goalplanning.GoalPlanningPreparationCheckpoint
 import skillbill.error.IncompatibleGoalPlanningPreparationRecoveryError
 import skillbill.error.InvalidFeatureTaskRuntimePhaseOutputSchemaError
 import skillbill.error.InvalidGoalPlanningPreparationSchemaError
@@ -17,6 +16,7 @@ import skillbill.ports.goalrunner.model.GoalPlanningPreparationState
 import skillbill.ports.goalrunner.model.GoalSubtaskPlanCheckpoint
 import skillbill.ports.goalrunner.model.GovernedGoalSubtaskDescriptor
 import skillbill.ports.goalrunner.model.SharedGoalPreplanCheckpoint
+import skillbill.text.sha256HexUtf8
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutputRepairOperation
 import java.nio.file.Files
 import kotlin.test.Test
@@ -35,8 +35,8 @@ class GoalPlanningPreparationCheckpointTest {
     val shared = validShared()
     val plan = validPlan()
 
-    harness.checkpoint.checkpointSharedPreplan(shared, harness.dbOverride)
-    harness.checkpoint.checkpointSubtaskPlan(plan, harness.dbOverride)
+    harness.checkpoint.checkpointSharedPreplan(shared)
+    harness.checkpoint.checkpointSubtaskPlan(plan)
 
     assertEquals(shared.preplanPayload, harness.readShared()?.preplanPayload)
     assertEquals(plan.planPayload, harness.readPlan()?.planPayload)
@@ -49,8 +49,8 @@ class GoalPlanningPreparationCheckpointTest {
     val malformedShared = validShared(payload = validShared().preplanPayload + "}")
     val malformedPlan = validPlan(payload = validPlan().planPayload + "}")
 
-    harness.checkpoint.checkpointSharedPreplan(malformedShared, harness.dbOverride)
-    harness.checkpoint.checkpointSubtaskPlan(malformedPlan, harness.dbOverride)
+    harness.checkpoint.checkpointSharedPreplan(malformedShared)
+    harness.checkpoint.checkpointSubtaskPlan(malformedPlan)
 
     val storedShared = requireNotNull(harness.readShared())
     val storedPlan = requireNotNull(harness.readPlan())
@@ -80,7 +80,7 @@ class GoalPlanningPreparationCheckpointTest {
     val shared = validShared(payload = payloadJson(phaseId = "plan"))
 
     assertFailsWith<InvalidFeatureTaskRuntimePhaseOutputSchemaError> {
-      harness.checkpoint.checkpointSharedPreplan(shared, harness.dbOverride)
+      harness.checkpoint.checkpointSharedPreplan(shared)
     }
     assertNull(harness.readShared())
   }
@@ -91,7 +91,7 @@ class GoalPlanningPreparationCheckpointTest {
     val shared = validShared(payload = payloadJson(phaseId = "preplan", contractVersion = "9.9"))
 
     assertFailsWith<InvalidFeatureTaskRuntimePhaseOutputSchemaError> {
-      harness.checkpoint.checkpointSharedPreplan(shared, harness.dbOverride)
+      harness.checkpoint.checkpointSharedPreplan(shared)
     }
     assertNull(harness.readShared())
   }
@@ -102,7 +102,7 @@ class GoalPlanningPreparationCheckpointTest {
     val plan = validPlan(payload = payloadJson(phaseId = "plan", status = "queued"))
 
     assertFailsWith<InvalidFeatureTaskRuntimePhaseOutputSchemaError> {
-      harness.checkpoint.checkpointSubtaskPlan(plan, harness.dbOverride)
+      harness.checkpoint.checkpointSubtaskPlan(plan)
     }
     assertNull(harness.readPlan())
   }
@@ -113,7 +113,7 @@ class GoalPlanningPreparationCheckpointTest {
     val plan = validPlan(payload = payloadJson(phaseId = "plan", status = "blocked"))
 
     assertFailsWith<InvalidGoalPlanningPreparationSchemaError> {
-      harness.checkpoint.checkpointSubtaskPlan(plan, harness.dbOverride)
+      harness.checkpoint.checkpointSubtaskPlan(plan)
     }
     assertNull(harness.readPlan())
   }
@@ -124,7 +124,7 @@ class GoalPlanningPreparationCheckpointTest {
     val plan = validPlan(payload = payloadJson(phaseId = "plan", producedOutputsJson = "{}"))
 
     assertFailsWith<InvalidFeatureTaskRuntimePhaseOutputSchemaError> {
-      harness.checkpoint.checkpointSubtaskPlan(plan, harness.dbOverride)
+      harness.checkpoint.checkpointSubtaskPlan(plan)
     }
     assertNull(harness.readPlan())
   }
@@ -135,7 +135,7 @@ class GoalPlanningPreparationCheckpointTest {
     val plan = validPlan(subtaskId = 0)
 
     assertFailsWith<InvalidGoalPlanningPreparationSchemaError> {
-      harness.checkpoint.checkpointSubtaskPlan(plan, harness.dbOverride)
+      harness.checkpoint.checkpointSubtaskPlan(plan)
     }
     assertNull(harness.readPlan(subtaskId = 0))
   }
@@ -146,7 +146,7 @@ class GoalPlanningPreparationCheckpointTest {
     val plan = validPlan().copy(contractVersion = "0.1")
 
     assertFailsWith<InvalidGoalPlanningPreparationSchemaError> {
-      harness.checkpoint.checkpointSubtaskPlan(plan, harness.dbOverride)
+      harness.checkpoint.checkpointSubtaskPlan(plan)
     }
     assertNull(harness.readPlan())
   }
@@ -159,7 +159,7 @@ class GoalPlanningPreparationCheckpointTest {
       validShared(payload = payloadJson("preplan", producedOutputsJson = """{"notes":"legacy"}""")),
     )
 
-    assertNull(harness.checkpoint.findSharedPreplan(identity(), harness.dbOverride))
+    assertNull(harness.checkpoint.findSharedPreplan(identity()))
   }
 
   @Test
@@ -173,7 +173,6 @@ class GoalPlanningPreparationCheckpointTest {
       identity(),
       subtaskId = 1,
       governedSubSpecPath = descriptor().governedSubSpecPath,
-      dbOverride = harness.dbOverride,
     )
 
     // Reported missing, so the sweep re-produces it under the gate instead of wedging the goal.
@@ -188,10 +187,10 @@ class GoalPlanningPreparationCheckpointTest {
     )
     val regenerated = validShared()
 
-    harness.checkpoint.recheckpointSharedPreplan(regenerated, harness.dbOverride)
+    harness.checkpoint.recheckpointSharedPreplan(regenerated)
 
     assertEquals(regenerated.preplanPayload, harness.readShared()?.preplanPayload)
-    val gated = harness.checkpoint.findSharedPreplan(identity(), harness.dbOverride)
+    val gated = harness.checkpoint.findSharedPreplan(identity())
     assertEquals(regenerated.preplanPayload, gated?.preplanPayload)
   }
 
@@ -203,7 +202,7 @@ class GoalPlanningPreparationCheckpointTest {
     )
     val regenerated = validPlan()
 
-    harness.checkpoint.recheckpointSubtaskPlan(regenerated, harness.dbOverride)
+    harness.checkpoint.recheckpointSubtaskPlan(regenerated)
 
     assertEquals(regenerated.planPayload, harness.readPlan()?.planPayload)
   }
@@ -211,13 +210,13 @@ class GoalPlanningPreparationCheckpointTest {
   @Test
   fun `re-checkpointing a gate-satisfying record with different bytes still loud-fails as immutable`() {
     val harness = checkpointHarness()
-    harness.checkpoint.checkpointSharedPreplan(validShared(), harness.dbOverride)
+    harness.checkpoint.checkpointSharedPreplan(validShared())
     val otherProjection =
       """{"value":"A different preplan prose payload for refresh testing."}"""
     val different = validShared(payload = payloadJson("preplan", producedOutputsJson = otherProjection))
 
     assertFailsWith<IncompatibleGoalPlanningPreparationRecoveryError> {
-      harness.checkpoint.recheckpointSharedPreplan(different, harness.dbOverride)
+      harness.checkpoint.recheckpointSharedPreplan(different)
     }
   }
 
@@ -232,7 +231,6 @@ class GoalPlanningPreparationCheckpointTest {
       identity(),
       subtaskId = 1,
       governedSubSpecPath = descriptor().governedSubSpecPath,
-      dbOverride = harness.dbOverride,
     )
 
     assertEquals(descriptor().subSpecHash, stored?.subSpecHash)
@@ -254,20 +252,18 @@ class GoalPlanningPreparationCheckpointTest {
       identity(),
       listOf(descriptor()),
       provenance(),
-      harness.dbOverride,
     )
     assertFalse(wedged.sharedPreplanPrepared, "a projection-invalid preplan must read as not prepared")
     assertEquals(0, wedged.preparedPlanCount)
     assertEquals(1, wedged.firstMissingSubtaskId)
 
-    harness.checkpoint.recheckpointSharedPreplan(validShared(), harness.dbOverride)
-    harness.checkpoint.recheckpointSubtaskPlan(validPlan(), harness.dbOverride)
+    harness.checkpoint.recheckpointSharedPreplan(validShared())
+    harness.checkpoint.recheckpointSubtaskPlan(validPlan())
 
     val recovered = harness.checkpoint.recoveryProgress(
       identity(),
       listOf(descriptor()),
       provenance(),
-      harness.dbOverride,
     )
     assertTrue(recovered.sharedPreplanPrepared)
     assertEquals(1, recovered.preparedPlanCount)
@@ -280,7 +276,7 @@ class GoalPlanningPreparationCheckpointTest {
     val escape = validPlan(payload = payloadJson("plan", producedOutputsJson = MISSING_VALUE_PLAN_PROJECTION))
 
     val error = assertFailsWith<InvalidFeatureTaskRuntimePhaseOutputSchemaError> {
-      harness.checkpoint.checkpointSubtaskPlan(escape, harness.dbOverride)
+      harness.checkpoint.checkpointSubtaskPlan(escape)
     }
 
     assertContains(error.reason, "value")
@@ -289,7 +285,6 @@ class GoalPlanningPreparationCheckpointTest {
 
   private fun checkpointHarness(): CheckpointHarness {
     val tempDir = Files.createTempDirectory("goal-planning-checkpoint")
-    val dbOverride = tempDir.resolve("metrics.db").toString()
     val database = SQLiteDatabaseSessionFactory(EnvironmentContext(environment = emptyMap(), userHome = tempDir))
     val checkpoint = GoalPlanningPreparationCheckpoint(
       database = database,
@@ -297,31 +292,30 @@ class GoalPlanningPreparationCheckpointTest {
       phaseOutputValidator = FeatureTaskRuntimePhaseOutputValidatorAdapter(),
       planningProjectionValidator = FeatureTaskRuntimePlanningProjectionValidatorAdapter(),
     )
-    return CheckpointHarness(checkpoint, database, dbOverride)
+    return CheckpointHarness(checkpoint, database)
   }
 
   private data class CheckpointHarness(
     val checkpoint: GoalPlanningPreparationCheckpoint,
     private val database: SQLiteDatabaseSessionFactory,
-    val dbOverride: String,
   ) {
     fun withShared(): CheckpointHarness = apply {
-      checkpoint.checkpointSharedPreplan(validShared(), dbOverride)
+      checkpoint.checkpointSharedPreplan(validShared())
     }
 
     // Bypasses the write gate to reproduce a record persisted before the gate existed.
     fun storeRawShared(checkpoint: SharedGoalPreplanCheckpoint) {
-      database.selfManagedWrite(dbOverride) { it.goalPlanningPreparations.checkpointSharedPreplan(checkpoint) }
+      database.selfManagedWrite { it.goalPlanningPreparations.checkpointSharedPreplan(checkpoint) }
     }
 
     fun storeRawPlan(plan: GoalSubtaskPlanCheckpoint) {
-      database.selfManagedWrite(dbOverride) { it.goalPlanningPreparations.checkpointSubtaskPlan(plan) }
+      database.selfManagedWrite { it.goalPlanningPreparations.checkpointSubtaskPlan(plan) }
     }
 
     fun readShared(): SharedGoalPreplanCheckpoint? =
-      database.read(dbOverride) { it.goalPlanningPreparations.findSharedPreplan(identity()) }
+      database.read { it.goalPlanningPreparations.findSharedPreplan(identity()) }
 
-    fun readPlan(subtaskId: Int = 1): GoalSubtaskPlanCheckpoint? = database.read(dbOverride) {
+    fun readPlan(subtaskId: Int = 1): GoalSubtaskPlanCheckpoint? = database.read {
       it.goalPlanningPreparations.findSubtaskPlan(identity(), subtaskId, descriptor(subtaskId).governedSubSpecPath)
     }
   }

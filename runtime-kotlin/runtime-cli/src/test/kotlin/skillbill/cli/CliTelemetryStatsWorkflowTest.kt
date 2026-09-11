@@ -2,7 +2,7 @@ package skillbill.cli
 
 import skillbill.cli.core.CliRuntime
 import skillbill.cli.model.CliRuntimeContext
-import skillbill.contracts.JsonSupport
+import skillbill.contracts.JsonCodec
 import skillbill.ports.telemetry.RemoteTransportPort
 import skillbill.ports.telemetry.model.RemoteTransportResponse
 import skillbill.telemetry.CONFIG_ENVIRONMENT_KEY
@@ -23,8 +23,8 @@ class CliTelemetryStatsWorkflowTest {
         CliRuntimeContext(),
       )
 
-    val parsed = requireNotNull(JsonSupport.parseObjectOrNull(result.stdout))
-    val payload = requireNotNull(JsonSupport.anyToStringAnyMap(JsonSupport.jsonElementToValue(parsed)))
+    val parsed = requireNotNull(JsonCodec.parseObjectOrNull(result.stdout))
+    val payload = requireNotNull(JsonCodec.anyToStringAnyMap(JsonCodec.jsonElementToValue(parsed)))
     assertEquals("feature-task-runtime", payload["workflow"])
   }
 
@@ -40,8 +40,8 @@ class CliTelemetryStatsWorkflowTest {
         CliRuntimeContext(),
       )
 
-    val parsed = requireNotNull(JsonSupport.parseObjectOrNull(result.stdout))
-    val payload = requireNotNull(JsonSupport.anyToStringAnyMap(JsonSupport.jsonElementToValue(parsed)))
+    val parsed = requireNotNull(JsonCodec.parseObjectOrNull(result.stdout))
+    val payload = requireNotNull(JsonCodec.anyToStringAnyMap(JsonCodec.jsonElementToValue(parsed)))
     assertEquals("feature-task-runtime", payload["workflow"])
   }
 
@@ -149,6 +149,6 @@ private fun runtimeStatsRequester(capturedRequests: MutableList<Map<String, Any?
   }
 
 private fun decodeRuntimeJsonObject(rawJson: String): Map<String, Any?> {
-  val parsed = requireNotNull(JsonSupport.parseObjectOrNull(rawJson))
-  return requireNotNull(JsonSupport.anyToStringAnyMap(JsonSupport.jsonElementToValue(parsed)))
+  val parsed = requireNotNull(JsonCodec.parseObjectOrNull(rawJson))
+  return requireNotNull(JsonCodec.anyToStringAnyMap(JsonCodec.jsonElementToValue(parsed)))
 }

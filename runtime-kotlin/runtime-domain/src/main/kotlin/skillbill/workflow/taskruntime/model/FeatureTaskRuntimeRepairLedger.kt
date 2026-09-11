@@ -1,11 +1,10 @@
 package skillbill.workflow.taskruntime.model
 
 import skillbill.boundary.OpenBoundaryMap
-import skillbill.contracts.JsonSupport
+import skillbill.contracts.JsonCodec
 import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_REPAIR_LEDGER_CONTRACT_VERSION
 import skillbill.workflow.goal.model.GoalSubtaskReviewCompactFinding
 import skillbill.workflow.goal.model.GoalSubtaskReviewPassResult
-import java.nio.charset.StandardCharsets
 
 const val REPAIR_LEDGER_MAX_ENTRIES: Int = 100
 const val REPAIR_LEDGER_MAX_SUMMARY_CONSTRUCTS: Int = 64
@@ -22,6 +21,12 @@ private const val LEDGER_CLOSE_MARKER_PREFIX: String = "<<<END_REPAIR_LEDGER"
 enum class FeatureTaskRuntimeRepairLedgerStatus(val wireValue: String) {
   RESOLVED("resolved"),
   DISREGARDED("disregarded"),
+  ;
+
+  companion object {
+    fun fromWire(value: String?): FeatureTaskRuntimeRepairLedgerStatus? =
+      value?.trim()?.let { candidate -> entries.firstOrNull { it.wireValue == candidate } }
+  }
 }
 
 data class FeatureTaskRuntimeRepairLedgerEntry(
@@ -176,7 +181,7 @@ data class FeatureTaskRuntimeRepairLedgerProjection(
   }
 
   internal val withinByteBudget: Boolean
-    get() = JsonSupport.mapToJsonString(toProjectionMap()).toByteArray(StandardCharsets.UTF_8).size <=
+    get() = JsonCodec.mapToJsonString(toProjectionMap()).toByteArray(Charsets.UTF_8).size <=
       REPAIR_LEDGER_PROJECTION_MAX_UTF8_BYTES
 
   fun renderReferenceSection(): String {

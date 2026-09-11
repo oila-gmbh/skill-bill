@@ -1,6 +1,6 @@
 package skillbill.install.model
 
-import java.nio.file.Path
+import skillbill.model.FileLocation
 
 enum class InstallPlanSkillKind {
   BASE,
@@ -9,7 +9,7 @@ enum class InstallPlanSkillKind {
 
 data class InstallPlanSkill(
   val name: String,
-  val sourceDir: Path,
+  val sourceDir: FileLocation,
   val kind: InstallPlanSkillKind,
   val platformSlug: String? = null,
   val internalFor: String? = null,
@@ -17,26 +17,26 @@ data class InstallPlanSkill(
 
 data class PlannedPlatformPack(
   val slug: String,
-  val packRoot: Path,
+  val packRoot: FileLocation,
   val selected: Boolean,
 )
 
 data class InstallStagingPathIntent(
   val skillName: String,
-  val sourceDir: Path,
-  val stagingRoot: Path,
-  val stagingDir: Path,
+  val sourceDir: FileLocation,
+  val stagingRoot: FileLocation,
+  val stagingDir: FileLocation,
   val contentHash: String,
 )
 
 data class InstallStagingIntent(
-  val root: Path,
+  val root: FileLocation,
   val skillPaths: List<InstallStagingPathIntent>,
 )
 
 data class McpRegistrationIntent(
   val register: Boolean,
-  val runtimeMcpBin: Path?,
+  val runtimeMcpBin: FileLocation?,
   val agents: List<InstallAgent>,
 )
 
@@ -55,10 +55,10 @@ data class InstallPlan(
 )
 
 data class InstallTransaction(
-  val createdSymlinks: MutableList<Path> = mutableListOf(),
+  val createdSymlinks: MutableList<FileLocation> = mutableListOf(),
 )
 
-data class McpProfileOutcome(val configPath: Path, val changed: Boolean)
+data class McpProfileOutcome(val configPath: FileLocation, val changed: Boolean)
 
 class ClaudeMcpProfileFailure(
   message: String,
@@ -67,7 +67,7 @@ class ClaudeMcpProfileFailure(
 
 data class McpMutationResult(
   val agent: String,
-  val configPath: Path,
+  val configPath: FileLocation,
   val changed: Boolean,
   val profiles: List<McpProfileOutcome> = emptyList(),
 )
@@ -81,13 +81,13 @@ data class McpMutationResult(
  */
 data class RenderedSkill(
   val skillName: String,
-  val sourceSkillDir: Path,
-  val stagingDir: Path,
-  val renderedSkillFile: Path,
-  val renderedPointerFiles: List<Path>,
-  val copiedAuthoredFiles: List<Path>,
+  val sourceSkillDir: FileLocation,
+  val stagingDir: FileLocation,
+  val renderedSkillFile: FileLocation,
+  val renderedPointerFiles: List<FileLocation>,
+  val copiedAuthoredFiles: List<FileLocation>,
   val contentHash: String,
-  val renderedSidecarFiles: List<Path> = emptyList(),
+  val renderedSidecarFiles: List<FileLocation> = emptyList(),
 )
 
 enum class InstallApplyStatus {
@@ -112,7 +112,7 @@ data class InstallApplyIssue(
   val message: String,
   val skillName: String? = null,
   val agent: InstallAgent? = null,
-  val path: Path? = null,
+  val path: FileLocation? = null,
   val guidance: String? = null,
   val causeClass: String? = null,
 )
@@ -124,14 +124,14 @@ enum class InstallSkillStagingStatus {
 
 data class InstallSkillStagingOutcome(
   val status: InstallSkillStagingStatus,
-  val sourceDir: Path,
-  val stagingDir: Path? = null,
-  val renderedSkillFile: Path? = null,
-  val renderedPointerFiles: List<Path> = emptyList(),
-  val copiedAuthoredFiles: List<Path> = emptyList(),
+  val sourceDir: FileLocation,
+  val stagingDir: FileLocation? = null,
+  val renderedSkillFile: FileLocation? = null,
+  val renderedPointerFiles: List<FileLocation> = emptyList(),
+  val copiedAuthoredFiles: List<FileLocation> = emptyList(),
   val contentHash: String? = null,
   val issue: InstallApplyIssue? = null,
-  val renderedSidecarFiles: List<Path> = emptyList(),
+  val renderedSidecarFiles: List<FileLocation> = emptyList(),
 )
 
 enum class InstallAgentLinkStatus {
@@ -156,9 +156,9 @@ data class WindowsSymlinkApplyOutcome(
 
 data class InstallAgentSkillLinkOutcome(
   val agent: InstallAgent,
-  val targetDir: Path,
-  val linkPath: Path,
-  val linkTarget: Path,
+  val targetDir: FileLocation,
+  val linkPath: FileLocation,
+  val linkTarget: FileLocation,
   val status: InstallAgentLinkStatus,
   val message: String = "",
   val issue: InstallApplyIssue? = null,
@@ -194,7 +194,7 @@ data class InstallAppliedSkill(
   val skillName: String,
   val kind: InstallPlanSkillKind,
   val platformSlug: String? = null,
-  val sourceDir: Path,
+  val sourceDir: FileLocation,
   val staging: InstallSkillStagingOutcome,
   val links: List<InstallAgentSkillLinkOutcome> = emptyList(),
 )
@@ -219,7 +219,7 @@ data class NativeAgentApplyOutcome(
   val provider: NativeAgentProviderId,
   val agent: InstallAgent,
   val status: NativeAgentApplyStatus,
-  val path: Path? = null,
+  val path: FileLocation? = null,
   val message: String = "",
   val issue: InstallApplyIssue? = null,
 )
@@ -233,7 +233,7 @@ enum class InstallTelemetryApplyStatus {
 data class InstallTelemetryApplyOutcome(
   val level: InstallTelemetryLevel,
   val status: InstallTelemetryApplyStatus,
-  val configPath: Path? = null,
+  val configPath: FileLocation? = null,
   val clearedEvents: Int = 0,
   val message: String = "",
   val issue: InstallApplyIssue? = null,
@@ -248,7 +248,7 @@ enum class McpRegistrationApplyStatus {
 data class McpRegistrationApplyOutcome(
   val agent: InstallAgent,
   val status: McpRegistrationApplyStatus,
-  val configPath: Path? = null,
+  val configPath: FileLocation? = null,
   val changed: Boolean = false,
   val message: String = "",
   val issue: InstallApplyIssue? = null,

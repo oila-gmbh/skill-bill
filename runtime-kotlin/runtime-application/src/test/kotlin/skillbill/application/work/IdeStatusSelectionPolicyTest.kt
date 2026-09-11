@@ -5,6 +5,8 @@ import skillbill.application.idestatus.model.IdeStatusFreshness
 import skillbill.application.idestatus.model.IdeStatusLifecycleState
 import skillbill.application.idestatus.model.IdeStatusSelectionTier
 import skillbill.application.idestatus.model.IdeStatusWorkflowFamily
+import skillbill.engine.work.IdeStatusFreshnessClassifier
+import skillbill.engine.work.IdeStatusSelectionPolicy
 import java.time.Instant
 import kotlin.test.Test
 import kotlin.test.assertEquals

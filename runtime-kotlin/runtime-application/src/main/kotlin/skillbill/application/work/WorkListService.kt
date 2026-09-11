@@ -10,6 +10,7 @@ import skillbill.ports.db.DatabaseSessionFactory
 import skillbill.ports.persistence.UnitOfWork
 import skillbill.ports.work.model.WorkItem
 import skillbill.ports.work.model.WorkItemKind
+import skillbill.ports.workflow.getAll
 import skillbill.workflow.engine.WorkflowEngine
 import skillbill.workflow.engine.WorkflowSnapshotValidator
 
@@ -20,9 +21,9 @@ class WorkListService(
 ) {
   private val workflowEngine = WorkflowEngine(workflowSnapshotValidator)
 
-  fun list(limit: Int? = null, dbOverride: String? = null): WorkListResult {
+  fun list(limit: Int? = null): WorkListResult {
     require(limit == null || limit > 0) { "--limit must be a positive integer." }
-    return database.read(dbOverride) { unitOfWork ->
+    return database.read { unitOfWork ->
       val persistedWork = unitOfWork.workList.list(limit)
       validateWorkflowSnapshots(unitOfWork, persistedWork)
       WorkListResult(

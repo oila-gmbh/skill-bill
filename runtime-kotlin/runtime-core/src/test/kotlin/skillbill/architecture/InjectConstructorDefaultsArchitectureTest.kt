@@ -61,7 +61,7 @@ class InjectConstructorDefaultsArchitectureTest {
       package skillbill.example
 
       import me.tatarka.inject.annotations.Inject
-      import skillbill.application.featuretask.FeatureTaskRuntimeReviewDriver
+      import skillbill.engine.featuretask.FeatureTaskRuntimeReviewDriver
 
       @Inject
       data class SyntheticInjectBag(

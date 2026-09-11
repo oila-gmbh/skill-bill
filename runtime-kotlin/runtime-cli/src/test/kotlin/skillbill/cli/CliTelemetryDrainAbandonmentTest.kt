@@ -38,7 +38,7 @@ class CliTelemetryDrainAbandonmentTest {
     val blockedContext = drainContext(home, dbPath, blockingRequester, stdout, stderr)
     val telemetryService = RuntimeComponent::class.create(blockedContext.toRuntimeContext()).telemetryService
 
-    drainTelemetryOnCompletion(telemetryService, dbPath.toString(), diagnostics)
+    drainTelemetryOnCompletion(telemetryService, diagnostics)
 
     assertTrue(diagnostics.warnings.any { it.contains("drain abandoned") }, diagnostics.warnings.toString())
     assertEquals("", stdout.toString())

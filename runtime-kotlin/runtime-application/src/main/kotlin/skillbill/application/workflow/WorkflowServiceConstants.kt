@@ -1,6 +1,7 @@
 package skillbill.application.workflow
 
 import skillbill.application.workflow.model.WorkflowFamilyKind
+import skillbill.workflow.model.WorkflowStatus
 
 const val DEFAULT_LIST_LIMIT: Int = 20
 const val MAX_ABANDONMENT_REASON_LENGTH: Int = 1000
@@ -8,7 +9,7 @@ const val FEATURE_TASK_RUNTIME_OPERATOR_ABANDONMENT_ARTIFACT_KEY: String = "oper
 const val FEATURE_TASK_RUNTIME_IDENTITY_REPAIR_ARTIFACT_KEY: String = "operator_identity_repair"
 const val WORKFLOW_ID_SUFFIX_LENGTH: Int = 4
 val FEATURE_TASK_FAMILY_KINDS = setOf(WorkflowFamilyKind.TASK_RUNTIME)
-val FEATURE_TASK_TERMINAL_STATUSES: Set<String> = setOf("completed", "failed", "abandoned")
+val FEATURE_TASK_TERMINAL_STATUSES: Set<WorkflowStatus> = WorkflowStatus.terminalStatuses
 const val INCOMPLETE_FEATURE_TASK_IDENTITY_ERROR =
   "Feature-task workflows must be opened through openFeatureTask with complete immutable execution identity."
 const val SUFFIX_CHARS: String = "abcdefghijklmnopqrstuvwxyz0123456789"

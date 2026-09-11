@@ -1,33 +1,20 @@
 package skillbill.application.review
-import skillbill.application.idestatus.AgentActivityStampWriter
+
 import skillbill.application.review.model.ParallelCodeReviewRequest
 import skillbill.application.review.model.ReviewDelegatedStageLaunch
 import skillbill.application.review.model.ReviewSpecialistLaunchRequest
 import skillbill.application.reviewevidence.ReviewDiffEvidence
 import skillbill.application.reviewevidence.SharedReviewEvidenceCommits
-import skillbill.application.runtimepersistence.RuntimeOwnedPersistenceBoundary
-import skillbill.ports.config.RepoLocalConfigPort
-import skillbill.ports.diff.DiffResolverPort
-import skillbill.ports.goalrunner.runner.GoalRunnerSubtaskLauncher
-import skillbill.ports.repository.RepositoryEnclosingRootPort
-import skillbill.ports.review.GovernedReviewEvidenceEndpointBinder
 import skillbill.ports.review.GovernedReviewEvidenceEndpointHandle
 import skillbill.ports.review.NativeReviewOperationProtocol
 import skillbill.ports.review.ReviewEvidenceBroker
-import skillbill.ports.review.ReviewEvidenceBrokerFactory
-import skillbill.ports.review.ReviewLaunchAgentStagingPort
-import skillbill.ports.review.ReviewSpecialistContractProvider
 import skillbill.ports.review.model.ParallelReviewLaneRunResult
-import skillbill.ports.review.model.ReviewEvidenceCoordinates
 import skillbill.ports.review.model.ReviewIntegrationPassOutcome
 import skillbill.ports.review.model.ReviewLaneAccounting
-import skillbill.ports.scaffold.install.InstalledPlatformPackCatalogPort
-import skillbill.ports.taskruntime.FeatureTaskRuntimeSharedEvidenceLocatorReadPort
-import skillbill.ports.taskruntime.FeatureTaskRuntimeSharedEvidenceResolverPort
-import skillbill.review.context.ReviewContextEnvelopeValidator
 import skillbill.review.context.model.GovernedReviewLaunch
 import skillbill.review.context.model.LANE_EVIDENCE_BYTES_DIMENSION
 import skillbill.review.context.model.ResolvedReviewExecutionMode
+import skillbill.review.context.model.ReviewAccountingTerminalOutcome
 import skillbill.review.context.model.ReviewAssignment
 import skillbill.review.context.model.ReviewContextBudgetPolicy
 import skillbill.review.context.model.ReviewContextPacket
@@ -41,32 +28,6 @@ import skillbill.review.model.ParallelReviewRawFinding
 import skillbill.review.model.ReviewCoverageReport
 import skillbill.review.model.ReviewStageResumeReport
 import skillbill.scaffold.model.PlatformManifest
-import java.time.Clock
-
-internal data class ParallelCodeReviewRunnerPlanningDeps(
-  val diffResolver: DiffResolverPort,
-  val repoLocalConfig: RepoLocalConfigPort,
-  val reviewContextEnvelopeValidator: ReviewContextEnvelopeValidator,
-  val reviewSpecialistContractProvider: ReviewSpecialistContractProvider,
-  val installedPackCatalog: InstalledPlatformPackCatalogPort,
-  val sharedEvidenceResolver: FeatureTaskRuntimeSharedEvidenceResolverPort,
-  val sharedEvidenceLocatorReader: FeatureTaskRuntimeSharedEvidenceLocatorReadPort,
-  val specIntentProjectionResolver: SpecIntentProjectionResolver,
-  val runtimeOwnedPersistence: RuntimeOwnedPersistenceBoundary,
-  val rubricPlanning: ParallelCodeReviewRunnerRubricPlanning,
-  val clock: Clock,
-  val repositoryEnclosingRootPort: RepositoryEnclosingRootPort,
-)
-
-internal data class ParallelCodeReviewRunnerLaneLaunchDeps(
-  val parentReviewLauncher: GoalRunnerSubtaskLauncher,
-  val reviewEvidenceBrokerFactory: ReviewEvidenceBrokerFactory,
-  val governedEvidenceEndpointBinder: GovernedReviewEvidenceEndpointBinder,
-  val reviewLaunchAgentStaging: ReviewLaunchAgentStagingPort,
-  val sharedEvidenceLocatorReader: FeatureTaskRuntimeSharedEvidenceLocatorReadPort,
-  val failureHelpers: ParallelCodeReviewRunnerFailureAdmission,
-  val activityStampWriter: AgentActivityStampWriter,
-)
 
 internal data class LaunchParentLaneArgs(
   val agentId: String,
@@ -109,7 +70,6 @@ internal data class PlanningPrepareArgs(
   val agentIds: List<String>,
   val budget: ReviewContextBudgetPolicy,
   val evidenceStorePath: String?,
-  val evidenceCoordinates: ReviewEvidenceCoordinates,
 )
 
 internal data class ParallelCodeReviewInitialRun(
@@ -150,7 +110,7 @@ internal data class ParallelCodeReviewSoftRegisterAdmission(
   val rejectedCandidateCount: Int,
 )
 
-internal class ParallelCodeReviewInlineParentLaunch(
+class ParallelCodeReviewInlineParentLaunch(
   val agentId: String,
   val selected: List<ReviewSpecialistLaunchRequest>,
   val prompt: String,
@@ -193,25 +153,11 @@ internal fun parallelCodeReviewEffectiveCompletionState(
   outcomes: ParallelReviewLaneRunResult,
 ): ReviewLaneCompletionState {
   val governed = parallelCodeReviewGovernedLaunchFor(launch)
-  val accounting = outcomes.lane1.accounting
-  val runCompletion = if (
-    outcomes.lane1.success || accounting?.terminalStatus == "incomplete" && accounting.terminalOutcome == null
-  ) {
+  val runCompletion = if (outcomes.lane1.success) {
     governed.completionState
   } else {
     governed.completionState.asFailedLaneRun(
       governed.assembledBundle.entries.map { "${it.commitSha}@${it.hunk.path}" },
-    )
-  }
-  val remaining = outcomes.lane1.accounting?.remainingEvidence.orEmpty()
-    .filter {
-      it.assignmentDigest == launch.assignment.digest && it.rubricId in launch.rubrics.map { rubric -> rubric.rubricId }
-    }
-    .map { it.unitId }.distinct()
-  if (remaining.isNotEmpty()) {
-    return runCompletion.copy(
-      disposition = ReviewLaneReviewDisposition.INCOMPLETE,
-      unreviewedUnits = (runCompletion.unreviewedUnits + remaining).distinct(),
     )
   }
   val assignedUnits = governed.assembledBundle.entries
@@ -239,27 +185,10 @@ internal fun parallelCodeReviewEffectiveCompletionState(
 internal fun parallelCodeReviewBrokerEvidenceCompletionState(
   completion: ReviewLaneCompletionState,
   accounting: ReviewLaneAccounting,
-): ReviewLaneCompletionState = when {
-  accounting.requiredEvidenceUnits > accounting.deliveredEvidenceUnits ->
-    completion.copy(
-      disposition = ReviewLaneReviewDisposition.INCOMPLETE,
-      unreviewedUnits = (completion.unreviewedUnits + accounting.unreviewedUnits).distinct(),
-    )
-  accounting.budgetDimension == LANE_EVIDENCE_BYTES_DIMENSION && accounting.unreviewedUnits.isNotEmpty() ->
-    completion.withBrokerEvidenceRefusal(accounting.unreviewedUnits)
-  accounting.terminalOutcome != null ->
-    completion.asFailedLaneRun(accounting.unreviewedUnits)
-      .copy(budgetDimension = accounting.terminalOutcome?.budgetKind)
-  accounting.requiredEvidenceUnits > 0 &&
-    accounting.requiredEvidenceUnits == accounting.deliveredEvidenceUnits &&
-    completion.budgetDimension == "lane_launch_bytes" ->
-    completion.copy(
-      disposition = ReviewLaneReviewDisposition.COMPLETE,
-      unreviewedSegmentIds = emptyList(),
-      budgetDimension = null,
-      unreviewedUnits = emptyList(),
-    )
-  else -> completion
+): ReviewLaneCompletionState = if (accounting.budgetDimension == LANE_EVIDENCE_BYTES_DIMENSION) {
+  completion.withBrokerEvidenceRefusal(accounting.unreviewedUnits)
+} else {
+  completion
 }
 
 internal fun parallelCodeReviewAggregateBundleCompletion(
@@ -296,17 +225,15 @@ internal const val PARALLEL_REVIEW_INLINE_NATIVE_WORKER = "bill-code-review-inli
 internal const val PARALLEL_REVIEW_NO_SEQUENCE_DIGEST = "no-commit-sequence"
 internal const val PARALLEL_REVIEW_NO_FINDINGS_TOKEN = "NO_FINDINGS"
 
-internal const val NO_OP_RESUME_TERMINAL_STATUS: String = "no_op_resume"
-internal const val UNSUPPORTED_PROVIDER_TERMINAL_STATUS: String = "unsupported_provider"
+internal val NO_OP_RESUME_TERMINAL_STATUS = ReviewAccountingTerminalOutcome.NO_OP_RESUME
+internal val UNSUPPORTED_PROVIDER_TERMINAL_STATUS = ReviewAccountingTerminalOutcome.UNSUPPORTED_PROVIDER
 internal const val INLINE_FINDING_PARSE_SEAM: String = "attributeInlineFindings"
 
 internal const val PARALLEL_REVIEW_INLINE_DEPTH_DIRECTIVE: String =
   "Merge every routed rubric above into one combined checklist, then traverse the diff exactly " +
-    "once against it at reduced judgment depth in this agent context, holding all rubrics in mind " +
+    "once against it at reduced depth in this agent context, holding all rubrics in mind " +
     "simultaneously, and do not launch specialists. Never re-walk the diff once per rubric. " +
-    "Reduced depth is not a license to sample evidence or stop before the broker catalog is fully " +
-    "delivered — page and read every required unit. Write free-form prose findings. Optional " +
-    "register lines are best-effort verification hints."
+    "Write free-form prose findings. Optional register lines are best-effort verification hints."
 
 internal const val PARALLEL_REVIEW_DELEGATED_DEPTH_DIRECTIVE: String =
   "Assign each routed rubric above to its own specialist worker over that rubric's owned paths. " +

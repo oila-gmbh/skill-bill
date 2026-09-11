@@ -7,8 +7,8 @@ import skillbill.cli.goal.toGoalDiffStatCliMap
 import skillbill.cli.goal.toGoalSelectedDiffHunksCliMap
 import skillbill.cli.kernel.toPayload
 import skillbill.cli.workflow.toCliMap
-import skillbill.contracts.workflow.GoalObservabilityEventSchemaValidator
 import skillbill.error.InvalidGoalObservabilityEventSchemaError
+import skillbill.infrastructure.fs.contracts.workflow.GoalObservabilityEventSchemaValidator
 import skillbill.workflow.engine.WorkflowEngine
 import skillbill.workflow.engine.WorkflowSnapshotValidator
 import skillbill.workflow.engine.model.WorkflowSnapshotView
@@ -147,7 +147,7 @@ class WorkflowCliResultMappersTest {
         dbPath = "/tmp/metrics.db",
         snapshot = snapshotWithObservability(
           event = mapOf(
-            "contract_version" to "0.1",
+            "contract_version" to "0.2",
             "subtask_id" to 1,
             "workflow_phase" to "implement",
             "worker_role" to "phase_subagent",
@@ -160,7 +160,7 @@ class WorkflowCliResultMappersTest {
       ).toCliMap(testGoalObservabilityEventValidator)
     }
 
-    assertEquals("contract_version", error.fieldPath)
+    assertEquals("", error.fieldPath)
   }
 
   @Test
@@ -310,6 +310,6 @@ class WorkflowCliResultMappersTest {
     }
 
   private object NoopWorkflowSnapshotValidator : WorkflowSnapshotValidator {
-    override fun validate(snapshot: Map<String, Any?>, slug: String) = Unit
+    override fun validate(snapshot: WorkflowStateSnapshot, slug: String) = Unit
   }
 }

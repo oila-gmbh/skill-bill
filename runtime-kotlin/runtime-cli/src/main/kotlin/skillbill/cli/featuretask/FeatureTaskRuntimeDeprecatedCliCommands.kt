@@ -5,13 +5,13 @@ import com.github.ajalt.clikt.core.subcommands
 import com.github.ajalt.clikt.parameters.arguments.argument
 import com.github.ajalt.clikt.parameters.arguments.optional
 import me.tatarka.inject.annotations.Inject
-import skillbill.application.featuretask.FeatureTaskContinuationLookupService
-import skillbill.application.featuretask.FeatureTaskRuntimeStatusService
-import skillbill.application.featuretask.model.FeatureTaskRuntimeStatusRequest
 import skillbill.application.workflow.WorkflowService
 import skillbill.cli.kernel.CliRunState
 import skillbill.cli.kernel.DocumentedCliCommand
 import skillbill.cli.model.CliRunInputs
+import skillbill.engine.featuretask.FeatureTaskContinuationLookupService
+import skillbill.engine.featuretask.FeatureTaskRuntimeStatusService
+import skillbill.engine.featuretask.model.FeatureTaskRuntimeStatusRequest
 import skillbill.ports.workflow.model.FeatureTaskRouteScope
 
 private const val FEATURE_TASK_RUNTIME_DEPRECATION_NOTE: String =
@@ -64,7 +64,6 @@ class FeatureTaskRuntimeDeprecatedRunCommand(
       specPath = runSpecPath,
       workflowId = {
         workflowService.openRuntimeWorkflowId(
-          deps.inputs,
           runIssueKey,
           runSpecPath,
           repoRoot ?: ".",
@@ -94,7 +93,6 @@ class FeatureTaskRuntimeDeprecatedExplicitRunCommand(
       specPath = runSpecPath,
       workflowId = {
         workflowService.openRuntimeWorkflowId(
-          deps.inputs,
           issueKey,
           runSpecPath,
           repoRoot ?: ".",
@@ -115,7 +113,7 @@ class FeatureTaskRuntimeDeprecatedStatusCommand(
 
   override fun run() {
     val projection = statusService.status(
-      FeatureTaskRuntimeStatusRequest(workflowId = workflowId, dbPathOverride = inputs.dbPathOverride),
+      FeatureTaskRuntimeStatusRequest(workflowId = workflowId),
     )
     val payload = projection.toRuntimeStatusCliMap(workflowId)
     state.completeText(runtimeStatusText(payload), payload, exitCode = payload.runtimeStatusExitCode())

@@ -27,7 +27,7 @@ object DecompositionManifestSchemaPaths {
 
   /** Classpath resource path where runtime-contracts bundles the schema for runtime loads. */
   const val CLASSPATH_RESOURCE: String =
-    "skillbill/contracts/decomposition-manifest-schema.yaml"
+    "skillbill/infrastructure/fs/contracts/decomposition-manifest-schema.yaml"
 
   /**
    * Expected value of the canonical schema's `$id`. The validator

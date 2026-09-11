@@ -9,7 +9,6 @@ data class PersistOpenedWorkflowArgs(
   val workflowId: String,
   val effectiveSessionId: String,
   val stepId: String,
-  val dbOverride: String?,
   val issueKey: String?,
   val executionIdentity: FeatureTaskExecutionIdentity?,
   val engine: WorkflowEngine,

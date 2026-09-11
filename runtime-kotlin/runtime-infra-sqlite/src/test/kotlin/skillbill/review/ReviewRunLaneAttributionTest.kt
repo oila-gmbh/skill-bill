@@ -5,8 +5,11 @@ import skillbill.infrastructure.sqlite.review.ensureTerminalReviewState
 import skillbill.infrastructure.sqlite.review.fetchReviewRunLanes
 import skillbill.infrastructure.sqlite.review.queryReviewLaneEffectiveness
 import skillbill.infrastructure.sqlite.review.recordFindingLaneAttribution
+import skillbill.review.context.model.ReviewLaneReviewDisposition
 import skillbill.review.model.ImportedFinding
 import skillbill.review.model.ImportedReview
+import skillbill.review.model.ReviewExecutionMode
+import skillbill.review.model.ReviewLaneResolutionState
 import skillbill.review.model.ReviewRunLane
 import skillbill.tempDbConnection
 import java.sql.Connection
@@ -127,10 +130,10 @@ class ReviewRunLaneAttributionTest {
 
       val summary = ReviewRuntime.fetchReviewSummary(connection, RUN_ID)
       val finishedAt = assertNotNull(summary.reviewFinishedAt)
-      assertEquals("inline", summary.executionMode)
+      assertEquals("inline", summary.executionMode?.wireValue)
       assertEquals(2, fetchReviewRunLanes(connection, RUN_ID).size, "A zero-findings run still records its lanes.")
 
-      ensureTerminalReviewState(connection, RUN_ID, "delegated")
+      ensureTerminalReviewState(connection, RUN_ID, ReviewExecutionMode.DELEGATED)
       assertEquals(finishedAt, ReviewRuntime.fetchReviewSummary(connection, RUN_ID).reviewFinishedAt)
     }
   }
@@ -144,7 +147,7 @@ class ReviewRunLaneAttributionTest {
       ensureTerminalReviewState(connection, RUN_ID, executionMode = null)
 
       val summary = ReviewRuntime.fetchReviewSummary(connection, RUN_ID)
-      assertEquals("unresolved", summary.executionMode)
+      assertEquals("unresolved", summary.executionMode?.wireValue)
       assertNotNull(summary.reviewFinishedAt)
     }
   }
@@ -156,7 +159,7 @@ class ReviewRunLaneAttributionTest {
     routedSkill = "bill-kmp-code-review",
     detectedScope = "unstaged changes",
     detectedStack = "kmp",
-    executionMode = "inline",
+    executionMode = ReviewExecutionMode.INLINE,
     specialistReviews = listOf("bill-kmp-code-review-architecture", "bill-kotlin-code-review-testing"),
     findings = listOf(
       ImportedFinding(
@@ -188,8 +191,8 @@ class ReviewRunLaneAttributionTest {
         required = false,
         orderIndex = 0,
         originLayerChain = listOf("kmp"),
-        resolutionState = ReviewRunLaneResolver.RESOLVED,
-        reviewDisposition = ReviewRunLaneResolver.INCOMPLETE_DISPOSITION,
+        resolutionState = ReviewLaneResolutionState.RESOLVED,
+        reviewDisposition = ReviewLaneReviewDisposition.INCOMPLETE,
       ),
       ReviewRunLane(
         laneSkillName = "bill-kotlin-code-review-testing",
@@ -199,8 +202,8 @@ class ReviewRunLaneAttributionTest {
         required = true,
         orderIndex = 1,
         originLayerChain = listOf("kmp", "kotlin"),
-        resolutionState = ReviewRunLaneResolver.RESOLVED,
-        reviewDisposition = ReviewRunLaneResolver.INCOMPLETE_DISPOSITION,
+        resolutionState = ReviewLaneResolutionState.RESOLVED,
+        reviewDisposition = ReviewLaneReviewDisposition.INCOMPLETE,
       ),
     ),
   )

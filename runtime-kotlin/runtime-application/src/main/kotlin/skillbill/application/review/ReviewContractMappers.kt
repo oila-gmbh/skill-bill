@@ -70,7 +70,7 @@ fun ReviewPreviewResult.toReviewPreviewContract(): ReviewPreviewContract = Revie
   routedSkill = routedSkill,
   detectedScope = detectedScope,
   detectedStack = detectedStack,
-  executionMode = executionMode,
+  executionMode = executionMode?.wireValue,
 )
 
 fun ImportedReviewResult.toImportedReviewContract(): ImportedReviewContract =

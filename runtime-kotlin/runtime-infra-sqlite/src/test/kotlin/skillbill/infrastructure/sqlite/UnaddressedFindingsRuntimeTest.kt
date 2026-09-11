@@ -1,9 +1,9 @@
 package skillbill.infrastructure.sqlite
 
-import skillbill.db.core.DatabaseRuntime
 import skillbill.goalrunner.model.ReviewFindingOutcome
 import skillbill.goalrunner.model.ReviewFindingOutcomeRecord
 import skillbill.goalrunner.model.UnaddressedFinding
+import skillbill.infrastructure.sqlite.core.DatabaseRuntime
 import skillbill.review.model.ReviewClaimVerdict.REFUTED
 import skillbill.review.model.ReviewFindingCitation
 import java.nio.file.Files

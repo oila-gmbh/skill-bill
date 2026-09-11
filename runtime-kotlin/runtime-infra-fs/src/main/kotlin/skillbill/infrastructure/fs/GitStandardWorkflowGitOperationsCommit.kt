@@ -1,30 +1,28 @@
 package skillbill.infrastructure.fs
 
-import skillbill.ports.workflow.gitops.ProtectedBranches
 import skillbill.ports.workflow.gitops.WorkflowGitRemoteOperations
 import skillbill.ports.workflow.gitops.model.WorkflowGitOperationResult
+import skillbill.ports.workflow.gitops.model.recordsNothingToCommit
+import skillbill.workflow.gitops.ProtectedBranches
 import java.nio.file.Path
 
 internal fun gitBranchExists(repoRoot: Path, branch: String): WorkflowGitOperationResult {
   val normalizedBranch = branch.trim()
   if (normalizedBranch.isBlank()) {
-    return WorkflowGitOperationResult(status = "error", error = "Branch name is required.")
+    return WorkflowGitOperationResult.Failed(error = "Branch name is required.")
   }
   val args = listOf("rev-parse", "--verify", "--quiet", "refs/heads/$normalizedBranch")
   val existing = runGitProcess(repoRoot, args)
   return when {
-    existing.timedOut -> WorkflowGitOperationResult(
-      status = "error",
+    existing.timedOut -> WorkflowGitOperationResult.Failed(
       error = gitTimedOutError(args),
     )
-    existing.readFailure != null -> WorkflowGitOperationResult(
-      status = "error",
+    existing.readFailure != null -> WorkflowGitOperationResult.Failed(
       error = existing.readFailure.message.orEmpty(),
     )
-    existing.exitCode == 0 -> WorkflowGitOperationResult(status = "ok", value = "true")
-    existing.exitCode == 1 -> WorkflowGitOperationResult(status = "ok", value = "false")
-    else -> WorkflowGitOperationResult(
-      status = "error",
+    existing.exitCode == 0 -> WorkflowGitOperationResult.Ok(value = "true")
+    existing.exitCode == 1 -> WorkflowGitOperationResult.Ok(value = "false")
+    else -> WorkflowGitOperationResult.Failed(
       error = "git ${args.joinToString(" ")} failed with exit code ${existing.exitCode}: ${existing.output}",
     )
   }
@@ -33,8 +31,8 @@ internal fun gitBranchExists(repoRoot: Path, branch: String): WorkflowGitOperati
 internal fun gitCreateCommit(repoRoot: Path, message: String): WorkflowGitOperationResult {
   val commit = runGitCommand(repoRoot, "commit", "-m", message)
   return when {
-    commit.ok -> runGitCommand(repoRoot, "rev-parse", "HEAD")
-    commit.recordsNothingToCommit() -> WorkflowGitOperationResult(status = "ok", value = "")
+    commit is WorkflowGitOperationResult.Ok -> runGitCommand(repoRoot, "rev-parse", "HEAD")
+    commit.recordsNothingToCommit() -> WorkflowGitOperationResult.Ok(value = "")
     else -> commit
   }
 }
@@ -42,12 +40,11 @@ internal fun gitCreateCommit(repoRoot: Path, message: String): WorkflowGitOperat
 internal fun gitPushBranch(repoRoot: Path, branch: String, withLease: Boolean): WorkflowGitOperationResult {
   val normalized = branch.trim()
   if (normalized.isBlank()) {
-    return WorkflowGitOperationResult(status = "error", error = "Branch name is required to push.")
+    return WorkflowGitOperationResult.Failed(error = "Branch name is required to push.")
   }
   val args = if (withLease) {
     ProtectedBranches.protectedName(normalized)?.let { protected ->
-      return WorkflowGitOperationResult(
-        status = "error",
+      return WorkflowGitOperationResult.Failed(
         error = "Refusing to force-push protected branch '$protected'.",
       )
     }
@@ -61,15 +58,15 @@ internal fun gitPushBranch(repoRoot: Path, branch: String, withLease: Boolean): 
 internal fun gitFetchRemoteBranch(repoRoot: Path, branch: String): WorkflowGitOperationResult {
   val normalized = branch.trim()
   if (normalized.isBlank()) {
-    return WorkflowGitOperationResult(status = "error", error = "Branch name is required to fetch.")
+    return WorkflowGitOperationResult.Failed(error = "Branch name is required to fetch.")
   }
   val remoteTracking = "refs/remotes/origin/$normalized"
   val refspec = "+refs/heads/$normalized:$remoteTracking"
   val fetched = runGitCommand(repoRoot, "fetch", "origin", refspec)
-  if (fetched.ok) return fetched.withValue(normalized)
+  if (fetched is WorkflowGitOperationResult.Ok) return fetched.withValue(normalized)
   if (!remoteRefMissing(fetched)) return fetched
   runGitCommand(repoRoot, "update-ref", "-d", remoteTracking)
-  return WorkflowGitOperationResult(status = "ok", value = WorkflowGitRemoteOperations.ABSENT_REMOTE_BRANCH)
+  return WorkflowGitOperationResult.Ok(value = WorkflowGitRemoteOperations.ABSENT_REMOTE_BRANCH)
 }
 
 private fun remoteRefMissing(result: WorkflowGitOperationResult): Boolean {
@@ -80,37 +77,43 @@ private fun remoteRefMissing(result: WorkflowGitOperationResult): Boolean {
 internal fun gitLocalBranchHasUnpushedCommits(repoRoot: Path, branch: String): WorkflowGitOperationResult {
   val normalized = branch.trim()
   if (normalized.isBlank()) {
-    return WorkflowGitOperationResult(status = "error", error = "Branch name is required to compare with origin.")
+    return WorkflowGitOperationResult.Failed(error = "Branch name is required to compare with origin.")
   }
   val remoteRef = "origin/$normalized"
-  val hasRemoteCounterpart = runGitCommand(repoRoot, "rev-parse", "--verify", remoteRef).ok
-  // Missing origin counterpart does not make the branch unpushed: a branch freshly cut from an
-  // up-to-date base carries only commits the remote already has. Counting against every
-  // remote-tracking ref answers that case, so a new branch does not report phantom local work.
-  val ahead = if (hasRemoteCounterpart) {
-    runGitCommand(repoRoot, "rev-list", "--count", "$remoteRef..$normalized")
-  } else {
-    runGitCommand(repoRoot, "rev-list", "--count", normalized, "--not", "--remotes")
+  val remote = runGitCommand(repoRoot, "rev-parse", "--verify", remoteRef)
+  if (remote !is WorkflowGitOperationResult.Ok) {
+    val published = runGitCommand(
+      repoRoot,
+      "for-each-ref",
+      "--contains",
+      normalized,
+      "--format=%(refname)",
+      "refs/remotes/origin",
+    )
+    if (published !is WorkflowGitOperationResult.Ok) {
+      return WorkflowGitOperationResult.Failed(
+        error = "Could not inspect remote refs for local '$normalized': ${published.error}",
+      )
+    }
+    return WorkflowGitOperationResult.Ok(value = if (published.value.isBlank()) "true" else "false")
   }
-  val comparedTo = if (hasRemoteCounterpart) "'$remoteRef'" else "the remote-tracking refs"
+  val ahead = runGitCommand(repoRoot, "rev-list", "--count", "$remoteRef..$normalized")
   val count = ahead.value.trim().toIntOrNull()
   return when {
-    !ahead.ok -> WorkflowGitOperationResult(
-      status = "error",
-      error = "Could not compare local '$normalized' to $comparedTo: ${ahead.error}",
+    ahead !is WorkflowGitOperationResult.Ok -> WorkflowGitOperationResult.Failed(
+      error = "Could not compare local '$normalized' to '$remoteRef': ${ahead.error}",
     )
-    count == null -> WorkflowGitOperationResult(
-      status = "error",
+    count == null -> WorkflowGitOperationResult.Failed(
       error = "Could not parse unpushed commit count for '$normalized': '${ahead.value.trim()}'.",
     )
-    else -> WorkflowGitOperationResult(status = "ok", value = if (count > 0) "true" else "false")
+    else -> WorkflowGitOperationResult.Ok(value = if (count > 0) "true" else "false")
   }
 }
 
 internal fun gitResetSoftToCommit(repoRoot: Path, commitSha: String): WorkflowGitOperationResult {
   val normalized = commitSha.trim()
   if (normalized.isBlank()) {
-    return WorkflowGitOperationResult(status = "error", error = "A commit SHA is required to soft-reset HEAD.")
+    return WorkflowGitOperationResult.Failed(error = "A commit SHA is required to soft-reset HEAD.")
   }
   return runGitCommand(repoRoot, "reset", "--soft", normalized)
 }
@@ -123,26 +126,23 @@ internal fun gitIsCommitAncestor(
   val ancestor = ancestorSha.trim()
   val descendant = descendantSha.trim()
   if (ancestor.isBlank() || descendant.isBlank()) {
-    return WorkflowGitOperationResult(status = "error", error = "Ancestor and descendant commit SHAs are required.")
+    return WorkflowGitOperationResult.Failed(error = "Ancestor and descendant commit SHAs are required.")
   }
   if (ancestor == descendant) {
-    return WorkflowGitOperationResult(status = "ok", value = "true")
+    return WorkflowGitOperationResult.Ok(value = "true")
   }
   val args = listOf("merge-base", "--is-ancestor", ancestor, descendant)
   val result = runGitProcess(repoRoot, args)
   return when {
-    result.timedOut -> WorkflowGitOperationResult(
-      status = "error",
+    result.timedOut -> WorkflowGitOperationResult.Failed(
       error = gitTimedOutError(args),
     )
-    result.readFailure != null -> WorkflowGitOperationResult(
-      status = "error",
+    result.readFailure != null -> WorkflowGitOperationResult.Failed(
       error = result.readFailure.message.orEmpty(),
     )
-    result.exitCode == 0 -> WorkflowGitOperationResult(status = "ok", value = "true")
-    result.exitCode == 1 -> WorkflowGitOperationResult(status = "ok", value = "false")
-    else -> WorkflowGitOperationResult(
-      status = "error",
+    result.exitCode == 0 -> WorkflowGitOperationResult.Ok(value = "true")
+    result.exitCode == 1 -> WorkflowGitOperationResult.Ok(value = "false")
+    else -> WorkflowGitOperationResult.Failed(
       error = "git ${args.joinToString(" ")} failed with exit code ${result.exitCode}: ${result.output}",
     )
   }
@@ -151,14 +151,13 @@ internal fun gitIsCommitAncestor(
 internal fun gitResolveCommit(repoRoot: Path, revision: String): WorkflowGitOperationResult {
   val normalized = revision.trim()
   if (normalized.isBlank()) {
-    return WorkflowGitOperationResult(status = "error", error = "A commit revision is required.")
+    return WorkflowGitOperationResult.Failed(error = "A commit revision is required.")
   }
   val resolved = runGitCommand(repoRoot, "rev-parse", "--verify", "--quiet", "$normalized^{commit}")
-  return if (resolved.ok && !resolved.value.isNullOrBlank()) {
+  return if (resolved is WorkflowGitOperationResult.Ok && !resolved.value.isNullOrBlank()) {
     resolved
   } else {
-    WorkflowGitOperationResult(
-      status = "error",
+    WorkflowGitOperationResult.Failed(
       error = "Revision '$normalized' does not name a commit in this repository.",
     )
   }
@@ -172,14 +171,13 @@ internal fun gitValidateBranchBase(
   val normalizedBranch = branch.trim()
   val normalizedBase = expectedBaseBranch.trim()
   if (normalizedBranch.isBlank() || normalizedBase.isBlank()) {
-    return WorkflowGitOperationResult(status = "error", error = "Branch and expected base branch are required.")
+    return WorkflowGitOperationResult.Failed(error = "Branch and expected base branch are required.")
   }
   val result = runGitCommand(repoRoot, "merge-base", "--is-ancestor", normalizedBase, normalizedBranch)
-  return if (result.ok) {
-    WorkflowGitOperationResult(status = "ok", value = normalizedBase)
+  return if (result is WorkflowGitOperationResult.Ok) {
+    WorkflowGitOperationResult.Ok(value = normalizedBase)
   } else {
-    WorkflowGitOperationResult(
-      status = "error",
+    WorkflowGitOperationResult.Failed(
       error = "Branch '$normalizedBranch' is not based on '$normalizedBase'. ${result.error}".trim(),
     )
   }

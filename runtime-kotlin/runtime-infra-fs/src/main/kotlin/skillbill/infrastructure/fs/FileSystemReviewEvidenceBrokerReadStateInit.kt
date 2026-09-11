@@ -1,7 +1,6 @@
 package skillbill.infrastructure.fs
 
 import skillbill.ports.review.ReviewStoredHunkBodyExtractor
-import skillbill.ports.review.model.ReviewEvidenceCoordinates
 import skillbill.ports.taskruntime.FeatureTaskRuntimeSharedEvidenceLocatorReadPort
 import skillbill.review.context.model.ReviewAssignment
 import skillbill.review.context.model.ReviewChangedHunk
@@ -19,9 +18,8 @@ internal data class FileSystemReviewEvidenceBrokerReadStateInit(
   val policy: ReviewOperationPolicy,
   val authorizedExpansionLedger: List<ReviewExpansionRecord>,
   val projectedHunks: List<ReviewChangedHunk>,
-  val visibleTargetPaths: Set<String>,
   val locatorReader: FeatureTaskRuntimeSharedEvidenceLocatorReadPort,
   val bodyExtractor: ReviewStoredHunkBodyExtractor,
+  val completeFileCheckpoint: Map<String, String?>,
   val hunkCommitById: Map<String, String>,
-  val expansionCoordinates: Map<String, ReviewEvidenceCoordinates> = emptyMap(),
 )

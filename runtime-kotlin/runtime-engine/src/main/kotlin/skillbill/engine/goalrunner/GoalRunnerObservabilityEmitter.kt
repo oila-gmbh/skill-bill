@@ -1,0 +1,153 @@
+package skillbill.engine.goalrunner
+import skillbill.application.agentoutput.stderrExcerpt
+import skillbill.engine.goalrunner.model.GoalRunnerRunRequest
+import skillbill.goalrunner.model.GoalRunnerLaunchFacts
+import skillbill.goalrunner.model.GoalRunnerObservabilityRecordRequest
+import skillbill.ports.agentrun.model.AgentRunLaunchFacts
+import skillbill.ports.agentrun.model.AgentRunLaunchOutcome
+import skillbill.ports.diagnostics.RuntimeDiagnostics
+import skillbill.ports.goalrunner.runner.GoalRunnerWorkflowOutcomeStore
+import skillbill.ports.goalrunner.runner.model.GoalRunnerWorkflowProgress
+import java.time.Clock
+
+class GoalRunnerObservabilityEmitter(
+  private val outcomeStore: GoalRunnerWorkflowOutcomeStore,
+  private val clock: Clock,
+  private val diagnostics: RuntimeDiagnostics,
+  request: GoalRunnerRunRequest,
+) {
+  private var sequence: Int = request.observabilitySequenceStart
+
+  internal fun recordLaunchLifecycle(
+    subject: GoalRunnerObservabilitySubject,
+    action: String,
+    progress: GoalRunnerWorkflowProgress?,
+    launchOutcome: AgentRunLaunchOutcome,
+  ) {
+    recordStart(subject, action, progress)
+    progress?.let { child -> recordProgress(subject, child) }
+    (launchOutcome as? AgentRunLaunchFacts)?.let { facts ->
+      facts.liveness?.let { recordLiveness(subject, progress, facts) }
+      recordOutputSummary(subject, progress, facts)
+    }
+  }
+
+  internal fun record(subject: GoalRunnerObservabilitySubject, signal: GoalRunnerObservabilitySignal) {
+    runCatching {
+      outcomeStore.recordObservabilityEvent(
+        request = GoalRunnerObservabilityRecordRequest(
+          workflowId = subject.workflowId,
+          issueKey = subject.issueKey,
+          subtaskId = subject.subtaskId,
+          workflowPhase = signal.workflowPhase.takeIf(String::isNotBlank) ?: "goal_runner_supervision",
+          workerRole = "goal_runner_supervisor",
+          livenessClass = signal.livenessClass,
+          activitySummary = signal.activitySummary.takeIf(String::isNotBlank) ?: signal.livenessClass,
+          sequenceNumber = sequence++,
+          timestamp = clock.instant().toString(),
+        ),
+      )
+    }.onFailure { error ->
+      diagnostics.warning(
+        "Best-effort goal observability emit failed: workflowId='${subject.workflowId}' " +
+          "livenessClass='${signal.livenessClass}' errorType='${error::class.qualifiedName}' " +
+          "message='${error.message.orEmpty()}'",
+        error,
+      )
+    }
+  }
+
+  private fun recordStart(
+    subject: GoalRunnerObservabilitySubject,
+    action: String,
+    progress: GoalRunnerWorkflowProgress?,
+  ) {
+    record(
+      subject = subject,
+      signal = GoalRunnerObservabilitySignal(
+        workflowPhase = progress?.currentStepId?.takeIf(String::isNotBlank) ?: "preplan",
+        livenessClass = if (action == "resume") "resume" else "subtask_start",
+        activitySummary = "Goal runner ${action}s subtask ${subject.subtaskId}.",
+      ),
+    )
+  }
+
+  private fun recordProgress(subject: GoalRunnerObservabilitySubject, child: GoalRunnerWorkflowProgress) {
+    record(
+      subject = subject,
+      signal = GoalRunnerObservabilitySignal(
+        workflowPhase = child.currentStepId,
+        livenessClass = "phase_change",
+        activitySummary = "Child workflow is at step ${child.currentStepId}.",
+      ),
+    )
+    child.latestLivenessSignal?.takeIf(String::isNotBlank)?.let { signal ->
+      record(
+        subject = subject,
+        signal = GoalRunnerObservabilitySignal(
+          workflowPhase = child.currentStepId,
+          livenessClass = "heartbeat",
+          activitySummary = signal,
+        ),
+      )
+    }
+  }
+
+  private fun recordLiveness(
+    subject: GoalRunnerObservabilitySubject,
+    progress: GoalRunnerWorkflowProgress?,
+    facts: AgentRunLaunchFacts,
+  ) {
+    val liveness = facts.liveness ?: return
+    val phase = liveness.workflowStep ?: progress?.currentStepId ?: liveness.phase
+    record(
+      subject = subject,
+      signal = GoalRunnerObservabilitySignal(
+        workflowPhase = phase,
+        livenessClass = "heartbeat",
+        activitySummary = "process_state=${liveness.processState.wireValue}; reason=${liveness.reason}",
+      ),
+    )
+    liveness.lastFileActivityAt?.takeIf(String::isNotBlank)?.let { at ->
+      record(
+        subject = subject,
+        signal = GoalRunnerObservabilitySignal(
+          workflowPhase = phase,
+          livenessClass = "file_activity",
+          activitySummary = liveness.lastFileActivityLabel ?: "file activity observed at $at",
+        ),
+      )
+    }
+  }
+
+  private fun recordOutputSummary(
+    subject: GoalRunnerObservabilitySubject,
+    progress: GoalRunnerWorkflowProgress?,
+    facts: AgentRunLaunchFacts,
+  ) {
+    val stderrDetail = stderrExcerpt(facts.stderr, GoalRunnerLaunchFacts.STDERR_EXCERPT_MAX_CHARS)
+      ?.let { excerpt -> "; stderr_excerpt=$excerpt" }
+      .orEmpty()
+    record(
+      subject = subject,
+      signal = GoalRunnerObservabilitySignal(
+        workflowPhase = progress?.currentStepId ?: facts.liveness?.workflowStep ?: "goal_runner_supervision",
+        livenessClass = "worker_output_summary",
+        activitySummary = "stdout_chars=${facts.stdout.length}; stderr_chars=${facts.stderr.length}; " +
+          "exit_status=${facts.exitStatus ?: "none"}$stderrDetail",
+      ),
+    )
+  }
+}
+
+internal data class GoalRunnerObservabilitySubject(
+  val workflowId: String,
+  val issueKey: String,
+  val subtaskId: Int,
+)
+
+internal data class GoalRunnerObservabilitySignal(
+  val workflowPhase: String,
+  val livenessClass: String,
+  val activitySummary: String,
+)

@@ -1,7 +1,7 @@
 package skillbill.application.system
 
 import me.tatarka.inject.annotations.Inject
-import skillbill.application.telemetry.telemetrySettingsOrNull
+import skillbill.application.telemetry.settings.telemetrySettingsOrNull
 import skillbill.contracts.system.DoctorContract
 import skillbill.contracts.system.VersionContract
 import skillbill.ports.db.DatabaseSessionFactory
@@ -15,13 +15,13 @@ class SystemService(
 ) {
   fun version(): VersionContract = VersionContract(version = versionValue)
 
-  fun doctor(dbOverride: String?): DoctorContract {
-    val dbPath = database.resolveDbPath(dbOverride)
+  fun doctor(): DoctorContract {
+    val dbPath = database.resolveDbPath()
     val settings = telemetrySettingsOrNull(settingsProvider)
     return DoctorContract(
       version = versionValue,
       dbPath = dbPath.toString(),
-      dbExists = database.databaseExists(dbOverride),
+      dbExists = database.databaseExists(),
       telemetryEnabled = settings?.enabled ?: false,
       telemetryLevel = settings?.level ?: "off",
     )

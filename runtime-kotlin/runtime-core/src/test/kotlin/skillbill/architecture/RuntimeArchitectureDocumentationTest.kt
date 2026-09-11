@@ -56,7 +56,8 @@ class RuntimeArchitectureDocumentationTest {
     assertContains(architecture, DRAIN_ABANDONMENT_POLICY)
     assertContains(architecture, "RuntimeCliAreaIsolationArchitectureTest")
     assertContains(architecture, "Port null-object classification")
-    assertContains(architecture, "PortNullObjectClassificationGuardTest")
+    assertContains(architecture, "PortNullObjectAbsenceArchitectureTest")
+    assertContains(architecture, "RuntimeContractModuleImportRulesTest")
     assertContains(architecture, AREA_ISOLATION_GUARDRAIL)
     assertContains(architecture, SPILLOVER_FILENAME_GUARDRAIL)
     assertContains(architecture, COMPOSITION_GUARD_GUARDRAIL)
@@ -136,25 +137,21 @@ class RuntimeArchitectureDocumentationTest {
         "skillbill.cli",
         "skillbill.config",
         "skillbill.contracts",
-        "skillbill.db",
         "skillbill.di",
         "skillbill.domain.skillremove",
+        "skillbill.engine",
         "skillbill.error",
         "skillbill.featurespec",
-        "skillbill.goalplanning",
         "skillbill.goalrunner",
         "skillbill.idestatus",
-        "skillbill.install",
         "skillbill.infrastructure",
-        "skillbill.launcher",
+        "skillbill.install",
         "skillbill.learnings",
         "skillbill.mcp",
         "skillbill.model",
-        "skillbill.nativeagent",
         "skillbill.ports",
         "skillbill.review",
         "skillbill.scaffold",
-        "skillbill.skillremove",
         "skillbill.telemetry",
         "skillbill.text",
         "skillbill.workflow",
@@ -216,9 +213,12 @@ class RuntimeArchitectureDocumentationTest {
         "area and never the composition root `skillbill.cli.core`."
 
     const val SPILLOVER_FILENAME_GUARDRAIL =
-      "- No runtime module source file carries the spillover filename signature\n  " +
-        "(`*Extras`, `*Continued`, `*Helpers<N>`, `*Fns<N>`, `*Support<N>`, letter-plus-digit,\n  " +
-        "or bare trailing-digit siblings) outside a named exemption."
+      "- No runtime module source file, and no main-source file, type, or member\n  " +
+        "declaration, carries the spillover signature (`*Extras`, `*Continued`,\n  " +
+        "`*Helpers`, `*Support`, `*Misc`, `*Fns<N>`, letter-plus-digit, or bare\n  " +
+        "trailing-digit siblings) outside a named exemption; the bare `Support`,\n  " +
+        "`Helpers`, `Misc`, and `Extras` forms apply to `src/main` only, the numbered\n  " +
+        "forms to every `src` tree."
 
     const val COMPOSITION_GUARD_GUARDRAIL =
       "- No main-source site outside `skillbill.di` constructs a concrete class\n  " +
@@ -226,7 +226,7 @@ class RuntimeArchitectureDocumentationTest {
         "the census and names sanctioned second entrypoints explicitly."
 
     const val SCAFFOLD_STANDALONE_ENTRYPOINT_GUARDRAIL =
-      "- `skillbill.scaffold.runtime.ScaffoldStandaloneEntrypoint` is the sanctioned\n  " +
+      "- `skillbill.infrastructure.fs.scaffold.runtime.ScaffoldStandaloneEntrypoint` is the sanctioned\n  " +
         "second scaffold entrypoint for in-tree parity and rollback tests that cannot\n  " +
         "reach `RuntimeComponent`; production paths use `FileSystemScaffoldOrchestrator`."
 

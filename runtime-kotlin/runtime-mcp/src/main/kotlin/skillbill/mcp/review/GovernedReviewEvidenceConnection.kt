@@ -1,9 +1,8 @@
 package skillbill.mcp.review
 
-import skillbill.contracts.JsonSupport
+import skillbill.contracts.JsonCodec
 import skillbill.error.GovernedReviewEvidenceTransportError
 import skillbill.ports.review.model.GovernedReviewEvidenceCodec
-import skillbill.ports.review.model.readReviewEvidenceFrame
 import java.io.BufferedReader
 import java.io.BufferedWriter
 import java.io.IOException
@@ -33,7 +32,7 @@ internal fun connect(socketPath: Path, token: String): GovernedReviewEvidenceCon
   val writer = Channels.newOutputStream(connection).bufferedWriter()
   val reader = Channels.newInputStream(connection).bufferedReader()
   writer.appendLine(
-    JsonSupport.mapToJsonString(
+    JsonCodec.mapToJsonString(
       linkedMapOf("jsonrpc" to "2.0", "method" to "handshake", "params" to mapOf("token" to token)),
     ),
   )
@@ -55,4 +54,28 @@ private fun openSocketChannel(socketPath: Path): SocketChannel = try {
     "This platform cannot reach the governed review evidence endpoint at '$socketPath'.",
     error,
   )
+}
+
+private const val UTF8_SINGLE_BYTE_MAX = 0x7f
+private const val UTF8_TWO_BYTE_MAX = 0x7ff
+private const val UTF8_THREE_BYTE_WIDTH = 3
+
+private fun BufferedReader.readReviewEvidenceFrame(maxBytes: Int = GovernedReviewEvidenceCodec.REQUEST_BYTES): String? {
+  val frame = StringBuilder()
+  var bytes = 0
+  var previousHighSurrogate = false
+  while (true) {
+    val next = read()
+    if (next == -1) return frame.toString().takeIf { it.isNotEmpty() }
+    if (next == '\n'.code) return frame.toString().removeSuffix("\r")
+    bytes += when {
+      previousHighSurrogate && next.toChar().isLowSurrogate() -> 1
+      next <= UTF8_SINGLE_BYTE_MAX -> 1
+      next <= UTF8_TWO_BYTE_MAX -> 2
+      else -> UTF8_THREE_BYTE_WIDTH
+    }
+    previousHighSurrogate = next.toChar().isHighSurrogate()
+    if (bytes > maxBytes) throw GovernedReviewEvidenceTransportError("Governed evidence frame exceeds its byte limit.")
+    frame.append(next.toChar())
+  }
 }

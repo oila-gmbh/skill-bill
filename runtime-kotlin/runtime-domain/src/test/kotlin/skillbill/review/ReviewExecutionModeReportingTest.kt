@@ -1,5 +1,6 @@
 package skillbill.review
 
+import skillbill.review.model.ReviewExecutionMode
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
@@ -25,7 +26,7 @@ class ReviewExecutionModeReportingTest {
   @Test
   fun `each accepted token round trips onto the reported execution mode`() {
     listOf("inline", "delegated").forEach { token ->
-      assertEquals(token, review("Execution mode: $token").executionMode)
+      assertEquals(ReviewExecutionMode.fromWire(token), review("Execution mode: $token").executionMode)
     }
   }
 
@@ -33,7 +34,7 @@ class ReviewExecutionModeReportingTest {
   // evidence that value is the explicit unresolved marker, never a silent drop to inline.
   @Test
   fun `an absent execution mode line records the explicit unresolved marker`() {
-    assertEquals(UNRESOLVED_ATTRIBUTION, review(null).executionMode)
+    assertEquals(ReviewExecutionMode.UNRESOLVED, review(null).executionMode)
   }
 
   @Test

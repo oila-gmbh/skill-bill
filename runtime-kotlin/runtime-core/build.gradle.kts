@@ -11,8 +11,10 @@ plugins {
 dependencies {
   api(project(":runtime-application"))
   api(project(":runtime-ports"))
+  api(project(":runtime-engine"))
   implementation(project(":runtime-domain"))
   implementation(project(":runtime-contracts"))
+  implementation(libs.kotlinx.serialization.json)
   implementation(project(":runtime-infra-fs"))
   implementation(project(":runtime-infra-http"))
   implementation(project(":runtime-infra-sqlite"))
@@ -21,7 +23,9 @@ dependencies {
   // SKILL-129 subtask 5: the durable/telemetry redaction proof drives the production review runner
   // through the shared recording harness rather than hand-building an accounting summary.
   testImplementation(testFixtures(project(":runtime-application")))
+  testImplementation(testFixtures(project(":runtime-engine")))
   testImplementation(testFixtures(project(":runtime-ports")))
+  testImplementation(testFixtures(project(":runtime-domain")))
   testImplementation(libs.junit.jupiter)
   testImplementation(libs.kotlin.test)
 }

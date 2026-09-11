@@ -1,21 +1,55 @@
-## [2026-09-08] SKILL-235 subtask 1 — Commit-based subtask review
-Areas: runtime-kotlin/{runtime-application/{featuretask,review,reviewevidence,goalrunner},runtime-domain, runtime-infra-fs, runtime-ports}, docs, orchestration/contracts, platform-packs/generic/code-review, skills
-- Added a runtime-owned one-commit boundary before each goal-child review, with exact base/target/tree identity and ownership-aware amendment/retry handling. reusable
-- Review launch now carries immutable Git coordinates and bounded configuration; reviewers retrieve committed content on demand instead of receiving expanded worktree paths and hunks. reusable
-- Finalization, interruption recovery, migration, approval invalidation, checkpoint preservation, and exclusion rules now share the same identity and reconciliation policy.
-- Limitation: provider-bound prompt-growth coverage and focused real-Git recovery coverage remain follow-up validation/review work.
+## [2026-09-11] SKILL-233 subtask 7 — Unused-parameter gate cleanup
+Areas: orchestration/skill-classes, platform-packs/{generic,go,ios,kmp,kotlin,php,python,rust,typescript}
+- Synchronized the contract version declaration at 1.8 across eight skill-class definitions and nine platform manifests for the unused-parameter gate remediation.
+- Reusable: keep shared skill-class and platform-pack declarations on the same runtime contract version when architecture gates depend on installed metadata.
+- Limitation: the change is declaration-only; runtime behavior and gate proof remain owned by their respective phases.
+Feature flag: N/A
+Acceptance criteria: 3/3 implemented
+
+## [2026-09-11] SKILL-233 subtask 6 — Runtime-context database resolution
+Areas: runtime-kotlin/{runtime-infra-sqlite,runtime-ports,runtime-application,runtime-cli,runtime-core,runtime-mcp,runtime-infra-fs,runtime-domain,agent,ARCHITECTURE.md}
+- Database session APIs resolve the path once from bound `RuntimeContext`; `DatabaseRuntime` keeps a resolving entry point (`openDb`, `openReadDb`, `openReadDbIfPresent`) that delegates to an `*At(dbPath)` overload, so path resolution and open semantics — missing-database bootstrap, schemaless failure, read-only setup, transactions, closure — stay separable. reusable
+- Removed `dbOverride` and `dbPathOverride` plumbing from `runtime-application` and `runtime-ports` signatures while keeping `--db` parsing in `CliRuntime` and default/explicit path behavior across bridges, DI, services, callers, and tests. reusable
+- `RuntimeContext.dbPathOverride` is the one carrier below the CLI: `CliRuntime` merges the Clikt `--db` flag with `CliRuntimeContext.dbPathOverride`, and `SQLiteDatabaseSessionFactory` resolves that value once through a `by lazy` field reused by reads, writes, and transactions. Surviving `dbOverride` names are only the Clikt option, the `--db` echo `GoalCliCommands` hands to `GoalRunPresenter`, and an allowlist fixture string in `InjectConstructorDefaultsArchitectureTest`. reusable
+- Pattern: bind runtime context at composition and resolve persistence paths at the database boundary; do not hide missing context with constructor defaults. reusable
+- Partial migrations of this shape hide in the read paths: after the write and transaction paths took `openDbAt(resolveDbPath())`, `openReadDb` and `SQLiteDatabaseSessionFactory.read` still went through the resolving entry point and resolved a second time. When splitting a resolve-and-open API, audit every opener — including `readIfPresent` — against the `*At` overload, not just the ones the change touched first. reusable
+- Limitation: the CLI flag name, database schema, identifiers, statuses, and vocabulary are unchanged.
+Feature flag: N/A
+Acceptance criteria: 4/4 implemented
+
+## [2026-09-09] SKILL-233 subtask 4 — Status types and Git results
+Areas: runtime-kotlin/{runtime-application/{featuretask,goalrunner/planning,telemetry,telemetry/sync,workflow},runtime-domain/{goalrunner,telemetry,workflow/taskruntime},runtime-ports/{featuretask,scaffold/repo},runtime-infra-{fs,sqlite},runtime-cli/scaffold,runtime-core/telemetry,agent,ARCHITECTURE.md}
+- Replaced ambiguous phase, settlement, worker-ownership, liveness, telemetry-sync, repair-ledger, scaffold-validation, and Git-operation outcomes with typed status/result models; callers now preserve failure identity across runtime, CLI, filesystem, and SQLite seams. reusable
+- Made phase settlement and remediation-base reconciliation durable and amend-aware, including review-state persistence, reset/replan coordination, abandon/control commands, and focused subtask commit accounting. reusable
+- Standardized telemetry and planning-log synchronization around explicit sync context/status, with repair and degradation state represented in the domain rather than implicit flags. reusable
+- Added boundary tests for typed Git results, focused accounting, scaffold result mapping, telemetry runtime behavior, continuation decoding, durable review state, amend reconciliation, and SQLite settlement persistence. reusable
+- Limitation: build proof was completed upstream; full validation and repository checks remain owned by later phases.
+Feature flag: N/A
+Acceptance criteria: 5/5 implemented
+
+## [2026-09-06] SKILL-233 subtask 2 — Ports evacuation and domain purity
+Areas: runtime-kotlin/{runtime-ports,runtime-domain,runtime-contracts,runtime-application,runtime-cli,runtime-core,runtime-infra-{fs,http,sqlite},runtime-mcp,agent,ARCHITECTURE.md}
+- Evacuated runtime behavior from ports into domain and infrastructure seams, leaving interfaces, DTOs, and pure DTO extensions; the non-interface census is 84 files / 2,886 lines versus 7,031 at start. reusable
+- Removed production null objects and diagnostic sinks, moved test substitutes to testFixtures, and made UnitOfWork members explicit at every implementation boundary. reusable
+- Kept wire mapping at the adapter boundary where contract modules cannot depend on domain snapshots; import and dependency ownership rules now enforce the thin-port/domain-purity shape. reusable
+- Limitation: 23 duplicate basenames remain as distinct types or adapter/model layers; WorkflowStateSnapshotWireMapper remains in infra-fs, and known relative-path differences remain for callers that provide absolute paths.
+Feature flag: N/A
+Acceptance criteria: 13/13 implemented
+
+## [2026-09-06] SKILL-233 subtask 1 — Guard recalibration, run-loop consolidation, DI flattening
+Areas: runtime-kotlin/{runtime-application/featuretask,runtime-core/{di,architecture},config/detekt,agent,ARCHITECTURE.md,runtime-{ports,domain,contracts,cli,mcp,infra-fs,infra-sqlite,infra-http}}, scripts
+- Guards moved by dated decision, never by baseline row: `PRODUCTION_LINE_CEILING` 500→1200, detekt `TooManyFunctions` 11→40 classes/objects and 45 files, `LongParameterList.constructorThreshold` 7→12, `LargeClass` 1200. `thresholdInInterfaces`/`thresholdInEnums` stay 11 as the SKILL-231 port-width guard; `LongMethod`, `CyclomaticComplexMethod`, `NestedBlockDepth`, `ComplexCondition` unchanged. reusable
+- Pattern: when a guard is what produced the fragments, change the guard first and argue it in `agent/decisions.md`; merging under the old rule would only have moved the split into suppressions. reusable
+- Spillover scanner widened from file names to top-level and member declaration names; bare `Support`/`Helpers`/`Misc`/`Extras` scoped to `/src/main/` so the 42 `*TestSupport` helpers keep their names. Identifier acceptance and rejection fixtures added; baseline still empty.
+- Run loop reassembled by responsibility: 65 `FeatureTaskRuntimeRunLoop*` files (10,606 lines) → 20 files (9,494); `skillbill.engine.featuretask` 223→166 files and 88→24 `@Inject` sites. No `*Continued<N>`, `*Collaborators`, or `*CollaboratorFacets` survives; sub-steps are private functions, not sibling `@Inject` classes.
+- `FeatureTaskRuntimeRunState` re-merged from ten `*Extensions` files into one 386-line type plus a `FeatureTaskRuntimeRunStateReconstruction` object for durable-ledger replay.
+- DI flattened: 28 `skillbill/di` files → 20, every forwarding `*Bindings` object deleted except `RuntimeBootstrapBindings`, 18 area-named `*Provides` mixins, 126 `@Provides` declared once, `RuntimeComponent`'s abstract property set byte-identical.
+- Bundle survivors after the dissolve pass are `GoalRunnerDeps` and CLI `FeatureTaskRuntimeRunDependencies`; everything else inlined into the one constructor that consumed it. `scripts/split-runloop.py` deleted with its input.
+- Over-injection in tests was solved with test-only fixture value types (`GoalRunnerStatusTestPorts`, `OutcomeStoreTestArtifactPorts`) rather than default args on production constructors; the store factories live in `testFixtures`, the only test tree allowed to import `skillbill.infrastructure.*`. reusable
+- Public-ABI fallout to expect when flattening DI: the `RepositoryRoot` `@Provides` had to leave `RuntimeComponent` for `RuntimeWorkflowProvides`, and the raw-map allowlist FQN became `FeatureTaskRuntimeRunState.parsedOutput` in both ARCHITECTURE.md lists and the test — both only surface once compilation succeeds.
+- Limitation: the run loop stays in `runtime-application` and ports/domain/null-object work is untouched; subtasks 2–4 own those. Renames reached `runtime-ports`, `runtime-domain`, and `runtime-contracts` as rename-only steps to empty the all-module census.
 Feature flag: N/A
 Acceptance criteria: 9/9 implemented
-
-## [2026-09-09] 332 subtask 1 — Resilient stale workflow handling
-Areas: runtime-kotlin/{runtime-application/{featuretask,goalrunner,workflow},runtime-cli/goal,runtime-core/di,runtime-domain/workflow/taskruntime/model,runtime-infra-fs/{install/apply,nativeagent/discovery},runtime-infra-sqlite/{db/workflow,infrastructure/sqlite/goalrunner},runtime-ports/{goalrunner/persistence/model,workflow/{model,persistence}}}
-- Candidate loading now validates task-runtime snapshots independently, keeps valid rows, warns with the skipped workflow identity, and preserves the typed schema error for a requested invalid goal.
-- Status, refresh/watch, and authoritative-outcome projections tolerate unrelated invalid snapshots; normal correlation and valid continuation behavior remain unchanged.
-- Added `goal prune-stale-workflows` with report-only default and explicit selective retirement, plus focused application, SQLite, and CLI regression coverage. reusable
-- Pattern: classify snapshot ownership before schema validation so unrelated corruption degrades locally while requested-goal failures stay loud. reusable
-- Limitation: stale snapshots are not migrated; retirement is limited to selected invalid task-runtime rows, and the workflow-state contract version stays unchanged.
-Feature flag: N/A
-Acceptance criteria: 7/7 implemented
 
 ## [2026-09-04] SKILL-232 subtask 1 — Unused private/internal deletion pass
 Areas: runtime-kotlin/{runtime-application/{featuretask,goalrunner,work},runtime-domain/review/context/model,runtime-infra-fs/{infrastructure/fs,install/nativeagent,launcher/mcp,scaffold/platformpack},runtime-infra-sqlite/{db/workflow,infrastructure/sqlite/goalrunner},runtime-core/architecture/baselines}

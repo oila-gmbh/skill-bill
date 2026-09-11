@@ -1,10 +1,12 @@
 package skillbill.workflow.taskruntime
 
-import skillbill.contracts.JsonSupport
+import skillbill.contracts.JsonCodec
 import skillbill.error.InvalidWorkflowStateSchemaError
 import skillbill.workflow.engine.model.RequiredArtifactPresenceResolver
 import skillbill.workflow.engine.model.ResolvedRequiredArtifact
 import skillbill.workflow.engine.model.WorkflowSnapshotView
+import skillbill.workflow.model.WorkflowStepStatus
+import skillbill.workflow.model.workflowStepStatus
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_GOAL_CONTINUATION_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_RECORDS_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeGoalContinuationArtifact
@@ -23,8 +25,6 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeQualityGateSelecti
  * Pure domain function: no JDBC/HTTP/Files and no clock/random.
  */
 object FeatureTaskRuntimeRequiredArtifactPresenceResolver : RequiredArtifactPresenceResolver {
-  private const val PHASE_STATUS_COMPLETED = "completed"
-
   override fun missingRequiredArtifacts(
     snapshot: WorkflowSnapshotView,
     resumeStepId: String,
@@ -41,7 +41,7 @@ object FeatureTaskRuntimeRequiredArtifactPresenceResolver : RequiredArtifactPres
   override fun resolveRequiredArtifact(snapshot: WorkflowSnapshotView, artifactKey: String): ResolvedRequiredArtifact {
     val record = decodePhaseRecords(snapshot)[artifactKey]
       ?: return ResolvedRequiredArtifact(present = false, value = null)
-    if (record.status != PHASE_STATUS_COMPLETED) {
+    if (record.status.workflowStepStatus() != WorkflowStepStatus.COMPLETED) {
       return ResolvedRequiredArtifact(present = false, value = null)
     }
     return ResolvedRequiredArtifact(
@@ -81,7 +81,7 @@ object FeatureTaskRuntimeRequiredArtifactPresenceResolver : RequiredArtifactPres
   ): FeatureTaskRuntimeQualityGateSelection? {
     val raw = snapshot.artifacts[FEATURE_TASK_RUNTIME_GOAL_CONTINUATION_ARTIFACT_KEY] as? Map<*, *>
       ?: return null
-    val continuationMap = JsonSupport.anyToStringAnyMap(raw) ?: return null
+    val continuationMap = JsonCodec.anyToStringAnyMap(raw) ?: return null
     return try {
       FeatureTaskRuntimeGoalContinuationArtifact.fromArtifactMap(continuationMap).qualityGateSelection
     } catch (_: InvalidWorkflowStateSchemaError) {
@@ -90,7 +90,7 @@ object FeatureTaskRuntimeRequiredArtifactPresenceResolver : RequiredArtifactPres
   }
 
   private fun completedPhaseIds(snapshot: WorkflowSnapshotView): Set<String> = decodePhaseRecords(snapshot)
-    .filterValues { record -> record.status == PHASE_STATUS_COMPLETED }
+    .filterValues { record -> record.status.workflowStepStatus() == WorkflowStepStatus.COMPLETED }
     .keys
 
   private fun decodePhaseRecords(snapshot: WorkflowSnapshotView): Map<String, FeatureTaskRuntimePhaseRecord> {
@@ -108,7 +108,7 @@ object FeatureTaskRuntimeRequiredArtifactPresenceResolver : RequiredArtifactPres
         "Feature-task-runtime artifact '$FEATURE_TASK_RUNTIME_PHASE_RECORDS_ARTIFACT_KEY' must have string keys; " +
           "found '$key'.",
       )
-    val entryMap = JsonSupport.anyToStringAnyMap(value)
+    val entryMap = JsonCodec.anyToStringAnyMap(value)
       ?: throw InvalidWorkflowStateSchemaError(
         "Feature-task-runtime artifact '$FEATURE_TASK_RUNTIME_PHASE_RECORDS_ARTIFACT_KEY' entry for " +
           "'$phaseId' must decode to a map.",

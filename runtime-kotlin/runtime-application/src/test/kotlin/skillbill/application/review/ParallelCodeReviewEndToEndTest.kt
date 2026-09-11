@@ -70,16 +70,15 @@ class ParallelCodeReviewEndToEndTest {
     }
   }
 
-  @Test fun `immutable review prompts exclude paths and bind on-demand evidence`() {
+  @Test fun `assigned evidence is carried only in prompt hunk envelopes`() {
     val recorder = ReviewRecorder()
 
     reviewHarness(kotlinConfig(), recorder).run(harnessRequest())
 
-    assertTrue(recorder.parentLaunches.all { it.skillRunRequest.reviewEvidenceBroker != null })
     recorder.parentPrompts.forEach { prompt ->
-      assertTrue(prompt.contains("immutable review pair"))
-      assertTrue(!prompt.contains("src/Repo.kt"))
-      assertTrue(prompt.contains("read_evidence"))
+      assertTrue(prompt.contains("## Assigned bundle:"))
+      assertTrue(prompt.contains("\"src/Repo.kt\""))
+      assertTrue(prompt.contains("they are not read_evidence arguments and passing one is refused"))
     }
   }
 
@@ -137,9 +136,9 @@ class ParallelCodeReviewEndToEndTest {
     assertEquals(1, lanes.size, "Single-agent inline review owns exactly one accounting node.")
     lanes.forEach { lane ->
       assertTrue(lane.counters.launchBytes > 0, "Lane '${lane.lane}' reported no launch bytes.")
-      assertTrue(lane.counters.evidenceBytes > 0, "The worker must receive its assigned hunk evidence.")
+      assertEquals(0, lane.counters.evidenceBytes, "Assigned hunk envelopes require no filesystem evidence reads.")
       assertTrue(lane.counters.resultBytes > 0)
-      assertEquals("completed", lane.terminalOutcome)
+      assertEquals("completed", lane.terminalOutcome.wireValue)
     }
     assertEquals(lanes.sumOf { it.counters.launchBytes }, summary.aggregateCounters.launchBytes)
     assertEquals(summary.aggregateCounters, summary.parent.inclusiveCounters)

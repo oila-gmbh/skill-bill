@@ -3,7 +3,7 @@ package skillbill.cli
 import skillbill.SkillBillVersion
 import skillbill.cli.core.CliRuntime
 import skillbill.cli.model.CliExecutionResult
-import skillbill.db.core.DatabaseRuntime
+import skillbill.infrastructure.sqlite.core.DatabaseRuntime
 import java.sql.DriverManager
 import kotlin.test.Test
 import kotlin.test.assertContains
@@ -566,7 +566,7 @@ class CliGoalExecutionOptionsTest {
   fun `goal imports checked-in decomposition manifest when workflow store is missing`() {
     val fixture = goalFixture(subtaskCount = 1)
     val recoveredDb = fixture.tempDir.resolve("recovered.db")
-    val launcher = GoalFixtureAgentRunLauncher(fixture)
+    val launcher = GoalFixtureAgentRunLauncher(fixture, dbPath = recoveredDb)
 
     val result = CliRuntime.run(
       fixture.goalCommand(dbPath = recoveredDb),
@@ -575,7 +575,14 @@ class CliGoalExecutionOptionsTest {
 
     assertEquals(0, result.exitCode, result.stdout)
     assertContains(result.stdout, "goal SKILL-901: finished")
-    assertEquals(recoveredDb.toString(), launcher.childLaunches.single().skillRunRequest.dbPathOverride)
+    DriverManager.getConnection("jdbc:sqlite:$recoveredDb").use { connection ->
+      connection.prepareStatement("SELECT COUNT(*) FROM feature_task_workflows").use { statement ->
+        statement.executeQuery().use { rows ->
+          assertTrue(rows.next())
+          assertTrue(rows.getInt(1) >= 1, "the recovered database must hold the imported child workflow")
+        }
+      }
+    }
   }
 
   @Test

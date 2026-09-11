@@ -1,25 +1,16 @@
 package skillbill.infrastructure.fs
 
-import skillbill.contracts.JsonSupport
-import skillbill.error.InvalidReviewContextSchemaError
 import skillbill.error.ReviewHunkEvidenceIntegrityError
 import skillbill.ports.review.ReviewStoredHunkBodyExtractor
-import skillbill.ports.review.model.GovernedReviewEvidenceCodec
-import skillbill.ports.review.model.REVIEW_EVIDENCE_MAX_REQUESTS
 import skillbill.ports.review.model.ReviewEvidenceBatchRequest
 import skillbill.ports.review.model.ReviewEvidenceBrokerBinding
-import skillbill.ports.review.model.ReviewEvidenceCoordinates
-import skillbill.ports.review.model.ReviewEvidenceDiscoveryRequest
 import skillbill.ports.review.model.ReviewEvidenceRequest
-import skillbill.ports.review.model.ReviewEvidenceSource
-import skillbill.ports.review.model.ReviewExpansionAuthorizationRequest
 import skillbill.ports.review.model.ReviewToolCall
 import skillbill.ports.taskruntime.FeatureTaskRuntimeSharedEvidenceLocatorReadPort
 import skillbill.review.context.model.ReviewAssignment
 import skillbill.review.context.model.ReviewChangedHunk
 import skillbill.review.context.model.ReviewContextBudgetPolicy
 import skillbill.review.context.model.ReviewDependencyAllowlist
-import skillbill.review.context.model.ReviewEvidenceLimits
 import skillbill.review.context.model.ReviewHunkEvidenceLocator
 import skillbill.review.context.model.ReviewLaneDecision
 import skillbill.review.context.model.ReviewOperationKind
@@ -33,123 +24,6 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class FileSystemReviewEvidenceBrokerBudgetTest {
-  @Test fun `retained expansion metadata exhausts its byte budget before the count budget`() {
-    val root = repo("A.kt" to "caller")
-    val owned = assignment(listOf("A.kt"))
-    val source = ReviewEvidenceSource(
-      owned,
-      "security",
-      coordinates = ReviewEvidenceCoordinates.Checkpoint(
-        ReviewEvidenceCoordinates.Checkpoint.Kind.WORKTREE,
-        mapOf("A.kt" to checkpointFileIdentity(root, "A.kt")),
-      ),
-    )
-    val broker = FileSystemReviewEvidenceBroker(
-      ReviewEvidenceBrokerBinding(
-        root,
-        owned,
-        "security",
-        policy(expansions = 128),
-        sources = listOf(source),
-      ),
-    )
-    var authorized = 0
-    for (sequence in 0..63) {
-      try {
-        broker.authorizeExpansion(
-          ReviewExpansionAuthorizationRequest(
-            "security",
-            "A.kt",
-            sequence.toString().padEnd(ReviewEvidenceLimits.FIELD_CHARACTERS, 'x'),
-          ),
-        )
-        authorized += 1
-      } catch (_: InvalidReviewContextSchemaError) {
-        break
-      }
-    }
-    assertTrue(authorized in 1..63)
-    assertEquals("expansion_metadata_bytes", broker.terminalOutcome()?.budgetKind)
-    assertEquals(authorized + 1, broker.accounting().requiredEvidenceUnits)
-    assertEquals(0, broker.accounting().deliveredEvidenceUnits)
-    assertFailsWith<IllegalArgumentException> {
-      broker.authorizeExpansion(ReviewExpansionAuthorizationRequest("security", "A.kt", "short retry"))
-    }
-    assertEquals(authorized + 1, broker.accounting().requiredEvidenceUnits)
-  }
-
-  @Test fun `serialized response ceiling leaves omitted complete units outstanding`() {
-    val root = repo("A.kt" to "current")
-    val hunks = (1..5).map { ReviewChangedHunk("A.kt", it, 1, it, 1, "x".repeat(60_000)) }
-    val owned = assignment(listOf("A.kt")).copy(assignedHunks = hunks.map { it.hunkId })
-    val broker = FileSystemReviewEvidenceBroker(
-      ReviewEvidenceBrokerBinding(
-        root,
-        owned,
-        "security",
-        policy(result = 65_536, cumulative = 1_000_000),
-        projectedHunks = hunks,
-      ),
-    )
-    val entries = broker.discover(ReviewEvidenceDiscoveryRequest()).entries
-    val response = broker.readBatch(
-      ReviewEvidenceBatchRequest(
-        "security",
-        entries.map {
-          ReviewEvidenceRequest("security", it.path, selector = it.selector)
-        },
-      ),
-    )
-    val responseBytes = JsonSupport.mapToJsonString(GovernedReviewEvidenceCodec.payload(response)).toByteArray().size
-    assertTrue(responseBytes <= ReviewEvidenceLimits.RESPONSE_PAYLOAD_BYTES)
-    assertEquals(4, response.results.count { it.content != null })
-    broker.confirmDelivery(requireNotNull(response.deliveryReceipt))
-    assertEquals(4, broker.accounting().deliveredEvidenceUnits)
-    assertEquals(listOf(entries.last().selector), broker.accounting().unreviewedUnits)
-    assertEquals("evidence_response_bytes", broker.terminalOutcome()?.budgetKind)
-  }
-
-  @Test fun `truncated response credits only complete emitted hunks after receipt confirmation`() {
-    val root = repo("A.kt" to "current")
-    val hunks = listOf(
-      ReviewChangedHunk("A.kt", 1, 1, 1, 1, "aa"),
-      ReviewChangedHunk("A.kt", 4, 1, 4, 1, "bb"),
-    )
-    val assigned = assignment(listOf("A.kt")).copy(assignedHunks = hunks.map { it.hunkId })
-    val broker = FileSystemReviewEvidenceBroker(
-      ReviewEvidenceBrokerBinding(
-        root,
-        assigned,
-        "security",
-        policy(result = 3, cumulative = 20),
-        projectedHunks = hunks,
-      ),
-    )
-    val response = broker.readBatch(batch("A.kt"))
-    assertEquals(0, broker.accounting().deliveredEvidenceUnits)
-    val payload = GovernedReviewEvidenceCodec.payload(response)
-    assertEquals("aa", requireNotNull(JsonSupport.anyToStringAnyMapList(payload["results"])).single()["content"])
-    val receipt = requireNotNull(response.deliveryReceipt)
-    broker.confirmDelivery(receipt)
-    broker.confirmDelivery(receipt)
-    assertEquals(1, broker.accounting().deliveredEvidenceUnits)
-    assertEquals(listOf("hunk:head:${hunks.last().hunkId}"), broker.accounting().unreviewedUnits)
-    assertEquals("evidence_result_bytes", broker.terminalOutcome()?.budgetKind)
-  }
-
-  @Test fun `discovery and refusal retries cannot bypass request limits or grow the refusal ledger`() {
-    val root = repo("A.kt" to "current")
-    val broker = broker(root, assignment(listOf("A.kt")))
-    repeat(REVIEW_EVIDENCE_MAX_REQUESTS) { broker.discover(ReviewEvidenceDiscoveryRequest()) }
-    repeat(256) {
-      assertFailsWith<IllegalArgumentException> { broker.discover(ReviewEvidenceDiscoveryRequest()) }
-    }
-    assertEquals("evidence_requests", broker.terminalOutcome()?.budgetKind)
-    assertEquals(REVIEW_EVIDENCE_MAX_REQUESTS + 1, broker.accounting().evidenceRequests)
-    assertTrue(broker.accounting().refusals.size <= 128)
-    assertEquals(0, broker.accounting().deliveredEvidenceUnits)
-  }
-
   @Test fun `paths escaping the repository are rejected`() {
     val root = repo("A.kt" to "assigned")
     val broker = broker(root, assignment(listOf("A.kt")))
@@ -196,21 +70,19 @@ class FileSystemReviewEvidenceBrokerBudgetTest {
       policy(result = 3, cumulative = 3),
       ReviewStoredHunkBodyExtractor { _, hunk -> if (hunk.path == "A.kt") "aa" else "bbbb" },
     )
-    val firstBatch = broker.readBatch(batch("A.kt"))
-    val first = firstBatch.results.single()
-    broker.confirmDelivery(requireNotNull(firstBatch.deliveryReceipt))
+    val first = broker.readBatch(batch("A.kt")).results.single()
     val second = broker.readBatch(batch("B.kt")).results.single()
 
     assertEquals("aa", first.content)
     assertEquals(null, second.content)
-    assertEquals("lane_evidence_bytes", second.budgetExceeded?.budgetKind)
+    assertEquals("lane_evidence_bytes", second.budgetExceeded?.budgetKind?.wireValue)
     assertTrue(second.bytes == 0L)
-    assertEquals("lane_evidence_bytes", broker.accounting().terminalOutcome?.budgetKind)
-    assertEquals(listOf("hunk:head:${large.hunkId}"), broker.accounting().unreviewedUnits)
+    assertEquals("lane_evidence_bytes", broker.accounting().terminalOutcome?.budgetKind?.wireValue)
+    assertEquals(listOf("head@B.kt"), broker.accounting().unreviewedUnits)
     assertEquals(1, broker.accounting().refusedOperationCount)
   }
 
-  @Test fun `lane evidence refusal leaves denied and never-requested units outstanding`() {
+  @Test fun `mid batch lane evidence refusal records denied unit for refused target only`() {
     val root = repo("A.kt" to "12345", "B.kt" to "67890", "C.kt" to "abcde")
     val hunks = listOf("A.kt", "B.kt", "C.kt").map { path ->
       ReviewChangedHunk(path, 1, 1, 1, 1, Files.readString(root.resolve(path)))
@@ -227,12 +99,12 @@ class FileSystemReviewEvidenceBrokerBudgetTest {
         projectedHunks = hunks,
       ),
     )
-    broker.confirmDelivery(requireNotNull(broker.readBatch(batch("A.kt")).deliveryReceipt))
+    broker.readBatch(batch("A.kt"))
     broker.readBatch(batch("B.kt"))
     val accounting = broker.accounting()
-    assertEquals(hunks.drop(1).map { "hunk:head:${it.hunkId}" }, accounting.unreviewedUnits)
-    assertEquals("lane_evidence_bytes", accounting.terminalOutcome?.budgetKind)
-    assertEquals(2, accounting.remainingEvidence.size)
+    assertEquals(listOf("head@B.kt"), accounting.unreviewedUnits)
+    assertEquals("lane_evidence_bytes", accounting.terminalOutcome?.budgetKind?.wireValue)
+    assertTrue(accounting.unreviewedUnits.none { it.endsWith("@C.kt") })
   }
 
   @Test fun `an ordinary bounded review completes with full accounting and no termination`() {

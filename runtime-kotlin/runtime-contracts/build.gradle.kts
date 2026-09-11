@@ -6,7 +6,7 @@ plugins {
 }
 
 dependencies {
-  api(libs.kotlinx.serialization.json)
+  implementation(libs.kotlinx.serialization.json)
   implementation(libs.snakeyaml)
   testImplementation(libs.junit.jupiter)
   testImplementation(libs.kotlin.test)
@@ -34,7 +34,11 @@ val copyGoalPlanningDiscoveryExclusions =
   tasks.register<Copy>("copyGoalPlanningDiscoveryExclusions") {
     val contractPath = canonicalGoalPlanningDiscoveryExclusionsPath
     from(contractPath)
-    into(layout.buildDirectory.dir("generated/skillbill-contracts/skillbill/contracts"))
+    into(
+      layout.buildDirectory.dir(
+        "generated/skillbill-contracts/skillbill/infrastructure/fs/contracts",
+      ),
+    )
     inputs.file(contractPath)
     doFirst {
       require(File(contractPath).exists()) {
@@ -47,7 +51,11 @@ val copyGoalVerificationBoundaryCaps =
   tasks.register<Copy>("copyGoalVerificationBoundaryCaps") {
     val contractPath = canonicalGoalVerificationBoundaryCapsPath
     from(contractPath)
-    into(layout.buildDirectory.dir("generated/skillbill-contracts/skillbill/contracts"))
+    into(
+      layout.buildDirectory.dir(
+        "generated/skillbill-contracts/skillbill/infrastructure/fs/contracts",
+      ),
+    )
     inputs.file(contractPath)
     doFirst {
       require(File(contractPath).exists()) {
@@ -60,7 +68,11 @@ val copyIssueKeySchema =
   tasks.register<Copy>("copyIssueKeySchema") {
     val contractPath = canonicalIssueKeySchemaPath
     from(contractPath)
-    into(layout.buildDirectory.dir("generated/skillbill-contracts/skillbill/contracts"))
+    into(
+      layout.buildDirectory.dir(
+        "generated/skillbill-contracts/skillbill/infrastructure/fs/contracts",
+      ),
+    )
     inputs.file(contractPath)
     doFirst {
       require(File(contractPath).exists()) {
@@ -78,6 +90,10 @@ sourceSets.named("main") {
 // source set too and fails on a clean build without it.
 listOf("processResources", "processTestResources", "sourcesJar").forEach { consumer ->
   tasks.matching { task -> task.name == consumer }.configureEach {
-    dependsOn(copyGoalPlanningDiscoveryExclusions, copyGoalVerificationBoundaryCaps, copyIssueKeySchema)
+    dependsOn(
+      copyGoalPlanningDiscoveryExclusions,
+      copyGoalVerificationBoundaryCaps,
+      copyIssueKeySchema,
+    )
   }
 }

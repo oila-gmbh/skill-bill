@@ -1,23 +1,23 @@
 package skillbill.application.workflow
 
-import skillbill.contracts.JsonSupport
+import skillbill.contracts.JsonCodec
 import skillbill.error.InvalidWorkflowStateSchemaError
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_LEDGER_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_RECORDS_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerEntry
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseRecord
 
-fun decodeWorkflowArtifacts(artifactsJson: String): Map<String, Any?> = JsonSupport.parseObjectOrNull(artifactsJson)
-  ?.let(JsonSupport::jsonElementToValue)
-  ?.let(JsonSupport::anyToStringAnyMap)
+fun decodeWorkflowArtifacts(artifactsJson: String): Map<String, Any?> = JsonCodec.parseObjectOrNull(artifactsJson)
+  ?.let(JsonCodec::jsonElementToValue)
+  ?.let(JsonCodec::anyToStringAnyMap)
   .orEmpty()
 
 fun decodeFeatureTaskRuntimePhaseRecords(artifacts: Map<String, Any?>): Map<String, FeatureTaskRuntimePhaseRecord> {
-  val raw = JsonSupport.anyToStringAnyMap(artifacts[FEATURE_TASK_RUNTIME_PHASE_RECORDS_ARTIFACT_KEY])
+  val raw = JsonCodec.anyToStringAnyMap(artifacts[FEATURE_TASK_RUNTIME_PHASE_RECORDS_ARTIFACT_KEY])
     ?: return emptyMap()
   return raw.mapValues { (_, value) ->
     FeatureTaskRuntimePhaseRecord.fromArtifactMap(
-      JsonSupport.anyToStringAnyMap(value)
+      JsonCodec.anyToStringAnyMap(value)
         ?: throw IllegalArgumentException("Feature-task-runtime phase record entry is malformed."),
     )
   }
@@ -29,7 +29,7 @@ object FeatureTaskRuntimePhaseLedgerDecoder {
     val raw = artifacts[FEATURE_TASK_RUNTIME_PHASE_LEDGER_ARTIFACT_KEY] as? List<*>
       ?: invalid("must decode to a JSON array")
     return raw.map { value ->
-      val entry = JsonSupport.anyToStringAnyMap(value) ?: invalid("contains a malformed entry")
+      val entry = JsonCodec.anyToStringAnyMap(value) ?: invalid("contains a malformed entry")
       try {
         FeatureTaskRuntimePhaseLedgerEntry.fromArtifactMap(entry)
       } catch (error: InvalidWorkflowStateSchemaError) {

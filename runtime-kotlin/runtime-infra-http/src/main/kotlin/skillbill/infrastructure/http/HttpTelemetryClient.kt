@@ -1,17 +1,16 @@
 package skillbill.infrastructure.http
 
 import me.tatarka.inject.annotations.Inject
-import skillbill.contracts.JsonSupport
+import skillbill.contracts.JsonCodec
 import skillbill.contracts.telemetry.RemoteStatsQueryPayload
 import skillbill.contracts.telemetry.defaultProxyCapabilities
+import skillbill.contracts.time.JvmSystemClock
 import skillbill.model.EnvironmentContext
 import skillbill.model.TransportContext
 import skillbill.ports.telemetry.RemoteTransportPort
 import skillbill.ports.telemetry.TelemetryClient
-import skillbill.ports.telemetry.UnconfiguredRemoteTransportPort
 import skillbill.ports.telemetry.model.RemoteTransportResponse
 import skillbill.ports.telemetry.model.TelemetryOutboxRecord
-import skillbill.ports.time.JvmSystemClock
 import skillbill.telemetry.TELEMETRY_PROXY_CONTRACT_VERSION
 import skillbill.telemetry.TELEMETRY_PROXY_STATS_TOKEN_ENVIRONMENT_KEY
 import skillbill.telemetry.model.RemoteStatsRequest
@@ -54,12 +53,7 @@ class HttpTelemetryClient(
   private val clock: Clock,
 ) : TelemetryClient {
   private val resolvedEnvironment = environmentContext.withProcessDefaults()
-  private val resolvedTransport =
-    if (transportContext.requester === UnconfiguredRemoteTransportPort) {
-      transportContext.copy(requester = JdkHttpRequester)
-    } else {
-      transportContext
-    }
+  private val resolvedRequester = transportContext.requester ?: JdkHttpRequester
 
   constructor(
     requester: RemoteTransportPort,
@@ -88,7 +82,7 @@ class HttpTelemetryClient(
       url = settings.proxyUrl,
       payload = telemetryProxyBatchPayload(settings, rows).toPayload(),
       errorContext = errorContext,
-      requester = resolvedTransport.requester,
+      requester = resolvedRequester,
     )
   }
 
@@ -100,7 +94,7 @@ class HttpTelemetryClient(
         url = capabilitiesUrl,
         errorContext = "Telemetry proxy capabilities request",
         headers = proxyAuthHeaders(resolvedEnvironment.environment),
-        requester = resolvedTransport.requester,
+        requester = resolvedRequester,
       ).toMutableMap().apply {
         putIfAbsent("contract_version", TELEMETRY_PROXY_CONTRACT_VERSION)
         putIfAbsent("source", "remote_proxy")
@@ -153,7 +147,7 @@ class HttpTelemetryClient(
         ).toPayload(),
         errorContext = "Remote telemetry stats request",
         headers = proxyAuthHeaders(resolvedEnvironment.environment),
-        requester = resolvedTransport.requester,
+        requester = resolvedRequester,
       ).toMutableMap()
     val responseCapabilitiesPresent = payload.containsKey("capabilities")
     payload.putIfAbsent("workflow", request.workflow)
@@ -185,7 +179,7 @@ private fun requestJson(
     requester.execute(
       "POST",
       url,
-      JsonSupport.mapToJsonString(payload),
+      JsonCodec.mapToJsonString(payload),
       defaultJsonHeaders() + headers,
     )
   ensureSuccessfulResponse(response, errorContext)
@@ -214,7 +208,7 @@ private fun postJson(url: String, payload: Map<String, Any?>, errorContext: Stri
     requester.execute(
       "POST",
       url,
-      JsonSupport.mapToJsonString(payload),
+      JsonCodec.mapToJsonString(payload),
       defaultJsonHeaders(),
     )
   ensureSuccessfulResponse(response, errorContext)
@@ -234,9 +228,9 @@ private fun decodeJsonObject(body: String, errorContext: String): Map<String, An
     return emptyMap()
   }
   val decoded =
-    JsonSupport.parseObjectOrNull(body)
+    JsonCodec.parseObjectOrNull(body)
       ?: throw IllegalArgumentException("$errorContext returned invalid JSON.")
-  return JsonSupport.anyToStringAnyMap(JsonSupport.jsonElementToValue(decoded))
+  return JsonCodec.anyToStringAnyMap(JsonCodec.jsonElementToValue(decoded))
     ?: throw IllegalArgumentException(
       "$errorContext returned a non-object JSON payload.",
     )

@@ -8,6 +8,7 @@ import skillbill.application.telemetry.model.FeatureVerifyStartedRequest
 import skillbill.application.telemetry.model.PrDescriptionGeneratedRequest
 import skillbill.application.telemetry.model.QualityCheckFinishedRequest
 import skillbill.application.telemetry.model.QualityCheckStartedRequest
+import skillbill.application.telemetry.settings.telemetrySettingsOrNull
 import skillbill.boundary.OpenBoundaryMap
 import skillbill.ports.db.DatabaseSessionFactory
 import skillbill.ports.telemetry.TelemetrySettingsProvider
@@ -18,28 +19,23 @@ class LifecycleTelemetryService(
   private val settingsProvider: TelemetrySettingsProvider,
 ) : GoalLifecycleTelemetryEmitter by LifecycleTelemetryGoalEmission(database, settingsProvider) {
   @OpenBoundaryMap("Lifecycle telemetry event bag emitted to the MCP/CLI telemetry boundary")
-  fun featureTaskRuntimeStarted(
-    request: FeatureTaskRuntimeStartedRequest,
-    dbOverride: String? = null,
-  ): Map<String, Any?> {
+  fun featureTaskRuntimeStarted(request: FeatureTaskRuntimeStartedRequest): Map<String, Any?> {
     val sessionId = request.sessionId.ifBlank { generateLifecycleSessionId("ftr") }
     return enabledStandaloneResult(settingsProvider, sessionId) { settings ->
-      database.transaction(dbOverride) { unitOfWork ->
+      database.transaction { unitOfWork ->
         unitOfWork.lifecycleTelemetry.featureTaskRuntimeStarted(request.toRecord(sessionId), settings.level)
       }
     }
   }
 
   @OpenBoundaryMap("Lifecycle telemetry event bag emitted to the MCP/CLI telemetry boundary")
-  fun featureTaskRuntimeFinished(
-    request: FeatureTaskRuntimeFinishedRequest,
-    dbOverride: String? = null,
-  ): Map<String, Any?> = enabledStandaloneResult(settingsProvider, request.sessionId) { settings ->
-    val reconciledRequest = request.reconcileBlockedRuntimeFields()
-    database.transaction(dbOverride) { unitOfWork ->
-      unitOfWork.lifecycleTelemetry.featureTaskRuntimeFinished(reconciledRequest.toRecord(), settings.level)
+  fun featureTaskRuntimeFinished(request: FeatureTaskRuntimeFinishedRequest): Map<String, Any?> =
+    enabledStandaloneResult(settingsProvider, request.sessionId) { settings ->
+      val reconciledRequest = request.reconcileBlockedRuntimeFields()
+      database.transaction { unitOfWork ->
+        unitOfWork.lifecycleTelemetry.featureTaskRuntimeFinished(reconciledRequest.toRecord(), settings.level)
+      }
     }
-  }
 
   @OpenBoundaryMap("Lifecycle telemetry event bag emitted to the MCP/CLI telemetry boundary")
   fun qualityCheckStarted(request: QualityCheckStartedRequest): Map<String, Any?> {
@@ -51,7 +47,7 @@ class LifecycleTelemetryService(
         validateQualityCheckStarted(normalizedRequest)
           ?.let { lifecycleErrorPayload(sessionId, it) }
           ?: enabledStandaloneResult(settingsProvider, sessionId) { settings ->
-            database.transaction(null) { unitOfWork ->
+            database.transaction { unitOfWork ->
               unitOfWork.lifecycleTelemetry.qualityCheckStarted(
                 normalizedRequest.toRecord(sessionId),
                 settings.level,
@@ -71,7 +67,7 @@ class LifecycleTelemetryService(
           normalizedRequest.orchestratedPayload(telemetryLevelOrAnonymous(settingsProvider))
         else ->
           enabledStandaloneResult(settingsProvider, normalizedRequest.sessionId) { settings ->
-            database.transaction(null) { unitOfWork ->
+            database.transaction { unitOfWork ->
               unitOfWork.lifecycleTelemetry.qualityCheckFinished(
                 normalizedRequest.toRecord(),
                 settings.level,
@@ -88,7 +84,7 @@ class LifecycleTelemetryService(
       request.orchestrated -> orchestratedStartedSkippedPayload()
       else ->
         enabledStandaloneResult(settingsProvider, sessionId) { settings ->
-          database.transaction(null) { unitOfWork ->
+          database.transaction { unitOfWork ->
             unitOfWork.lifecycleTelemetry.featureVerifyStarted(request.toRecord(sessionId), settings.level)
           }
         }
@@ -103,7 +99,7 @@ class LifecycleTelemetryService(
         request.orchestrated -> request.orchestratedPayload(telemetryLevelOrAnonymous(settingsProvider))
         else ->
           enabledStandaloneResult(settingsProvider, request.sessionId) { settings ->
-            database.transaction(null) { unitOfWork ->
+            database.transaction { unitOfWork ->
               unitOfWork.lifecycleTelemetry.featureVerifyFinished(request.toRecord(), settings.level)
             }
           }
@@ -116,7 +112,7 @@ class LifecycleTelemetryService(
       request.orchestrated -> request.orchestratedPayload(telemetryLevelOrAnonymous(settingsProvider))
       else ->
         enabledStandaloneResult(settingsProvider, sessionId) { settings ->
-          database.transaction(null) { unitOfWork ->
+          database.transaction { unitOfWork ->
             unitOfWork.lifecycleTelemetry.prDescriptionGenerated(request.toRecord(sessionId), settings.level)
           }
         }

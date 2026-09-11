@@ -1,16 +1,22 @@
 package skillbill.application.workflow
 
-import skillbill.application.decomposition.DecompositionManifestProjectionSupport
+import skillbill.application.decomposition.DecompositionManifestWriteGuard
 import skillbill.application.decomposition.DecompositionManifestWriter
 import skillbill.application.workflow.model.WorkflowUpdateResult
 import skillbill.model.RepositoryRoot
 import skillbill.ports.db.DatabaseSessionFactory
 import skillbill.ports.persistence.UnitOfWork
 import skillbill.ports.workflow.decomposition.DecompositionManifestStore
+import skillbill.ports.workflow.get
+import skillbill.ports.workflow.save
 import skillbill.workflow.decomposition.DecompositionManifestValidator
 import skillbill.workflow.engine.WorkflowEngine
 import skillbill.workflow.engine.model.WorkflowStateSnapshot
 import skillbill.workflow.engine.model.WorkflowUpdateInput
+import skillbill.workflow.engine.model.isTerminalStatus
+import skillbill.workflow.model.WorkflowStepStatus
+import skillbill.workflow.model.workflowStatus
+import skillbill.workflow.model.workflowStepStatus
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_OPERATOR_BLOCK_RETRY_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_OPERATOR_BLOCK_RETRY_REASON_MAX_LENGTH
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_LEDGER_ARTIFACT_KEY
@@ -34,7 +40,6 @@ class WorkflowServiceBlockedPhaseRetry(
     workflowId: String,
     phaseId: String,
     reason: String,
-    dbOverride: String?,
   ): WorkflowUpdateResult {
     val normalizedReason = reason.trim()
     if (
@@ -56,11 +61,11 @@ class WorkflowServiceBlockedPhaseRetry(
       )
     }
     val request = BlockedPhaseRetryRequest(workflowId, normalizedPhaseId, normalizedReason)
-    val persistence = database.transaction(dbOverride) { unitOfWork ->
+    val persistence = database.transaction { unitOfWork ->
       retryInTransaction(unitOfWork, request)
     }
     persistence.projectionArtifactsJson?.let { artifactsJson ->
-      DecompositionManifestProjectionSupport.requireWritten(
+      DecompositionManifestWriteGuard.requireWritten(
         decompositionManifestWriter.writeProjectionFromWorkflowState(
           repositoryRoot.path,
           artifactsJson,
@@ -87,7 +92,7 @@ class WorkflowServiceBlockedPhaseRetry(
           unitOfWork.dbPath.toString(),
         ),
       )
-    if (existing.workflowStatus in family.definition.terminalStatuses) {
+    if (family.definition.isTerminalStatus(existing.workflowStatus)) {
       return BlockedPhaseRetryPersistence.error(
         WorkflowUpdateResult.Error(
           request.workflowId,
@@ -107,7 +112,7 @@ class WorkflowServiceBlockedPhaseRetry(
           unitOfWork.dbPath.toString(),
         ),
       )
-    return if (blockedRecord.status != "blocked") {
+    return if (blockedRecord.status.workflowStepStatus() != WorkflowStepStatus.BLOCKED) {
       BlockedPhaseRetryPersistence.error(
         WorkflowUpdateResult.Error(
           request.workflowId,
@@ -198,9 +203,10 @@ private data class BlockedPhaseRetryState(
 ) {
   fun reopenedPhaseRecords(): Map<String, FeatureTaskRuntimePhaseRecord> = LinkedHashMap(phaseRecords).apply {
     this[blockedRecord.phaseId] = blockedRecord.copy(
-      status = "pending",
+      status = WorkflowStepStatus.PENDING,
       finishedAt = null,
       durationMillis = null,
+      outputArtifact = null,
       rejectedOutput = null,
       blockedReason = null,
       failureDisposition = null,

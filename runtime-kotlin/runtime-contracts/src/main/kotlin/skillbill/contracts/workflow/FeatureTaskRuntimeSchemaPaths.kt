@@ -37,7 +37,7 @@ object FeatureTaskRuntimePhaseOutputSchemaPaths {
 
   /** Classpath resource path where runtime-infra-fs bundles the schema for runtime loads. */
   const val CLASSPATH_RESOURCE: String =
-    "skillbill/contracts/feature-task-runtime-phase-output-schema.yaml"
+    "skillbill/infrastructure/fs/contracts/feature-task-runtime-phase-output-schema.yaml"
 
   /**
    * Expected value of the canonical schema's `$id`. The validator
@@ -58,7 +58,7 @@ object FeatureTaskRuntimeHandoffEnvelopeSchemaPaths {
   const val REPO_RELATIVE_PATH: String =
     "orchestration/contracts/feature-task-runtime-handoff-envelope-schema.yaml"
   const val CLASSPATH_RESOURCE: String =
-    "skillbill/contracts/feature-task-runtime-handoff-envelope-schema.yaml"
+    "skillbill/infrastructure/fs/contracts/feature-task-runtime-handoff-envelope-schema.yaml"
   const val EXPECTED_SCHEMA_ID: String =
     "https://skill-bill.dev/contracts/feature-task-runtime-handoff-envelope-schema.yaml"
 }
@@ -69,7 +69,7 @@ object FeatureTaskRuntimePhaseLaunchBriefingSchemaPaths {
   const val REPO_RELATIVE_PATH: String =
     "orchestration/contracts/feature-task-runtime-phase-launch-briefing-schema.yaml"
   const val CLASSPATH_RESOURCE: String =
-    "skillbill/contracts/feature-task-runtime-phase-launch-briefing-schema.yaml"
+    "skillbill/infrastructure/fs/contracts/feature-task-runtime-phase-launch-briefing-schema.yaml"
   const val EXPECTED_SCHEMA_ID: String =
     "https://skill-bill.dev/contracts/feature-task-runtime-phase-launch-briefing-schema.yaml"
 }
@@ -85,7 +85,7 @@ object FeatureTaskRuntimePhaseHandoffSchemaPaths {
   const val REPO_RELATIVE_PATH: String =
     "orchestration/contracts/feature-task-runtime-phase-handoff-schema.yaml"
   const val CLASSPATH_RESOURCE: String =
-    "skillbill/contracts/feature-task-runtime-phase-handoff-schema.yaml"
+    "skillbill/infrastructure/fs/contracts/feature-task-runtime-phase-handoff-schema.yaml"
   const val EXPECTED_SCHEMA_ID: String =
     "https://skill-bill.dev/contracts/feature-task-runtime-phase-handoff-schema.yaml"
 }
@@ -107,7 +107,7 @@ object FeatureTaskRuntimePersistenceSchemaPaths {
   const val REPO_RELATIVE_PATH: String =
     "orchestration/contracts/feature-task-runtime-persistence-schema.yaml"
   const val CLASSPATH_RESOURCE: String =
-    "skillbill/contracts/feature-task-runtime-persistence-schema.yaml"
+    "skillbill/infrastructure/fs/contracts/feature-task-runtime-persistence-schema.yaml"
   const val EXPECTED_SCHEMA_ID: String =
     "https://skill-bill.dev/contracts/feature-task-runtime-persistence-schema.yaml"
 }
@@ -122,7 +122,7 @@ object FeatureTaskRuntimeProjectionMeasurementSchemaPaths {
   const val REPO_RELATIVE_PATH: String =
     "orchestration/contracts/feature-task-runtime-projection-measurement-schema.yaml"
   const val CLASSPATH_RESOURCE: String =
-    "skillbill/contracts/feature-task-runtime-projection-measurement-schema.yaml"
+    "skillbill/infrastructure/fs/contracts/feature-task-runtime-projection-measurement-schema.yaml"
   const val EXPECTED_SCHEMA_ID: String =
     "https://skill-bill.dev/contracts/feature-task-runtime-projection-measurement-schema.yaml"
 }
@@ -139,7 +139,7 @@ object FeatureTaskRuntimePlanningProjectionsSchemaPaths {
   const val REPO_RELATIVE_PATH: String =
     "orchestration/contracts/feature-task-runtime-planning-projections-schema.yaml"
   const val CLASSPATH_RESOURCE: String =
-    "skillbill/contracts/feature-task-runtime-planning-projections-schema.yaml"
+    "skillbill/infrastructure/fs/contracts/feature-task-runtime-planning-projections-schema.yaml"
   const val EXPECTED_SCHEMA_ID: String =
     "https://skill-bill.dev/contracts/feature-task-runtime-planning-projections-schema.yaml"
 }
@@ -156,7 +156,7 @@ object FeatureTaskRuntimeQuarantineSchemaPaths {
   const val REPO_RELATIVE_PATH: String =
     "orchestration/contracts/feature-task-runtime-quarantine-schema.yaml"
   const val CLASSPATH_RESOURCE: String =
-    "skillbill/contracts/feature-task-runtime-quarantine-schema.yaml"
+    "skillbill/infrastructure/fs/contracts/feature-task-runtime-quarantine-schema.yaml"
   const val EXPECTED_SCHEMA_ID: String =
     "https://skill-bill.dev/contracts/feature-task-runtime-quarantine-schema.yaml"
 }
@@ -173,7 +173,7 @@ object FeatureTaskRuntimeImplementationAttemptSchemaPaths {
   const val REPO_RELATIVE_PATH: String =
     "orchestration/contracts/feature-task-runtime-implementation-attempt-schema.yaml"
   const val CLASSPATH_RESOURCE: String =
-    "skillbill/contracts/feature-task-runtime-implementation-attempt-schema.yaml"
+    "skillbill/infrastructure/fs/contracts/feature-task-runtime-implementation-attempt-schema.yaml"
   const val EXPECTED_SCHEMA_ID: String =
     "https://skill-bill.dev/contracts/feature-task-runtime-implementation-attempt-schema.yaml"
 }
@@ -192,7 +192,7 @@ object FeatureTaskRuntimeCheckpointIdentitySchemaPaths {
   const val REPO_RELATIVE_PATH: String =
     "orchestration/contracts/feature-task-runtime-checkpoint-identity-schema.yaml"
   const val CLASSPATH_RESOURCE: String =
-    "skillbill/contracts/feature-task-runtime-checkpoint-identity-schema.yaml"
+    "skillbill/infrastructure/fs/contracts/feature-task-runtime-checkpoint-identity-schema.yaml"
   const val EXPECTED_SCHEMA_ID: String =
     "https://skill-bill.dev/contracts/feature-task-runtime-checkpoint-identity-schema.yaml"
 }
@@ -211,7 +211,7 @@ object FeatureTaskRuntimeBuildReceiptSchemaPaths {
   const val REPO_RELATIVE_PATH: String =
     "orchestration/contracts/feature-task-runtime-build-receipt.yaml"
   const val CLASSPATH_RESOURCE: String =
-    "skillbill/contracts/feature-task-runtime-build-receipt.yaml"
+    "skillbill/infrastructure/fs/contracts/feature-task-runtime-build-receipt.yaml"
   const val EXPECTED_SCHEMA_ID: String =
     "https://skill-bill.dev/contracts/feature-task-runtime-build-receipt.yaml"
 }
@@ -220,7 +220,7 @@ object FeatureTaskRuntimeSharedEvidenceProjectionSchemaPaths {
   const val REPO_RELATIVE_PATH: String =
     "orchestration/contracts/feature-task-runtime-shared-evidence-projection-schema.yaml"
   const val CLASSPATH_RESOURCE: String =
-    "skillbill/contracts/feature-task-runtime-shared-evidence-projection-schema.yaml"
+    "skillbill/infrastructure/fs/contracts/feature-task-runtime-shared-evidence-projection-schema.yaml"
   const val EXPECTED_SCHEMA_ID: String =
     "https://skill-bill.dev/contracts/feature-task-runtime-shared-evidence-projection-schema.yaml"
 }

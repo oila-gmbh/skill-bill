@@ -5,15 +5,14 @@ import skillbill.ports.goalrunner.runner.model.GoalRunnerAttemptLedgerRecordRequ
 import skillbill.ports.goalrunner.runner.model.GoalRunnerLedgerSequenceWatermarks
 
 interface GoalRunnerWorkflowLedgerWriteStore {
-  fun recordAttemptLedgerEntry(request: GoalRunnerAttemptLedgerRecordRequest, dbPathOverride: String? = null): Boolean
+  fun recordAttemptLedgerEntry(request: GoalRunnerAttemptLedgerRecordRequest): Boolean
 
   fun recordWorkerSubtaskRequestOutcomes(
     workflowId: String,
     outcomes: List<GoalRunnerWorkerSubtaskRequestOutcome>,
-    dbPathOverride: String? = null,
   ): Boolean
 
-  fun ledgerSequenceWatermarks(issueKey: String, dbPathOverride: String? = null): GoalRunnerLedgerSequenceWatermarks
+  fun ledgerSequenceWatermarks(issueKey: String): GoalRunnerLedgerSequenceWatermarks
 
-  fun childWorkflowLoopIterations(workflowId: String, dbPathOverride: String? = null): Map<String, Int>
+  fun childWorkflowLoopIterations(workflowId: String): Map<String, Int>
 }

@@ -1,16 +1,16 @@
 package skillbill.infrastructure.sqlite.goalrunner
 import skillbill.contracts.issuekey.normalizeRequiredIssueKey
+import skillbill.infrastructure.sqlite.workflow.decompositionRuntime
+import skillbill.infrastructure.sqlite.workflow.findDecomposedParentWorkflow
+import skillbill.infrastructure.sqlite.workflow.requireRuntimeModeForEngineWrite
 import skillbill.ports.db.DatabaseSessionFactory
-import skillbill.ports.goalrunner.persistence.GoalParentProjectionWriter
-import skillbill.ports.goalrunner.persistence.migrateLegacyGoalRunnerControls
 import skillbill.ports.goalrunner.runner.model.GoalRunnerManifestState
 import skillbill.ports.persistence.UnitOfWork
-import skillbill.ports.workflow.persistence.decompositionRuntime
-import skillbill.ports.workflow.persistence.findDecomposedParentWorkflow
-import skillbill.ports.workflow.persistence.model.WorkflowFamily
-import skillbill.ports.workflow.persistence.requireRuntimeModeForEngineWrite
-import skillbill.ports.workflow.persistence.toRecord
-import skillbill.ports.workflow.persistence.toSnapshot
+import skillbill.ports.workflow.get
+import skillbill.ports.workflow.model.WorkflowFamily
+import skillbill.ports.workflow.model.toSnapshot
+import skillbill.ports.workflow.saveRecord
+import skillbill.ports.workflow.toRecord
 import skillbill.workflow.decomposition.DecompositionManifestValidator
 import skillbill.workflow.engine.WorkflowEngine
 import skillbill.workflow.engine.model.WorkflowUpdateInput
@@ -26,8 +26,8 @@ internal class WorkflowGoalRunnerManifestProjectionPersistence(
   private val parentProjection: GoalParentProjectionWriter,
   private val decompositionManifestValidator: DecompositionManifestValidator,
 ) {
-  fun save(state: GoalRunnerManifestState, dbPathOverride: String?): SavedManifestProjection =
-    database.transaction(dbPathOverride) { unitOfWork -> saveInTransaction(unitOfWork, state) }
+  fun save(state: GoalRunnerManifestState): SavedManifestProjection =
+    database.transaction { unitOfWork -> saveInTransaction(unitOfWork, state) }
 
   fun saveInTransaction(
     unitOfWork: UnitOfWork,

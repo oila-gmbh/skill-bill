@@ -7,6 +7,7 @@ import skillbill.application.reviewevidence.ResolvedCommitSequence
 import skillbill.application.reviewevidence.ReviewDiffEvidence
 import skillbill.application.testDecompositionManifestValidator
 import skillbill.error.UnreadableSpecIntentProjectionError
+import skillbill.ports.repository.toFileLocation
 import skillbill.review.context.ReviewContextEnvelopeValidator
 import skillbill.review.context.model.GovernedReviewLaunch
 import skillbill.review.context.model.ReviewCommitCoverageFact
@@ -144,8 +145,8 @@ class SpecIntentProjectionResolverTest {
     Files.writeString(explicit, governedSpec("Explicit outcome", "Explicit criterion."))
     val resolved = resolver().resolve(
       SpecIntentProjectionResolveRequest(
-        repoRoot = repo,
-        explicitSpecPath = explicit,
+        repoRoot = repo.toFileLocation(),
+        explicitSpecPath = explicit.toFileLocation(),
         branchName = "feat/SKILL-191-runtime",
       ),
     )
@@ -159,7 +160,7 @@ class SpecIntentProjectionResolverTest {
     val repo = featureRepo(includeGlob = true, includeManifest = true)
     val resolved = resolver().resolve(
       SpecIntentProjectionResolveRequest(
-        repoRoot = repo,
+        repoRoot = repo.toFileLocation(),
         branchName = "feat/SKILL-191-runtime",
       ),
     )
@@ -176,7 +177,7 @@ class SpecIntentProjectionResolverTest {
     val repo = featureRepo(includeGlob = true, includeManifest = true)
     val resolved = resolver().resolve(
       SpecIntentProjectionResolveRequest(
-        repoRoot = repo,
+        repoRoot = repo.toFileLocation(),
         branchName = "feat/SKILL-191-runtime",
         changedPaths = listOf("src/Main.kt"),
       ),
@@ -196,7 +197,7 @@ class SpecIntentProjectionResolverTest {
     writeSpec(repo, ".feature-specs/SKILL-191-one/spec.md", governedSpec("One", "AC one."))
     writeSpec(repo, ".feature-specs/SKILL-191-two/spec.md", governedSpec("Two", "AC two."))
     val resolved = resolver().resolve(
-      SpecIntentProjectionResolveRequest(repoRoot = repo, branchName = "feat/SKILL-191-runtime"),
+      SpecIntentProjectionResolveRequest(repoRoot = repo.toFileLocation(), branchName = "feat/SKILL-191-runtime"),
     )
     val none = assertIs<SpecIntentResolution.None>(resolved)
     assertEquals(SpecIntentAbsenceReason.AMBIGUOUS_MATCH, none.reason)
@@ -207,7 +208,7 @@ class SpecIntentProjectionResolverTest {
     val repo = tempRepo()
     Files.createDirectories(repo.resolve(".feature-specs"))
     val resolved = resolver().resolve(
-      SpecIntentProjectionResolveRequest(repoRoot = repo, branchName = "feat/SKILL-191-runtime"),
+      SpecIntentProjectionResolveRequest(repoRoot = repo.toFileLocation(), branchName = "feat/SKILL-191-runtime"),
     )
     assertEquals(SpecIntentAbsenceReason.NO_SPEC_FOUND, assertIs<SpecIntentResolution.None>(resolved).reason)
   }
@@ -216,7 +217,7 @@ class SpecIntentProjectionResolverTest {
   fun `a branch without an issue key resolves to none with not_applicable_scope`() {
     val repo = tempRepo()
     val resolved = resolver().resolve(
-      SpecIntentProjectionResolveRequest(repoRoot = repo, branchName = "main"),
+      SpecIntentProjectionResolveRequest(repoRoot = repo.toFileLocation(), branchName = "main"),
     )
     assertEquals(SpecIntentAbsenceReason.NOT_APPLICABLE_SCOPE, assertIs<SpecIntentResolution.None>(resolved).reason)
   }
@@ -228,8 +229,8 @@ class SpecIntentProjectionResolverTest {
     val error = assertFailsWith<UnreadableSpecIntentProjectionError> {
       resolver().resolve(
         SpecIntentProjectionResolveRequest(
-          repoRoot = repo,
-          explicitSpecPath = missing,
+          repoRoot = repo.toFileLocation(),
+          explicitSpecPath = missing.toFileLocation(),
           branchName = "feat/SKILL-191-runtime",
         ),
       )
@@ -255,19 +256,21 @@ class SpecIntentProjectionResolverTest {
   @Test
   fun `each closed-vocabulary none reason emits an observability record`() {
     val repo = tempRepo()
-    val notApplicable = resolver().resolve(SpecIntentProjectionResolveRequest(repoRoot = repo, branchName = "main"))
+    val notApplicable = resolver().resolve(
+      SpecIntentProjectionResolveRequest(repoRoot = repo.toFileLocation(), branchName = "main"),
+    )
     assertTrue(
       assertIs<SpecIntentResolution.None>(notApplicable).degradations.any { "not_applicable_scope" == it.reason },
     )
     Files.createDirectories(repo.resolve(".feature-specs"))
     val missing = resolver().resolve(
-      SpecIntentProjectionResolveRequest(repoRoot = repo, branchName = "feat/SKILL-191-runtime"),
+      SpecIntentProjectionResolveRequest(repoRoot = repo.toFileLocation(), branchName = "feat/SKILL-191-runtime"),
     )
     assertTrue(assertIs<SpecIntentResolution.None>(missing).degradations.any { "no_spec_found" == it.reason })
     writeSpec(repo, ".feature-specs/SKILL-191-one/spec.md", governedSpec("One", "AC one."))
     writeSpec(repo, ".feature-specs/SKILL-191-two/spec.md", governedSpec("Two", "AC two."))
     val ambiguous = resolver().resolve(
-      SpecIntentProjectionResolveRequest(repoRoot = repo, branchName = "feat/SKILL-191-runtime"),
+      SpecIntentProjectionResolveRequest(repoRoot = repo.toFileLocation(), branchName = "feat/SKILL-191-runtime"),
     )
     assertTrue(assertIs<SpecIntentResolution.None>(ambiguous).degradations.any { "ambiguous_match" == it.reason })
   }
@@ -277,7 +280,7 @@ class SpecIntentProjectionResolverTest {
     val repo = featureRepo(includeGlob = true, includeManifest = true)
     val resolved = resolver(repairedManifestValidator()).resolve(
       SpecIntentProjectionResolveRequest(
-        repoRoot = repo,
+        repoRoot = repo.toFileLocation(),
         branchName = "feat/SKILL-191-runtime",
       ),
     )
@@ -295,7 +298,7 @@ class SpecIntentProjectionResolverTest {
     Files.delete(repo.resolve(".feature-specs/SKILL-191-runtime/spec.md"))
     val resolved = resolver().resolve(
       SpecIntentProjectionResolveRequest(
-        repoRoot = repo,
+        repoRoot = repo.toFileLocation(),
         branchName = "feat/SKILL-191-runtime",
       ),
     )
@@ -310,7 +313,7 @@ class SpecIntentProjectionResolverTest {
     val repo = featureRepo(includeGlob = true, includeManifest = true)
     Files.writeString(repo.resolve(".feature-specs/SKILL-191-runtime/decomposition-manifest.yaml"), "not: [valid")
     val resolved = resolver().resolve(
-      SpecIntentProjectionResolveRequest(repoRoot = repo, branchName = "feat/SKILL-191-runtime"),
+      SpecIntentProjectionResolveRequest(repoRoot = repo.toFileLocation(), branchName = "feat/SKILL-191-runtime"),
     )
     val projection = assertIs<SpecIntentResolution.Resolved>(resolved).projection
     assertEquals(".feature-specs/SKILL-191-runtime/spec.md", projection.provenance.specPath)

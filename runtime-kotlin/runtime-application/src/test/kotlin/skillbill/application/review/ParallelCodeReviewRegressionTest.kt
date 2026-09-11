@@ -89,7 +89,7 @@ class ParallelCodeReviewRegressionTest {
     assertEquals(lanes.size, lanes.map { it.lane }.distinct().size)
     lanes.forEach { lane ->
       assertTrue(lane.counters.launchBytes > 0)
-      assertEquals("completed", lane.terminalOutcome)
+      assertEquals("completed", lane.terminalOutcome.wireValue)
     }
   }
 

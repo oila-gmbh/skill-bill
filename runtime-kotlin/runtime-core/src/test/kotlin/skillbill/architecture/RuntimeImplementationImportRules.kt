@@ -6,19 +6,19 @@ import kotlin.test.assertTrue
 
 internal fun isRuntimeImplementationImport(importedName: String): Boolean {
   val forbiddenPrefixes = listOf(
-    "skillbill.db.",
+    "skillbill.infrastructure.sqlite.",
     "skillbill.infrastructure.",
     "skillbill.infrastructure.fs.",
     "skillbill.infrastructure.http.",
     "skillbill.infrastructure.sqlite.",
-    "skillbill.nativeagent.",
-    "skillbill.launcher.",
-    "skillbill.skillremove.",
+    "skillbill.infrastructure.fs.nativeagent.",
+    "skillbill.infrastructure.fs.launcher.",
+    "skillbill.infrastructure.fs.skillremove.",
   )
   val importsForbiddenRoot = forbiddenPrefixes.any(importedName::startsWith)
-  val importsInstallImplementation = importedName.startsWith("skillbill.install.") &&
+  val importsInstallImplementation = importedName.startsWith("skillbill.infrastructure.fs.install.") &&
     !importedName.startsWith("skillbill.install.model.")
-  val importsScaffoldImplementation = importedName.startsWith("skillbill.scaffold.") &&
+  val importsScaffoldImplementation = importedName.startsWith("skillbill.infrastructure.fs.scaffold.") &&
     !importedName.startsWith("skillbill.scaffold.model.")
   val importsTelemetryImplementation = importedName.startsWith("skillbill.telemetry.") &&
     !importedName.startsWith("skillbill.telemetry.model.")
@@ -81,7 +81,7 @@ internal fun assertRuntimeCorePublicProjectEdges(runtimeRoot: Path, runtimeCoreB
     "runtime-core public project edges must exactly match RuntimeComponent's generated public ABI.",
   )
   val forbiddenApiDependencies = runtimeCoreApiDependencies
-    .filterNot(setOf(":runtime-application", ":runtime-ports")::contains)
+    .filterNot(setOf(":runtime-application", ":runtime-ports", ":runtime-engine")::contains)
     .sorted()
   assertEquals(
     emptyList(),
@@ -89,7 +89,7 @@ internal fun assertRuntimeCorePublicProjectEdges(runtimeRoot: Path, runtimeCoreB
     "runtime-core must not re-export domain, contract, or concrete implementation modules as adapter API.",
   )
   assertEquals(
-    setOf(":runtime-application", ":runtime-contracts", ":runtime-domain", ":runtime-ports"),
+    setOf(":runtime-application", ":runtime-contracts", ":runtime-domain", ":runtime-engine", ":runtime-ports"),
     runtimeCoreApiDependencyClosure(runtimeRoot, runtimeCoreApiDependencies),
     "runtime-core's generated public API closure must stay limited to the documented Kotlin-Inject " +
       "ABI closure; it must not transitively re-export concrete infrastructure, CLI, or MCP modules.",
@@ -101,8 +101,10 @@ internal fun assertRuntimeCorePublicProjectEdges(runtimeRoot: Path, runtimeCoreB
     "ARCHITECTURE.md must document the narrow runtime-core public dependency policy.",
   )
   assertTrue(
-    "public ABI closure is currently runtime-application, runtime-ports, runtime-domain, and runtime-contracts" in
-      normalizedArchitecture,
+    (
+      "public ABI closure is currently runtime-application, runtime-engine, runtime-ports, " +
+        "runtime-domain, and runtime-contracts"
+      ) in normalizedArchitecture,
     "ARCHITECTURE.md must document runtime-core's transitive generated public ABI closure.",
   )
   assertTrue(
@@ -157,6 +159,7 @@ private fun runtimeComponentPublicAbiEdges(runtimeRoot: Path): RuntimeComponentP
       -> projectEdges += ":runtime-ports"
       else -> when {
         importedName.startsWith("skillbill.application.") -> projectEdges += ":runtime-application"
+        importedName.startsWith("skillbill.engine.") -> projectEdges += ":runtime-engine"
         importedName.startsWith("skillbill.ports.") -> projectEdges += ":runtime-ports"
         else -> unknownTypes += importedName
       }

@@ -40,7 +40,7 @@ internal object FileSystemValidationGateGradleSpotlessStdoutParsers {
     if (finding.location != null || finding.ruleOrTestId !in TASK_RULE_IDS) {
       finding
     } else {
-      val excerpt = FileSystemValidationGateGradleSpotlessExcerptSupport.excerpt(stdout)
+      val excerpt = FileSystemValidationGateGradleSpotlessExcerpts.excerpt(stdout)
         ?: return@map finding
       finding.copy(message = "${finding.message} | spotless detail: $excerpt")
     }
@@ -70,7 +70,7 @@ internal object FileSystemValidationGateGradleSpotlessStdoutParsers {
     val match = STEP_PROBLEM.matchEntire(line) ?: return null
     val stepName = match.groupValues[1]
     val rawPath = match.groupValues[2].replace('\\', '/')
-    val relative = FileSystemValidationGateGradlePathSupport.repoRelativeQualityPath(repo, rawPath)
+    val relative = FileSystemValidationGateGradlePaths.repoRelativeQualityPath(repo, rawPath)
     return Step(
       stepName = stepName,
       rawPath = rawPath,

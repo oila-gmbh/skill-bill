@@ -1,6 +1,6 @@
-package skillbill.scaffold
+package skillbill.infrastructure.fs.scaffold
 
-import skillbill.scaffold.platformpack.routeQualityCheck
+import skillbill.infrastructure.fs.scaffold.platformpack.routeQualityCheck
 import skillbill.testing.repoRootFromTest
 import kotlin.test.Test
 import kotlin.test.assertEquals

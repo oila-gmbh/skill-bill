@@ -1,16 +1,17 @@
 package skillbill.cli.model
 
 import skillbill.model.EnvironmentContext
+import skillbill.model.OptionalCallbacks
 import skillbill.model.RuntimeContext
+import skillbill.model.TransportContext
+import skillbill.model.WorkflowOpsContext
 import skillbill.ports.agentrun.AgentRunLauncher
 import skillbill.ports.agentrun.ExecutableLookup
 import skillbill.ports.goalrunner.runner.GoalPullRequestPort
 import skillbill.ports.review.ReviewNativeAgentPreflightPort
 import skillbill.ports.system.HostPlatformPort
 import skillbill.ports.telemetry.RemoteTransportPort
-import skillbill.ports.telemetry.UnconfiguredRemoteTransportPort
 import skillbill.ports.time.RuntimeTimingPort
-import skillbill.ports.workflow.gitops.NoopWorkflowGitOperations
 import skillbill.ports.workflow.gitops.WorkflowGitOperations
 import java.nio.file.Path
 
@@ -20,8 +21,8 @@ data class CliRuntimeContext(
   val environment: Map<String, String> = EnvironmentContext.UnspecifiedEnvironment,
   val externalCommandRunner: ExternalCommandRunner = ProcessExternalCommandRunner,
   val userHome: Path = EnvironmentContext.UnspecifiedUserHome,
-  val requester: RemoteTransportPort = UnconfiguredRemoteTransportPort,
-  val workflowGitOperations: WorkflowGitOperations = NoopWorkflowGitOperations,
+  val requester: RemoteTransportPort? = null,
+  val workflowGitOperations: WorkflowGitOperations? = null,
   val agentRunLauncher: AgentRunLauncher? = null,
   val goalPullRequestPort: GoalPullRequestPort? = null,
   val executableLookup: ExecutableLookup? = null,
@@ -34,18 +35,22 @@ data class CliRuntimeContext(
 ) {
   fun toRuntimeContext(dbPathOverride: String? = this.dbPathOverride, userHome: Path = this.userHome): RuntimeContext =
     RuntimeContext(
-      dbPathOverride = dbPathOverride,
-      stdinText = stdinText,
-      environment = environment,
-      userHome = userHome,
-      repositoryRoot = repositoryRoot ?: EnvironmentContext.UnspecifiedRepositoryRoot,
-      requester = requester,
-      workflowGitOperations = workflowGitOperations,
-      agentRunLauncher = agentRunLauncher,
-      goalPullRequestPort = goalPullRequestPort,
-      executableLookup = executableLookup,
-      reviewNativeAgentPreflight = reviewNativeAgentPreflight,
-      runtimeTimingPort = runtimeTimingPort,
-      hostPlatformPort = hostPlatformPort,
+      environment = EnvironmentContext(
+        dbPathOverride = dbPathOverride,
+        stdinText = stdinText,
+        environment = environment,
+        userHome = userHome,
+        repositoryRoot = repositoryRoot ?: EnvironmentContext.UnspecifiedRepositoryRoot,
+      ),
+      transport = TransportContext(requester),
+      workflowOps = WorkflowOpsContext(workflowGitOperations),
+      callbacks = OptionalCallbacks(
+        agentRunLauncher = agentRunLauncher,
+        goalPullRequestPort = goalPullRequestPort,
+        executableLookup = executableLookup,
+        reviewNativeAgentPreflight = reviewNativeAgentPreflight,
+        runtimeTimingPort = runtimeTimingPort,
+        hostPlatformPort = hostPlatformPort,
+      ),
     )
 }

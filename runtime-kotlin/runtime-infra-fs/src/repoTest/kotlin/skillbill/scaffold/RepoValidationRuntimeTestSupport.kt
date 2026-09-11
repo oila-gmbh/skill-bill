@@ -1,9 +1,9 @@
-package skillbill.scaffold
+package skillbill.infrastructure.fs.scaffold
 
-import skillbill.nativeagent.composition.NativeAgentSource
-import skillbill.nativeagent.composition.renderNativeAgentSource
-import skillbill.scaffold.runtime.requiredSupportingFilesForSkill
-import skillbill.scaffold.runtime.supportingFileTargets
+import skillbill.infrastructure.fs.nativeagent.composition.NativeAgentSource
+import skillbill.infrastructure.fs.nativeagent.composition.renderNativeAgentSource
+import skillbill.infrastructure.fs.scaffold.runtime.requiredSupportingFilesForSkill
+import skillbill.infrastructure.fs.scaffold.runtime.supportingFileTargets
 import skillbill.testsupport.SkillClassFixtures
 import java.nio.file.Files
 import java.nio.file.Path

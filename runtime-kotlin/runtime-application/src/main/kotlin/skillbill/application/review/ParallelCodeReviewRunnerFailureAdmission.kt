@@ -6,6 +6,7 @@ import skillbill.ports.agentrun.model.AgentRunLaunchFacts
 import skillbill.ports.review.model.ParallelReviewLaneOutcome
 import skillbill.ports.review.model.ReviewLaneAccounting
 import skillbill.review.ParallelReviewFindingParser
+import skillbill.review.context.model.ReviewAccountingTerminalOutcome
 import skillbill.review.context.model.ReviewLaneAssembledBundle
 import skillbill.review.context.model.ReviewLaneReviewDisposition
 import skillbill.review.context.model.ReviewRegisterParseSeamException
@@ -134,7 +135,7 @@ internal fun parallelCodeReviewNoOpResumeOutcome(agentId: String) = ParallelRevi
     toolCalls = 0,
     modelTurns = 0,
     resultBytes = 0,
-    terminalStatus = NO_OP_RESUME_TERMINAL_STATUS,
+    terminalStatus = NO_OP_RESUME_TERMINAL_STATUS.wireValue,
     reviewDisposition = ReviewLaneReviewDisposition.COMPLETE,
     bundleCompositionDigest = ReviewLaneAssembledBundle.EMPTY.compositionDigest,
   ),
@@ -145,13 +146,13 @@ internal fun parallelCodeReviewNoOpResumeOutcome(agentId: String) = ParallelRevi
 internal fun parallelCodeReviewInlineTerminalStatus(
   facts: AgentRunLaunchFacts,
   disposition: ReviewLaneReviewDisposition,
-): String = when {
-  facts.timedOut -> "timeout"
-  facts.interrupted -> "interrupted"
-  facts.spawnFailed -> "spawn_failure"
-  facts.exitStatus != 0 -> "process_failure"
-  disposition == ReviewLaneReviewDisposition.INCOMPLETE -> "incomplete"
-  else -> "completed"
+): ReviewAccountingTerminalOutcome = when {
+  disposition == ReviewLaneReviewDisposition.INCOMPLETE -> ReviewAccountingTerminalOutcome.INCOMPLETE
+  facts.timedOut -> ReviewAccountingTerminalOutcome.TIMEOUT
+  facts.interrupted -> ReviewAccountingTerminalOutcome.INTERRUPTED
+  facts.spawnFailed -> ReviewAccountingTerminalOutcome.SPAWN_FAILURE
+  facts.exitStatus != 0 -> ReviewAccountingTerminalOutcome.PROCESS_FAILURE
+  else -> ReviewAccountingTerminalOutcome.COMPLETED
 }
 
 internal fun parallelCodeReviewCaptureLane(lane: () -> ParallelReviewLaneOutcome): ParallelReviewLaneOutcome {

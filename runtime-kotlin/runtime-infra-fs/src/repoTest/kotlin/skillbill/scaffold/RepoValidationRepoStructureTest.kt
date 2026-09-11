@@ -1,8 +1,8 @@
-package skillbill.scaffold
-import skillbill.nativeagent.composition.NativeAgentSource
-import skillbill.nativeagent.composition.renderNativeAgentSource
-import skillbill.nativeagent.testNativeAgentCompositionContext
-import skillbill.scaffold.runtime.RepoValidationRuntime
+package skillbill.infrastructure.fs.scaffold
+import skillbill.infrastructure.fs.nativeagent.composition.NativeAgentSource
+import skillbill.infrastructure.fs.nativeagent.composition.renderNativeAgentSource
+import skillbill.infrastructure.fs.nativeagent.testNativeAgentCompositionContext
+import skillbill.infrastructure.fs.scaffold.runtime.RepoValidationRuntime
 import skillbill.testing.seedConformingPlatformPack
 import java.nio.file.Files
 import kotlin.test.Test

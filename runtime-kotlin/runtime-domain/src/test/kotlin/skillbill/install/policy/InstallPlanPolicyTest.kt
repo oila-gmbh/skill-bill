@@ -28,10 +28,10 @@ import skillbill.install.model.RuntimeDistributionInputs
 import skillbill.install.model.WindowsSymlinkDecision
 import skillbill.install.model.WindowsSymlinkPreflight
 import skillbill.install.model.WindowsSymlinkPreflightState
+import skillbill.model.FileLocation
 import skillbill.scaffold.model.CodeReviewBaselineLayer
 import skillbill.scaffold.model.CodeReviewCompositionMode
 import skillbill.scaffold.model.CodeReviewCompositionScope
-import java.nio.file.Path
 import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertEquals
@@ -511,7 +511,7 @@ class InstallPlanPolicyTest {
       mode = CodeReviewCompositionMode.KmpBaseline,
     )
 
-  private fun baseSkill(name: String, sourceDir: Path = path("/repo/skills/$name")): InstallPlanSkill =
+  private fun baseSkill(name: String, sourceDir: FileLocation = path("/repo/skills/$name")): InstallPlanSkill =
     InstallPlanSkill(
       name = name,
       sourceDir = sourceDir,
@@ -525,5 +525,5 @@ class InstallPlanPolicyTest {
     platformSlug = platformSlug,
   )
 
-  private fun path(value: String): Path = Path.of(value)
+  private fun path(value: String): FileLocation = FileLocation(value)
 }

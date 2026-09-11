@@ -6,11 +6,6 @@ import com.github.ajalt.clikt.parameters.options.option
 import com.github.ajalt.clikt.parameters.options.required
 import me.tatarka.inject.annotations.Inject
 import skillbill.application.continuation.model.GoalContinuationCandidate
-import skillbill.application.featuretask.FeatureTaskContinuationLookupService
-import skillbill.application.featuretask.FeatureTaskRuntimeStatusService
-import skillbill.application.featuretask.model.FeatureTaskContinuationCandidate
-import skillbill.application.featuretask.model.FeatureTaskContinuationLookupResult
-import skillbill.application.featuretask.model.FeatureTaskRuntimeStatusRequest
 import skillbill.application.workflow.WorkflowService
 import skillbill.application.workflow.model.RepairFeatureTaskRuntimeIdentityArgs
 import skillbill.application.workflow.model.WorkflowUpdateResult
@@ -19,6 +14,11 @@ import skillbill.cli.kernel.DocumentedCliCommand
 import skillbill.cli.kernel.formatOption
 import skillbill.cli.kernel.toPayload
 import skillbill.cli.model.CliRunInputs
+import skillbill.engine.featuretask.FeatureTaskContinuationLookupService
+import skillbill.engine.featuretask.FeatureTaskRuntimeStatusService
+import skillbill.engine.featuretask.model.FeatureTaskContinuationCandidate
+import skillbill.engine.featuretask.model.FeatureTaskContinuationLookupResult
+import skillbill.engine.featuretask.model.FeatureTaskRuntimeStatusRequest
 import java.nio.file.Path
 
 @Inject
@@ -37,7 +37,7 @@ class FeatureTaskLookupCommand(
 
   override fun run() {
     val result =
-      lookupService.lookup(issueKey, repositoryIdentity(Path.of(repoRoot)), workflowId, inputs.dbPathOverride)
+      lookupService.lookup(issueKey, repositoryIdentity(Path.of(repoRoot)), workflowId)
     val payload = result.toCliPayload()
     state.complete(payload, format, if (result is FeatureTaskContinuationLookupResult.Ambiguous) 2 else 0)
   }
@@ -101,7 +101,7 @@ class FeatureTaskRuntimeStatusCommand(
 
   override fun run() {
     val projection = statusService.status(
-      FeatureTaskRuntimeStatusRequest(workflowId = workflowId, dbPathOverride = inputs.dbPathOverride),
+      FeatureTaskRuntimeStatusRequest(workflowId = workflowId),
     )
     val payload = projection.toRuntimeStatusCliMap(workflowId)
     state.completeText(runtimeStatusText(payload), payload, exitCode = payload.runtimeStatusExitCode())
@@ -156,7 +156,7 @@ class FeatureTaskRuntimeAbandonCommand(
   private val format by formatOption()
 
   override fun run() {
-    val result = workflowService.abandonFeatureTaskRuntime(workflowId, reason, inputs.dbPathOverride)
+    val result = workflowService.abandonFeatureTaskRuntime(workflowId, reason)
     state.complete(result.toPayload(), format, exitCode = if (result is WorkflowUpdateResult.Error) 1 else 0)
   }
 }
@@ -176,7 +176,7 @@ class FeatureTaskRuntimeRetryBlockedCommand(
   private val format by formatOption()
 
   override fun run() {
-    val result = workflowService.retryBlockedFeatureTaskRuntimePhase(workflowId, phaseId, reason, inputs.dbPathOverride)
+    val result = workflowService.retryBlockedFeatureTaskRuntimePhase(workflowId, phaseId, reason)
     state.complete(result.toPayload(), format, exitCode = if (result is WorkflowUpdateResult.Error) 1 else 0)
   }
 }
@@ -206,7 +206,6 @@ class FeatureTaskRuntimeRepairIdentityCommand(
         repositoryIdentity = repositoryIdentity(root),
         governedSpecPath = governedSpecPath(root, Path.of(specPath)),
         reason = reason,
-        dbOverride = inputs.dbPathOverride,
       ),
     )
     state.complete(result.toPayload(), format, exitCode = if (result is WorkflowUpdateResult.Error) 1 else 0)

@@ -1,8 +1,9 @@
-package skillbill.install
+package skillbill.infrastructure.fs.install
 
-import skillbill.install.staging.StageInstalledSkillInput
-import skillbill.install.staging.stageInstalledSkill
-import skillbill.scaffold.platformpack.loadPlatformManifest
+import skillbill.infrastructure.fs.install.staging.StageInstalledSkillInput
+import skillbill.infrastructure.fs.install.staging.stageInstalledSkill
+import skillbill.infrastructure.fs.scaffold.platformpack.loadPlatformManifest
+import skillbill.model.toPath
 import skillbill.testing.repoRootFromTest
 import java.nio.file.Files
 import java.nio.file.Path
@@ -44,7 +45,7 @@ class FeatureFamilyRenderingIntegrationTest {
     )
     val stagedReview = stageInstalledSkill(repoRoot, repoRoot.resolve("skills/bill-code-review"), home)
 
-    val feature = staged.renderedSkillFile.readText()
+    val feature = staged.renderedSkillFile.toPath().readText()
 
     assertContains(feature, "skill-bill goal preflight <issue-key> --agent <currently-executing-agent> --format json")
     assertEquals(1, "skill-bill goal preflight".toRegex().findAll(feature).count())
@@ -72,19 +73,19 @@ class FeatureFamilyRenderingIntegrationTest {
       "android-compose-edge-to-edge.md",
       "android-compose-adaptive-layouts.md",
     ).forEach { pointer ->
-      assertTrue(Files.isRegularFile(staged.stagingDir.resolve(pointer)), pointer)
+      assertTrue(Files.isRegularFile(staged.stagingDir.resolve(pointer).toPath()), pointer)
     }
     listOf(
       "bill-feature-task.md",
       "bill-feature-task-runtime.md",
       "bill-feature-goal.md",
     ).forEach { removedSidecar ->
-      assertFalse(Files.exists(staged.stagingDir.resolve(removedSidecar)), removedSidecar)
+      assertFalse(Files.exists(staged.stagingDir.resolve(removedSidecar).toPath()), removedSidecar)
     }
     assertContains(feature, "code-review:auto|inline")
     assertFalse(feature.contains("code-review:auto|inline|delegated"))
-    assertContains(stagedReview.renderedSkillFile.readText(), "mode:auto|inline|delegated")
-    assertFalse(stagedReview.renderedSkillFile.readText().contains("execution-mode:auto|inline|delegated"))
+    assertContains(stagedReview.renderedSkillFile.toPath().readText(), "mode:auto|inline|delegated")
+    assertFalse(stagedReview.renderedSkillFile.toPath().readText().contains("execution-mode:auto|inline|delegated"))
     assertTrue(sourceFilesBefore.all { (path, bytes) -> bytes.contentEquals(Files.readAllBytes(path)) })
   }
 

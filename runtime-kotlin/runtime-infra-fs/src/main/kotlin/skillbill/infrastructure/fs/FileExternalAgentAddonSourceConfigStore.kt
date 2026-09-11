@@ -2,11 +2,12 @@ package skillbill.infrastructure.fs
 
 import me.tatarka.inject.annotations.Inject
 import skillbill.error.ExternalAddonConfigError
+import skillbill.infrastructure.fs.install.support.resolveTelemetryConfigPath
 import skillbill.install.model.ExternalAgentAddonSource
-import skillbill.install.support.resolveTelemetryConfigPath
 import skillbill.ports.agentaddon.ExternalAgentAddonSourceConfigPort
 import skillbill.ports.agentaddon.model.ExternalAgentAddonSourceConfigRequest
 import skillbill.ports.agentaddon.model.ExternalAgentAddonSourceConfigResult
+import skillbill.ports.repository.toFileLocation
 import java.nio.file.Files
 import java.nio.file.Path
 
@@ -56,7 +57,7 @@ class FileExternalAgentAddonSourceConfigStore : ExternalAgentAddonSourceConfigPo
         "'$rawPath' does not exist or is not a directory",
       )
     }
-    return ExternalAgentAddonSource(resolvedPath)
+    return ExternalAgentAddonSource(resolvedPath.toFileLocation())
   }
 
   private fun resolveSourcePath(userHome: Path, rawPath: String): Path {

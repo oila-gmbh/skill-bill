@@ -2,7 +2,7 @@ package skillbill.cli
 
 import skillbill.cli.core.CliRuntime
 import skillbill.cli.model.CliRuntimeContext
-import skillbill.contracts.JsonSupport
+import skillbill.contracts.JsonCodec
 import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertEquals
@@ -55,8 +55,8 @@ class CliGoalRuntimeControlTest {
 
     assertEquals(0, result.exitCode, result.stdout)
     val payload = requireNotNull(
-      JsonSupport.anyToStringAnyMap(
-        JsonSupport.jsonElementToValue(requireNotNull(JsonSupport.parseObjectOrNull(result.stdout))),
+      JsonCodec.anyToStringAnyMap(
+        JsonCodec.jsonElementToValue(requireNotNull(JsonCodec.parseObjectOrNull(result.stdout))),
       ),
     ) { "Expected preflight JSON object but got: ${result.stdout}" }
     assertEquals("new_work", payload["verdict"])

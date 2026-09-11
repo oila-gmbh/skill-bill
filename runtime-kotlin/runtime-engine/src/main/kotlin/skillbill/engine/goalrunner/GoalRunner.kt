@@ -1,0 +1,171 @@
+package skillbill.engine.goalrunner
+
+import me.tatarka.inject.annotations.Inject
+import skillbill.engine.goalrunner.model.GoalRunPreparation
+import skillbill.engine.goalrunner.model.GoalRunnerDeps
+import skillbill.engine.goalrunner.model.GoalRunnerRunEvent
+import skillbill.engine.goalrunner.model.GoalRunnerRunRequest
+import skillbill.engine.goalrunner.planning.model.GoalPlanningSweepOutcome
+import skillbill.goalrunner.model.GoalRunnerRunReport
+import skillbill.goalrunner.model.GoalRunnerStopReason
+import skillbill.ports.goalrunner.runner.model.GoalRunnerManifestState
+
+@Inject
+class GoalRunner(
+  private val deps: GoalRunnerDeps,
+) {
+  private val perRunLoopAssembler = GoalRunnerPerRunLoopAssembler(deps)
+
+  private val manifestStore get() = deps.runBoundaries.manifestStore
+  private val outcomeStore get() = deps.runBoundaries.outcomeStore
+  private val goalPlanningSweep get() = deps.runBoundaries.goalPlanningSweep
+  private val clock get() = deps.runBoundaries.clock
+  private val diagnostics get() = deps.runBoundaries.diagnostics
+  private val executionCoordinator get() = deps.runBoundaries.executionCoordinator
+
+  fun run(request: GoalRunnerRunRequest): GoalRunnerRunReport {
+    val loadedState = manifestStore.loadByIssueKey(request.issueKey, request.repoRoot)
+      ?: return unknownGoal(request.issueKey)
+    return try {
+      executionCoordinator.runOwned(loadedState.parentWorkflowId) {
+        val state = reconcileStateBeforeRun(loadedState)
+        when (val preparation = deps.runPreparation.prepareRun(state, request)) {
+          is GoalRunPreparation.PreparationBlocked -> preparation.report
+          is GoalRunPreparation.Prepared -> runPrepared(preparation)
+        }
+      }
+    } catch (alreadyRunning: GoalRunnerExecutionAlreadyRunningException) {
+      stopped(
+        StoppedReportArgs(
+          issueKey = loadedState.manifest.issueKey,
+          attempted = emptyList(),
+          subtaskId = loadedState.manifest.currentSubtaskIntent.subtaskId,
+          reason = GoalRunnerStopReason.BLOCKED,
+          blockedReason = alreadyRunning.message.orEmpty(),
+          workflowId = loadedState.manifest.workflowIdFor(loadedState.manifest.currentSubtaskIntent.subtaskId),
+          lastResumableStep = loadedState.manifest.subtasks
+            .firstOrNull { it.id == loadedState.manifest.currentSubtaskIntent.subtaskId }
+            ?.lastResumableStep
+            .orEmpty()
+            .ifBlank { "plan" },
+        ),
+      )
+    }
+  }
+
+  private fun reconcileStateBeforeRun(state: GoalRunnerManifestState): GoalRunnerManifestState {
+    val reconciled = reconcileGoalManifest(
+      manifest = state.manifest,
+      authoritativeOutcomes = outcomeStore.authoritativeOutcomes(state.manifest.issueKey),
+      acceptances = manifestStore.outOfBandAcceptances(state.parentWorkflowId),
+      outcomeStore = outcomeStore,
+    )
+    return if (reconciled == state.manifest) {
+      state
+    } else {
+      manifestStore.save(state.copy(manifest = reconciled))
+    }
+  }
+
+  private fun runPrepared(preparation: GoalRunPreparation.Prepared): GoalRunnerRunReport {
+    var state = preparation.state
+    val effectiveRequest = preparation.request
+    val attempted = mutableListOf<Int>()
+    val observability = GoalRunnerObservabilityEmitter(outcomeStore, clock, diagnostics, effectiveRequest)
+    val ledger = GoalRunnerLedgerRecorder(outcomeStore, effectiveRequest, clock, diagnostics)
+    effectiveRequest.eventSink.emit(GoalRunnerRunEvent.Started(state.manifest.issueKey))
+    val telemetryEmitter =
+      GoalRunnerTelemetryEmitter(deps.runBoundaries.telemetry, clock, state)
+        .also { it.goalStarted() }
+    deps.pauseBoundary.pauseBeforeLaunch(state)?.let { paused ->
+      val pausedReport = requireNotNull(paused.report)
+      closeGoalTelemetrySegment(telemetryEmitter, state, pausedReport, attempted)
+      return pausedReport
+    }
+    val sweepOutcome = goalPlanningSweep.prepare(state, effectiveRequest)
+    if (sweepOutcome is GoalPlanningSweepOutcome.Stopped) {
+      return planningStoppedReport(effectiveRequest, state, telemetryEmitter, attempted, sweepOutcome)
+    }
+    val validationQualityState = GoalRunnerValidationQualityPendingState(manifestStore)
+    validationQualityState.bind(state.parentWorkflowId)
+    val pendingState = GoalRunnerIterationPendingState(validationQualityState)
+    val goalLoop = perRunLoopAssembler.assemble(pendingState)
+    val loopResult = goalLoop.driveGoalLoop(
+      DriveGoalLoopArgs(
+        initialState = state,
+        request = effectiveRequest,
+        attempted = attempted,
+        observability = observability,
+        ledger = ledger,
+        telemetryEmitter = telemetryEmitter,
+        planning = sweepOutcome as GoalPlanningSweepOutcome.PreparedAll,
+      ),
+    )
+    state = loopResult.state
+    val finalReport = requireNotNull(loopResult.report)
+    closeGoalTelemetrySegment(telemetryEmitter, state, finalReport, attempted)
+    emitCompletedGoalEvent(effectiveRequest, finalReport)
+    return finalReport
+  }
+
+  private fun planningStoppedReport(
+    effectiveRequest: GoalRunnerRunRequest,
+    state: GoalRunnerManifestState,
+    telemetryEmitter: GoalRunnerTelemetryEmitter,
+    attempted: MutableList<Int>,
+    sweepOutcome: GoalPlanningSweepOutcome.Stopped,
+  ): GoalRunnerRunReport {
+    val planningStop = stopped(
+      StoppedReportArgs(
+        issueKey = sweepOutcome.issueKey,
+        attempted = emptyList(),
+        subtaskId = sweepOutcome.currentSubtaskId,
+        reason = sweepOutcome.reason,
+        blockedReason = sweepOutcome.blockedReason,
+        workflowId = null,
+        lastResumableStep = sweepOutcome.lastResumableStep,
+      ),
+    )
+    effectiveRequest.eventSink.emit(
+      GoalRunnerRunEvent.SubtaskStopped(
+        issueKey = sweepOutcome.issueKey,
+        subtaskId = sweepOutcome.currentSubtaskId,
+        reason = sweepOutcome.reason.name.lowercase(),
+        blockedReason = sweepOutcome.blockedReason,
+        currentStepId = sweepOutcome.lastResumableStep,
+      ),
+    )
+    closeGoalTelemetrySegment(telemetryEmitter, state, planningStop, attempted)
+    return planningStop
+  }
+
+  private fun emitCompletedGoalEvent(request: GoalRunnerRunRequest, finalReport: GoalRunnerRunReport) {
+    if (finalReport is GoalRunnerRunReport.Completed) {
+      request.eventSink.emit(
+        GoalRunnerRunEvent.Completed(
+          issueKey = finalReport.issueKey,
+          completedCount = finalReport.subtasksCompleted,
+          pendingCount = finalReport.subtasksPending,
+          blockedCount = finalReport.subtasksBlocked,
+          pullRequestStatus = finalReport.pullRequestStatus,
+          pullRequestUrl = finalReport.pullRequestUrl,
+        ),
+      )
+    }
+  }
+
+  private fun closeGoalTelemetrySegment(
+    telemetryEmitter: GoalRunnerTelemetryEmitter,
+    state: GoalRunnerManifestState,
+    finalReport: GoalRunnerRunReport,
+    attempted: List<Int>,
+  ) {
+    telemetryEmitter.let { emitter ->
+      emitter.emitNewlyTerminalSubtasks(state.manifest, attempted)
+      emitter.goalFinished(state.manifest, finalReport)
+      if (finalReport is GoalRunnerRunReport.Completed) {
+        emitter.goalIssueFinished(state.manifest, finalReport)
+      }
+    }
+  }
+}

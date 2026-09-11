@@ -24,6 +24,7 @@ class RuntimeGradleModuleLayeringTest {
         "runtime-contracts",
         "runtime-core",
         "runtime-domain",
+        "runtime-engine",
         "runtime-infra-fs",
         "runtime-infra-http",
         "runtime-infra-sqlite",
@@ -42,6 +43,7 @@ class RuntimeGradleModuleLayeringTest {
       "runtime-domain",
       "runtime-ports",
       "runtime-application",
+      "runtime-engine",
       "runtime-core",
     )
     assertNoProjectDependencies("runtime-ports", "runtime-application", "runtime-core")

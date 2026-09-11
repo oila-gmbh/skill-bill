@@ -172,17 +172,14 @@ class ParallelCodeReviewIntegrationPassTest {
       recorder,
     ).run(delegatedRequest(reviewRunId = RUN_ID))
 
-    assertEquals(1, recorder.specialistLaunches.size)
-    assertEquals(
-      ReviewIntegrationTerminalOutcome.SPAWN_FAILURE.wireValue,
-      assertNotNull(recorder.durableIntegrationPass).terminalOutcome,
-    )
+    assertTrue(recorder.specialistLaunches.size == 1)
+    val durableIntegrationPass = assertNotNull(recorder.durableIntegrationPass)
+    assertEquals(ReviewIntegrationTerminalOutcome.SPAWN_FAILURE.wireValue, durableIntegrationPass.terminalOutcome)
 
     val resumed = reviewHarness(delegatedConfig(sixCommitPaths), recorder).run(delegatedRequest(reviewRunId = RUN_ID))
 
-    assertEquals(
-      1,
-      recorder.specialistLaunches.size,
+    assertTrue(
+      recorder.specialistLaunches.size == 1,
       "A lane holding a durable complete result must not be re-run by the resume.",
     )
     assertEquals(2, recorder.integrationLaunches.size, "The resume re-runs the integration pass, and only it.")

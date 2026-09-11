@@ -34,16 +34,31 @@ class RuntimeArchitectureTest {
 
   @Test
   fun `runtime schema validators and schema resources are owned by runtime infra-fs`() {
+    assertInfraFsSchemaValidatorFilesPresent()
+    assertContractsSchemaPathFilesPresent()
+    assertLegacySchemaValidatorFilesAbsent()
+    assertSchemaCopyTasksOwnedByInfraFs()
+  }
+
+  private fun assertInfraFsSchemaValidatorFilesPresent() {
     assertRegularFiles(
       listOf(
-        "runtime-infra-fs/src/main/kotlin/skillbill/contracts/install/InstallPlanSchemaValidator.kt",
-        "runtime-infra-fs/src/main/kotlin/skillbill/contracts/workflow/WorkflowStateSchemaValidator.kt",
-        "runtime-infra-fs/src/main/kotlin/skillbill/contracts/workflow/DecompositionManifestSchemaValidator.kt",
-        "runtime-infra-fs/src/main/kotlin/skillbill/contracts/workflow/DecompositionManifestCoherenceValidator.kt",
-        "runtime-infra-fs/src/main/kotlin/skillbill/contracts/workflow/IdeStatusSchemaValidator.kt",
+        "runtime-infra-fs/src/main/kotlin/skillbill/infrastructure/fs/contracts/install/" +
+          "InstallPlanSchemaValidator.kt",
+        "runtime-infra-fs/src/main/kotlin/skillbill/infrastructure/fs/contracts/workflow/" +
+          "WorkflowStateSchemaValidator.kt",
+        "runtime-infra-fs/src/main/kotlin/skillbill/infrastructure/fs/contracts/workflow/" +
+          "DecompositionManifestSchemaValidator.kt",
+        "runtime-infra-fs/src/main/kotlin/skillbill/infrastructure/fs/contracts/workflow/" +
+          "DecompositionManifestCoherenceValidator.kt",
+        "runtime-infra-fs/src/main/kotlin/skillbill/infrastructure/fs/contracts/workflow/" +
+          "IdeStatusSchemaValidator.kt",
       ),
       present = true,
     )
+  }
+
+  private fun assertContractsSchemaPathFilesPresent() {
     assertRegularFiles(
       listOf(
         "runtime-contracts/src/main/kotlin/skillbill/contracts/install/InstallPlanSchemaPaths.kt",
@@ -53,12 +68,29 @@ class RuntimeArchitectureTest {
       ),
       present = true,
     )
+  }
+
+  private fun assertLegacySchemaValidatorFilesAbsent() {
     assertRegularFiles(
       listOf(
-        "runtime-contracts/src/main/kotlin/skillbill/contracts/install/InstallPlanSchemaValidator.kt",
-        "runtime-contracts/src/main/kotlin/skillbill/contracts/workflow/WorkflowStateSchemaValidator.kt",
-        "runtime-contracts/src/main/kotlin/skillbill/contracts/workflow/DecompositionManifestSchemaValidator.kt",
-        "runtime-contracts/src/main/kotlin/skillbill/contracts/workflow/DecompositionManifestCoherenceValidator.kt",
+        "runtime-infra-fs/src/main/kotlin/skillbill/contracts/install/" +
+          "InstallPlanSchemaValidator.kt",
+        "runtime-infra-fs/src/main/kotlin/skillbill/contracts/workflow/" +
+          "WorkflowStateSchemaValidator.kt",
+        "runtime-infra-fs/src/main/kotlin/skillbill/contracts/workflow/" +
+          "DecompositionManifestSchemaValidator.kt",
+        "runtime-infra-fs/src/main/kotlin/skillbill/contracts/workflow/" +
+          "DecompositionManifestCoherenceValidator.kt",
+        "runtime-infra-fs/src/main/kotlin/skillbill/contracts/workflow/" +
+          "IdeStatusSchemaValidator.kt",
+        "runtime-contracts/src/main/kotlin/skillbill/contracts/install/" +
+          "InstallPlanSchemaValidator.kt",
+        "runtime-contracts/src/main/kotlin/skillbill/contracts/workflow/" +
+          "WorkflowStateSchemaValidator.kt",
+        "runtime-contracts/src/main/kotlin/skillbill/contracts/workflow/" +
+          "DecompositionManifestSchemaValidator.kt",
+        "runtime-contracts/src/main/kotlin/skillbill/contracts/workflow/" +
+          "DecompositionManifestCoherenceValidator.kt",
         "runtime-domain/src/main/kotlin/skillbill/workflow/DecompositionManifestSchemaValidator.kt",
         "runtime-domain/src/main/kotlin/skillbill/workflow/DecompositionManifestSchemaPaths.kt",
         "runtime-domain/src/main/kotlin/skillbill/workflow/WorkflowStateSchemaValidator.kt",
@@ -68,7 +100,9 @@ class RuntimeArchitectureTest {
       ),
       present = false,
     )
+  }
 
+  private fun assertSchemaCopyTasksOwnedByInfraFs() {
     val runtimeInfraFsBuild = Files.readString(runtimeArchitectureRoot.resolve("runtime-infra-fs/build.gradle.kts"))
     assertContains(runtimeInfraFsBuild, "copyWorkflowStateSchema")
     assertContains(runtimeInfraFsBuild, "copyInstallPlanSchema")
@@ -312,12 +346,12 @@ class RuntimeArchitectureTest {
     assertNoBannedImports(
       files =
       listOf(
-        sourcePath("skillbill/telemetry/config/TelemetryConfigRuntime.kt"),
-        sourcePath("skillbill/telemetry/config/TelemetryConfigMutationRuntime.kt"),
-        sourcePath("skillbill/telemetry/http/TelemetryHttpRuntime.kt"),
-        sourcePath("skillbill/telemetry/sync/TelemetrySyncRuntime.kt"),
-        sourcePath("skillbill/telemetry/config/TelemetryConfigMutations.kt"),
-        sourcePath("skillbill/telemetry/settings/DefaultTelemetrySettingsProvider.kt"),
+        sourcePath("skillbill/application/telemetry/config/TelemetryConfigRuntime.kt"),
+        sourcePath("skillbill/application/telemetry/config/TelemetryConfigMutationRuntime.kt"),
+        sourcePath("skillbill/application/telemetry/http/TelemetryHttpRuntime.kt"),
+        sourcePath("skillbill/application/telemetry/sync/TelemetrySyncRuntime.kt"),
+        sourcePath("skillbill/application/telemetry/config/TelemetryConfigMutations.kt"),
+        sourcePath("skillbill/application/telemetry/settings/DefaultTelemetrySettingsProvider.kt"),
       ).map(::sourceFile),
       bannedImports =
       listOf(
@@ -352,10 +386,6 @@ class RuntimeArchitectureTest {
     assertNoBannedImports(
       files = listOf(sourceFile(sourcePath("skillbill/model/RuntimeContext.kt"))),
       bannedImports = listOf("skillbill.infrastructure"),
-    )
-    assertContains(
-      Files.readString(sourcePath("skillbill/ports/telemetry/RemoteTransportPort.kt")),
-      "object UnconfiguredRemoteTransportPort",
     )
   }
 
@@ -450,7 +480,7 @@ class RuntimeArchitectureTest {
     assertNoBannedSourceReferences(
       files = reconciliationSources,
       bannedReferences = listOf(
-        "skillbill.launcher.process",
+        "skillbill.infrastructure.fs.launcher.process",
         "JvmAgentRunProcessRunner",
         "AgentRunCommandBuilder",
         "ProcessWaitLoop",

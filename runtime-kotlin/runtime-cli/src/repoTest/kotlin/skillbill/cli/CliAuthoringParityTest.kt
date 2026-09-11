@@ -2,7 +2,7 @@ package skillbill.cli
 
 import skillbill.cli.core.CliRuntime
 import skillbill.cli.model.CliRuntimeContext
-import skillbill.scaffold.authoring.renderAuthoringTarget
+import skillbill.infrastructure.fs.scaffold.authoring.renderAuthoringTarget
 import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.test.Test

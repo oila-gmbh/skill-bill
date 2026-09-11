@@ -35,7 +35,7 @@ Scope is the delta the parent materialized. Do not substitute `origin/main...HEA
 
 The parent supplies the baseline, rubrics, and required companion guidance in the launch. Merge them into one checklist before reading changed code. Then traverse the delta exactly once, holding all areas in mind simultaneously — each changed hunk is judged against every applicable area's concerns at the moment you read it.
 
-Reduced depth means no specialist fan-out and no per-area re-walk. It does not mean sampling the catalog, skipping remaining discover pages, or approving on a partial read.
+Reduced depth means no specialist fan-out and no per-area re-walk. Inline never launches one specialist per area. It does not mean sampling the catalog, skipping remaining discover pages, or approving on a partial read.
 
 This is explicitly forbidden: reading the delta with architecture in mind, then reading it again for performance, then again for security, and so on. Iterating areas over the same code is not thoroughness — it is the same review repeated N times at N times the cost, and it produces worse findings than one pass with the full checklist loaded, because a defect that only shows up where two areas intersect is invisible to both single-area passes.
 

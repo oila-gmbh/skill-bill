@@ -1,13 +1,12 @@
 package skillbill.application.work
 
-import skillbill.application.goalrunner.goalRepositoryIdentity
 import skillbill.application.idestatus.model.IdeStatusCurrentPhaseExecutionKind
 import skillbill.application.idestatus.model.IdeStatusFreshness
 import skillbill.application.idestatus.model.IdeStatusLifecycleState
 import skillbill.application.idestatus.model.IdeStatusProblemCode
 import skillbill.application.idestatus.model.IdeStatusRequest
 import skillbill.application.idestatus.model.IdeStatusWorkflowFamily
-import skillbill.contracts.JsonSupport
+import skillbill.contracts.JsonCodec
 import skillbill.goalrunner.model.GoalRunnerControlState
 import skillbill.ports.goalrunner.EmptyGoalRunnerControlRepository
 import skillbill.ports.goalrunner.GoalRunnerControlRepository
@@ -31,7 +30,7 @@ class IdeStatusServiceTest {
   @Test
   fun `invalid repository root yields typed invalid_repository_input without writes`() {
     val database = TrackingDatabase(work = emptyList(), workflows = IdeStatusWorkflowStates())
-    val service = service(database)
+    val service = ideStatusService(database)
     val missing = Files.createTempDirectory("ide-status-missing").resolve("no-repo")
 
     val result = service.status(
@@ -51,7 +50,7 @@ class IdeStatusServiceTest {
   fun `absent database yields typed problem and never opens a session`() {
     val fixture = gitRepoFixture("ide-status-absent-db")
     val database = TrackingDatabase(work = emptyList(), workflows = IdeStatusWorkflowStates(), exists = false)
-    val service = service(database)
+    val service = ideStatusService(database)
 
     val result = service.status(
 
@@ -61,7 +60,7 @@ class IdeStatusServiceTest {
 
     assertEquals(0, result.exitCode)
     assertEquals(IdeStatusProblemCode.ABSENT_DATABASE, result.snapshot.problem?.code)
-    assertEquals(goalRepositoryIdentity(fixture), result.snapshot.repositoryIdentity)
+    assertEquals(testGoalRepositoryIdentity(fixture), result.snapshot.repositoryIdentity)
     assertEquals(0, database.readCalls)
     assertEquals(0, database.writeCalls)
   }
@@ -70,7 +69,7 @@ class IdeStatusServiceTest {
   fun `empty work list yields no_matching_work via database read only`() {
     val fixture = gitRepoFixture("ide-status-idle")
     val database = TrackingDatabase(work = emptyList(), workflows = IdeStatusWorkflowStates())
-    val service = service(database)
+    val service = ideStatusService(database)
 
     val result = service.status(
 
@@ -87,7 +86,7 @@ class IdeStatusServiceTest {
   @Test
   fun `a genuinely empty repository still yields the unchanged no_matching_work snapshot`() {
     val fixture = gitRepoFixture("ide-status-no-matching-work-shape")
-    val service = service(TrackingDatabase(work = emptyList(), workflows = IdeStatusWorkflowStates()))
+    val service = ideStatusService(TrackingDatabase(work = emptyList(), workflows = IdeStatusWorkflowStates()))
 
     val result = service.status(
 
@@ -117,7 +116,7 @@ class IdeStatusServiceTest {
       work = listOf(workItem("w-orphan", WorkItemKind.FEATURE_TASK_RUNTIME, "running", "2026-08-06T11:00:00Z")),
       workflows = OrphanedIdentityWorkflowStates("Feature-task identity 'w-orphan' has no workflow row."),
     )
-    val service = service(database)
+    val service = ideStatusService(database)
 
     val result = service.status(
 
@@ -148,7 +147,7 @@ class IdeStatusServiceTest {
       work = listOf(workItem("w-foreign", WorkItemKind.FEATURE_TASK_RUNTIME, "running", "2026-08-06T11:00:00Z")),
       workflows = workflows,
     )
-    val service = service(database)
+    val service = ideStatusService(database)
 
     val result = service.status(
 
@@ -163,7 +162,7 @@ class IdeStatusServiceTest {
   @Test
   fun `active runtime work outranks terminal competitor for the same repository`() {
     val fixture = gitRepoFixture("ide-status-precedence")
-    val identity = goalRepositoryIdentity(fixture)
+    val identity = testGoalRepositoryIdentity(fixture)
     val workflows = IdeStatusWorkflowStates()
     workflows.saveFeatureImplementWorkflow(runtimeRecord("w-active", "2026-08-06T10:00:00Z", currentStep = "implement"))
     workflows.saveFeatureImplementWorkflow(runtimeRecord("w-terminal", "2026-08-06T11:00:00Z", currentStep = "pr"))
@@ -176,7 +175,7 @@ class IdeStatusServiceTest {
       ),
       workflows = workflows,
     )
-    val service = service(database)
+    val service = ideStatusService(database)
 
     val result = service.status(
 
@@ -197,7 +196,7 @@ class IdeStatusServiceTest {
   @Test
   fun `goal-child runtime is suppressed when an authoritative feature-goal exists for the issue`() {
     val fixture = gitRepoFixture("ide-status-goal-child")
-    val identity = goalRepositoryIdentity(fixture)
+    val identity = testGoalRepositoryIdentity(fixture)
     val workflows = IdeStatusWorkflowStates()
     workflows.saveFeatureImplementWorkflow(runtimeRecord("w-child", "2026-08-06T11:00:00Z"))
     workflows.saveFeatureTaskExecutionIdentity(
@@ -215,7 +214,7 @@ class IdeStatusServiceTest {
       workflows = workflows,
       controls = controls,
     )
-    val service = service(database)
+    val service = ideStatusService(database)
 
     val result = service.status(
 
@@ -231,7 +230,7 @@ class IdeStatusServiceTest {
   @Test
   fun `runtime current_model reports the model of the phase reported as current_step`() {
     val fixture = gitRepoFixture("ide-status-current-model")
-    val identity = goalRepositoryIdentity(fixture)
+    val identity = testGoalRepositoryIdentity(fixture)
     val workflows = IdeStatusWorkflowStates()
     workflows.saveFeatureImplementWorkflow(
       runtimeRecord("w-model", "2026-08-06T10:00:00Z").copy(
@@ -253,7 +252,7 @@ class IdeStatusServiceTest {
       workflows = workflows,
     )
 
-    val result = service(database).status(
+    val result = ideStatusService(database).status(
 
       IdeStatusRequest(repoRoot = fixture.toString(), observedAt = ideStatusObservedAt),
 
@@ -267,7 +266,7 @@ class IdeStatusServiceTest {
   @Test
   fun `runtime current_model is omitted when the current phase has no recorded model`() {
     val fixture = gitRepoFixture("ide-status-current-model-absent")
-    val identity = goalRepositoryIdentity(fixture)
+    val identity = testGoalRepositoryIdentity(fixture)
     val workflows = IdeStatusWorkflowStates()
     workflows.saveFeatureImplementWorkflow(runtimeRecord("w-nomodel", "2026-08-06T10:00:00Z"))
     workflows.saveFeatureTaskExecutionIdentity(identityFor("w-nomodel", identity))
@@ -276,7 +275,7 @@ class IdeStatusServiceTest {
       workflows = workflows,
     )
 
-    val result = service(database).status(
+    val result = ideStatusService(database).status(
 
       IdeStatusRequest(repoRoot = fixture.toString(), observedAt = ideStatusObservedAt),
 
@@ -288,7 +287,7 @@ class IdeStatusServiceTest {
   @Test
   fun `goal current_model comes from the launched child's current phase and is omitted without one`() {
     val fixture = gitRepoFixture("ide-status-goal-current-model")
-    val identity = goalRepositoryIdentity(fixture)
+    val identity = testGoalRepositoryIdentity(fixture)
     val childStarted = Instant.parse("2026-08-06T09:15:00Z")
     val database = goalWithLaunchedChildDatabase(
       identity,
@@ -299,12 +298,12 @@ class IdeStatusServiceTest {
         "implement" to phaseRecordWire("implement", "running", "claude-opus-4-8[effort=high]"),
       ),
     )
-    val withChild = service(
+    val withChild = ideStatusService(
       database,
       manifestStore = StubGoalManifestStore(goalManifestState(fixture, identity, childWorkflowId = "w-child")),
     ).status(IdeStatusRequest(repoRoot = fixture.toString(), observedAt = ideStatusObservedAt))
 
-    val withoutChild = service(database)
+    val withoutChild = ideStatusService(database)
       .status(IdeStatusRequest(repoRoot = fixture.toString(), observedAt = ideStatusObservedAt))
 
     assertEquals("claude-opus-4-8[effort=high]", withChild.snapshot.currentModel?.model)
@@ -318,7 +317,7 @@ class IdeStatusServiceTest {
   @Test
   fun `a finished run reports no current_model for the completed phase its step falls back to`() {
     val fixture = gitRepoFixture("ide-status-current-model-settled")
-    val identity = goalRepositoryIdentity(fixture)
+    val identity = testGoalRepositoryIdentity(fixture)
     val workflows = IdeStatusWorkflowStates()
     val allCompleted = FeatureTaskRuntimePhaseWorkflowDefinition.definition.stepIds.map { phaseId ->
       phaseId to phaseRecordWire(phaseId, "completed", "claude-opus-4-8".takeIf { phaseId == "pr" })
@@ -333,7 +332,7 @@ class IdeStatusServiceTest {
       workflows = workflows,
     )
 
-    val result = service(database).status(
+    val result = ideStatusService(database).status(
 
       IdeStatusRequest(repoRoot = fixture.toString(), observedAt = ideStatusObservedAt),
 
@@ -347,11 +346,11 @@ class IdeStatusServiceTest {
   @Test
   fun `a goal whose child status read fails schema validation keeps its status and omits only current_model`() {
     val fixture = gitRepoFixture("ide-status-goal-child-schema-invalid")
-    val identity = goalRepositoryIdentity(fixture)
+    val identity = testGoalRepositoryIdentity(fixture)
     val database = goalWithLaunchedChildDatabase(
       identity,
       Instant.parse("2026-08-06T09:15:00Z"),
-      childArtifactsJson = JsonSupport.mapToJsonString(
+      childArtifactsJson = JsonCodec.mapToJsonString(
         mapOf(
           FEATURE_TASK_RUNTIME_PHASE_RECORDS_ARTIFACT_KEY to mapOf(
             "implement" to phaseRecordWire("implement", "running", "claude-opus-4-8"),
@@ -361,7 +360,7 @@ class IdeStatusServiceTest {
       ),
     )
 
-    val result = service(
+    val result = ideStatusService(
       database,
       manifestStore = StubGoalManifestStore(goalManifestState(fixture, identity, childWorkflowId = "w-child")),
     ).status(IdeStatusRequest(repoRoot = fixture.toString(), observedAt = ideStatusObservedAt))
@@ -376,7 +375,7 @@ class IdeStatusServiceTest {
   @Test
   fun `runtime current_phase_execution reports the current phase only and never a completed neighbour`() {
     val fixture = gitRepoFixture("ide-status-current-phase-execution")
-    val identity = goalRepositoryIdentity(fixture)
+    val identity = testGoalRepositoryIdentity(fixture)
     val workflows = IdeStatusWorkflowStates()
     workflows.saveFeatureImplementWorkflow(
       runtimeRecord("w-exec", "2026-08-06T10:00:00Z", currentStep = "validate").copy(
@@ -407,7 +406,7 @@ class IdeStatusServiceTest {
       workflows = workflows,
     )
 
-    val result = service(database).status(
+    val result = ideStatusService(database).status(
 
       IdeStatusRequest(repoRoot = fixture.toString(), observedAt = ideStatusObservedAt),
 
@@ -425,7 +424,7 @@ class IdeStatusServiceTest {
   @Test
   fun `runtime review current_phase_execution uses durable review pass number`() {
     val fixture = gitRepoFixture("ide-status-review-pass")
-    val identity = goalRepositoryIdentity(fixture)
+    val identity = testGoalRepositoryIdentity(fixture)
     val workflows = IdeStatusWorkflowStates()
     workflows.saveFeatureImplementWorkflow(
       runtimeRecord("w-review", "2026-08-06T10:00:00Z", currentStep = "review").copy(
@@ -452,7 +451,7 @@ class IdeStatusServiceTest {
       workflows = workflows,
     )
 
-    val result = service(database).status(
+    val result = ideStatusService(database).status(
 
       IdeStatusRequest(repoRoot = fixture.toString(), observedAt = ideStatusObservedAt),
 

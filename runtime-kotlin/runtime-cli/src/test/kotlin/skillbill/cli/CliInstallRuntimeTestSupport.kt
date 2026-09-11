@@ -3,10 +3,10 @@ package skillbill.cli
 import skillbill.cli.core.CliRuntime
 import skillbill.cli.model.CliExecutionResult
 import skillbill.cli.model.CliRuntimeContext
-import skillbill.nativeagent.composition.NativeAgentSource
-import skillbill.nativeagent.composition.parseNativeAgentSource
-import skillbill.nativeagent.composition.renderNativeAgentSource
-import skillbill.nativeagent.rendering.NativeAgentProvider
+import skillbill.infrastructure.fs.nativeagent.composition.NativeAgentSource
+import skillbill.infrastructure.fs.nativeagent.composition.parseNativeAgentSource
+import skillbill.infrastructure.fs.nativeagent.composition.renderNativeAgentSource
+import skillbill.infrastructure.fs.nativeagent.rendering.NativeAgentProvider
 import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.test.assertContains

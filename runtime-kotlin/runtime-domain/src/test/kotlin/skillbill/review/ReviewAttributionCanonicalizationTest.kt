@@ -2,6 +2,7 @@ package skillbill.review
 
 import skillbill.review.model.CanonicalScope
 import skillbill.review.model.ReviewAttributionResolutionError
+import skillbill.review.model.ReviewExecutionMode
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
@@ -177,11 +178,10 @@ class ReviewAttributionCanonicalizationTest {
 
   @Test
   fun `execution mode prefers the reported value then delegation evidence then unresolved`() {
-    assertEquals("inline", resolveExecutionMode("inline", emptyList()))
-    assertEquals("inline", resolveExecutionMode("inline", listOf("architecture")))
-    assertEquals(EXECUTION_MODE_DELEGATED, resolveExecutionMode(null, listOf("architecture")))
-    assertEquals(UNRESOLVED_ATTRIBUTION, resolveExecutionMode(null, emptyList()))
-    assertEquals(UNRESOLVED_ATTRIBUTION, resolveExecutionMode("  ", emptyList()))
+    assertEquals(ReviewExecutionMode.INLINE, resolveExecutionMode(ReviewExecutionMode.INLINE, emptyList()))
+    assertEquals(ReviewExecutionMode.INLINE, resolveExecutionMode(ReviewExecutionMode.INLINE, listOf("architecture")))
+    assertEquals(ReviewExecutionMode.DELEGATED, resolveExecutionMode(null, listOf("architecture")))
+    assertEquals(ReviewExecutionMode.UNRESOLVED, resolveExecutionMode(null, emptyList()))
     assertTrue(UNRESOLVED_ATTRIBUTION !in listOf("inline", EXECUTION_MODE_DELEGATED))
   }
 

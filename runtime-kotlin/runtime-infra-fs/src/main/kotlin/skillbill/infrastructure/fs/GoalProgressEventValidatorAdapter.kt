@@ -1,7 +1,7 @@
 package skillbill.infrastructure.fs
 
 import me.tatarka.inject.annotations.Inject
-import skillbill.contracts.workflow.GoalProgressEventSchemaValidator
+import skillbill.infrastructure.fs.contracts.workflow.GoalProgressEventSchemaValidator
 import skillbill.workflow.goal.GoalProgressEventValidator
 
 @Inject

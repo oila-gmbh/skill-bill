@@ -13,38 +13,32 @@ class AgentActivityStampWriter(
   private val database: DatabaseSessionFactory,
   private val clock: Clock,
 ) {
-  fun lazySink(
-    resolveWorkflowId: () -> String?,
-    parentWorkflowId: String?,
-    dbOverride: String?,
-  ): AgentRunActivityStampSink = AgentRunActivityStampSink { label ->
-    val workflowId = runCatching { resolveWorkflowId() }.getOrNull()?.takeIf(String::isNotBlank)
-      ?: return@AgentRunActivityStampSink
-    record(
-      StampContext(
-        workflowId = workflowId,
-        parentWorkflowId = parentWorkflowId?.takeIf(String::isNotBlank),
-        dbOverride = dbOverride,
-      ),
-      label,
-    )
-  }
+  fun lazySink(resolveWorkflowId: () -> String?, parentWorkflowId: String?): AgentRunActivityStampSink =
+    AgentRunActivityStampSink { label ->
+      val workflowId = runCatching { resolveWorkflowId() }.getOrNull()?.takeIf(String::isNotBlank)
+        ?: return@AgentRunActivityStampSink
+      record(
+        StampContext(
+          workflowId = workflowId,
+          parentWorkflowId = parentWorkflowId?.takeIf(String::isNotBlank),
+        ),
+        label,
+      )
+    }
 
-  fun sink(workflowId: String, parentWorkflowId: String?, dbOverride: String?): AgentRunActivityStampSink {
+  fun sink(workflowId: String, parentWorkflowId: String?): AgentRunActivityStampSink {
     val context = StampContext(
       workflowId = workflowId,
       parentWorkflowId = parentWorkflowId?.takeIf(String::isNotBlank),
-      dbOverride = dbOverride,
     )
     return AgentRunActivityStampSink { label -> record(context, label) }
   }
 
-  fun recordEvidenceRead(workflowId: String, parentWorkflowId: String?, dbOverride: String?) {
+  fun recordEvidenceRead(workflowId: String, parentWorkflowId: String?) {
     record(
       StampContext(
         workflowId = workflowId,
         parentWorkflowId = parentWorkflowId?.takeIf(String::isNotBlank),
-        dbOverride = dbOverride,
       ),
       AgentActivityLabel.EVIDENCE_READ,
     )
@@ -80,7 +74,7 @@ class AgentActivityStampWriter(
 
   private fun persist(context: StampContext, stamp: AgentActivityStamp) {
     runCatching {
-      database.selfManagedWrite(context.dbOverride) { unitOfWork ->
+      database.selfManagedWrite { unitOfWork ->
         writeStamp(unitOfWork.agentActivityStamps, context.workflowId, stamp)
         context.parentWorkflowId?.let { parentId ->
           writeStamp(unitOfWork.agentActivityStamps, parentId, stamp)
@@ -96,7 +90,6 @@ class AgentActivityStampWriter(
   private data class StampContext(
     val workflowId: String,
     val parentWorkflowId: String?,
-    val dbOverride: String?,
   )
 
   private class LatestStamp {

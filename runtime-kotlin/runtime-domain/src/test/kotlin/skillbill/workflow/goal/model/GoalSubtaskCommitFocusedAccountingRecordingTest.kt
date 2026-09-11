@@ -1,15 +1,12 @@
 package skillbill.workflow.goal.model
 import skillbill.review.context.model.CodeReviewExecutionMode
+import skillbill.review.context.model.ReviewIntegrationTerminalOutcome
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeVerdict
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertNull
 
-/**
- * AC-003: a delegated pass's commit-focused accounting reaches durable lifecycle state through the
- * only production constructor of a pass result, and an inline pass records none rather than
- * fabricating a commit sequence identity it never had.
- */
 class GoalSubtaskCommitFocusedAccountingRecordingTest {
   private val accounting = GoalSubtaskCommitFocusedAccounting(
     commitSequenceDigest = "a".repeat(64),
@@ -17,7 +14,7 @@ class GoalSubtaskCommitFocusedAccountingRecordingTest {
     laneCount = 2,
     focusedCommitCount = 4,
     skippedCommitCount = 2,
-    integrationTerminalOutcome = "completed",
+    integrationTerminalOutcome = ReviewIntegrationTerminalOutcome.COMPLETED,
     laneBundleSizes = mapOf("bill-kotlin-code-review-security" to 2048L),
     laneSegmentCounts = mapOf("bill-kotlin-code-review-security" to 2),
     incompleteLanes = listOf("bill-kotlin-code-review-testing"),
@@ -29,8 +26,6 @@ class GoalSubtaskCommitFocusedAccountingRecordingTest {
   private fun reservedFirstPass() = GoalSubtaskReviewState.initial(
     reviewBaseSha = "b".repeat(40),
     baselineUntrackedPaths = emptyList(),
-    // Pinned delegated: under AUTO the first pass resolves to the inline lane, which by contract
-    // carries no commit-focused accounting at all.
     codeReviewMode = CodeReviewExecutionMode.DELEGATED,
   ).reserveNextPass()
 
@@ -68,7 +63,7 @@ class GoalSubtaskCommitFocusedAccountingRecordingTest {
   @Test
   fun `a skipped integration pass must name why it was not applicable`() {
     val skipped = accounting.copy(
-      integrationTerminalOutcome = GoalSubtaskCommitFocusedAccounting.SKIPPED_NOT_APPLICABLE,
+      integrationTerminalOutcome = ReviewIntegrationTerminalOutcome.SKIPPED_NOT_APPLICABLE,
       focusedCommitCount = 0,
       skippedCommitCount = 6,
       integrationSkipReason = "the commit sequence carries a single commit",
@@ -78,5 +73,15 @@ class GoalSubtaskCommitFocusedAccountingRecordingTest {
       skipped,
       GoalSubtaskCommitFocusedAccounting.fromArtifactMap(skipped.toArtifactMap(), "accounting"),
     )
+  }
+
+  @Test
+  fun `an unknown integration outcome is rejected at the artifact boundary`() {
+    assertFailsWith<IllegalArgumentException> {
+      GoalSubtaskCommitFocusedAccounting.fromArtifactMap(
+        accounting.toArtifactMap() + ("integration_terminal_outcome" to "complete"),
+        "accounting",
+      )
+    }
   }
 }

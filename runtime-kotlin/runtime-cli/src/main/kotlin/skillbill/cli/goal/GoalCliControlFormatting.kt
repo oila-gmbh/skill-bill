@@ -1,10 +1,10 @@
 package skillbill.cli.goal
 
-import skillbill.application.goalrunner.model.GoalRunnerAcceptResult
-import skillbill.application.goalrunner.model.GoalRunnerReplanResult
-import skillbill.application.goalrunner.model.GoalRunnerReplanSnapshot
-import skillbill.application.goalrunner.model.GoalRunnerResetResult
-import skillbill.application.goalrunner.model.GoalRunnerResetSnapshot
+import skillbill.engine.goalrunner.model.GoalRunnerAcceptResult
+import skillbill.engine.goalrunner.model.GoalRunnerReplanResult
+import skillbill.engine.goalrunner.model.GoalRunnerReplanSnapshot
+import skillbill.engine.goalrunner.model.GoalRunnerResetResult
+import skillbill.engine.goalrunner.model.GoalRunnerResetSnapshot
 import skillbill.goalrunner.model.GoalRunnerAcceptedSubtask
 
 internal fun GoalRunnerResetResult?.toGoalResetCliMap(issueKey: String, hard: Boolean): Map<String, Any?> = this?.let {

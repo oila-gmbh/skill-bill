@@ -1,9 +1,11 @@
-package skillbill.install
+package skillbill.infrastructure.fs.install
 
+import skillbill.infrastructure.fs.install.staging.StageInstalledSkillInput
+import skillbill.infrastructure.fs.install.staging.stageInstalledSkill
 import skillbill.install.model.InstallPlanSkill
 import skillbill.install.model.InstallPlanSkillKind
-import skillbill.install.staging.StageInstalledSkillInput
-import skillbill.install.staging.stageInstalledSkill
+import skillbill.model.toPath
+import skillbill.ports.repository.toFileLocation
 import skillbill.testing.repoRootFromTest
 import java.nio.file.Files
 import java.nio.file.LinkOption
@@ -36,7 +38,7 @@ class InternalSkillStagingRepoTest {
     val uiDir = repoRoot.resolve("platform-packs/kmp/code-review/bill-kmp-code-review-ui")
     val uiSkill = InstallPlanSkill(
       name = "bill-kmp-code-review-ui",
-      sourceDir = uiDir,
+      sourceDir = uiDir.toFileLocation(),
       kind = InstallPlanSkillKind.PLATFORM_PACK,
       platformSlug = "kmp",
       internalFor = "bill-code-review",
@@ -53,9 +55,9 @@ class InternalSkillStagingRepoTest {
 
     val wrapper = rendered.stagingDir.resolve("bill-kmp-code-review-ui.md")
     val companion = rendered.stagingDir.resolve("compose-guidelines.md")
-    assertTrue(Files.isRegularFile(wrapper, LinkOption.NOFOLLOW_LINKS))
-    assertTrue(Files.isRegularFile(companion, LinkOption.NOFOLLOW_LINKS))
-    assertTrue(Files.readString(wrapper).contains("[compose-guidelines.md](compose-guidelines.md)"))
-    assertEquals(companion, wrapper.parent.resolve("compose-guidelines.md"))
+    assertTrue(Files.isRegularFile(wrapper.toPath(), LinkOption.NOFOLLOW_LINKS))
+    assertTrue(Files.isRegularFile(companion.toPath(), LinkOption.NOFOLLOW_LINKS))
+    assertTrue(Files.readString(wrapper.toPath()).contains("[compose-guidelines.md](compose-guidelines.md)"))
+    assertEquals(companion.toPath(), wrapper.toPath().parent.resolve("compose-guidelines.md"))
   }
 }

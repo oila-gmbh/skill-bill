@@ -1,0 +1,40 @@
+package skillbill.engine.featuretask.model
+
+import skillbill.application.review.SpecIntentProjectionResolver
+import skillbill.engine.featuretask.FeatureTaskRuntimeBranchSetupRunner
+import skillbill.engine.featuretask.FeatureTaskRuntimeFindingVerificationBoundaryMemory
+import skillbill.engine.featuretask.FeatureTaskRuntimeLifecycleTelemetry
+import skillbill.engine.featuretask.FeatureTaskRuntimePlanningStopper
+import skillbill.engine.featuretask.FeatureTaskRuntimeReviewDriver
+import skillbill.engine.featuretask.FeatureTaskRuntimeSpecGate
+import skillbill.engine.featuretask.validation.FeatureTaskRuntimeBuildGateCoordinator
+import skillbill.engine.featuretask.validation.FeatureTaskRuntimeValidationGateCoordinator
+import skillbill.engine.featuretask.validation.ValidationGateResolver
+import skillbill.ports.diff.DiffResolverPort
+import skillbill.ports.taskruntime.FeatureTaskRuntimeSharedEvidenceResolverPort
+import skillbill.ports.validation.ValidationGateRunner
+import skillbill.ports.workflow.gitops.WorkflowGitOperations
+import skillbill.workflow.taskruntime.FeatureTaskRuntimeBuildReceiptValidator
+import skillbill.workflow.taskruntime.FeatureTaskRuntimePlanningProjectionValidator
+
+interface FeatureTaskRuntimePhaseGateBranchPort {
+  val branchSetupRunner: FeatureTaskRuntimeBranchSetupRunner
+  val planningStopper: FeatureTaskRuntimePlanningStopper
+  val lifecycleTelemetry: FeatureTaskRuntimeLifecycleTelemetry
+  val gitOperations: WorkflowGitOperations
+  val specGate: FeatureTaskRuntimeSpecGate
+}
+
+interface FeatureTaskRuntimePhaseGateValidationPort {
+  val planningProjectionValidator: FeatureTaskRuntimePlanningProjectionValidator
+  val buildReceiptValidator: FeatureTaskRuntimeBuildReceiptValidator
+  val validationGateResolver: ValidationGateResolver
+  val validationGateRunner: ValidationGateRunner
+  val validationGateCoordinator: FeatureTaskRuntimeValidationGateCoordinator
+  val buildGateCoordinator: FeatureTaskRuntimeBuildGateCoordinator
+  val sharedEvidenceResolver: FeatureTaskRuntimeSharedEvidenceResolverPort
+  val diffResolver: DiffResolverPort
+  val reviewDriver: FeatureTaskRuntimeReviewDriver
+  val specIntentProjectionResolver: SpecIntentProjectionResolver
+  val findingVerificationBoundaryMemory: FeatureTaskRuntimeFindingVerificationBoundaryMemory
+}

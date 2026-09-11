@@ -2,27 +2,26 @@ package skillbill.goalrunner.model
 
 import skillbill.workflow.decomposition.model.DecompositionManifest
 import skillbill.workflow.decomposition.model.DecompositionSubtask
+import skillbill.workflow.model.DecompositionStatus
+import skillbill.workflow.model.WorkflowStatus
+import skillbill.workflow.model.decompositionStatus
 
 internal data class GoalRunnerStatusProjectionContext(
   val currentSubtask: DecompositionSubtask?,
-  val statusOf: (DecompositionSubtask) -> String,
+  val statusOf: (DecompositionSubtask) -> DecompositionStatus?,
   val staleSignal: Boolean,
 )
 
 internal fun buildGoalRunnerStatusProjectionContext(
   manifest: DecompositionManifest,
-  extras: GoalRunnerStatusProjectionExtras,
+  extras: GoalRunnerStatusProjectionRuntimeInputs,
 ): GoalRunnerStatusProjectionContext {
   val currentSubtask = manifest.subtasks.firstOrNull { it.id == manifest.currentSubtaskIntent.subtaskId }
-  val statusOf: (DecompositionSubtask) -> String = { subtask ->
-    if (subtask.id != currentSubtask?.id) {
-      subtask.status
+  val statusOf: (DecompositionSubtask) -> DecompositionStatus? = { subtask ->
+    if (subtask.id == currentSubtask?.id && extras.currentWorkflowStatus in LIVE_WORKFLOW_STATUSES) {
+      DecompositionStatus.IN_PROGRESS
     } else {
-      when {
-        extras.currentWorkflowStatus in LIVE_WORKFLOW_STATUSES -> "in_progress"
-        extras.currentWorkflowStatus == "blocked" -> "blocked"
-        else -> subtask.status
-      }
+      subtask.status.decompositionStatus()
     }
   }
   val liveChild = extras.currentWorkflowStatus in LIVE_WORKFLOW_STATUSES
@@ -37,19 +36,23 @@ internal fun buildGoalRunnerStatusProjectionContext(
 internal fun assembleGoalRunnerStatusProjection(
   manifest: DecompositionManifest,
   activeAgent: String?,
-  extras: GoalRunnerStatusProjectionExtras,
+  extras: GoalRunnerStatusProjectionRuntimeInputs,
   context: GoalRunnerStatusProjectionContext,
 ): GoalRunnerStatusProjection {
   val currentSubtask = context.currentSubtask
   val statusOf = context.statusOf
   return GoalRunnerStatusProjection(
     issueKey = manifest.issueKey,
-    completeCount = manifest.subtasks.count { statusOf(it) == "complete" || statusOf(it) == "skipped" },
-    pendingCount = manifest.subtasks.count { statusOf(it) !in setOf("complete", "skipped", "blocked") },
-    blockedCount = manifest.subtasks.count { statusOf(it) == "blocked" },
+    completeCount = manifest.subtasks.count {
+      statusOf(it) in setOf(DecompositionStatus.COMPLETE, DecompositionStatus.SKIPPED)
+    },
+    pendingCount = manifest.subtasks.count {
+      statusOf(it) !in setOf(DecompositionStatus.COMPLETE, DecompositionStatus.SKIPPED, DecompositionStatus.BLOCKED)
+    },
+    blockedCount = manifest.subtasks.count { statusOf(it) == DecompositionStatus.BLOCKED },
     currentSubtaskId = currentSubtask?.id,
     currentChildWorkflowId = currentSubtask?.workflowId?.takeIf(String::isNotBlank),
-    currentSubtaskStatus = currentSubtask?.let(statusOf)?.takeIf(String::isNotBlank),
+    currentSubtaskStatus = currentSubtask?.let(statusOf),
     currentSubtaskBlockedReason = currentSubtask?.blockedReason?.takeIf(String::isNotBlank),
     currentStep = extras.currentStepOverride?.takeIf(String::isNotBlank)
       ?: currentSubtask?.lastResumableStep
@@ -82,4 +85,4 @@ internal fun assembleGoalRunnerStatusProjection(
   )
 }
 
-private val LIVE_WORKFLOW_STATUSES = setOf("running", "pending")
+private val LIVE_WORKFLOW_STATUSES = setOf(WorkflowStatus.RUNNING, WorkflowStatus.PENDING)

@@ -2,23 +2,23 @@ package skillbill.infrastructure.sqlite.goalrunner
 import skillbill.contracts.issuekey.normalizeRequiredIssueKey
 import skillbill.error.IncompatibleGoalPlanningPreparationRecoveryError
 import skillbill.goalrunner.GoalRunnerQualityGateSelectionResolver
-import skillbill.ports.continuation.FeatureTaskExecutionIdentityPolicy
+import skillbill.infrastructure.sqlite.decomposition.decodeArtifacts
+import skillbill.infrastructure.sqlite.workflow.decompositionRuntime
+import skillbill.infrastructure.sqlite.workflow.findDecomposedParentWorkflow
+import skillbill.infrastructure.sqlite.workflow.requireRuntimeModeForEngineWrite
 import skillbill.ports.goalrunner.persistence.GoalChildPlanningHydratorPort
-import skillbill.ports.goalrunner.persistence.GoalParentProjectionWriter
-import skillbill.ports.goalrunner.persistence.migrateLegacyGoalRunnerControls
 import skillbill.ports.goalrunner.runner.model.GoalRunnerChildWorkflowSetup
 import skillbill.ports.goalrunner.runner.model.GoalRunnerManifestState
 import skillbill.ports.persistence.UnitOfWork
-import skillbill.ports.workflow.decomposition.runtime.decodeArtifacts
+import skillbill.ports.workflow.FeatureTaskExecutionIdentityPolicy
+import skillbill.ports.workflow.get
 import skillbill.ports.workflow.model.FeatureTaskExecutionIdentity
 import skillbill.ports.workflow.model.FeatureTaskRouteScope
 import skillbill.ports.workflow.model.FeatureTaskWorkflowMode
-import skillbill.ports.workflow.persistence.decompositionRuntime
-import skillbill.ports.workflow.persistence.findDecomposedParentWorkflow
-import skillbill.ports.workflow.persistence.model.WorkflowFamily
-import skillbill.ports.workflow.persistence.requireRuntimeModeForEngineWrite
-import skillbill.ports.workflow.persistence.toRecord
-import skillbill.ports.workflow.persistence.toSnapshot
+import skillbill.ports.workflow.model.WorkflowFamily
+import skillbill.ports.workflow.model.toSnapshot
+import skillbill.ports.workflow.saveRecord
+import skillbill.ports.workflow.toRecord
 import skillbill.workflow.decomposition.DecompositionManifestValidator
 import skillbill.workflow.engine.WorkflowEngine
 import skillbill.workflow.engine.model.WorkflowStateSnapshot
@@ -240,6 +240,7 @@ internal class WorkflowGoalRunnerChildWorkflowPersistence(
     ).toArtifactMap(),
     GOAL_SUBTASK_REVIEW_STATE_ARTIFACT_KEY to GoalSubtaskReviewState.initial(
       reviewBaseSha = setup.reviewBaseline.reviewBaseSha,
+      baselineUntrackedPaths = setup.reviewBaseline.baselineUntrackedPaths,
       codeReviewMode = setup.reviewPolicy.codeReviewMode,
     ).toArtifactMap(),
     "install_sync_result" to mapOf(
