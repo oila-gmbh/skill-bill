@@ -145,6 +145,45 @@ class FeatureTaskRuntimeSubtaskFinalisationTest {
   }
 
   @Test
+  fun `commit_push includes dirty paths outside the remembered inventory`() {
+    val repo = repoWithRemote()
+    Files.writeString(repo.root.resolve("owned.txt"), "owned\n")
+    Files.writeString(repo.root.resolve("appeared.txt"), "also this subtask\n")
+    val result = finalise(
+      repo,
+      durableCommitSha = null,
+      paths = listOf("owned.txt"),
+    )
+    val finalised = assertIs<FeatureTaskRuntimeSubtaskFinalised>(result)
+    val committed = git(repo.root, "diff-tree", "--no-commit-id", "--name-only", "-r", "HEAD")
+      .lines().filter { it.isNotBlank() }.sorted()
+    assertEquals(listOf("appeared.txt", "owned.txt"), committed)
+    assertEquals(finalised.commitSha, git(repo.remote, "rev-parse", branch))
+  }
+
+  @Test
+  fun `commit_push commits nested agent history missing from the ownership inventory`() {
+    val repo = repoWithRemote()
+    val history = repo.root.resolve("runtime-kotlin/runtime-engine/agent/history.md")
+    Files.createDirectories(history.parent)
+    Files.writeString(history, "engine history\n")
+    Files.writeString(repo.root.resolve("owned.txt"), "owned\n")
+    val result = finalise(
+      repo,
+      durableCommitSha = null,
+      paths = listOf("owned.txt"),
+    )
+    val finalised = assertIs<FeatureTaskRuntimeSubtaskFinalised>(result)
+    val committed = git(repo.root, "diff-tree", "--no-commit-id", "--name-only", "-r", "HEAD")
+      .lines().filter { it.isNotBlank() }.sorted()
+    assertEquals(
+      listOf("owned.txt", "runtime-kotlin/runtime-engine/agent/history.md"),
+      committed,
+    )
+    assertEquals(finalised.commitSha, git(repo.remote, "rev-parse", branch))
+  }
+
+  @Test
   fun `a foreign HEAD commit is never amended`() {
     val repo = repoWithRemote()
     Files.writeString(repo.root.resolve("human.txt"), "hand written\n")

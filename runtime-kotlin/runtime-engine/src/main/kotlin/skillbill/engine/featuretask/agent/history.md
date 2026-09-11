@@ -6,7 +6,34 @@ Areas: runtime-engine/featuretask, runtime-cli/codereview, application/review, s
 - Standalone `skill-bill code-review` / `/bill-code-review` still reviews the caller target: `pr`, a commit SHA, `last`/`HEAD`, or uncommitted work.
 - Pattern: phase scope is last commit; named standalone tokens map in the CLI so `pr` is never treated as a git revision. reusable
 Feature flag: N/A
-Acceptance criteria: n/a
+Acceptance criteria: N/A (hotfix)
+
+
+## [2026-09-11] Active subtask owns every dirty path
+Areas: runtime-application/featuretask, runtime-domain/workflow/taskruntime
+- commit_push and checkpoints stage every non-runtime-private dirty path. Review identity no longer blocks on files missing from the frozen ownership inventory.
+- Pattern: the active subtask owns the dirty tree; `.skill-bill/` run-evidence stays unstaged. reusable
+Feature flag: N/A
+Acceptance criteria: N/A (hotfix)
+
+
+## [2026-09-11] Validate repair is one occupancy with in-session proofs
+Areas: runtime-application/featuretask, runtime-application/featuretask/validation
+- Validate `MAX_REPAIR_TURNS` is 1: discovery, one agent occupancy, one POST_REPAIR_VERIFY, then complete or block. Operator resume still resets an exhausted window.
+- Repair prompts require iterating targeted proofs in that occupancy and require project-wide `./gradlew spotlessApply` when findings name spotless, ktlint, or format.
+- Pattern: runtime-owned collect-all stays after the agent stops; format findings cannot close by indent guesswork without Apply. reusable
+Feature flag: N/A
+Acceptance criteria: N/A (hotfix)
+
+
+## [2026-09-10] SKILL-236 — write_history and commit_push stay forward-only
+Areas: runtime-application/featuretask, runtime-domain/workflow/taskruntime
+- Removed the commit_push stale-review reaudit path that wiped audit/review and bounced the drive loop back to audit after implement_fix left owned dirty files.
+- Identity and finalisation treat owned implement/implement_fix plus declared boundary-history as eligible to stage; matching subtask trailer on HEAD is still authoritative across tree drift. Foreign dirty blocks needs_human and does not reopen earlier phases.
+- Shipped topology keeps only `audit_gap` and `review_fix` backward edges; `write_history` and `commit_push` never originate a reopening.
+- Pattern: post-review owned repair is absorbed at finalisation, not by replaying the pipeline. reusable
+Feature flag: N/A
+Acceptance criteria: 2/2 implemented
 
 
 ## [2026-09-01] SKILL-228 subtask 1 — Validate/build needs_user_action operator block

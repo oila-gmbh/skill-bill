@@ -12,7 +12,7 @@ import kotlin.test.assertTrue
 
 class FeatureTaskRuntimeCheckpointScopeTest {
   @Test
-  fun `stages exactly the owned inventory when the tree also carries foreign dirt`() {
+  fun `stages owned inventory together with other dirty paths`() {
     val decision = decide(
       CheckpointScopeDecideFixture(
         ownedPaths = listOf("src/Owned.kt", "src/AlsoOwned.kt"),
@@ -22,12 +22,13 @@ class FeatureTaskRuntimeCheckpointScopeTest {
     )
 
     val stage = assertIs<FeatureTaskRuntimeCheckpointDecision.Stage>(decision)
-    assertEquals(listOf("src/AlsoOwned.kt", "src/Owned.kt"), stage.ownedPaths)
+    assertEquals(listOf("src/AlsoOwned.kt", "src/Owned.kt", "unrelated/Foreign.kt"), stage.ownedPaths)
+    assertEquals(listOf("unrelated/Foreign.kt"), stage.adoptedPaths)
   }
 
   // AC-001: ownership is the durable inventory, never "whatever is dirty since the baseline".
   @Test
-  fun `a dirty path outside the durable inventory is never staged by virtue of being dirty`() {
+  fun `a dirty path outside the durable inventory is still staged`() {
     val decision = decide(
       CheckpointScopeDecideFixture(
         ownedPaths = listOf("src/Owned.kt"),
@@ -37,12 +38,12 @@ class FeatureTaskRuntimeCheckpointScopeTest {
     )
 
     val stage = assertIs<FeatureTaskRuntimeCheckpointDecision.Stage>(decision)
-    assertEquals(listOf("src/Owned.kt"), stage.ownedPaths)
+    assertEquals(listOf("src/Owned.kt", "unrelated/AppearedSince.kt"), stage.ownedPaths)
   }
 
   // AC-002: an owned inventory with nothing left to stage skips rather than committing foreign dirt.
   @Test
-  fun `an inventory with no working-tree delta produces no checkpoint`() {
+  fun `a dirty path is staged even when the durable inventory has no overlapping delta`() {
     val decision = decide(
       CheckpointScopeDecideFixture(
         ownedPaths = listOf("src/Owned.kt"),
@@ -51,11 +52,12 @@ class FeatureTaskRuntimeCheckpointScopeTest {
       ),
     )
 
-    assertIs<FeatureTaskRuntimeCheckpointDecision.Skip>(decision)
+    val stage = assertIs<FeatureTaskRuntimeCheckpointDecision.Stage>(decision)
+    assertEquals(listOf("unrelated/ForeignOnly.kt"), stage.ownedPaths)
   }
 
   @Test
-  fun `foreign dirt alone produces no checkpoint rather than committing someone else's work`() {
+  fun `foreign dirt alone is staged as this subtask's work`() {
     val decision = decide(
       CheckpointScopeDecideFixture(
         ownedPaths = emptyList(),
@@ -64,7 +66,8 @@ class FeatureTaskRuntimeCheckpointScopeTest {
       ),
     )
 
-    assertIs<FeatureTaskRuntimeCheckpointDecision.Skip>(decision)
+    val stage = assertIs<FeatureTaskRuntimeCheckpointDecision.Stage>(decision)
+    assertEquals(listOf("unrelated/AlsoForeign.kt", "unrelated/Foreign.kt"), stage.ownedPaths)
   }
 
   @Test
@@ -235,7 +238,7 @@ class FeatureTaskRuntimeCheckpointScopeTest {
   }
 
   @Test
-  fun `a foreign staged path this workflow does not own is never adopted`() {
+  fun `a foreign staged path is adopted as this subtask's work`() {
     val decision = decide(
       CheckpointScopeDecideFixture(
         ownedPaths = listOf("src/Owned.kt"),
@@ -245,8 +248,8 @@ class FeatureTaskRuntimeCheckpointScopeTest {
     )
 
     val stage = assertIs<FeatureTaskRuntimeCheckpointDecision.Stage>(decision)
-    assertEquals(listOf("src/Owned.kt"), stage.ownedPaths)
-    assertTrue(stage.adoptedPaths.isEmpty(), "adoption is bounded by the owned inventory")
+    assertEquals(listOf("src/Owned.kt", "unrelated/Foreign.kt"), stage.ownedPaths)
+    assertEquals(listOf("unrelated/Foreign.kt"), stage.adoptedPaths)
   }
 
   @Test

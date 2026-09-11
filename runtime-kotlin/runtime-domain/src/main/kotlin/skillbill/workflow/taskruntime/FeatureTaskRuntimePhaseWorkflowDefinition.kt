@@ -197,8 +197,8 @@ object FeatureTaskRuntimePhaseWorkflowDefinition {
    * edge to `implement_fix` (perEdgeCap 1, cap exhaustion ADVANCE). The run always advances to
    * `validate` after that one fix round regardless of unresolved findings. `review` records its
    * verdict and never routes. `write_history` and `commit_push` have no backward edges and never
-   * reopen earlier phases; owned implement_fix plus declared boundary-history may be finalised,
-   * and foreign dirty content blocks.
+   * reopen earlier phases; commit_push finalises every non-runtime-private dirty path as this
+   * subtask's work.
    *
    * [FeatureTaskRuntimeTransitionDeclaration.entryGates] makes the ordering enforceable rather than
    * merely implied: `review` is unreachable until `audit` has settled `satisfied`, and

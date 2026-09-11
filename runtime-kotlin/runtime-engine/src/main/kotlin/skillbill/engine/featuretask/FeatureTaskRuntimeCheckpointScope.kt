@@ -11,47 +11,32 @@ private const val MAX_REPORTED_PATHS = 10
 
 object FeatureTaskRuntimeCheckpointScope {
   fun decide(input: FeatureTaskRuntimeCheckpointScopeInput): FeatureTaskRuntimeCheckpointDecision {
-    val deleted = input.deletedPaths.filter(String::isNotBlank)
-      .filterNot(::isRuntimePrivatePath)
-      .distinct()
-      .sorted()
-    val declared = (input.ownedPaths + deleted).filter(String::isNotBlank).distinct().sorted()
-    val owned = declared.filterNot(::isRuntimePrivatePath)
+    val deleted = sanitized(input.deletedPaths)
+    val owned = sanitized(input.ownedPaths + deleted)
     val ownedAliases = owned.associateBy(::normalizeForAliasComparison)
-
-    val deltaAliases = input.worktreeDeltaPaths.filter(String::isNotBlank)
-      .filterNot(::isRuntimePrivatePath)
-      .map(::normalizeForAliasComparison)
-      .toSet()
-    val introducedStageable = input.phaseIntroducedPaths.filter(String::isNotBlank)
-      .filterNot(::isRuntimePrivatePath)
-      .filter { normalizeForAliasComparison(it) in deltaAliases }
-    val divergentAdopted = adoptedDivergentPaths(input, ownedAliases)
-    val ownedSpelling = input.ownedPaths.map(::normalizeForAliasComparison).toSet()
-    val deletedAdopted = deleted.filterNot { normalizeForAliasComparison(it) in ownedSpelling }
-    val adopted = (divergentAdopted + deletedAdopted).distinct().sorted()
-    val stageable = (
-      owned.filter { normalizeForAliasComparison(it) in deltaAliases } +
-        introducedStageable +
-        divergentAdopted +
-        deleted
-      ).distinct().sorted()
+    val stageable = sanitized(
+      input.worktreeDeltaPaths +
+        input.phaseIntroducedPaths +
+        input.foreignStagedPaths +
+        input.concurrentlyModifiedOwnedPaths +
+        deleted,
+    ).map { ownedAliases[normalizeForAliasComparison(it)] ?: it }.distinct().sorted()
+    val ownedSpelling = sanitized(input.ownedPaths).map(::normalizeForAliasComparison).toSet()
+    val adopted = sanitized(
+      input.foreignStagedPaths +
+        input.concurrentlyModifiedOwnedPaths +
+        deleted.filterNot { normalizeForAliasComparison(it) in ownedSpelling },
+    ).map { ownedAliases[normalizeForAliasComparison(it)] ?: it }.distinct().sorted()
     return if (stageable.isEmpty()) {
       FeatureTaskRuntimeCheckpointDecision.Skip
     } else {
       FeatureTaskRuntimeCheckpointDecision.Stage(stageable, adopted)
     }
   }
-
-  private fun adoptedDivergentPaths(
-    input: FeatureTaskRuntimeCheckpointScopeInput,
-    ownedAliases: Map<String, String>,
-  ): List<String> = (input.foreignStagedPaths + input.concurrentlyModifiedOwnedPaths)
-    .filter(String::isNotBlank)
-    .mapNotNull { diverged -> ownedAliases[normalizeForAliasComparison(diverged)] }
-    .distinct()
-    .sorted()
 }
+
+private fun sanitized(paths: Collection<String>): List<String> =
+  paths.filter(String::isNotBlank).filterNot(::isRuntimePrivatePath)
 
 fun isRuntimePrivatePath(path: String): Boolean {
   val normalized = normalizeForAliasComparison(path)
