@@ -1,3 +1,11 @@
+## [2026-09-11] SKILL-233 subtask 7 — Unused-parameter gate cleanup
+Areas: orchestration/skill-classes, platform-packs/{generic,go,ios,kmp,kotlin,php,python,rust,typescript}
+- Synchronized the contract version declaration at 1.8 across eight skill-class definitions and nine platform manifests for the unused-parameter gate remediation.
+- Reusable: keep shared skill-class and platform-pack declarations on the same runtime contract version when architecture gates depend on installed metadata.
+- Limitation: the change is declaration-only; runtime behavior and gate proof remain owned by their respective phases.
+Feature flag: N/A
+Acceptance criteria: 3/3 implemented
+
 ## [2026-09-11] SKILL-233 subtask 6 — Runtime-context database resolution
 Areas: runtime-kotlin/{runtime-infra-sqlite,runtime-ports,runtime-application,runtime-cli,runtime-core,runtime-mcp,runtime-infra-fs,runtime-domain,agent,ARCHITECTURE.md}
 - Database session APIs resolve the path once from bound `RuntimeContext`; `DatabaseRuntime` keeps a resolving entry point (`openDb`, `openReadDb`, `openReadDbIfPresent`) that delegates to an `*At(dbPath)` overload, so path resolution and open semantics — missing-database bootstrap, schemaless failure, read-only setup, transactions, closure — stay separable. reusable
