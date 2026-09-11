@@ -23,9 +23,14 @@ class MigrationSpanBaseShaTest {
   }
 
   @Test
+  fun `first subtask empty ledger keeps HEAD as the recorded branch base`() {
+    val head = "a".repeat(40)
+    assertEquals(head, migrationSpanBaseSha(head, head, emptyList()))
+  }
+
+  @Test
   fun `collapsed base without recoverable parent refuses`() {
     val head = "a".repeat(40)
-    assertNull(migrationSpanBaseSha(head, head, emptyList()))
     assertNull(migrationSpanBaseSha(head, head, listOf(checkpoint(head, null, 0))))
   }
 

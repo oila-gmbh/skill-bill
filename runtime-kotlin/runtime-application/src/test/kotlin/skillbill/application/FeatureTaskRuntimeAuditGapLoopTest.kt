@@ -143,6 +143,34 @@ class FeatureTaskRuntimeAuditGapLoopTest {
   }
 
   @Test
+  fun `first goal-subtask empty checkpoint ledger still commits audited implementation before review`() {
+    val repoRoot = createTempDirectory("skillbill-first-subtask-empty-ledger")
+    val git = RecordingWorkflowGitOperations(currentBranchValue = "feat/existing-runtime-branch")
+      .also { it.headCommitShaValue = COMMITTED_HEAD_SHA }
+    val harness = goalContinuationHarness(
+      repoRoot,
+      git,
+      RuntimeRecordingLauncher { request ->
+        val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
+        if (phaseId == "implement") {
+          git.worktreeStatusValue = " M src/Foo.kt"
+          git.ownedPathsValue = listOf("src/Foo.kt")
+        }
+        facts(validJsonOutput(phaseId))
+      },
+    )
+
+    val report = harness.runner.run(harness.request())
+
+    assertIs<FeatureTaskRuntimeRunReport.Completed>(report, report.toString())
+    assertTrue(
+      (git.createCommitMessages + git.amendCommitMessages)
+        .any { it.contains("audited implementation checkpoint") },
+      report.toString(),
+    )
+  }
+
+  @Test
   fun `m2 audit re-entry does not consume a review pass so review keeps the requested mode`() {
     val harness = runnerHarness(RuntimeHarnessConfig(launcher = auditGapLauncher(convergeOnAudit = 2)))
 

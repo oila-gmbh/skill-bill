@@ -244,6 +244,7 @@ internal fun migrationSpanBaseSha(
   runLoop: FeatureTaskRuntimeRunLoop? = null,
 ): String? {
   if (durableBase != headSha) return durableBase
+  if (active.isEmpty()) return durableBase
   val parent = active.lastOrNull { it.commitSha == headSha }
     ?.parentSha
     ?.trim()
