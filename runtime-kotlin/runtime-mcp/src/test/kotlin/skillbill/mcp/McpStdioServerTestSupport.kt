@@ -2,8 +2,7 @@ package skillbill.mcp
 
 import skillbill.contracts.JsonSupport
 import skillbill.db.core.DatabaseRuntime
-import skillbill.db.telemetry.LifecycleTelemetryStore
-import skillbill.mcp.core.McpStdioServer
+import skillbill.db.telemetry.LifecycleTelemetryStoreimport skillbill.mcp.core.McpStdioServer
 import skillbill.telemetry.CONFIG_ENVIRONMENT_KEY
 import skillbill.telemetry.TELEMETRY_PROXY_URL_ENVIRONMENT_KEY
 import skillbill.telemetry.model.GoalFinishedRecord

@@ -36,7 +36,7 @@ object WorkflowStateSchemaPaths {
 
   /** Classpath resource path where runtime-contracts bundles the schema for runtime loads. */
   const val CLASSPATH_RESOURCE: String =
-    "skillbill/contracts/workflow-state-schema.yaml"
+    "skillbill/infrastructure/fs/contracts/workflow-state-schema.yaml"
 
   /**
    * SKILL-48 Subtask 2a (mirrors SKILL-47 C7): expected value of the canonical

@@ -1,4 +1,4 @@
-package skillbill.scaffold
+package skillbill.infrastructure.fs.scaffold
 
 import skillbill.testing.repoRootFromTest
 import java.nio.file.Files

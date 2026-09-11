@@ -9,9 +9,9 @@ import skillbill.application.idestatus.model.IdeStatusStep
 import skillbill.application.idestatus.model.IdeStatusWorkflowFamily
 import skillbill.cli.core.CliRuntime
 import skillbill.cli.model.CliRuntimeContext
-import skillbill.contracts.workflow.IdeStatusSchemaValidator
-import skillbill.db.core.DatabaseRuntime
 import skillbill.goalrunner.model.GoalPlanningStatusState
+import skillbill.infrastructure.fs.contracts.workflow.IdeStatusSchemaValidator
+import skillbill.infrastructure.sqlite.core.DatabaseRuntime
 import java.nio.file.Files
 import java.nio.file.Path
 import java.time.Instant

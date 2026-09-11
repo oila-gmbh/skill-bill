@@ -10,13 +10,20 @@ import com.github.ajalt.clikt.parameters.options.option
 import com.github.ajalt.clikt.parameters.types.int
 import me.tatarka.inject.annotations.Inject
 import skillbill.agentaddon.model.HydratedAgentAddonSelection
-import skillbill.application.goalrunner.model.DEFAULT_GOAL_PLANNING_BUDGET
-import skillbill.application.goalrunner.model.GoalRunnerRunRequest
-import skillbill.cli.kernel.DocumentedCliCommand
+import skillbill.application.system.RuntimeProvenanceService
+import skillbill.application.telemetry.TelemetryService
+import skillbill.cli.kernel.CliRunStateimport skillbill.cli.kernel.DocumentedCliCommand
 import skillbill.cli.kernel.drainTelemetryOnCompletion
 import skillbill.cli.kernel.invokingAgentResolutionHelp
 import skillbill.cli.model.DEFAULT_GOAL_MAX_WALL_CLOCK_MINUTES
-import java.nio.file.Path
+import skillbill.engine.goalrunner.GoalRunner
+import skillbill.engine.goalrunner.model.DEFAULT_GOAL_PLANNING_BUDGET
+import skillbill.engine.goalrunner.model.GoalRunnerRunRequest
+import skillbill.ports.agentaddon.AgentAddonSelectionPort
+import skillbill.ports.agentaddon.ExternalAgentAddonSourceConfigPort
+import skillbill.ports.agentrun.ExecutableLookup
+import skillbill.ports.diagnostics.RuntimeDiagnostics
+import skillbill.ports.system.HostPlatformPortimport java.nio.file.Path
 import kotlin.time.Duration.Companion.minutes
 
 @Inject

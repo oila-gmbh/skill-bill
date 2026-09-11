@@ -1,7 +1,7 @@
 
-package skillbill.scaffold.substance
+package skillbill.infrastructure.fs.scaffold.substance
 
-import skillbill.scaffold.runtime.RepoValidationRuntime
+import skillbill.infrastructure.fs.scaffold.runtime.RepoValidationRuntime
 import skillbill.testing.repoRootFromTest
 import java.nio.file.Files
 import kotlin.test.Test

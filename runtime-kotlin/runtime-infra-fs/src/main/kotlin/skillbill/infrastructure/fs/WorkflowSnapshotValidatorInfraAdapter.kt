@@ -1,8 +1,8 @@
 package skillbill.infrastructure.fs
 
 import me.tatarka.inject.annotations.Inject
-import skillbill.contracts.workflow.CanonicalWorkflowStateSchemaValidator
-import skillbill.contracts.workflow.WorkflowStateSchemaValidator
+import skillbill.infrastructure.fs.contracts.workflow.CanonicalWorkflowStateSchemaValidator
+import skillbill.infrastructure.fs.contracts.workflow.WorkflowStateSchemaValidator
 import skillbill.workflow.engine.WorkflowSnapshotValidator
 
 /**

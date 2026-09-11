@@ -3,8 +3,7 @@ package skillbill.infrastructure.fs
 import me.tatarka.inject.annotations.Inject
 import skillbill.contracts.JsonSupport
 import skillbill.install.support.resolveTelemetryConfigPath
-import skillbill.install.support.resolveTelemetryStateDir
-import skillbill.model.EnvironmentContext
+import skillbill.install.support.resolveTelemetryStateDirimport skillbill.model.EnvironmentContext
 import skillbill.ports.telemetry.TelemetryConfigStore
 import skillbill.telemetry.INSTALL_ID_ENVIRONMENT_KEY
 import skillbill.telemetry.defaultLocalTelemetryConfig

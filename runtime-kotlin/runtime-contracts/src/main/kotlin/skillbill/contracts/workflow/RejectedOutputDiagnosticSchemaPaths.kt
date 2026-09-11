@@ -6,5 +6,5 @@ object RejectedOutputDiagnosticSchemaPaths {
   const val REPOSITORY_PATH: String =
     "orchestration/contracts/rejected-output-diagnostic-schema.yaml"
   const val CLASSPATH_RESOURCE: String =
-    "skillbill/contracts/rejected-output-diagnostic-schema.yaml"
+    "skillbill/infrastructure/fs/contracts/rejected-output-diagnostic-schema.yaml"
 }

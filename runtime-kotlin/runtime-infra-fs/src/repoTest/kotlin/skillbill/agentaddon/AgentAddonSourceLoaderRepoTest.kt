@@ -1,4 +1,4 @@
-package skillbill.agentaddon
+package skillbill.infrastructure.fs.agentaddon
 
 import skillbill.testing.repoRootFromTest
 import java.nio.file.Files

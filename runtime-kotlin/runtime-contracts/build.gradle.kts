@@ -34,7 +34,11 @@ val copyGoalPlanningDiscoveryExclusions =
   tasks.register<Copy>("copyGoalPlanningDiscoveryExclusions") {
     val contractPath = canonicalGoalPlanningDiscoveryExclusionsPath
     from(contractPath)
-    into(layout.buildDirectory.dir("generated/skillbill-contracts/skillbill/contracts"))
+    into(
+      layout.buildDirectory.dir(
+        "generated/skillbill-contracts/skillbill/infrastructure/fs/contracts",
+      ),
+    )
     inputs.file(contractPath)
     doFirst {
       require(File(contractPath).exists()) {
@@ -47,7 +51,11 @@ val copyGoalVerificationBoundaryCaps =
   tasks.register<Copy>("copyGoalVerificationBoundaryCaps") {
     val contractPath = canonicalGoalVerificationBoundaryCapsPath
     from(contractPath)
-    into(layout.buildDirectory.dir("generated/skillbill-contracts/skillbill/contracts"))
+    into(
+      layout.buildDirectory.dir(
+        "generated/skillbill-contracts/skillbill/infrastructure/fs/contracts",
+      ),
+    )
     inputs.file(contractPath)
     doFirst {
       require(File(contractPath).exists()) {
@@ -60,7 +68,11 @@ val copyIssueKeySchema =
   tasks.register<Copy>("copyIssueKeySchema") {
     val contractPath = canonicalIssueKeySchemaPath
     from(contractPath)
-    into(layout.buildDirectory.dir("generated/skillbill-contracts/skillbill/contracts"))
+    into(
+      layout.buildDirectory.dir(
+        "generated/skillbill-contracts/skillbill/infrastructure/fs/contracts",
+      ),
+    )
     inputs.file(contractPath)
     doFirst {
       require(File(contractPath).exists()) {

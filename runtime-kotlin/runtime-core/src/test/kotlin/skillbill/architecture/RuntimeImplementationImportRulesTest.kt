@@ -7,16 +7,16 @@ class RuntimeImplementationImportRulesTest {
   @Test
   fun `adapter low-level implementation import scanner catches known bad packages`() {
     val mustBeDetected = listOf(
-      "skillbill.db.ReviewDatabase",
+      "skillbill.infrastructure.sqlite.ReviewDatabase",
       "skillbill.infrastructure.fs.FileSystemScaffoldGateway",
       "skillbill.infrastructure.http.HttpTelemetryClient",
       "skillbill.infrastructure.sqlite.SQLiteDatabaseSessionFactory",
-      "skillbill.install.InstallOperations",
-      "skillbill.launcher.McpRegistrationOperations",
-      "skillbill.nativeagent.NativeAgentOperations",
+      "skillbill.infrastructure.fs.install.InstallOperations",
+      "skillbill.infrastructure.fs.launcher.McpRegistrationOperations",
+      "skillbill.infrastructure.fs.nativeagent.NativeAgentOperations",
       "skillbill.review.ReviewRuntime",
-      "skillbill.scaffold.ScaffoldService",
-      "skillbill.skillremove.SkillRemoveJvmFileSystem",
+      "skillbill.infrastructure.fs.scaffold.ScaffoldService",
+      "skillbill.infrastructure.fs.skillremove.SkillRemoveJvmFileSystem",
       "skillbill.telemetry.TelemetryConfigRuntime",
       "skillbill.learnings.LearningsRuntime",
     )
@@ -49,13 +49,13 @@ class RuntimeImplementationImportRulesTest {
     // validator FQN regardless of owning module, and must NOT flag the
     // domain-owned validator PORTS (which are how pure layers reach validation).
     val mustBeDetected = listOf(
-      "skillbill.contracts.install.InstallPlanSchemaValidator",
-      "skillbill.contracts.workflow.WorkflowStateSchemaValidator",
-      "skillbill.contracts.workflow.CanonicalWorkflowStateSchemaValidator",
-      "skillbill.contracts.workflow.DecompositionManifestSchemaValidator",
-      "skillbill.contracts.workflow.DecompositionManifestCoherenceValidator",
-      "skillbill.scaffold.PlatformPackSchemaValidator",
-      "skillbill.nativeagent.NativeAgentCompositionSchemaValidator",
+      "skillbill.infrastructure.fs.contracts.install.InstallPlanSchemaValidator",
+      "skillbill.infrastructure.fs.contracts.workflow.WorkflowStateSchemaValidator",
+      "skillbill.infrastructure.fs.contracts.workflow.CanonicalWorkflowStateSchemaValidator",
+      "skillbill.infrastructure.fs.contracts.workflow.DecompositionManifestSchemaValidator",
+      "skillbill.infrastructure.fs.contracts.workflow.DecompositionManifestCoherenceValidator",
+      "skillbill.infrastructure.fs.scaffold.PlatformPackSchemaValidator",
+      "skillbill.infrastructure.fs.nativeagent.NativeAgentCompositionSchemaValidator",
     )
     val mustNotBeDetected = listOf(
       // Domain-owned validator PORTS — the sanctioned reach into validation.
@@ -64,7 +64,7 @@ class RuntimeImplementationImportRulesTest {
       "skillbill.workflow.engine.WorkflowSnapshotValidator",
       // Unrelated types.
       "skillbill.application.InstallService",
-      "skillbill.contracts.install.InstallPlanSchemaPaths",
+      "skillbill.infrastructure.fs.contracts.install.InstallPlanSchemaPaths",
     )
 
     assertEquals(

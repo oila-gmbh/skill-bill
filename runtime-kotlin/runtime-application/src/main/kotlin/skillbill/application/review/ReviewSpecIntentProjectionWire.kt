@@ -1,9 +1,9 @@
 package skillbill.application.review
 
-import skillbill.contracts.JsonSupport
-import skillbill.review.context.model.SpecIntentProjection
+import skillbill.contracts.JsonSupportimport skillbill.review.context.model.SpecIntentProjection
 
-internal fun SpecIntentProjection.toProjectionPayload(): Map<String, Any?> = linkedMapOf(
+@OpenBoundaryMap("Schema-bounded review spec intent projection")
+fun SpecIntentProjection.toProjectionPayload(): Map<String, Any?> = linkedMapOf(
   "intended_outcome" to intendedOutcome,
   "acceptance_criteria" to acceptanceCriteria,
   "constraints" to constraints,

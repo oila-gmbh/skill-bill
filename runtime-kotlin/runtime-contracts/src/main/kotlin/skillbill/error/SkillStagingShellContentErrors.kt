@@ -4,7 +4,7 @@ package skillbill.error
  * SKILL-102 subtask 1: surfaced at install-staging time when an authored file
  * already occupies the would-be sidecar name inside the parent skill's source
  * directory. Follows the generated-artifact guard pattern
- * (`skillbill.scaffold.pointer.GeneratedArtifactGuard`); the dedicated subclass
+ * (`skillbill.infrastructure.fs.scaffold.pointer.GeneratedArtifactGuard`); the dedicated subclass
  * keeps sidecar collision failures distinguishable from declaration failures.
  */
 class InternalSkillSidecarCollisionError(

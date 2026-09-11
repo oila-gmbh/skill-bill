@@ -2,7 +2,7 @@ package skillbill.cli
 
 import skillbill.cli.core.CliRuntime
 import skillbill.cli.model.CliRuntimeContext
-import skillbill.db.core.DatabaseRuntime
+import skillbill.infrastructure.sqlite.core.DatabaseRuntime
 import java.nio.file.Files
 import java.nio.file.Path
 import java.sql.DriverManager

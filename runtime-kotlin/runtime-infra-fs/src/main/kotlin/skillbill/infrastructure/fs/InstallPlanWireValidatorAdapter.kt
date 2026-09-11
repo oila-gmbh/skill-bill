@@ -1,7 +1,7 @@
 package skillbill.infrastructure.fs
 
 import me.tatarka.inject.annotations.Inject
-import skillbill.contracts.install.InstallPlanSchemaValidator
+import skillbill.infrastructure.fs.contracts.install.InstallPlanSchemaValidator
 import skillbill.install.model.InstallPlanWireValidator
 
 /**

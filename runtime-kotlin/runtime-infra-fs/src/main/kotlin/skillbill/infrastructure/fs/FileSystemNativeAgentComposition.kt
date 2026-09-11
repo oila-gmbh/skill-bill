@@ -1,11 +1,11 @@
 package skillbill.infrastructure.fs
 
-import skillbill.nativeagent.composition.NativeAgentSource
-import skillbill.nativeagent.composition.composeNativeAgentSource
-import skillbill.nativeagent.platformpack.NativeAgentPlatformPackLoader
+import skillbill.infrastructure.fs.nativeagent.composition.NativeAgentSource
+import skillbill.infrastructure.fs.nativeagent.composition.composeNativeAgentSource
+import skillbill.infrastructure.fs.nativeagent.platformpack.NativeAgentPlatformPackLoader
+import skillbill.infrastructure.fs.scaffold.authoring.renderAuthoredContentBody
 import skillbill.ports.config.RepoLocalConfigPort
 import skillbill.ports.config.model.ReadRepoLocalConfigRequest
-import skillbill.scaffold.authoring.renderAuthoredContentBody
 import java.nio.file.Path
 
 object FileSystemNativeAgentComposition {

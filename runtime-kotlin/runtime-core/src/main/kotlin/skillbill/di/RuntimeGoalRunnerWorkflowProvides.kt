@@ -1,10 +1,8 @@
 package skillbill.di
 
 import me.tatarka.inject.annotations.Provides
-import skillbill.application.decomposition.DecompositionManifestWriter
-import skillbill.application.goalrunner.GoalRunnerChildRepairOperations
-import skillbill.application.goalrunner.planning.GoalChildPlanningHydratorPortAdapter
-import skillbill.infrastructure.sqlite.goalrunner.WorkflowGoalRunnerManifestStore
+import skillbill.engine.goalrunner.GoalRunnerChildRepairOperations
+import skillbill.engine.goalrunner.planning.GoalChildPlanningHydratorPortAdapterimport skillbill.infrastructure.sqlite.goalrunner.WorkflowGoalRunnerManifestStore
 import skillbill.infrastructure.sqlite.goalrunner.WorkflowGoalRunnerOutcomeStore
 import skillbill.ports.decomposition.DecompositionManifestProjectionWriter
 import skillbill.ports.goalrunner.persistence.GoalChildPlanningHydratorPort

@@ -1,6 +1,5 @@
 package skillbill.application.work
 
-import skillbill.application.goalrunner.goalRepositoryIdentity
 import skillbill.application.idestatus.model.IdeStatusCurrentPhaseExecutionKind
 import skillbill.application.idestatus.model.IdeStatusFreshness
 import skillbill.application.idestatus.model.IdeStatusLifecycleState
@@ -29,8 +28,8 @@ class IdeStatusServiceBranchScopingTest {
   @Test
   fun `goal mid-planning keeps planning and omits current_phase_execution`() {
     val fixture = gitRepoFixture("ide-status-planning-no-execution")
-    val identity = goalRepositoryIdentity(fixture)
-    val result = service(
+    val identity = testGoalRepositoryIdentity(fixture)
+    val result = ideStatusService(
       goalOnlyDatabase(),
       manifestStore = StubGoalManifestStore(
         goalManifestState(fixture, identity, childWorkflowId = "w-child"),
@@ -47,7 +46,7 @@ class IdeStatusServiceBranchScopingTest {
   @Test
   fun `goal with launched child projects child current_phase_execution`() {
     val fixture = gitRepoFixture("ide-status-goal-child-execution")
-    val identity = goalRepositoryIdentity(fixture)
+    val identity = testGoalRepositoryIdentity(fixture)
     val database = goalWithLaunchedChildDatabase(
       identity,
       Instant.parse("2026-08-06T09:15:00Z"),
@@ -64,7 +63,7 @@ class IdeStatusServiceBranchScopingTest {
         ),
       ),
     )
-    val result = service(
+    val result = ideStatusService(
       database,
       manifestStore = StubGoalManifestStore(goalManifestState(fixture, identity, childWorkflowId = "w-child")),
     ).status(IdeStatusRequest(repoRoot = fixture.toString(), observedAt = ideStatusObservedAt))
@@ -79,7 +78,7 @@ class IdeStatusServiceBranchScopingTest {
   @Test
   fun `goal prefers child derived phase over stale child current_step_id`() {
     val fixture = gitRepoFixture("ide-status-goal-stale-step")
-    val identity = goalRepositoryIdentity(fixture)
+    val identity = testGoalRepositoryIdentity(fixture)
     val database = goalWithLaunchedChildDatabase(
       identity,
       Instant.parse("2026-08-06T09:15:00Z"),
@@ -100,7 +99,7 @@ class IdeStatusServiceBranchScopingTest {
       progressToken = "stale-verify-findings",
       latestLivenessSignal = "workflow_status=running; step=verify_findings",
     )
-    val result = service(
+    val result = ideStatusService(
       database,
       manifestStore = StubGoalManifestStore(
         goalManifestState(fixture, identity, childWorkflowId = "w-child").let { state ->
@@ -125,7 +124,7 @@ class IdeStatusServiceBranchScopingTest {
   @Test
   fun `started_at stays stable across two polls for the same durable runtime work`() {
     val fixture = gitRepoFixture("ide-status-stable-start")
-    val identity = goalRepositoryIdentity(fixture)
+    val identity = testGoalRepositoryIdentity(fixture)
     val workflows = IdeStatusWorkflowStates()
     workflows.saveFeatureImplementWorkflow(runtimeRecord("w-stable", "2026-08-06T10:00:00Z"))
     workflows.saveFeatureTaskExecutionIdentity(identityFor("w-stable", identity))
@@ -133,7 +132,7 @@ class IdeStatusServiceBranchScopingTest {
       work = listOf(workItem("w-stable", WorkItemKind.FEATURE_TASK_RUNTIME, "running", "2026-08-06T10:00:00Z")),
       workflows = workflows,
     )
-    val service = service(database)
+    val service = ideStatusService(database)
 
     val first = service.status(
 
@@ -157,7 +156,7 @@ class IdeStatusServiceBranchScopingTest {
       work = listOf(workItem("w-verify", WorkItemKind.FEATURE_VERIFY, "running", "2026-08-06T11:00:00Z")),
       workflows = workflows,
     )
-    val service = service(database)
+    val service = ideStatusService(database)
 
     val result = service.status(
 
@@ -185,7 +184,7 @@ class IdeStatusServiceBranchScopingTest {
       ),
       workflows = workflows,
     )
-    val service = service(database)
+    val service = ideStatusService(database)
 
     val result = service.status(
 
@@ -200,7 +199,7 @@ class IdeStatusServiceBranchScopingTest {
   @Test
   fun `verify work is included when issue correlates to same-repo feature-task identity`() {
     val fixture = gitRepoFixture("ide-status-verify-correlated")
-    val identity = goalRepositoryIdentity(fixture)
+    val identity = testGoalRepositoryIdentity(fixture)
     val workflows = IdeStatusWorkflowStates()
     workflows.saveFeatureVerifyWorkflow(verifyRecord("w-verify", "2026-08-06T11:00:00Z"))
     workflows.saveFeatureImplementWorkflow(runtimeRecord("w-runtime", "2026-08-06T09:00:00Z", currentStep = "pr"))
@@ -212,7 +211,7 @@ class IdeStatusServiceBranchScopingTest {
       ),
       workflows = workflows,
     )
-    val service = service(database)
+    val service = ideStatusService(database)
 
     val result = service.status(
 
@@ -229,7 +228,7 @@ class IdeStatusServiceBranchScopingTest {
   @Test
   fun `branch scoping hides work whose issue key is not in the checked-out branch`() {
     val fixture = gitRepoFixture("ide-status-branch-scope", branch = "feat/OTHER-9-unrelated")
-    val identity = goalRepositoryIdentity(fixture)
+    val identity = testGoalRepositoryIdentity(fixture)
     val workflows = IdeStatusWorkflowStates()
     workflows.saveFeatureImplementWorkflow(runtimeRecord("w-active", "2026-08-06T10:00:00Z"))
     workflows.saveFeatureTaskExecutionIdentity(identityFor("w-active", identity))
@@ -238,7 +237,7 @@ class IdeStatusServiceBranchScopingTest {
       workflows = workflows,
     )
 
-    val result = service(database).status(
+    val result = ideStatusService(database).status(
 
       IdeStatusRequest(repoRoot = fixture.toString(), observedAt = ideStatusObservedAt),
 
@@ -251,7 +250,7 @@ class IdeStatusServiceBranchScopingTest {
   @Test
   fun `branch scoping requires a whole issue-key token, not a prefix hit`() {
     val fixture = gitRepoFixture("ide-status-branch-token", branch = "feat/SKILL-14-prefix")
-    val identity = goalRepositoryIdentity(fixture)
+    val identity = testGoalRepositoryIdentity(fixture)
     val workflows = IdeStatusWorkflowStates()
     workflows.saveFeatureImplementWorkflow(runtimeRecord("w-active", "2026-08-06T10:00:00Z"))
     workflows.saveFeatureTaskExecutionIdentity(identityFor("w-active", identity))
@@ -260,7 +259,7 @@ class IdeStatusServiceBranchScopingTest {
       workflows = workflows,
     )
 
-    val result = service(database).status(
+    val result = ideStatusService(database).status(
 
       IdeStatusRequest(repoRoot = fixture.toString(), observedAt = ideStatusObservedAt),
 
@@ -272,7 +271,7 @@ class IdeStatusServiceBranchScopingTest {
   @Test
   fun `unresolvable checkout disables branch scoping instead of hiding work`() {
     val fixture = gitRepoFixture("ide-status-branch-detached", branch = null)
-    val identity = goalRepositoryIdentity(fixture)
+    val identity = testGoalRepositoryIdentity(fixture)
     val workflows = IdeStatusWorkflowStates()
     workflows.saveFeatureImplementWorkflow(runtimeRecord("w-active", "2026-08-06T10:00:00Z"))
     workflows.saveFeatureTaskExecutionIdentity(identityFor("w-active", identity))
@@ -281,7 +280,7 @@ class IdeStatusServiceBranchScopingTest {
       workflows = workflows,
     )
 
-    val result = service(database).status(
+    val result = ideStatusService(database).status(
 
       IdeStatusRequest(repoRoot = fixture.toString(), observedAt = ideStatusObservedAt),
 
@@ -294,7 +293,7 @@ class IdeStatusServiceBranchScopingTest {
   @Test
   fun `protected base branch disables scoping so pre-branch work stays visible`() {
     val fixture = gitRepoFixture("ide-status-branch-protected", branch = "main")
-    val identity = goalRepositoryIdentity(fixture)
+    val identity = testGoalRepositoryIdentity(fixture)
     val workflows = IdeStatusWorkflowStates()
     workflows.saveFeatureImplementWorkflow(runtimeRecord("w-active", "2026-08-06T10:00:00Z"))
     workflows.saveFeatureTaskExecutionIdentity(identityFor("w-active", identity))
@@ -303,7 +302,7 @@ class IdeStatusServiceBranchScopingTest {
       workflows = workflows,
     )
 
-    val result = service(database).status(
+    val result = ideStatusService(database).status(
 
       IdeStatusRequest(repoRoot = fixture.toString(), observedAt = ideStatusObservedAt),
 
@@ -316,8 +315,8 @@ class IdeStatusServiceBranchScopingTest {
   @Test
   fun `running goal row with every subtask settled projects terminal complete`() {
     val fixture = gitRepoFixture("ide-status-goal-settled")
-    val identity = goalRepositoryIdentity(fixture)
-    val service = service(
+    val identity = testGoalRepositoryIdentity(fixture)
+    val service = ideStatusService(
       goalOnlyDatabase(),
       manifestStore = StubGoalManifestStore(
         completedGoalManifestState(fixture, identity),
@@ -340,8 +339,8 @@ class IdeStatusServiceBranchScopingTest {
   fun `blocked or failed goal row with every subtask settled projects terminal complete`() {
     listOf("blocked", "failed").forEach { stuckState ->
       val fixture = gitRepoFixture("ide-status-goal-settled-$stuckState")
-      val identity = goalRepositoryIdentity(fixture)
-      val service = service(
+      val identity = testGoalRepositoryIdentity(fixture)
+      val service = ideStatusService(
         goalOnlyDatabase(goalState = stuckState),
         manifestStore = StubGoalManifestStore(
           completedGoalManifestState(fixture, identity),
@@ -372,10 +371,10 @@ class IdeStatusServiceBranchScopingTest {
   @Test
   fun `goal current_subtask started_at comes from durable launched child WorkItem`() {
     val fixture = gitRepoFixture("ide-status-goal-subtask-start")
-    val identity = goalRepositoryIdentity(fixture)
+    val identity = testGoalRepositoryIdentity(fixture)
     val childStarted = Instant.parse("2026-08-06T09:15:00Z")
     val database = goalWithLaunchedChildDatabase(identity, childStarted)
-    val service = service(
+    val service = ideStatusService(
       database,
       manifestStore = StubGoalManifestStore(
         goalManifestState(fixture, identity, childWorkflowId = "w-child"),
@@ -398,9 +397,9 @@ class IdeStatusServiceBranchScopingTest {
   @Test
   fun `feature-goal freshness follows the newest same-repo child workflow write`() {
     val fixture = gitRepoFixture("ide-status-goal-freshness")
-    val identity = goalRepositoryIdentity(fixture)
+    val identity = testGoalRepositoryIdentity(fixture)
     val database = goalWithChildWrittenAt(identity, childUpdatedAt = "2026-08-06T11:45:00Z")
-    val service = service(database)
+    val service = ideStatusService(database)
 
     val result = service.status(
 
@@ -417,9 +416,9 @@ class IdeStatusServiceBranchScopingTest {
   @Test
   fun `child workflow timestamps written by SQLite CURRENT_TIMESTAMP are parsed as UTC`() {
     val fixture = gitRepoFixture("ide-status-sqlite-timestamp")
-    val identity = goalRepositoryIdentity(fixture)
+    val identity = testGoalRepositoryIdentity(fixture)
     val database = goalWithChildWrittenAt(identity, childUpdatedAt = "2026-08-06 11:45:00")
-    val service = service(database)
+    val service = ideStatusService(database)
 
     val result = service.status(
 
@@ -438,7 +437,7 @@ class IdeStatusServiceBranchScopingTest {
       work = listOf(workItem("goal-1", WorkItemKind.FEATURE_GOAL, "running", "2026-08-06T10:00:00Z")),
       workflows = IdeStatusWorkflowStates(),
     )
-    val service = service(database)
+    val service = ideStatusService(database)
 
     val result = service.status(
 
@@ -502,8 +501,8 @@ class IdeStatusServiceBranchScopingTest {
   @Test
   fun `goal mid-planning projects the planning step label and a planning-progress summary`() {
     val fixture = gitRepoFixture("ide-status-goal-planning")
-    val identity = goalRepositoryIdentity(fixture)
-    val service = service(
+    val identity = testGoalRepositoryIdentity(fixture)
+    val service = ideStatusService(
       goalOnlyDatabase(),
       manifestStore = StubGoalManifestStore(
         goalManifestState(fixture, identity, childWorkflowId = "w-child"),

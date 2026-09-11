@@ -3,14 +3,14 @@ package skillbill.cli
 import skillbill.application.idestatus.model.IdeStatusProblemCode
 import skillbill.application.idestatus.model.IdeStatusRequest
 import skillbill.application.idestatus.model.IdeStatusResult
-import skillbill.application.work.IdeStatusProjector
-import skillbill.application.work.IdeStatusService
-import skillbill.db.core.DatabaseRuntime
 import skillbill.di.RuntimeComponent
 import skillbill.di.create
+import skillbill.engine.work.IdeStatusProjector
+import skillbill.engine.work.IdeStatusService
 import skillbill.goalrunner.model.GoalRunnerControlState
 import skillbill.infrastructure.fs.CanonicalRepositoryRoot
 import skillbill.infrastructure.sqlite.SQLiteDatabaseSessionFactory
+import skillbill.infrastructure.sqlite.core.DatabaseRuntime
 import skillbill.model.EnvironmentContext
 import skillbill.model.RuntimeContext
 import skillbill.ports.db.DatabaseSessionFactory

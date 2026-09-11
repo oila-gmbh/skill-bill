@@ -1,7 +1,7 @@
 package skillbill.cli.goal
 
-import skillbill.application.goalrunner.model.GoalRunnerStopStatus
-
+import skillbill.engine.goalrunner.model.GoalRunnerStopStatus
+import skillbill.goalrunner.model.GoalRunnerTerminalStatus
 internal const val GOAL_EXIT_COMPLETE: Int = 0
 internal const val GOAL_EXIT_FAILED: Int = 1
 internal const val GOAL_EXIT_PAUSED: Int = 2

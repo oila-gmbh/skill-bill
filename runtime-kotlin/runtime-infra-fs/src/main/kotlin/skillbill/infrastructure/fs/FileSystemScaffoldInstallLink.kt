@@ -1,14 +1,14 @@
 package skillbill.infrastructure.fs
 
 import me.tatarka.inject.annotations.Inject
-import skillbill.install.plan.InstallContext
-import skillbill.install.plan.detectAgents
-import skillbill.install.plan.installSkill
-import skillbill.install.plan.uninstallTargets
+import skillbill.infrastructure.fs.install.plan.InstallContext
+import skillbill.infrastructure.fs.install.plan.detectAgents
+import skillbill.infrastructure.fs.install.plan.installSkill
+import skillbill.infrastructure.fs.install.plan.uninstallTargets
+import skillbill.infrastructure.fs.scaffold.platformpack.discoverPlatformPackManifests
 import skillbill.ports.scaffold.install.ScaffoldInstallLinkPort
 import skillbill.ports.scaffold.install.model.ScaffoldInstallLinkRequest
 import skillbill.ports.scaffold.install.model.ScaffoldInstallLinkResult
-import skillbill.scaffold.platformpack.discoverPlatformPackManifests
 import java.nio.file.Files
 import java.nio.file.Path
 

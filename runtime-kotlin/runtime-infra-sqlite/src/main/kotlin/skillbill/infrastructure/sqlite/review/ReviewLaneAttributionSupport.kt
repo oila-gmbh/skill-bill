@@ -1,14 +1,14 @@
 package skillbill.infrastructure.sqlite.review
-import skillbill.db.PARAM_FOUR
-import skillbill.db.PARAM_ONE
-import skillbill.db.PARAM_THREE
-import skillbill.db.PARAM_TWO
+import skillbill.infrastructure.sqlite.PARAM_FOUR
+import skillbill.infrastructure.sqlite.PARAM_ONE
+import skillbill.infrastructure.sqlite.PARAM_THREE
+import skillbill.infrastructure.sqlite.PARAM_TWO
 import skillbill.ports.review.model.ReviewIntegrationPassRecord
-import skillbill.review.ReviewRunLaneResolver
+import skillbill.review.context.model.ReviewLaneReviewDisposition
 import skillbill.review.model.ImportedFinding
 import skillbill.review.model.ImportedReview
 import skillbill.review.model.ReviewLaneEffectivenessRow
-import skillbill.review.model.ReviewRunLane
+import skillbill.review.model.ReviewLaneResolutionStateimport skillbill.review.model.ReviewRunLane
 import skillbill.review.model.toStoredSegmentIdList
 import java.sql.Connection
 

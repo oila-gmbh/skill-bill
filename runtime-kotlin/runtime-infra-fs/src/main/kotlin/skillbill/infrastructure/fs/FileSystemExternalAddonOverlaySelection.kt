@@ -3,15 +3,15 @@ package skillbill.infrastructure.fs
 import org.yaml.snakeyaml.Yaml
 import org.yaml.snakeyaml.error.YAMLException
 import skillbill.error.ExternalAddonOverlayError
+import skillbill.infrastructure.fs.scaffold.platformpack.AddonUsageManifestContext
+import skillbill.infrastructure.fs.scaffold.platformpack.declaredSkillRelativeDirs
+import skillbill.infrastructure.fs.scaffold.platformpack.parseAddonUsage
+import skillbill.infrastructure.fs.scaffold.platformpack.parsePointers
 import skillbill.install.model.ExternalAddonSource
 import skillbill.scaffold.model.GovernedAddonSelection
 import skillbill.scaffold.model.GovernedAddonUsage
 import skillbill.scaffold.model.PlatformManifest
 import skillbill.scaffold.model.PointerSpec
-import skillbill.scaffold.platformpack.AddonUsageManifestContext
-import skillbill.scaffold.platformpack.declaredSkillRelativeDirs
-import skillbill.scaffold.platformpack.parseAddonUsage
-import skillbill.scaffold.platformpack.parsePointers
 import java.nio.file.Files
 import java.nio.file.Path
 

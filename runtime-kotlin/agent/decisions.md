@@ -1527,9 +1527,9 @@ Machine-parseable rows: `path | symbol | rule | why`. Complexity rule names neve
 | runtime-infra-fs/src/main/kotlin/skillbill/infrastructure/fs/FileSystemExternalAddonOverlayApply.kt | asMutableList | UNCHECKED_CAST | SnakeYAML returns an erased mutable list; ClassCastException guard keeps manifest list overlay writes honest |
 | runtime-application/src/testFixtures/kotlin/skillbill/application/review/ReviewRecordingHarness.kt | recordingDatabase | UNCHECKED_CAST | Dynamic ReviewRepository proxy passes typed args through erased invoke; casts mirror the repository contract |
 | runtime-core/src/test/kotlin/skillbill/application/ApplicationPersistencePortTestSupport.kt | noopPort | UNCHECKED_CAST | Dynamic port proxy returns typed facade from erased invoke |
-| runtime-application/src/test/kotlin/skillbill/application/FeatureTaskRuntimeRunnerTest.kt | FeatureTaskRuntimeGoalContinuationPersistenceTest | UNCHECKED_CAST | Goal-continuation outcome wire map stores participating_agent_ids as strings |
-| runtime-application/src/test/kotlin/skillbill/application/FeatureTaskRuntimeRunnerTestSupport.kt | noopPort | UNCHECKED_CAST | Dynamic port proxy returns typed facade from erased invoke |
-| runtime-application/src/test/kotlin/skillbill/application/FeatureTaskRuntimeRunnerTestSupport.kt | recordHarnessFindingVerdicts | UNCHECKED_CAST | Dynamic ReviewRepository proxy passes typed verdict list through erased invoke |
+| runtime-engine/src/test/kotlin/skillbill/engine/FeatureTaskRuntimeRunnerTest.kt | FeatureTaskRuntimeGoalContinuationPersistenceTest | UNCHECKED_CAST | Goal-continuation outcome wire map stores participating_agent_ids as strings |
+| runtime-engine/src/test/kotlin/skillbill/engine/FeatureTaskRuntimeRunnerTestSupport.kt | noopPort | UNCHECKED_CAST | Dynamic port proxy returns typed facade from erased invoke |
+| runtime-engine/src/test/kotlin/skillbill/engine/FeatureTaskRuntimeRunnerTestSupport.kt | recordHarnessFindingVerdicts | UNCHECKED_CAST | Dynamic ReviewRepository proxy passes typed verdict list through erased invoke |
 | runtime-application/src/test/kotlin/skillbill/application/ParallelCodeReviewRunnerTest.kt | RecordingReviewDatabase | UNCHECKED_CAST | Dynamic ReviewRepository proxy passes typed args through erased invoke |
 | runtime-application/src/test/kotlin/skillbill/application/review/SpecIntentProjectionResolverTest.kt | SpecIntentProjectionResolverTest | UNCHECKED_CAST | Launch envelope wire map stores criteria_references as strings |
 

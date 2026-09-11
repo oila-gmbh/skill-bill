@@ -1,9 +1,9 @@
 package skillbill.telemetry
 
-import skillbill.db.core.DatabaseRuntime
-import skillbill.db.telemetry.TelemetryOutboxStore
 import skillbill.infrastructure.http.telemetryProxyBatchPayload
-import skillbill.telemetry.model.TelemetrySettings
+import skillbill.infrastructure.sqlite.core.DatabaseRuntime
+import skillbill.infrastructure.sqlite.telemetry.TelemetryOutboxStore
+import skillbill.ports.repository.toFileLocationimport skillbill.telemetry.model.TelemetrySettings
 import java.nio.file.Files
 import java.sql.Connection
 import kotlin.test.Test

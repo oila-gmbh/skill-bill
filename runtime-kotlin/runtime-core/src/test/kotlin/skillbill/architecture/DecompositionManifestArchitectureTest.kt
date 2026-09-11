@@ -37,7 +37,7 @@ class DecompositionManifestArchitectureTest {
       ),
     )
 
-    assertContains(architecture, "decomposition-manifest file/artifact projection")
+    assertContains(architecture, "decomposition-manifest file-store ports")
     // SKILL-52.3 subtask 1: the concrete schema validator moved to
     // `runtime-infra-fs`; the application seam now flows through the
     // injected `DecompositionManifestValidator` port.

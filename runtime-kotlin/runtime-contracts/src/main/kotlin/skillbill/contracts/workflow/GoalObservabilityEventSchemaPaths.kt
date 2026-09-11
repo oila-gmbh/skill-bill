@@ -18,7 +18,7 @@ object GoalObservabilityEventSchemaPaths {
     "orchestration/contracts/goal-observability-event-schema.yaml"
 
   const val CLASSPATH_RESOURCE: String =
-    "skillbill/contracts/goal-observability-event-schema.yaml"
+    "skillbill/infrastructure/fs/contracts/goal-observability-event-schema.yaml"
 
   const val EXPECTED_SCHEMA_ID: String =
     "https://skill-bill.dev/contracts/goal-observability-event-schema.yaml"

@@ -1,7 +1,7 @@
 package skillbill.cli.featuretask
 
 import com.github.ajalt.clikt.core.UsageError
-import skillbill.application.featuretask.model.FeatureTaskContinuationLookupResult
+import skillbill.engine.featuretask.model.FeatureTaskContinuationLookupResult
 import skillbill.ports.workflow.model.FeatureTaskWorkflowMode
 import java.nio.file.Path
 

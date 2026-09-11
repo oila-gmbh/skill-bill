@@ -12,11 +12,11 @@ import skillbill.application.review.reviewPack
 import skillbill.application.review.toBoundedPayload
 import skillbill.contracts.JsonSupport
 import skillbill.contracts.review.REVIEW_CONTEXT_CONTRACT_VERSION
-import skillbill.contracts.review.ReviewContextSchemaValidator
-import skillbill.db.core.DatabaseRuntime
-import skillbill.db.telemetry.TelemetryOutboxStore
+import skillbill.infrastructure.fs.contracts.review.ReviewContextSchemaValidator
+import skillbill.infrastructure.sqlite.core.DatabaseRuntime
 import skillbill.infrastructure.sqlite.review.loadReviewAccounting
 import skillbill.infrastructure.sqlite.review.upsertReviewAccounting
+import skillbill.infrastructure.sqlite.telemetry.TelemetryOutboxStore
 import skillbill.ports.review.model.ReviewAccountingRecord
 import skillbill.review.context.model.ReviewAccountingSummary
 import skillbill.review.model.REVIEW_STAGE_DEGRADATION_EVENT_NAME

@@ -2,7 +2,9 @@ package skillbill.application
 
 import skillbill.application.telemetry.LifecycleTelemetryService
 import skillbill.application.telemetry.TelemetryLevelMutationService
+import skillbill.application.telemetry.config.TelemetryConfigMutations
 import skillbill.application.telemetry.model.FeatureTaskRuntimeStartedRequest
+import skillbill.application.telemetry.settings.DefaultTelemetrySettingsProvider
 import skillbill.infrastructure.fs.FileTelemetryConfigStore
 import skillbill.model.EnvironmentContext
 import skillbill.ports.db.DatabaseSessionFactory
@@ -20,10 +22,8 @@ import skillbill.ports.telemetry.model.TelemetryOutboxRecord
 import skillbill.ports.work.EmptyWorkListRepository
 import skillbill.ports.workflow.WorkflowStateRepository
 import skillbill.telemetry.CONFIG_ENVIRONMENT_KEY
-import skillbill.telemetry.config.TelemetryConfigMutations
 import skillbill.telemetry.model.TelemetryConfigDocument
 import skillbill.telemetry.model.TelemetrySettings
-import skillbill.telemetry.settings.DefaultTelemetrySettingsProvider
 import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.test.Test

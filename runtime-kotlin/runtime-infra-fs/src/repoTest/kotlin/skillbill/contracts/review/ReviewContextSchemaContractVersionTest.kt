@@ -1,6 +1,8 @@
-package skillbill.contracts.review
+package skillbill.infrastructure.fs.contracts.review
 
 import com.fasterxml.jackson.dataformat.yaml.YAMLMapper
+import skillbill.contracts.review.REVIEW_CONTEXT_CONTRACT_VERSION
+import skillbill.contracts.review.ReviewContextSchemaPaths
 import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.test.Test

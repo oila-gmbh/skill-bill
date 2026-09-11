@@ -7,7 +7,7 @@ object GoalPlanningPreparationSchemaPaths {
     "orchestration/contracts/goal-planning-preparation-schema.yaml"
 
   const val CLASSPATH_RESOURCE: String =
-    "skillbill/contracts/goal-planning-preparation-schema.yaml"
+    "skillbill/infrastructure/fs/contracts/goal-planning-preparation-schema.yaml"
 
   const val EXPECTED_SCHEMA_ID: String =
     "https://skill-bill.dev/contracts/goal-planning-preparation-schema.yaml"

@@ -9,12 +9,22 @@ import skillbill.application.featuretask.FeatureTaskRuntimeStatusService
 import skillbill.application.featuretask.featureTaskRuntimePhaseRecorder
 import skillbill.application.goalrunner.goalRepositoryIdentity
 import skillbill.application.goalrunner.goalRunnerStatusServiceDeps
-import skillbill.application.goalrunner.testGoalRunnerStatusService
-import skillbill.application.idestatus.model.IdeStatusRequest
+import skillbill.application.goalrunner.testGoalRunnerStatusServiceimport skillbill.application.idestatus.model.IdeStatusRequest
 import skillbill.application.idestatus.model.IdeStatusResult
 import skillbill.application.testHarnessClock
 import skillbill.contracts.JsonSupport
 import skillbill.contracts.workflow.IDE_STATUS_CONTRACT_VERSION
+import skillbill.engine.featuretask.AcceptingFeatureTaskRuntimeHandoffEnvelopeValidator
+import skillbill.engine.featuretask.AcceptingFeatureTaskRuntimeHandoffFoundationValidator
+import skillbill.engine.featuretask.FeatureTaskRuntimeDecomposeTerminalRecorder
+import skillbill.engine.featuretask.FeatureTaskRuntimeRunInvariantsStore
+import skillbill.engine.featuretask.FeatureTaskRuntimeStatusService
+import skillbill.engine.featuretask.featureTaskRuntimePhaseRecorder
+import skillbill.engine.goalrunner.GoalRunnerStatusTestPorts
+import skillbill.engine.goalrunner.goalRepositoryIdentity
+import skillbill.engine.goalrunner.testGoalRunnerStatusService
+import skillbill.engine.work.IdeStatusProjector
+import skillbill.engine.work.IdeStatusService
 import skillbill.error.InvalidWorkflowStateSchemaError
 import skillbill.goalrunner.model.GoalPlanningStatusSnapshot
 import skillbill.goalrunner.model.GoalPlanningStatusState
@@ -78,14 +88,17 @@ import java.time.ZoneOffset
 internal val ideStatusObservedAt: Instant = Instant.parse("2026-08-06T12:00:00Z")
 internal val ideStatusClock: Clock = Clock.fixed(ideStatusObservedAt, ZoneOffset.UTC)
 
+internal fun testGoalRepositoryIdentity(repoRoot: Path): String =
+  goalRepositoryIdentity(repoRoot, TestRepositoryEnclosingRoot)
+
 internal fun goalWireMapUnderControls(
   fixtureName: String,
   controlState: GoalRunnerControlState,
   assertSnapshot: (IdeStatusResult) -> Unit,
 ): Map<String, Any?> {
   val fixture = gitRepoFixture(fixtureName)
-  val identity = goalRepositoryIdentity(fixture)
-  val service = service(
+  val identity = testGoalRepositoryIdentity(fixture)
+  val service = ideStatusService(
     goalOnlyDatabase(),
     manifestStore = StubGoalManifestStore(
       goalManifestState(fixture, identity, childWorkflowId = "w-child")
@@ -189,7 +202,7 @@ internal fun goalManifestState(fixture: Path, identity: String, childWorkflowId:
     repoRoot = fixture,
   )
 
-internal fun service(
+internal fun ideStatusService(
   database: TrackingDatabase,
   manifestStore: GoalRunnerManifestStore = EmptyManifestStore,
   outcomeStore: GoalRunnerWorkflowOutcomeStore = EmptyOutcomeStore,

@@ -16,8 +16,7 @@ import skillbill.application.goalrunner.GoalPreflightService
 import skillbill.application.goalrunner.GoalRunner
 import skillbill.application.goalrunner.GoalRunnerStatusService
 import skillbill.application.goalrunner.findings.UnaddressedFindingsLedgerService
-import skillbill.application.goalrunner.planning.GoalPlanningLogService
-import skillbill.application.install.ExternalAddonOverlayService
+import skillbill.application.goalrunner.planning.GoalPlanningLogServiceimport skillbill.application.install.ExternalAddonOverlayService
 import skillbill.application.install.InstallService
 import skillbill.application.learning.LearningService
 import skillbill.application.review.ParallelCodeReviewRunner
@@ -30,9 +29,21 @@ import skillbill.application.system.SystemService
 import skillbill.application.system.UninstallFileSystemService
 import skillbill.application.telemetry.LifecycleTelemetryService
 import skillbill.application.telemetry.TelemetryService
-import skillbill.application.work.IdeStatusService
 import skillbill.application.work.WorkListService
 import skillbill.application.workflow.WorkflowService
+import skillbill.engine.featuretask.FeatureTaskContinuationLookupService
+import skillbill.engine.featuretask.FeatureTaskRuntimePhaseRecorder
+import skillbill.engine.featuretask.FeatureTaskRuntimeRunner
+import skillbill.engine.featuretask.FeatureTaskRuntimeStatusService
+import skillbill.engine.featuretask.FeatureTaskRuntimeWorkerCoordinator
+import skillbill.engine.goalplanning.GoalPlanningPreparationCheckpoint
+import skillbill.engine.goalrunner.GoalOperatorDecisionService
+import skillbill.engine.goalrunner.GoalPreflightService
+import skillbill.engine.goalrunner.GoalRunner
+import skillbill.engine.goalrunner.GoalRunnerStatusService
+import skillbill.engine.goalrunner.findings.UnaddressedFindingsLedgerService
+import skillbill.engine.goalrunner.planning.GoalPlanningLogService
+import skillbill.engine.work.IdeStatusService
 import skillbill.model.EnvironmentContext
 import skillbill.model.OptionalCallbacks
 import skillbill.model.RuntimeContext

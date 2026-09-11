@@ -1,7 +1,7 @@
 package skillbill.cli.featuretask
 
-import skillbill.application.featuretask.model.FeatureTaskRuntimePhaseStatus
-import skillbill.application.featuretask.model.FeatureTaskRuntimeStatusProjection
+import skillbill.engine.featuretask.model.FeatureTaskRuntimePhaseStatus
+import skillbill.engine.featuretask.model.FeatureTaskRuntimeStatusProjection
 
 internal fun FeatureTaskRuntimeStatusProjection?.toRuntimeStatusCliMap(workflowId: String): Map<String, Any?> =
   this?.let {

@@ -1,11 +1,11 @@
-package skillbill.scaffold
+package skillbill.infrastructure.fs.scaffold
 
 import com.fasterxml.jackson.dataformat.yaml.YAMLMapper
-import skillbill.nativeagent.discovery.discoverNativeAgentSourceEntries
-import skillbill.nativeagent.testComposeNativeAgentSource
+import skillbill.infrastructure.fs.nativeagent.discovery.discoverNativeAgentSourceEntries
+import skillbill.infrastructure.fs.nativeagent.testComposeNativeAgentSource
+import skillbill.infrastructure.fs.scaffold.platformpack.loadPlatformPack
 import skillbill.review.context.model.ReviewPacketConsumerContract
 import skillbill.review.plan.ReviewLaunchPlanPolicy
-import skillbill.scaffold.platformpack.loadPlatformPack
 import skillbill.scaffold.policy.scaffold.APPROVED_CODE_REVIEW_AREAS
 import skillbill.testing.HARBOR_ADDON_SLUG
 import skillbill.testing.HARBOR_ARCHITECTURE_WORKER

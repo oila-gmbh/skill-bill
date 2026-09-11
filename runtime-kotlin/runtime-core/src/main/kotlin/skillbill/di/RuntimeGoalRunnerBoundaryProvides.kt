@@ -1,13 +1,16 @@
 package skillbill.di
 
 import me.tatarka.inject.annotations.Provides
-import skillbill.application.goalrunner.model.DefaultGoalRunnerFinalizationBoundariesPort
-import skillbill.application.goalrunner.model.DefaultGoalRunnerRunBoundariesPort
-import skillbill.application.goalrunner.model.DefaultGoalRunnerSubtaskLaunchBoundariesPort
-import skillbill.application.goalrunner.model.GoalRunnerFinalizationBoundariesPort
-import skillbill.application.goalrunner.model.GoalRunnerRunBoundariesPort
-import skillbill.application.goalrunner.model.GoalRunnerSubtaskLaunchBoundariesPort
-import skillbill.model.OptionalCallbacks
+import skillbill.application.agentrun.AgentRunGoalRunnerSubtaskLauncher
+import skillbill.engine.goalrunner.model.DefaultGoalRunnerFinalizationBoundariesPort
+import skillbill.engine.goalrunner.model.DefaultGoalRunnerRunBoundariesPort
+import skillbill.engine.goalrunner.model.DefaultGoalRunnerSubtaskLaunchBoundariesPort
+import skillbill.engine.goalrunner.model.GoalRunnerFinalizationBoundariesPort
+import skillbill.engine.goalrunner.model.GoalRunnerRunBoundariesPort
+import skillbill.engine.goalrunner.model.GoalRunnerSubtaskLaunchBoundariesPort
+import skillbill.infrastructure.fs.GhGoalPullRequestPort
+import skillbill.infrastructure.fs.launcher.agentrun.FileSystemAgentRunLauncher
+import skillbill.infrastructure.fs.launcher.agentrun.PathExecutableLookupimport skillbill.model.OptionalCallbacks
 import skillbill.ports.repository.RepositoryEnclosingRootPort
 
 internal interface RuntimeGoalRunnerBoundaryProvides {

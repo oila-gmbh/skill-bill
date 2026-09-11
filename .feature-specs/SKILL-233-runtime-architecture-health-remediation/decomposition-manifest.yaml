@@ -9,7 +9,7 @@ base_branch: "main"
 feature_branch: "feat/SKILL-233-runtime-architecture-health-remediation"
 stack_branches: []
 current_subtask_intent:
-  subtask_id: 7
+  subtask_id: 8
   action: "resume"
 subtasks:
 - id: 1
@@ -109,12 +109,12 @@ subtasks:
 - id: 7
   name: "Unused-parameter gate cleanup"
   spec_path: ".feature-specs/SKILL-233-runtime-architecture-health-remediation/spec_subtask_7_unused-parameter-gate.md"
-  status: "in_progress"
+  status: "complete"
   branch: null
   commit_sha: null
   workflow_id: "wftr-20260911-123306-zy67"
   blocked_reason: null
-  last_resumable_step: null
+  last_resumable_step: "commit_push"
   linear_issue_id: null
   finalizing_agent_id: null
   participating_agent_ids: []
@@ -125,12 +125,12 @@ subtasks:
 - id: 8
   name: "Engine module and package roots"
   spec_path: ".feature-specs/SKILL-233-runtime-architecture-health-remediation/spec_subtask_8_engine-module-and-package-roots.md"
-  status: "pending"
+  status: "in_progress"
   branch: null
   commit_sha: null
-  workflow_id: null
+  workflow_id: "wftr-20260911-130512-atpk"
   blocked_reason: null
-  last_resumable_step: null
+  last_resumable_step: "commit_push"
   linear_issue_id: null
   finalizing_agent_id: null
   participating_agent_ids: []

@@ -42,8 +42,9 @@ internal fun ParallelCodeReviewRunnerPlanning.resolveDiff(
   } ?: when (request.scope) {
     ParallelReviewScope.STAGED -> runDiff(listOf("git", "diff", "--cached"), request.repoRoot)
     ParallelReviewScope.UNSTAGED -> runDiff(listOf("git", "diff"), request.repoRoot)
-    ParallelReviewScope.UNCOMMITTED -> resolveUncommittedDiff(request, base)
-    ParallelReviewScope.BRANCH -> runDiff(listOf("git", "diff", base, head), request.repoRoot)
+    ParallelReviewScope.UNCOMMITTED,
+    ParallelReviewScope.WORKTREE_FROM_BASE,
+    -> resolveWorktreeFromBaseDiff(request, base)    ParallelReviewScope.BRANCH -> runDiff(listOf("git", "diff", base, head), request.repoRoot)
     ParallelReviewScope.PR -> diffResolver.runProcess(listOf("git", "diff", base, head), request.repoRoot)
       ?: runDiff(listOf("gh", "pr", "diff"), request.repoRoot)
   }

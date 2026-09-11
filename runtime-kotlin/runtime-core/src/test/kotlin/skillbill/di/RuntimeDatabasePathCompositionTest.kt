@@ -1,8 +1,11 @@
 package skillbill.di
 
-import skillbill.db.core.DbConstants
+import skillbill.infrastructure.sqlite.core.DbConstants
 import skillbill.model.EnvironmentContext
+import skillbill.model.OptionalCallbacks
 import skillbill.model.RuntimeContext
+import skillbill.model.TransportContext
+import skillbill.model.WorkflowOpsContext
 import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.test.Test
@@ -23,6 +26,9 @@ class RuntimeDatabasePathCompositionTest {
             environment = emptyMap(),
             userHome = home,
           ),
+          transport = TransportContext(),
+          workflowOps = WorkflowOpsContext(),
+          callbacks = OptionalCallbacks(),
         ),
       )
     val mcpStyle =
@@ -32,6 +38,9 @@ class RuntimeDatabasePathCompositionTest {
             environment = mapOf(DbConstants.DB_ENVIRONMENT_KEY to explicitDb.toString()),
             userHome = home,
           ),
+          transport = TransportContext(),
+          workflowOps = WorkflowOpsContext(),
+          callbacks = OptionalCallbacks(),
         ),
       )
 
@@ -47,7 +56,12 @@ class RuntimeDatabasePathCompositionTest {
     val cliStyle = RuntimeComponent::class.create(RuntimeContext(environment = emptyMap(), userHome = home))
     val mcpStyle =
       RuntimeComponent::class.create(
-        RuntimeContext(environment = EnvironmentContext(environment = emptyMap(), userHome = home)),
+        RuntimeContext(
+          environment = EnvironmentContext(environment = emptyMap(), userHome = home),
+          transport = TransportContext(),
+          workflowOps = WorkflowOpsContext(),
+          callbacks = OptionalCallbacks(),
+        ),
       )
 
     assertEquals(expected, resolvedDoctorPath(cliStyle))

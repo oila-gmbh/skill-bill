@@ -1,16 +1,8 @@
 package skillbill.infrastructure.sqlite
 
-import skillbill.db.core.reconcileStaleTelemetrySessions
-import skillbill.db.telemetry.LifecycleTelemetryStore
-import skillbill.db.telemetry.TelemetryOutboxStore
-import skillbill.db.workflow.AgentActivityStampStore
-import skillbill.db.workflow.FeatureTaskRuntimeAuditGenerationStore
-import skillbill.db.workflow.GoalPlanningPreparationStore
-import skillbill.db.workflow.GoalRunnerControlStore
-import skillbill.db.workflow.WorkflowStateStore
-import skillbill.db.worklist.SQLiteWorkListRepository
 import skillbill.goalrunner.model.ReviewFindingOutcomeRecord
 import skillbill.goalrunner.model.UnaddressedFinding
+import skillbill.infrastructure.sqlite.core.reconcileStaleTelemetrySessions
 import skillbill.infrastructure.sqlite.goal.UnaddressedFindingsRuntime
 import skillbill.infrastructure.sqlite.review.ReviewRuntime
 import skillbill.infrastructure.sqlite.review.ReviewStatsRuntime
@@ -19,6 +11,14 @@ import skillbill.infrastructure.sqlite.review.loadReviewAccounting
 import skillbill.infrastructure.sqlite.review.persistImportedReview
 import skillbill.infrastructure.sqlite.review.persistLegacyTelemetryRewrites
 import skillbill.infrastructure.sqlite.review.upsertReviewAccounting
+import skillbill.infrastructure.sqlite.telemetry.LifecycleTelemetryStore
+import skillbill.infrastructure.sqlite.telemetry.TelemetryOutboxStore
+import skillbill.infrastructure.sqlite.workflow.AgentActivityStampStore
+import skillbill.infrastructure.sqlite.workflow.FeatureTaskRuntimeAuditGenerationStore
+import skillbill.infrastructure.sqlite.workflow.GoalPlanningPreparationStore
+import skillbill.infrastructure.sqlite.workflow.GoalRunnerControlStore
+import skillbill.infrastructure.sqlite.workflow.WorkflowStateStore
+import skillbill.infrastructure.sqlite.worklist.SQLiteWorkListRepository
 import skillbill.learnings.LearningsRuntime
 import skillbill.learnings.model.CreateLearningRequest
 import skillbill.learnings.model.LearningRecord

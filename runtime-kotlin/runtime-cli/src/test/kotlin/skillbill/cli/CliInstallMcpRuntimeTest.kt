@@ -1,8 +1,8 @@
 package skillbill.cli
 
 import skillbill.cli.core.CliRuntime
-import skillbill.nativeagent.composition.NativeAgentSource
-import skillbill.nativeagent.composition.renderNativeAgentSource
+import skillbill.infrastructure.fs.nativeagent.composition.NativeAgentSource
+import skillbill.infrastructure.fs.nativeagent.composition.renderNativeAgentSource
 import java.nio.file.Files
 import kotlin.test.Test
 import kotlin.test.assertContains

@@ -1,7 +1,6 @@
 package skillbill.mcp.shared
 
 import me.tatarka.inject.annotations.Inject
-import skillbill.application.featuretask.FeatureTaskPhaseSettlementService
 import skillbill.application.learning.LearningService
 import skillbill.application.review.ReviewService
 import skillbill.application.system.SystemService
@@ -9,6 +8,7 @@ import skillbill.application.telemetry.LifecycleTelemetryService
 import skillbill.application.telemetry.TelemetryService
 import skillbill.application.updatecheck.UpdateCheckService
 import skillbill.application.workflow.WorkflowService
+import skillbill.engine.featuretask.FeatureTaskPhaseSettlementService
 
 @Inject
 data class McpInsightServices(

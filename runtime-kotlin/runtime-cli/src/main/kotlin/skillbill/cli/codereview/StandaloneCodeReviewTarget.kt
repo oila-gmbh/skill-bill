@@ -10,11 +10,8 @@ internal data class StandaloneCodeReviewTarget(
 
 internal const val DEFAULT_CODE_REVIEW_SCOPE = "branch"
 
-internal fun resolveStandaloneCodeReviewTarget(
-  positional: String?,
-  scopeToken: String,
-): StandaloneCodeReviewTarget {
-  val positionalToken = positional?.trim()?.takeIf { it.isNotBlank() }
+internal fun resolveStandaloneCodeReviewTarget(positional: String?, scopeToken: String): StandaloneCodeReviewTarget {
+  val positionalToken = positional?.trim()?.takeIf(String::isNotBlank)
   val optionScope = parsedReviewScope(scopeToken)
   if (positionalToken == null) {
     return StandaloneCodeReviewTarget(optionScope, null)

@@ -3,15 +3,15 @@ package skillbill.review
 import skillbill.SAMPLE_REVIEW
 import skillbill.contracts.JsonSupport
 import skillbill.db.telemetry.LifecycleTelemetryStore
-import skillbill.db.telemetry.TelemetryOutboxStore
-import skillbill.infrastructure.sqlite.SQLiteReviewRunCompletenessRepository
+import skillbill.db.telemetry.TelemetryOutboxStoreimport skillbill.infrastructure.sqlite.SQLiteReviewRunCompletenessRepository
 import skillbill.infrastructure.sqlite.review.ReviewFinishedPayloadBuildRequest
 import skillbill.infrastructure.sqlite.review.ReviewRuntime
 import skillbill.infrastructure.sqlite.review.ReviewStatsRuntime
 import skillbill.infrastructure.sqlite.review.TriageRuntime
 import skillbill.infrastructure.sqlite.review.persistLegacyTelemetryRewrites
-import skillbill.ports.telemetry.model.toReviewFinishedTelemetryPayload
-import skillbill.review.context.model.ReviewClaimVerdictAdmission
+import skillbill.infrastructure.sqlite.telemetry.LifecycleTelemetryStore
+import skillbill.infrastructure.sqlite.telemetry.TelemetryOutboxStore
+import skillbill.ports.review.toReviewFinishedTelemetryPayloadimport skillbill.review.context.model.ReviewClaimVerdictAdmission
 import skillbill.review.context.model.ReviewSpecAdjudicationAdmission
 import skillbill.review.model.FeedbackRequest
 import skillbill.review.model.FeedbackTelemetryOptions

@@ -1,7 +1,7 @@
 package skillbill.infrastructure.sqlite
 
 import me.tatarka.inject.annotations.Inject
-import skillbill.db.core.DatabaseRuntime
+import skillbill.infrastructure.sqlite.core.DatabaseRuntime
 import skillbill.ports.db.DatabaseSessionFactory
 import skillbill.ports.featuretask.FeatureTaskPhaseSettlementRepository
 import skillbill.ports.featuretask.model.FeatureTaskPhaseSettlement

@@ -141,7 +141,7 @@ class RuntimeCoreCompositionOnlyTest {
         implementation = emptySet(),
       ),
       "runtime-core" to ModuleEdgeExpectation(
-        api = setOf("runtime-application", "runtime-ports"),
+        api = setOf("runtime-application", "runtime-engine", "runtime-ports"),
         implementation = setOf(
           "runtime-domain",
           "runtime-contracts",
@@ -149,6 +149,10 @@ class RuntimeCoreCompositionOnlyTest {
           "runtime-infra-http",
           "runtime-infra-sqlite",
         ),
+      ),
+      "runtime-engine" to ModuleEdgeExpectation(
+        api = setOf("runtime-application", "runtime-contracts", "runtime-domain", "runtime-ports"),
+        implementation = emptySet(),
       ),
       "runtime-domain" to ModuleEdgeExpectation(
         api = emptySet(),
@@ -173,6 +177,7 @@ class RuntimeCoreCompositionOnlyTest {
           "runtime-contracts",
           "runtime-core",
           "runtime-domain",
+          "runtime-engine",
           "runtime-ports",
         ),
       ),
@@ -183,6 +188,7 @@ class RuntimeCoreCompositionOnlyTest {
           "runtime-contracts",
           "runtime-core",
           "runtime-domain",
+          "runtime-engine",
           "runtime-ports",
         ),
       ),

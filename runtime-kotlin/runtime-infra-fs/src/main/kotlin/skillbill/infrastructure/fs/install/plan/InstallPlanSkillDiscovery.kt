@@ -1,0 +1,132 @@
+package skillbill.infrastructure.fs.install.plan
+
+import skillbill.infrastructure.fs.install.identity.suppliedSkillContentIdentity
+import skillbill.infrastructure.fs.scaffold.authoring.InternalSkillDeclaration
+import skillbill.infrastructure.fs.scaffold.authoring.parseInternalForFrontmatter
+import skillbill.infrastructure.fs.scaffold.authoring.requireValidInternalSkillClassification
+import skillbill.infrastructure.fs.scaffold.platformpack.discoverPlatformPackManifests
+import skillbill.infrastructure.fs.scaffold.platformpack.loadQualityCheckContent
+import skillbill.infrastructure.fs.scaffold.platformpack.validatePlatformPack
+import skillbill.infrastructure.fs.scaffold.runtime.SHELL_CONTRACT_VERSION
+import skillbill.infrastructure.fs.scaffold.validation.ReviewSkillStructureValidator
+import skillbill.install.model.InstallPlanSkill
+import skillbill.install.model.InstallPlanSkillKind
+import skillbill.model.toPath
+import skillbill.ports.repository.toFileLocationimport skillbill.scaffold.model.PlatformManifest
+import java.io.FileNotFoundException
+import java.nio.file.Files
+import java.nio.file.LinkOption
+import java.nio.file.Path
+
+internal fun discoverPlatformManifests(
+  platformPacksRoot: Path,
+  enforceContractVersion: Boolean = true,
+): List<PlatformManifest> = if (Files.isDirectory(platformPacksRoot)) {
+  discoverPlatformPackManifests(platformPacksRoot, enforceContractVersion)
+} else {
+  emptyList()
+}
+
+internal fun discoverBaseSkills(skillsRoot: Path): List<InstallPlanSkill> {
+  if (!Files.isDirectory(skillsRoot)) {
+    throw FileNotFoundException("Base skills root '$skillsRoot' does not exist or is not a directory.")
+  }
+  val candidateSkillDirs = Files.list(skillsRoot).use { stream ->
+    stream
+      .filter { skillDir -> Files.isDirectory(skillDir, LinkOption.NOFOLLOW_LINKS) }
+      .filter { skillDir -> skillDir.fileName.toString().startsWith("bill-") }
+      .toList()
+      .sortedBy { skillDir -> skillDir.fileName.toString() }
+  }
+  val missingContent = candidateSkillDirs
+    .filterNot { skillDir -> Files.isRegularFile(skillDir.resolve("content.md"), LinkOption.NOFOLLOW_LINKS) }
+  require(missingContent.isEmpty()) {
+    "Base skills root '$skillsRoot' contains bill-* skill directories without content.md: " +
+      missingContent.joinToString(", ") { skillDir -> skillDir.fileName.toString() }
+  }
+  val baseSkills = candidateSkillDirs
+    .map { skillDir ->
+      // Validate the compact identity while the install plan is still read-only. This keeps an
+      // invalid source from reaching workflow or staging side effects.
+      suppliedSkillContentIdentity(skillDir)
+      InstallPlanSkill(
+        name = skillDir.fileName.toString(),
+        sourceDir = skillDir.toAbsolutePath().normalize(),
+        kind = InstallPlanSkillKind.BASE,
+        internalFor = parseInternalForFrontmatter(skillDir.resolve("content.md")),
+      )
+    }
+  require(baseSkills.isNotEmpty()) {
+    "Base skills root '$skillsRoot' does not contain any bill-* skills with content.md."
+  }
+  return baseSkills
+}
+
+/**
+ * SKILL-102 (PD1): enforce the internal-skill classification rules across the full install-plan
+ * skill set (base + materialized platform-pack skills) once every name is known, via the shared
+ * rule evaluator so the install seam and the authoring/validation seams fail identically.
+ */
+internal fun validateInstallPlanInternalSkills(skills: List<InstallPlanSkill>) {
+  requireValidInternalSkillClassification(
+    skills.map { skill ->
+      InternalSkillDeclaration(
+        skillName = skill.name,
+        contentFile = skill.sourceDir.resolve("content.md"),
+        declaredParent = skill.internalFor,
+        isBaseSkill = skill.kind == InstallPlanSkillKind.BASE,
+      )
+    },
+  )
+}
+
+internal fun platformSkills(
+  manifest: PlatformManifest,
+  enforceContractVersion: Boolean = true,
+): List<InstallPlanSkill> {
+  val contentFiles = listOfNotNull(
+    manifest.declaredFiles.baseline,
+    manifest.declaredQualityCheckFile,
+  ) + manifest.declaredFiles.areas.values
+  val skillDirs = contentFiles.map { contentFile -> platformSkillDir(manifest, contentFile) }
+  val duplicateSkillDir = skillDirs.groupingBy { it }.eachCount().entries.firstOrNull { it.value > 1 }?.key
+  require(duplicateSkillDir == null) {
+    "Platform pack '${manifest.slug}' produces duplicate skill name '${duplicateSkillDir?.fileName}'."
+  }
+  validatePlatformPack(manifest, SHELL_CONTRACT_VERSION, enforceContractVersion)
+  manifest.declaredQualityCheckFile?.let { loadQualityCheckContent(manifest) }
+  ReviewSkillStructureValidator.validate(manifest.packRoot)
+  return skillDirs
+    .sortedBy { skillDir -> skillDir.fileName.toString() }
+    .map { skillDir ->
+      // Validate the compact identity while the install plan is still read-only. This keeps an
+      // invalid source from reaching workflow or staging side effects.
+      suppliedSkillContentIdentity(skillDir)
+      InstallPlanSkill(
+        name = skillDir.fileName.toString(),
+        sourceDir = skillDir,
+        kind = InstallPlanSkillKind.PLATFORM_PACK,
+        platformSlug = manifest.slug,
+        internalFor = parseInternalForFrontmatter(skillDir.resolve("content.md")),
+      )
+    }
+}
+
+private fun platformSkillDir(manifest: PlatformManifest, contentFile: Path): Path {
+  val resolvedPackRoot = manifest.packRoot.toAbsolutePath().normalize()
+  val resolvedContentFile = contentFile.toAbsolutePath().normalize()
+  require(resolvedContentFile.startsWith(resolvedPackRoot)) {
+    "Platform pack '${manifest.slug}' declared content file '$resolvedContentFile' escapes packRoot " +
+      "'$resolvedPackRoot'."
+  }
+  if (!Files.exists(resolvedContentFile, LinkOption.NOFOLLOW_LINKS)) {
+    return resolvedContentFile.parent
+  }
+  val realPackRoot = manifest.packRoot.toRealPath()
+  val realContentFile = contentFile.toRealPath()
+  require(realContentFile.startsWith(realPackRoot)) {
+    "Platform pack '${manifest.slug}' declared content file '$resolvedContentFile' escapes packRoot " +
+      "'$resolvedPackRoot' through real path '$realContentFile'."
+  }
+  return resolvedContentFile.parent
+}

@@ -1,0 +1,35 @@
+package skillbill.engine.goalrunner.planning.model
+
+import skillbill.engine.goalplanning.GoalPlanningPreparationCheckpoint
+import skillbill.engine.goalrunner.planning.GoalPlanningAttemptRecorder
+import skillbill.engine.goalrunner.planning.GoalPlanningRefreshLiveness
+import skillbill.engine.goalrunner.planning.GoalPlanningRejectionRecorder
+import skillbill.ports.concurrency.BoundedWorkFanOutPort
+import skillbill.ports.goalrunner.planning.GoalPlanningContextDiscovery
+import skillbill.ports.goalrunner.runner.GoalRunnerManifestStore
+import skillbill.ports.goalrunner.runner.GoalRunnerSubtaskLauncher
+import skillbill.ports.taskruntime.FeatureTaskRuntimeRunInvariantsSource
+import skillbill.ports.time.RuntimeTimingPort
+import skillbill.ports.workflow.decomposition.DecompositionManifestStore
+import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseOutputValidator
+import skillbill.workflow.taskruntime.FeatureTaskRuntimePlanningProjectionValidator
+
+interface GoalPlanningSweepCheckpointPort {
+  val checkpoint: GoalPlanningPreparationCheckpoint
+  val outputValidator: FeatureTaskRuntimePhaseOutputValidator
+  val invariantsSource: FeatureTaskRuntimeRunInvariantsSource
+  val manifestFileStore: DecompositionManifestStore
+  val contextDiscovery: GoalPlanningContextDiscovery
+  val planningProjectionValidator: FeatureTaskRuntimePlanningProjectionValidator
+}
+
+interface GoalPlanningSweepLaunchPort {
+  val subtaskLauncher: GoalRunnerSubtaskLauncher
+  val manifestStore: GoalRunnerManifestStore
+  val planningAttemptRecorder: GoalPlanningAttemptRecorder
+  val planningRejectionRecorder: GoalPlanningRejectionRecorder
+  val timingPort: RuntimeTimingPort
+  val fanOutPort: BoundedWorkFanOutPort
+  val burstSchedule: GoalPlanningBurstSchedule
+  val refreshLiveness: GoalPlanningRefreshLiveness
+}

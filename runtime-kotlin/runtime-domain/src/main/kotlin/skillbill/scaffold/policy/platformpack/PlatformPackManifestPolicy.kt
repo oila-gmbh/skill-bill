@@ -6,7 +6,20 @@ import skillbill.scaffold.policy.platformpack.model.PlatformPackManifestRenderRe
 
 const val PLATFORM_PACK_SHELL_CONTRACT_VERSION: String = "1.8"
 
-fun renderPlatformPackManifest(request: PlatformPackManifestRenderRequest): String {
+/**
+ * Shell-content contract version emitted in the generated manifest header.
+ *
+ * SKILL-52.1 subtask 2: this is the single source of truth for the shell-contract version. The
+ * historical `runtime-infra-fs` `SHELL_CONTRACT_VERSION` is now a `get()` alias of this constant
+ * (see `runtime-infra-fs/.../scaffold/ScaffoldContract.kt`) so the two cannot drift.
+ */
+const val PLATFORM_PACK_SHELL_CONTRACT_VERSION: String = "1.8"
+
+/**
+ * Renders the canonical `platform.yaml` text for a freshly scaffolded platform pack. All path
+ * arguments must already be absolute or pack-root-relative; this function does no IO and never
+ * reads from disk.
+ */fun renderPlatformPackManifest(request: PlatformPackManifestRenderRequest): String {
   val lines = mutableListOf<String>()
   lines += "platform: ${yamlScalar(request.platform)}"
   lines += "contract_version: ${yamlScalar(PLATFORM_PACK_SHELL_CONTRACT_VERSION)}"

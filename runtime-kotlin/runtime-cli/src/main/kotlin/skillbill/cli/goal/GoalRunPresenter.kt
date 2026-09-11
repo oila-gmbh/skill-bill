@@ -1,11 +1,11 @@
 package skillbill.cli.goal
 
-import skillbill.application.goalrunner.model.GoalRunnerEventSink
-import skillbill.application.goalrunner.model.GoalRunnerPauseResult
-import skillbill.application.goalrunner.model.GoalRunnerResumeResult
-import skillbill.application.goalrunner.model.GoalRunnerStopVerbResult
 import skillbill.cli.model.CliRunInputs
 import skillbill.contracts.system.RuntimeProvenanceContract
+import skillbill.engine.goalrunner.model.GoalRunnerEventSink
+import skillbill.engine.goalrunner.model.GoalRunnerPauseResult
+import skillbill.engine.goalrunner.model.GoalRunnerResumeResult
+import skillbill.engine.goalrunner.model.GoalRunnerStopVerbResult
 import skillbill.goalrunner.model.GoalRunnerRunReport
 import skillbill.ports.agentrun.model.AgentRunOutputSink
 import skillbill.ports.agentrun.model.AgentRunOutputStream

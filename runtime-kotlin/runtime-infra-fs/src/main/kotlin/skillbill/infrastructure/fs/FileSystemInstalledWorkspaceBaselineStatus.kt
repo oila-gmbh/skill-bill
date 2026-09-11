@@ -1,9 +1,9 @@
 package skillbill.infrastructure.fs
 
 import me.tatarka.inject.annotations.Inject
-import skillbill.install.reconcile.ReconcileSourceRoots
-import skillbill.install.reconcile.ReconcileSourceSide
-import skillbill.install.reconcile.enumerateSkills
+import skillbill.infrastructure.fs.install.reconcile.ReconcileSourceRoots
+import skillbill.infrastructure.fs.install.reconcile.ReconcileSourceSide
+import skillbill.infrastructure.fs.install.reconcile.enumerateSkills
 import skillbill.ports.install.baseline.BaselineManifestPersistencePort
 import skillbill.ports.install.baseline.InstalledWorkspaceBaselineStatusPort
 import skillbill.ports.install.baseline.model.InstalledWorkspaceBaselineStatusRequest

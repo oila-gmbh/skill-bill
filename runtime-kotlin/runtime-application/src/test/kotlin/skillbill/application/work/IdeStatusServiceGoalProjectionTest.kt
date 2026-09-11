@@ -1,6 +1,5 @@
 package skillbill.application.work
 
-import skillbill.application.goalrunner.goalRepositoryIdentity
 import skillbill.application.idestatus.model.IdeStatusLifecycleState
 import skillbill.application.idestatus.model.IdeStatusPauseReasonCode
 import skillbill.application.idestatus.model.IdeStatusRequest
@@ -25,14 +24,14 @@ class IdeStatusServiceGoalProjectionTest {
   @Test
   fun `running goal whose parent lease expired projects paused anchored at the last heartbeat`() {
     val fixture = gitRepoFixture("ide-status-goal-lease-expired")
-    val identity = goalRepositoryIdentity(fixture)
+    val identity = testGoalRepositoryIdentity(fixture)
     val heartbeatAt = Instant.parse("2026-08-06T11:50:00Z")
     val lease = expiredLease(heartbeatAt)
     val controls = object : GoalRunnerControlRepository by EmptyGoalRunnerControlRepository {
       override fun controlState(parentWorkflowId: String): GoalRunnerControlState =
         GoalRunnerControlState(repositoryIdentity = identity, executionLease = lease)
     }
-    val service = service(
+    val service = ideStatusService(
       TrackingDatabase(
         work = listOf(workItem("goal-1", WorkItemKind.FEATURE_GOAL, "running", "2026-08-06T10:00:00Z")),
         workflows = IdeStatusWorkflowStates(),
@@ -78,8 +77,8 @@ class IdeStatusServiceGoalProjectionTest {
   @Test
   fun `goal with prepared planning keeps todays step and summary`() {
     val fixture = gitRepoFixture("ide-status-goal-planning-prepared")
-    val identity = goalRepositoryIdentity(fixture)
-    val service = service(
+    val identity = testGoalRepositoryIdentity(fixture)
+    val service = ideStatusService(
       goalOnlyDatabase(),
       manifestStore = StubGoalManifestStore(
         goalManifestState(fixture, identity, childWorkflowId = "w-child"),
@@ -102,8 +101,8 @@ class IdeStatusServiceGoalProjectionTest {
   @Test
   fun `mid-wave goal passes every planning subtask and the single id through to the wire`() {
     val fixture = gitRepoFixture("ide-status-goal-planning-wave")
-    val identity = goalRepositoryIdentity(fixture)
-    val service = service(
+    val identity = testGoalRepositoryIdentity(fixture)
+    val service = ideStatusService(
       goalOnlyDatabase(),
       manifestStore = StubGoalManifestStore(
         goalManifestState(fixture, identity, childWorkflowId = ""),
@@ -125,8 +124,8 @@ class IdeStatusServiceGoalProjectionTest {
   @Test
   fun `goal with a null planning projection keeps todays step and summary and emits no planning`() {
     val fixture = gitRepoFixture("ide-status-goal-planning-absent")
-    val identity = goalRepositoryIdentity(fixture)
-    val service = service(
+    val identity = testGoalRepositoryIdentity(fixture)
+    val service = ideStatusService(
       goalOnlyDatabase(),
       manifestStore = StubGoalManifestStore(
         goalManifestState(fixture, identity, childWorkflowId = "w-child"),
@@ -150,7 +149,7 @@ class IdeStatusServiceGoalProjectionTest {
   @Test
   fun `non-goal families never carry planning`() {
     val fixture = gitRepoFixture("ide-status-planning-non-goal")
-    val identity = goalRepositoryIdentity(fixture)
+    val identity = testGoalRepositoryIdentity(fixture)
     val workflows = IdeStatusWorkflowStates()
     workflows.saveFeatureImplementWorkflow(runtimeRecord("w-active", "2026-08-06T10:00:00Z"))
     workflows.saveFeatureTaskExecutionIdentity(identityFor("w-active", identity))
@@ -159,7 +158,7 @@ class IdeStatusServiceGoalProjectionTest {
       workflows = workflows,
     )
 
-    val result = service(database).status(
+    val result = ideStatusService(database).status(
 
       IdeStatusRequest(repoRoot = fixture.toString(), observedAt = ideStatusObservedAt),
 
@@ -177,8 +176,8 @@ class IdeStatusServiceGoalProjectionTest {
       GoalRunnerControlState(pauseRequested = true),
     ).forEachIndexed { index, controlState ->
       val fixture = gitRepoFixture("ide-status-goal-blocked-pause-$index")
-      val identity = goalRepositoryIdentity(fixture)
-      val service = service(
+      val identity = testGoalRepositoryIdentity(fixture)
+      val service = ideStatusService(
         goalOnlyDatabase(goalState = "blocked"),
         manifestStore = StubGoalManifestStore(
           goalManifestState(fixture, identity, childWorkflowId = "w-child")
@@ -281,7 +280,7 @@ class IdeStatusServiceGoalProjectionTest {
   @Test
   fun `live goal snapshot includes current subtask active duration when recorded`() {
     val fixture = gitRepoFixture("ide-status-subtask-active-duration-live")
-    val identity = goalRepositoryIdentity(fixture)
+    val identity = testGoalRepositoryIdentity(fixture)
     val asOf = Instant.parse("2026-08-06T11:59:00Z")
     val lease = GoalRunnerExecutionLease(
       generation = 1,
@@ -293,7 +292,7 @@ class IdeStatusServiceGoalProjectionTest {
       heartbeatAt = asOf.toString(),
       expiresAt = ideStatusObservedAt.plusSeconds(30).toString(),
     )
-    val service = service(
+    val service = ideStatusService(
       goalOnlyDatabase(),
       manifestStore = StubGoalManifestStore(
         goalManifestState(fixture, identity, childWorkflowId = "")
@@ -363,7 +362,7 @@ class IdeStatusServiceGoalProjectionTest {
   @Test
   fun `non-goal families never carry pause signals`() {
     val fixture = gitRepoFixture("ide-status-pause-non-goal")
-    val identity = goalRepositoryIdentity(fixture)
+    val identity = testGoalRepositoryIdentity(fixture)
     val workflows = IdeStatusWorkflowStates()
     workflows.saveFeatureImplementWorkflow(runtimeRecord("w-active", "2026-08-06T10:00:00Z"))
     workflows.saveFeatureTaskExecutionIdentity(identityFor("w-active", identity))
@@ -372,7 +371,7 @@ class IdeStatusServiceGoalProjectionTest {
       workflows = workflows,
     )
 
-    val result = service(database).status(
+    val result = ideStatusService(database).status(
 
       IdeStatusRequest(repoRoot = fixture.toString(), observedAt = ideStatusObservedAt),
 
@@ -387,7 +386,7 @@ class IdeStatusServiceGoalProjectionTest {
   @Test
   fun `active goal with child validate blocked on operator action projects blocked lifecycle`() {
     val fixture = gitRepoFixture("ide-status-goal-validate-operator-block")
-    val identity = goalRepositoryIdentity(fixture)
+    val identity = testGoalRepositoryIdentity(fixture)
     val operatorReason = "Configure GITHUB_REGISTRY_AUTH then run npm ci:safe"
     val asOf = Instant.parse("2026-08-06T11:59:00Z")
     val lease = GoalRunnerExecutionLease(
@@ -410,7 +409,7 @@ class IdeStatusServiceGoalProjectionTest {
       ),
       childCurrentStep = FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VALIDATE,
     )
-    val service = service(
+    val service = ideStatusService(
       database,
       manifestStore = StubGoalManifestStore(
         goalManifestState(fixture, identity, childWorkflowId = "w-child"),
@@ -433,7 +432,7 @@ class IdeStatusServiceGoalProjectionTest {
   @Test
   fun `active goal with disposition-less validate blocked child stays active for repair loop`() {
     val fixture = gitRepoFixture("ide-status-goal-validate-repair-loop")
-    val identity = goalRepositoryIdentity(fixture)
+    val identity = testGoalRepositoryIdentity(fixture)
     val asOf = Instant.parse("2026-08-06T11:59:00Z")
     val lease = GoalRunnerExecutionLease(
       generation = 1,
@@ -454,7 +453,7 @@ class IdeStatusServiceGoalProjectionTest {
       ),
       childCurrentStep = FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VALIDATE,
     )
-    val service = service(
+    val service = ideStatusService(
       database,
       manifestStore = StubGoalManifestStore(
         goalManifestState(fixture, identity, childWorkflowId = "w-child"),
@@ -473,7 +472,7 @@ class IdeStatusServiceGoalProjectionTest {
   @Test
   fun `WE-4364-shaped validate needs user action projects blocked wire with actionable summary`() {
     val fixture = gitRepoFixture("ide-status-goal-we-4364")
-    val identity = goalRepositoryIdentity(fixture)
+    val identity = testGoalRepositoryIdentity(fixture)
     val operatorReason = "Configure GITHUB_REGISTRY_AUTH credential before validate can pass"
     val asOf = Instant.parse("2026-08-06T11:59:00Z")
     val lease = GoalRunnerExecutionLease(
@@ -507,7 +506,7 @@ class IdeStatusServiceGoalProjectionTest {
       ),
       childCurrentStep = FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VALIDATE,
     )
-    val service = service(
+    val service = ideStatusService(
       database,
       manifestStore = StubGoalManifestStore(manifest, lease = lease),
     )

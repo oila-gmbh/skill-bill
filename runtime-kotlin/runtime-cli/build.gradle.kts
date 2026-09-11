@@ -21,6 +21,7 @@ dependencies {
   implementation(project(":runtime-contracts"))
   implementation(project(":runtime-core"))
   implementation(project(":runtime-domain"))
+  implementation(project(":runtime-engine"))
   implementation(project(":runtime-ports"))
   implementation(libs.clikt)
   implementation(libs.kotlin.inject.runtime)

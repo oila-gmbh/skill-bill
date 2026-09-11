@@ -86,11 +86,11 @@ class RuntimeEnforcementHardeningArchitectureTest {
       """
       package skillbill.application
 
-      import skillbill.application.featuretask.model.Foo
+      import skillbill.engine.featuretask.model.Foo
 
       /**
        * Doc: see skillbill.infrastructure.fs.Foo for the adapter wiring.
-       * skillbill.db.Bar is the legacy path.
+       * skillbill.infrastructure.sqlite.Bar is the legacy path.
        */
       class Clean {
         // trailing comment skillbill.cli.Baz reference must be ignored
@@ -162,8 +162,8 @@ class RuntimeEnforcementHardeningArchitectureTest {
       """
       package skillbill.application
 
-      import skillbill.contracts.install.InstallPlanSchemaValidator as IPV
-      import skillbill.contracts.workflow.DecompositionManifestCoherenceValidator as DMCV
+import skillbill.contracts.install.InstallPlanSchemaValidator as IPV
+import skillbill.contracts.workflow.DecompositionManifestCoherenceValidator as DMCV
 
       class Leaky
       """.trimIndent()

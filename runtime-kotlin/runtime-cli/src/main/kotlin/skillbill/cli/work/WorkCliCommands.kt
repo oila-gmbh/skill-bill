@@ -8,7 +8,6 @@ import com.github.ajalt.clikt.parameters.options.validate
 import com.github.ajalt.clikt.parameters.types.int
 import me.tatarka.inject.annotations.Inject
 import skillbill.application.idestatus.model.IdeStatusRequest
-import skillbill.application.work.IdeStatusService
 import skillbill.application.work.WorkListService
 import skillbill.application.work.model.WorkListItem
 import skillbill.application.work.model.WorkListResult
@@ -16,6 +15,7 @@ import skillbill.cli.kernel.CliRunState
 import skillbill.cli.kernel.DocumentedCliCommand
 import skillbill.cli.kernel.DocumentedNoOpCliCommand
 import skillbill.cli.model.CliFormat
+import skillbill.engine.work.IdeStatusService
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 

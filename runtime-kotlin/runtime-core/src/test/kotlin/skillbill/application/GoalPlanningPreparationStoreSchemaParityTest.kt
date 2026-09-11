@@ -1,10 +1,10 @@
 package skillbill.application
 
-import skillbill.contracts.workflow.GoalPlanningPreparationSchemaValidator
-import skillbill.db.core.DatabaseRuntime
-import skillbill.db.workflow.GoalPlanningPreparationStore
 import skillbill.error.InvalidGoalPlanningPreparationSchemaError
 import skillbill.error.ShellContentContractException
+import skillbill.infrastructure.fs.contracts.workflow.GoalPlanningPreparationSchemaValidator
+import skillbill.infrastructure.sqlite.core.DatabaseRuntime
+import skillbill.infrastructure.sqlite.workflow.GoalPlanningPreparationStore
 import skillbill.ports.goalrunner.model.GoalPlanningContractProvenance
 import skillbill.ports.goalrunner.model.GoalPlanningIdentity
 import skillbill.ports.goalrunner.model.GoalPlanningPreparationState

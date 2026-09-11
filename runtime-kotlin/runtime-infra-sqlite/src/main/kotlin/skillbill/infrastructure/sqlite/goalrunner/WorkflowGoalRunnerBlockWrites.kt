@@ -1,9 +1,8 @@
 package skillbill.infrastructure.sqlite.goalrunner
 
 import skillbill.goalrunner.model.GoalRunnerSupervisionEvent
-import skillbill.ports.goalrunner.persistence.blockedStepId
-import skillbill.ports.goalrunner.persistence.decodeWorkflowSteps
-import skillbill.ports.goalrunner.persistence.model.GoalRunnerBlockWrite
+import skillbill.goalrunner.toArtifactsMap
+import skillbill.infrastructure.sqlite.decomposition.decodeArtifactsimport skillbill.ports.goalrunner.persistence.model.GoalRunnerBlockWrite
 import skillbill.ports.goalrunner.persistence.toArtifactsMap
 import skillbill.ports.goalrunner.persistence.workflowFamilyFor
 import skillbill.ports.persistence.UnitOfWork
@@ -15,6 +14,10 @@ import skillbill.ports.workflow.decomposition.runtime.decodeArtifacts
 import skillbill.ports.workflow.persistence.model.WorkflowFamily
 import skillbill.workflow.engine.WorkflowEngine
 import skillbill.workflow.engine.model.WorkflowUpdateInput
+import skillbill.workflow.engine.model.isTerminalStatus
+import skillbill.workflow.model.WorkflowStatus
+import skillbill.workflow.model.WorkflowStepStatus
+import skillbill.workflow.model.workflowStatus
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_OPERATOR_BLOCK_RETRY_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_LEDGER_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_LEDGER_LIMIT
@@ -22,7 +25,9 @@ import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_RECORDS_A
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerAction
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerEntry
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseRecord
-import java.time.OffsetDateTime
+import skillbill.workflow.taskruntime.phaseartifacts.asPendingForOperatorResume
+import skillbill.workflow.taskruntime.phaseartifacts.phaseLedgerFrom
+import skillbill.workflow.taskruntime.phaseartifacts.phaseRecordsFromimport java.time.OffsetDateTime
 import java.time.ZoneOffset
 
 internal class WorkflowGoalRunnerBlockWrites(

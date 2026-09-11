@@ -1,18 +1,18 @@
-package skillbill.scaffold
+package skillbill.infrastructure.fs.scaffold
 
 import skillbill.error.ContractVersionMismatchError
 import skillbill.error.InvalidManifestSchemaError
 import skillbill.error.MissingManifestError
-import skillbill.scaffold.model.SkillClassManifest
+import skillbill.infrastructure.fs.scaffold.platformpack.SKILL_CLASSES_DIR
+import skillbill.infrastructure.fs.scaffold.platformpack.discoverSkillClasses
+import skillbill.infrastructure.fs.scaffold.platformpack.loadPlatformManifest
+import skillbill.infrastructure.fs.scaffold.platformpack.resolveSkillClass
+import skillbill.infrastructure.fs.scaffold.rendering.renderCeremonySection
+import skillbill.infrastructure.fs.scaffold.runtime.SHELL_CONTRACT_VERSION
+import skillbill.infrastructure.fs.scaffold.runtime.requiredSupportingFilesForSkill
+import skillbill.infrastructure.fs.scaffold.runtime.scaffold
+import skillbill.ports.repository.toFileLocationimport skillbill.scaffold.model.SkillClassManifest
 import skillbill.scaffold.model.SkillClassMatcher
-import skillbill.scaffold.platformpack.SKILL_CLASSES_DIR
-import skillbill.scaffold.platformpack.discoverSkillClasses
-import skillbill.scaffold.platformpack.loadPlatformManifest
-import skillbill.scaffold.platformpack.resolveSkillClass
-import skillbill.scaffold.rendering.renderCeremonySection
-import skillbill.scaffold.runtime.SHELL_CONTRACT_VERSION
-import skillbill.scaffold.runtime.requiredSupportingFilesForSkill
-import skillbill.scaffold.runtime.scaffold
 import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.test.Test

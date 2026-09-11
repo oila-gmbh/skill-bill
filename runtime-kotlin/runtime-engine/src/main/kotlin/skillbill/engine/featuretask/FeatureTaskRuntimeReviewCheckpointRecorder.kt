@@ -1,0 +1,18 @@
+package skillbill.engine.featuretask
+
+import skillbill.ports.db.DatabaseSessionFactory
+
+class FeatureTaskRuntimeReviewCheckpointRecorder(
+  database: DatabaseSessionFactory,
+  workflowPersistence: FeatureTaskRuntimeWorkflowPersistence,
+  runtimeOwnedPersistence: RuntimeOwnedPersistenceBoundary,
+) : FeatureTaskRuntimePhaseReviewCheckpointApi,
+  FeatureTaskRuntimePhaseReviewGenerationApi by FeatureTaskRuntimeReviewGenerationRecorder(
+    database,
+    workflowPersistence,
+    runtimeOwnedPersistence,
+  ),
+  FeatureTaskRuntimePhaseFindingVerificationApi by FeatureTaskRuntimeFindingVerificationRecorder(
+    database,
+    workflowPersistence,
+  )

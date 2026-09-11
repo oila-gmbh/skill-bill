@@ -1,12 +1,12 @@
 package skillbill.infrastructure.fs
 
 import me.tatarka.inject.annotations.Inject
-import skillbill.ports.install.addon.ExternalAddonOverlayPort
+import skillbill.infrastructure.fs.scaffold.platformpack.loadPlatformManifest
+import skillbill.model.toPathimport skillbill.ports.install.addon.ExternalAddonOverlayPort
 import skillbill.ports.install.addon.model.AppliedExternalAddonSource
 import skillbill.ports.install.addon.model.ExternalAddonOverlayRequest
 import skillbill.ports.install.addon.model.ExternalAddonOverlayResult
 import skillbill.ports.install.addon.model.SkippedExternalAddonSource
-import skillbill.scaffold.platformpack.loadPlatformManifest
 import java.nio.file.Files
 
 internal const val ADDONS_DIR = "addons"

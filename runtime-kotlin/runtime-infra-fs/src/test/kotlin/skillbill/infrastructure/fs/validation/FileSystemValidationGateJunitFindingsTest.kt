@@ -15,8 +15,8 @@ class FileSystemValidationGateJunitFindingsTest {
     val body =
       """
       java.lang.IllegalArgumentException: Failed requirement.
-      	at skillbill.application.work.EmitShapeValidator.validate(IdeStatusServiceTestSupport.kt:231)
-      	at skillbill.application.work.IdeStatusService.emit(IdeStatusService.kt:174)
+      	at skillbill.engine.work.EmitShapeValidator.validate(IdeStatusServiceTestSupport.kt:231)
+      	at skillbill.engine.work.IdeStatusService.emit(IdeStatusService.kt:174)
       	at java.base/java.lang.reflect.Method.invoke(Method.java:580)
       """.trimIndent()
 
@@ -29,8 +29,8 @@ class FileSystemValidationGateJunitFindingsTest {
       """
       boom
       	at java.base/java.lang.reflect.Method.invoke(Method.java:580)
-      	at skillbill.application.work.EmitShapeValidator.validate(IdeStatusServiceTestSupport.kt:231)
-      	at skillbill.application.work.IdeStatusService.emit(IdeStatusService.kt:174)
+      	at skillbill.engine.work.EmitShapeValidator.validate(IdeStatusServiceTestSupport.kt:231)
+      	at skillbill.engine.work.IdeStatusService.emit(IdeStatusService.kt:174)
       """.trimIndent()
 
     val preview = junitStackPreview(body)
@@ -45,12 +45,12 @@ class FileSystemValidationGateJunitFindingsTest {
       """
       <?xml version="1.0"?>
       <testsuite>
-        <testcase classname="skillbill.application.work.IdeStatusServiceGoalProjectionTest"
+        <testcase classname="skillbill.engine.work.IdeStatusServiceGoalProjectionTest"
                   name="goal with launched child projects child current_phase_execution()">
           <failure message="java.lang.IllegalArgumentException: Failed requirement."
                    type="java.lang.IllegalArgumentException">java.lang.IllegalArgumentException: Failed requirement.
-      	at skillbill.application.work.EmitShapeValidator.validate(IdeStatusServiceTestSupport.kt:231)
-      	at skillbill.application.work.IdeStatusService.emit(IdeStatusService.kt:174)
+      	at skillbill.engine.work.EmitShapeValidator.validate(IdeStatusServiceTestSupport.kt:231)
+      	at skillbill.engine.work.IdeStatusService.emit(IdeStatusService.kt:174)
       </failure>
         </testcase>
       </testsuite>
@@ -75,7 +75,7 @@ class FileSystemValidationGateJunitFindingsTest {
     testcase.setAttribute("line", "9")
     val body =
       """
-      at skillbill.application.work.EmitShapeValidator.validate(IdeStatusServiceTestSupport.kt:231)
+      at skillbill.engine.work.EmitShapeValidator.validate(IdeStatusServiceTestSupport.kt:231)
       """.trimIndent()
     assertEquals("Explicit.kt:9", junitFailureLocation(testcase, body))
   }

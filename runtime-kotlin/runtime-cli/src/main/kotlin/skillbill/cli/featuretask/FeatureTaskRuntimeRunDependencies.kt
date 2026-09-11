@@ -2,11 +2,11 @@ package skillbill.cli.featuretask
 
 import me.tatarka.inject.annotations.Inject
 import skillbill.application.config.ConfigResolutionService
-import skillbill.application.featuretask.FeatureTaskRuntimeRunner
-import skillbill.application.featuretask.FeatureTaskRuntimeWorkerCoordinator
 import skillbill.application.telemetry.TelemetryService
 import skillbill.cli.kernel.CliRunState
 import skillbill.cli.model.CliRunInputs
+import skillbill.engine.featuretask.FeatureTaskRuntimeRunner
+import skillbill.engine.featuretask.FeatureTaskRuntimeWorkerCoordinator
 import skillbill.ports.agentaddon.AgentAddonSelectionPort
 import skillbill.ports.agentrun.ExecutableLookup
 import skillbill.ports.diagnostics.RuntimeDiagnostics

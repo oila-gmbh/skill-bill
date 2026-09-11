@@ -6,7 +6,7 @@ object FeatureTaskExecutionIdentitySchemaPaths {
   const val REPO_RELATIVE_PATH: String =
     "orchestration/contracts/feature-task-execution-identity-schema.yaml"
   const val CLASSPATH_RESOURCE: String =
-    "skillbill/contracts/feature-task-execution-identity-schema.yaml"
+    "skillbill/infrastructure/fs/contracts/feature-task-execution-identity-schema.yaml"
   const val EXPECTED_SCHEMA_ID: String =
     "https://skill-bill.dev/contracts/feature-task-execution-identity-schema.yaml"
 }

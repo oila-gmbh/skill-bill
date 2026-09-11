@@ -1,7 +1,7 @@
 package skillbill.infrastructure.fs
 
 import me.tatarka.inject.annotations.Inject
-import skillbill.contracts.workflow.FeatureTaskRuntimeHandoffEnvelopeSchemaValidator
+import skillbill.infrastructure.fs.contracts.workflow.FeatureTaskRuntimeHandoffEnvelopeSchemaValidator
 import skillbill.workflow.taskruntime.FeatureTaskRuntimeHandoffEnvelopeValidator
 
 /**

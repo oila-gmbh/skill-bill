@@ -1,0 +1,275 @@
+package skillbill.engine.featuretask
+
+import skillbill.engine.featuretask.model.FeatureTaskRuntimePhaseLaunchBriefing
+import skillbill.engine.featuretask.validation.model.ValidationFindingSetProjection
+import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeHandoffProjectionValue
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePriorGapMemory
+
+private const val VALIDATE_PHASE_FORBIDDEN_EXTRAS: String =
+  "Do not run `skill-bill validate`, `npx agnix`, `scripts/validate_agent_configs`, or any other " +
+    "repo-root checklist. Those commands are not this phase. "
+
+val RUNTIME_OWNED_VALIDATE_PHASE_TASK: String =
+  validatePhaseTask(packCollectAllCommand = null, packGateDeclared = true)
+
+private const val VALIDATE_REPAIR_FORBIDDEN_EXTRAS: String =
+  "Do not run `skill-bill validate`, `npx agnix`, `scripts/validate_agent_configs`, `bill-code-check`, " +
+    "`./gradlew check`, `check " + "--" + "continue`, or the pack collect_all_full_gate_command. Those are not " +
+    "this repair turn. "
+
+const val VALIDATE_REPAIR_FIX_ALL_NO_MID_PROOF: String =
+  "Before editing, copy the open findings into a numbered free-form checklist (file, rule, one-line " +
+    "fix intent). Stay in this session: fix, then run the targeted proof for those findings, and repeat " +
+    "until those proofs are clean or you have made three in-session attempts. There is no second repair " +
+    "session if findings remain. Do not run the pack collect_all_full_gate_command, `bill-code-check`, " +
+    "`./gradlew check`, or `check " + "--" + "continue` during this occupancy; the runtime re-runs the full " +
+    "gate after you stop. If any open finding names spotless, ktlint, or format, you must run " +
+    "project-wide `./gradlew spotlessApply` from the Gradle root before you stop (never module-scoped " +
+    "`:module:spotlessApply`), then the named `spotlessCheck`, `spotlessKotlinCheck`, or `ktlintCheck` " +
+    "until it is clean. For other findings, after you have attempted a fix you may run module-scoped " +
+    "`detekt`, `compileKotlin`, or `test` when the finding names that task; read-only inspection anytime. " +
+    "Detekt threshold hits (TooManyFunctions, CyclomaticComplexMethod, LongMethod) need structural " +
+    "refactors — extract helpers or move code to a sibling file; do not add @Suppress. "
+
+fun validateRepairPhaseTask(): String =
+  "You are the only validate repair occupancy for this gate cycle — do not spawn delegated subagents and do " +
+    "not expect a second repair session if findings remain. The runtime already ran the pack collect-all " +
+    "gate and listed the open findings in this briefing. Iterate in this same session with targeted proofs. " +
+    "Fix every listed finding (shared root causes may collapse several into one change). " +
+    "$VALIDATE_REPAIR_FORBIDDEN_EXTRAS" +
+    VALIDATE_REPAIR_FIX_ALL_NO_MID_PROOF +
+    "Do not re-run the full gate or bill-code-check to rediscover " +
+    "or confirm findings — after you stop, the runtime re-runs the pack gate and mints the receipt. Never " +
+    "silence findings with annotations, baselines, disabled rules, weakened configuration, or skipped " +
+    "tests; fix root causes instead. Return prose only; do not emit validation_result, gate_run_count, or " +
+    "any phase-output JSON."
+
+fun validateGateTriagePhaseTask(): String =
+  "You are triaging an unparseable validation gate failure blob before the first repair turn — do not spawn " +
+    "delegated subagents. Read the gate stdout blob and repository files as needed to understand failures; " +
+    "prefer read-only inspection. $VALIDATE_REPAIR_FORBIDDEN_EXTRAS" +
+    "Do not mutate the tree unless strictly needed to understand failures. Emit a recommended " +
+    "validation_repair_plan as prose inside produced_outputs.value (JSON string) with suggested fields per " +
+    "item: item_id, module, rule_or_task, location, failure_summary, fix_intent. Extra keys are allowed. " +
+    "Return prose guidance only; do not fix code or emit validation_result, gate_run_count, or gate evidence."
+
+fun validatePhaseTask(packCollectAllCommand: String?, packGateDeclared: Boolean): String {
+  val collectAllLine = when {
+    !packCollectAllCommand.isNullOrBlank() ->
+      "Invoke bill-code-check for collect-all and confirmation. The dominant pack declares " +
+        "validation_gate; its collect-all argv is `$packCollectAllCommand`. bill-code-check routes to " +
+        "the pack quality-check skill, which must run exactly that argv for the initial collect-all " +
+        "and for the one confirmation pass — do not rediscover a different full-suite command."
+    packGateDeclared ->
+      "Invoke bill-code-check for collect-all and confirmation. The dominant pack declares " +
+        "validation_gate; run only that pack's collect_all_full_gate_command through the routed " +
+        "pack quality-check skill — do not rediscover a different full-suite command."
+    else ->
+      "Invoke bill-code-check for collect-all and confirmation. It auto-routes to the pack-declared " +
+        "quality-check skill; never name a stack-specific quality-check skill such as " +
+        "bill-kotlin-code-check."
+  }
+  return "You are the only validate agent for this step — do not spawn delegated subagents. If findings " +
+    "remain, one repair occupancy iterates in this same session with targeted proofs; there is no second " +
+    "repair session. $collectAllLine Read that output, and fix every finding in this same session. " +
+    VALIDATE_PHASE_FORBIDDEN_EXTRAS +
+    "Do not rerun the full gate, bill-code-check, or a cache-bypassing full check after each individual " +
+    "finding. " + VALIDATE_REPAIR_FIX_ALL_NO_MID_PROOF +
+    "When the set looks clean, run bill-code-check " +
+    "once to confirm (same pack collect-all). Findings that share one root cause are one fix, not several. " +
+    "Validation findings are repair work, not a reason to block the phase. Fix findings at their root " +
+    "cause; never silence them with annotations, baselines, disabled rules, weakened configuration, or " +
+    "skipped tests. After you stop, the runtime re-runs the pack gate and mints the receipt — do not emit " +
+    "validation_result, gate_run_count, or any phase-output JSON."
+}
+
+fun absentValidationGateDegradationDirective(phaseId: String, agentRunValidateFallback: Boolean): String {
+  if (phaseId != FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VALIDATE || !agentRunValidateFallback) {
+    return ""
+  }
+  return """
+    ## Validation gate degradation
+    The dominant platform pack declares no validation_gate. Validate falls back to agent-run
+    bill-code-check routing only. This degradation is intentional and surfaced; do not treat
+    absence of a runtime finding set as a clean pass. Agent-reported gate_run_count is never
+    validation evidence.
+  """.trimIndent()
+}
+
+internal data class PhaseTaskDirectiveArgs(
+  val agentRunValidateFallback: Boolean = false,
+  val packCollectAllCommand: String? = null,
+  val packBuildCommand: String? = null,
+  val priorGapMemory: FeatureTaskRuntimePriorGapMemory? = null,
+  val validationGateRepair: Boolean = false,
+  val validationGateTriage: Boolean = false,
+  val acceptanceCriteria: List<String> = emptyList(),
+  val auditGapImplement: Boolean = false,
+)
+
+internal fun phaseTaskDirective(phaseId: String, args: PhaseTaskDirectiveArgs = PhaseTaskDirectiveArgs()): String =
+  when (phaseId) {
+    FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_BUILD -> when {
+      args.validationGateTriage -> buildGateTriagePhaseTask(args.packBuildCommand)
+      else -> runtimeOwnedBuildPhaseTask(args.packBuildCommand)
+    }
+    FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VALIDATE -> when {
+      args.validationGateTriage -> validateGateTriagePhaseTask()
+      args.validationGateRepair -> validateRepairPhaseTask()
+      else -> validatePhaseTask(
+        packCollectAllCommand = args.packCollectAllCommand,
+        packGateDeclared = !args.agentRunValidateFallback,
+      )
+    }
+    FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT ->
+      auditPhaseTaskDirective(args.priorGapMemory, args.acceptanceCriteria)
+    FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT ->
+      implementPhaseTaskDirective(args.auditGapImplement, args.acceptanceCriteria)
+    else -> phaseDirectives[phaseId] ?: error("No phase directive for runtime phase '$phaseId'.")
+  }
+
+fun gateRepairNoOutputSchemaDirective(phaseId: String, triage: Boolean = false): String {
+  if (triage) {
+    return """
+      ## Gate triage — optional capture surface, no phase-output schema
+      This launch triages an unparseable gate blob before the first repair turn for the runtime-owned `$phaseId` gate.
+      Do not emit a Required final output JSON object, build_receipt, validation_receipt, gate_run_count, or any other
+      phase receipt or gate evidence. Do not spawn delegated subagents. Read the blob and cited paths.
+      When you can recommend a repair shape, you may emit produced_outputs.value (a JSON string) carrying
+      validation_repair_plan prose with suggested fields per item: item_id, module, rule_or_task, location,
+      failure_summary, fix_intent. Malformed or missing capture is fine; repair still runs without it.
+    """.trimIndent()
+  }
+  val occupancy = if (phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VALIDATE) {
+    """
+  This launch is the only repair occupancy for the runtime-owned `$phaseId` gate. Do not emit a Required final
+  output JSON object, build_receipt, validation_receipt, gate_run_count, or any other phase envelope.
+  Do not spawn delegated subagents. Work in this single agent session in ordinary prose.
+
+  The runtime already ran the pack command and parsed the failures listed in this briefing. It will
+  re-run that command after you stop. There is no second repair session. Iterate here: fix, then run the
+  targeted proof for those findings, and repeat until those proofs are clean or you have made three
+  in-session attempts. Address every open finding in this occupancy.
+
+  Before editing, do brief reasoned planning in prose for each finding (or for a shared root cause
+  that covers several). Scale the plan to the finding:
+  - Small / obvious: a few lines of due diligence, then fix.
+  - Complex: a real short plan — blast radius, surrounding callers/contracts you checked, whether
+    the change can introduce new bugs, and how you will keep the fix local.
+
+  No defined plan schema. Do the thinking, then edit. Stay in this session: fix, then run the targeted
+  proof, and repeat. If any open finding names spotless, ktlint, or format, you must run project-wide
+  `./gradlew spotlessApply` from the Gradle root before you stop (never module-scoped `:module:spotlessApply`),
+  then the named `spotlessCheck`, `spotlessKotlinCheck`, or `ktlintCheck` until it is clean. For other
+  findings you may run the module-scoped task named in the finding. Stop when done; the runtime re-runs
+  the pack gate.
+  Never silence findings with @Suppress, @file:Suppress, baselines, disabled rules, weakened
+  configuration, or skipped tests — fix the root cause instead.
+    """.trimIndent()
+  } else {
+    """
+  This launch is a repair turn for the runtime-owned `$phaseId` gate. Do not emit a Required final
+  output JSON object, build_receipt, validation_receipt, gate_run_count, or any other phase envelope.
+  Do not spawn delegated subagents. Work in this single agent session in ordinary prose.
+
+  The runtime already ran the pack command and parsed the failures listed in this briefing. It will
+  re-run that command after you stop, and it may give you up to three repair turns against whatever
+  remains. Address every open finding in this turn — all at once, not one finding per turn.
+
+  Before editing, do brief reasoned planning in prose for each finding (or for a shared root cause
+  that covers several). Scale the plan to the finding:
+  - Small / obvious: a few lines of due diligence, then fix.
+  - Complex: a real short plan — blast radius, surrounding callers/contracts you checked, whether
+    the change can introduce new bugs, and how you will keep the fix local.
+
+  No defined plan schema. Do the thinking, then edit. After you have attempted a fix for every open
+  finding, you may run targeted proof commands relevant to those findings (for example project-wide
+  `./gradlew spotlessApply` for format findings, or the module-scoped task named in the finding).
+  Stop when done; the runtime re-runs the pack gate.
+  Never silence findings with @Suppress, @file:Suppress, baselines, disabled rules, weakened
+  configuration, or skipped tests — fix the root cause instead.
+    """.trimIndent()
+  }
+  return """
+  ## Gate repair — prose only, no phase-output schema
+  $occupancy
+  """.trimIndent()
+}
+
+fun validationGateFindingsDirective(
+  phaseId: String,
+  findings: ValidationFindingSetProjection?,
+  triagePlan: String?,
+): String {
+  if (findings == null) return ""
+  val (sectionTitle, preamble) = when (phaseId) {
+    FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VALIDATE -> Pair(
+      "## Runtime validation gate findings",
+      "A prior gate run parsed these items. They are the full open set for this repair occupancy — fix " +
+        "every one in this session (shared root causes may collapse several into one change). Do not " +
+        "run `skill-bill validate`, `bill-code-check`, `./gradlew check`, `check " + "--" + "continue`, " +
+        "or the pack collect_all_full_gate_command. $VALIDATE_REPAIR_FIX_ALL_NO_MID_PROOF" +
+        "Do not spawn delegated subagents.",
+    )
+    FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_BUILD -> Pair(
+      "## Runtime build gate findings",
+      "A prior gate run parsed these items. They are the full open set for this repair turn — fix " +
+        "every one in this session (shared root causes may collapse several into one change). Run only " +
+        "the pack-declared build command when you need console detail. Do not run `skill-bill " +
+        "validate`, `bill-code-check`, `./gradlew check`, `check " + "--" + "continue`, or the pack " +
+        "collect_all_full_gate_command. Do not spawn delegated subagents.",
+    )
+    else -> return ""
+  }
+  val lines = buildList {
+    add(sectionTitle)
+    add(preamble)
+    findings.findings.forEachIndexed { index, finding ->
+      add(
+        "${index + 1}. module=${finding.module} id=${finding.ruleOrTestId} " +
+          "location=${finding.location ?: "<unknown>"} message=${finding.message}",
+      )
+    }
+    if (!triagePlan.isNullOrBlank()) {
+      add("## Triage working notes")
+      add(triagePlan)
+    }
+  }
+  return lines.joinToString("\n")
+}
+
+fun auditNoEarlierAuditLine(briefing: FeatureTaskRuntimePhaseLaunchBriefing): String =
+  if (briefing.priorGapMemory == null) {
+    "      Every audit re-checks every listed criterion from scratch against the tree, so there is no\n" +
+      "      earlier audit to account for and nothing to carry forward except the notes you emit now.\n"
+  } else {
+    "      Every audit re-checks every listed criterion from scratch against the tree; when this\n" +
+      "      briefing carries prior-gap memory, earlier audit value strings in prior_audit_values are\n" +
+      "      context you must account for, and a repeated criterion needs an explicit re-justification (below).\n"
+  }
+
+fun auditRoundScopeAddendum(briefing: FeatureTaskRuntimePhaseLaunchBriefing): String {
+  val memoryBlock = briefing.priorGapMemory?.let { memory ->
+    buildString {
+      append("\n      Prior-gap memory (round ${memory.round}): prior audit value strings:\n")
+      memory.priorAuditValues.forEach { value -> append("        - $value\n") }
+      append("      When a gap repeats a criterion already named in a prior audit value, require explicit\n")
+      append("      re-justification: name what the prior implement claimed and why the tree still fails it.\n")
+    }
+  }.orEmpty()
+  val auditProse = briefing.handoffEnvelope.projections
+    .firstOrNull { it.projectionName == "audit_prose" }
+    ?.fields
+    ?.firstOrNull { it.name == "value" }
+    ?.value
+    ?.let { (it as? FeatureTaskRuntimeHandoffProjectionValue.Text)?.text }
+  val scopeBlock = if (auditProse.isNullOrBlank()) {
+    ""
+  } else {
+    "\n      The previous audit value reported gaps in structured prose. Start there, then still decide " +
+      "every listed criterion from the tree: a repair can regress a criterion an earlier audit passed, " +
+      "and a narrow patch can open a new sibling gap."
+  }
+  return memoryBlock + scopeBlock
+}

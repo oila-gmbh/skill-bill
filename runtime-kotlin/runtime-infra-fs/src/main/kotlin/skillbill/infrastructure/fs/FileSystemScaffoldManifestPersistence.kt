@@ -1,6 +1,10 @@
 package skillbill.infrastructure.fs
 
 import me.tatarka.inject.annotations.Inject
+import skillbill.infrastructure.fs.scaffold.manifest.appendCodeReviewArea
+import skillbill.infrastructure.fs.scaffold.manifest.appendGovernedAddonManifestRegistration
+import skillbill.infrastructure.fs.scaffold.manifest.renderGovernedAddonManifestRegistration
+import skillbill.infrastructure.fs.scaffold.manifest.setDeclaredQualityCheckFile
 import skillbill.ports.scaffold.manifest.ScaffoldManifestPersistencePort
 import skillbill.ports.scaffold.manifest.model.ScaffoldManifestAppendCodeReviewAreaRequest
 import skillbill.ports.scaffold.manifest.model.ScaffoldManifestReadResult
@@ -9,10 +13,6 @@ import skillbill.ports.scaffold.manifest.model.ScaffoldManifestRenderPlatformPac
 import skillbill.ports.scaffold.manifest.model.ScaffoldManifestSetDeclaredQualityCheckRequest
 import skillbill.ports.scaffold.manifest.model.ScaffoldManifestSnapshot
 import skillbill.ports.scaffold.manifest.model.ScaffoldManifestWriteRequest
-import skillbill.scaffold.manifest.appendCodeReviewArea
-import skillbill.scaffold.manifest.appendGovernedAddonManifestRegistration
-import skillbill.scaffold.manifest.renderGovernedAddonManifestRegistration
-import skillbill.scaffold.manifest.setDeclaredQualityCheckFile
 import skillbill.scaffold.policy.platformpack.model.PlatformPackManifestRenderRequest
 import java.nio.file.Files
 import java.nio.file.Path

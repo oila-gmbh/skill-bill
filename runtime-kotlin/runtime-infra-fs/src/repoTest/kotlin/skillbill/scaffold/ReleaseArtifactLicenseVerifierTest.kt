@@ -1,4 +1,4 @@
-package skillbill.scaffold
+package skillbill.infrastructure.fs.scaffold
 
 import java.nio.file.Files
 import java.nio.file.Path

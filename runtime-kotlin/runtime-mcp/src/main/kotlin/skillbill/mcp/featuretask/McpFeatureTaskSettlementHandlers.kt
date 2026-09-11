@@ -1,8 +1,8 @@
 package skillbill.mcp.featuretask
 
-import skillbill.application.featuretask.model.FeatureTaskPhaseSettlementAuditRequest
-import skillbill.application.featuretask.model.FeatureTaskPhaseSettlementBlockRequest
-import skillbill.application.featuretask.model.FeatureTaskPhaseSettlementCompleteRequest
+import skillbill.engine.featuretask.model.FeatureTaskPhaseSettlementAuditRequest
+import skillbill.engine.featuretask.model.FeatureTaskPhaseSettlementBlockRequest
+import skillbill.engine.featuretask.model.FeatureTaskPhaseSettlementCompleteRequest
 import skillbill.mcp.shared.McpRuntimeContext
 import skillbill.mcp.shared.optionalInt
 import skillbill.mcp.shared.optionalString

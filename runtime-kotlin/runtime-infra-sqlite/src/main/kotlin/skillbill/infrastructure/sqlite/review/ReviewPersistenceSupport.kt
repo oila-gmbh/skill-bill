@@ -1,11 +1,11 @@
 package skillbill.infrastructure.sqlite.review
 import skillbill.contracts.JsonSupport
 import skillbill.contracts.review.REVIEW_CONTEXT_CONTRACT_VERSION
-import skillbill.db.PARAM_FOUR
-import skillbill.db.PARAM_ONE
-import skillbill.db.PARAM_THREE
-import skillbill.db.PARAM_TWO
-import skillbill.db.telemetry.LifecycleTelemetryStore
+import skillbill.infrastructure.sqlite.PARAM_FOUR
+import skillbill.infrastructure.sqlite.PARAM_ONE
+import skillbill.infrastructure.sqlite.PARAM_THREE
+import skillbill.infrastructure.sqlite.PARAM_TWO
+import skillbill.infrastructure.sqlite.telemetry.LifecycleTelemetryStore
 import skillbill.ports.review.model.ReviewAccountingRecord
 import skillbill.review.model.ImportedFinding
 import skillbill.review.model.ImportedReview

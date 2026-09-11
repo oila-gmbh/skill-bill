@@ -1,7 +1,7 @@
 package skillbill.infrastructure.sqlite
 
-import skillbill.db.core.DatabaseRuntime
 import skillbill.error.DatabaseAccessError
+import skillbill.infrastructure.sqlite.core.DatabaseRuntime
 import skillbill.model.EnvironmentContext
 import skillbill.ports.featuretask.model.FeatureTaskRuntimeWorkerLeaseState
 import skillbill.ports.featuretask.model.FeatureTaskRuntimeWorkerOwnership

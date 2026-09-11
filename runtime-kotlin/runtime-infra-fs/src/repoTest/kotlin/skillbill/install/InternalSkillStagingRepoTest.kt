@@ -1,10 +1,11 @@
-package skillbill.install
+package skillbill.infrastructure.fs.install
 
+import skillbill.infrastructure.fs.install.staging.StageInstalledSkillInput
+import skillbill.infrastructure.fs.install.staging.stageInstalledSkill
 import skillbill.install.model.InstallPlanSkill
 import skillbill.install.model.InstallPlanSkillKind
-import skillbill.install.staging.StageInstalledSkillInput
-import skillbill.install.staging.stageInstalledSkill
-import skillbill.testing.repoRootFromTest
+import skillbill.model.toPath
+import skillbill.ports.repository.toFileLocationimport skillbill.testing.repoRootFromTest
 import java.nio.file.Files
 import java.nio.file.LinkOption
 import java.nio.file.Path

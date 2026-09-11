@@ -3,8 +3,7 @@ package skillbill.telemetry
 import skillbill.contracts.JsonSupport
 import skillbill.db.core.DatabaseRuntime
 import skillbill.db.telemetry.TelemetryOutboxStore
-import skillbill.infrastructure.http.HttpTelemetryClient
-import skillbill.ports.telemetry.RemoteTransportPort
+import skillbill.infrastructure.http.HttpTelemetryClientimport skillbill.ports.telemetry.RemoteTransportPort
 import skillbill.ports.telemetry.TelemetryClient
 import skillbill.ports.telemetry.model.RemoteTransportResponse
 import skillbill.ports.telemetry.model.TelemetryOutboxRecord
@@ -13,7 +12,6 @@ import skillbill.telemetry.model.TelemetryProxyCapabilities
 import skillbill.telemetry.model.TelemetryRemoteStatsResult
 import skillbill.telemetry.model.TelemetrySettings
 import skillbill.telemetry.model.TelemetrySyncStatus
-import skillbill.telemetry.sync.TelemetrySyncRuntime
 import java.io.IOException
 import java.nio.file.Files
 import java.nio.file.Path

@@ -19,7 +19,7 @@ class InstallPolicyOwnershipArchitectureTest {
       }
     }
   private val approvedPolicyCallers = setOf(
-    "runtime-infra-fs/src/main/kotlin/skillbill/install/plan/InstallPlanBuilder.kt",
+    "runtime-infra-fs/src/main/kotlin/skillbill/infrastructure/fs/install/plan/InstallPlanBuilder.kt",
   )
 
   // SKILL-52.3 subtask 1: each approved install-plan validation seam and the
@@ -29,7 +29,7 @@ class InstallPolicyOwnershipArchitectureTest {
   // `InstallService.validateInstallPlanWire` (which delegates to the port),
   // keeping the validator off the CLI compile graph.
   private val approvedValidationSeams = mapOf(
-    "runtime-infra-fs/src/main/kotlin/skillbill/install/plan/InstallPlanBuilder.kt" to
+    "runtime-infra-fs/src/main/kotlin/skillbill/infrastructure/fs/install/plan/InstallPlanBuilder.kt" to
       "validateInstallPlanWireSnapshot",
     "runtime-cli/src/main/kotlin/skillbill/cli/install/InstallCliPayloads.kt" to
       "installService.validateInstallPlanWire",
@@ -79,15 +79,14 @@ class InstallPolicyOwnershipArchitectureTest {
       "import java.nio.file.Files",
       "import java.lang.ProcessBuilder",
       "import skillbill.infrastructure.fs.FileSystemInstallPlanningFacts",
-      "import skillbill.install.InstallOperations",
-      "import skillbill.install.InstallPlanBuilder",
-      "import skillbill.install.computeInstallContentHash",
+      "import skillbill.infrastructure.fs.install.InstallOperations",
+      "import skillbill.infrastructure.fs.install.InstallPlanBuilder",
+      "import skillbill.infrastructure.fs.install.computeInstallContentHash",
     )
     val mustNotBeDetectedAsForbidden = listOf(
       "import java.nio.file.Path",
       "import skillbill.install.model.InstallPlan",
       "import skillbill.install.policy.InstallPlanPolicy",
-      "import skillbill.contracts.install.InstallPlanSchemaValidator",
     )
 
     val falseNegatives = mustBeDetectedAsForbidden.filterNot(forbiddenImportPattern::matches)
@@ -143,7 +142,7 @@ class InstallPolicyOwnershipArchitectureTest {
     // own / construct the validator, so they are exempt from the adapter-policy
     // ownership scan; every other adapter file must still stay clean.
     val validatorOwnerFiles = setOf(
-      "runtime-infra-fs/src/main/kotlin/skillbill/contracts/install/InstallPlanSchemaValidator.kt",
+      "runtime-infra-fs/src/main/kotlin/skillbill/infrastructure/fs/contracts/install/InstallPlanSchemaValidator.kt",
       "runtime-infra-fs/src/main/kotlin/skillbill/infrastructure/fs/InstallPlanWireValidatorAdapter.kt",
     )
     val adapterFiles = adapterKotlinFiles()
@@ -171,7 +170,8 @@ class InstallPolicyOwnershipArchitectureTest {
       "runtime-cli/src/main/kotlin/skillbill/cli/BadPolicyFqn.kt" to
         "val draft = skillbill.install.policy.InstallPlanPolicy.buildPlanDraft(input)",
       "runtime-cli/src/main/kotlin/skillbill/cli/BadValidatorAlias.kt" to
-        "import skillbill.contracts.install.InstallPlanSchemaValidator as Validator\nValidator.validate(payload)",
+        "import skillbill.contracts.install.InstallPlanSchemaValidator as Validator\n" +
+        "Validator.validate(payload)",
       "runtime-cli/src/main/kotlin/skillbill/cli/BadValidatorWildcard.kt" to
         "import skillbill.contracts.install.*\nInstallPlanSchemaValidator.validate(payload)",
       "runtime-cli/src/main/kotlin/skillbill/cli/BadValidatorFqn.kt" to
@@ -190,7 +190,7 @@ class InstallPolicyOwnershipArchitectureTest {
     assertEquals(
       emptyList(),
       adapterPolicyOwnershipViolations(
-        "runtime-infra-fs/src/main/kotlin/skillbill/install/plan/InstallPlanBuilder.kt",
+        "runtime-infra-fs/src/main/kotlin/skillbill/infrastructure/fs/install/plan/InstallPlanBuilder.kt",
         """
         |import skillbill.install.policy.InstallPlanPolicy
         |import skillbill.install.model.validateInstallPlanWireSnapshot

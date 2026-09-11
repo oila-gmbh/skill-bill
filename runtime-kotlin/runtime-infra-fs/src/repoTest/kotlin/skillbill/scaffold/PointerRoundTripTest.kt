@@ -1,9 +1,9 @@
-package skillbill.scaffold
+package skillbill.infrastructure.fs.scaffold
 
 import org.junit.jupiter.api.Assumptions
-import skillbill.scaffold.platformpack.discoverPlatformPackManifests
-import skillbill.scaffold.pointer.renderPointer
-import java.nio.file.Files
+import skillbill.infrastructure.fs.scaffold.platformpack.discoverPlatformPackManifests
+import skillbill.infrastructure.fs.scaffold.pointer.renderPointer
+import skillbill.model.toPathimport java.nio.file.Files
 import java.nio.file.Path
 import kotlin.test.Test
 import kotlin.test.assertTrue

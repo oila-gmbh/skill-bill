@@ -19,7 +19,7 @@ object GoalProgressEventSchemaPaths {
     "orchestration/contracts/goal-progress-event-schema.yaml"
 
   const val CLASSPATH_RESOURCE: String =
-    "skillbill/contracts/goal-progress-event-schema.yaml"
+    "skillbill/infrastructure/fs/contracts/goal-progress-event-schema.yaml"
 
   const val EXPECTED_SCHEMA_ID: String =
     "https://skill-bill.dev/contracts/goal-progress-event-schema.yaml"

@@ -1,8 +1,8 @@
 package skillbill.cli.goal
 
-import skillbill.application.goalrunner.model.GoalRunnerStatusRequest
 import skillbill.cli.kernel.detectInvokingAgentId
 import skillbill.cli.model.CliRunInputs
+import skillbill.engine.goalrunner.model.GoalRunnerStatusRequest
 import skillbill.error.DatabaseAccessError
 import skillbill.goalrunner.model.ExecutionLiveness
 import skillbill.goalrunner.model.GoalRunnerAcceptedSubtask

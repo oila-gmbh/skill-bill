@@ -1,4 +1,4 @@
-package skillbill.scaffold
+package skillbill.infrastructure.fs.scaffold
 
 import skillbill.error.ContractVersionMismatchError
 import skillbill.error.InvalidManifestSchemaError
@@ -7,12 +7,12 @@ import skillbill.error.InvalidSkillMdShapeError
 import skillbill.error.MissingContentFileError
 import skillbill.error.MissingManifestError
 import skillbill.error.MissingRequiredSectionError
-import skillbill.scaffold.platformpack.loadPlatformManifest
-import skillbill.scaffold.platformpack.loadPlatformPack
-import skillbill.scaffold.platformpack.loadQualityCheckContent
-import skillbill.scaffold.runtime.SHELL_CONTRACT_VERSION
-import skillbill.scaffold.validation.validateSkillMdShape
-import skillbill.testing.repoRootFromTest
+import skillbill.infrastructure.fs.scaffold.platformpack.loadPlatformManifest
+import skillbill.infrastructure.fs.scaffold.platformpack.loadPlatformPack
+import skillbill.infrastructure.fs.scaffold.platformpack.loadQualityCheckContent
+import skillbill.infrastructure.fs.scaffold.runtime.SHELL_CONTRACT_VERSION
+import skillbill.infrastructure.fs.scaffold.validation.validateSkillMdShape
+import skillbill.model.toPathimport skillbill.testing.repoRootFromTest
 import skillbill.testing.seedConformingPlatformPack
 import java.nio.file.Files
 import java.nio.file.Path

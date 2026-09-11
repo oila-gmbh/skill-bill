@@ -2,9 +2,9 @@ package skillbill.infrastructure.fs
 
 import me.tatarka.inject.annotations.Inject
 import skillbill.error.ExternalAddonConfigError
+import skillbill.infrastructure.fs.install.support.resolveTelemetryConfigPath
 import skillbill.install.model.ExternalAddonSource
-import skillbill.install.support.resolveTelemetryConfigPath
-import skillbill.ports.install.addon.ExternalAddonSourceConfigPort
+import skillbill.model.toPathimport skillbill.ports.install.addon.ExternalAddonSourceConfigPort
 import skillbill.ports.install.addon.model.ExternalAddonSourceConfigRequest
 import skillbill.ports.install.addon.model.ExternalAddonSourceConfigResult
 import skillbill.ports.install.addon.model.ExternalAddonSourceRegistrationRequest

@@ -1,0 +1,1299 @@
+package skillbill.engine
+import skillbill.application.decomposition.decodeArtifacts
+import skillbill.application.decomposition.decompositionManifestPath
+import skillbill.application.decomposition.parentSpecPath
+import skillbill.application.idestatus.model.IdeStatusCurrentPhaseExecutionKind
+import skillbill.contracts.JsonSupportimport skillbill.error.InvalidWorkflowStateSchemaError
+import skillbill.ports.db.DatabaseSessionFactory
+import skillbill.ports.diagnostics.NoopRuntimeDiagnostics
+import skillbill.ports.featuretask.EmptyFeatureTaskRuntimeAuditGenerationRepository
+import skillbill.ports.goalrunner.EmptyGoalPlanningPreparationRepository
+import skillbill.ports.goalrunner.EmptyGoalRunnerControlRepository
+import skillbill.ports.learning.LearningRepository
+import skillbill.ports.persistence.UnitOfWork
+import skillbill.ports.review.ReviewRepository
+import skillbill.ports.telemetry.LifecycleTelemetryRepository
+import skillbill.ports.telemetry.TelemetryOutboxRepository
+import skillbill.ports.telemetry.TelemetryReconciliationRepository
+import skillbill.ports.work.EmptyWorkListRepository
+import skillbill.ports.workflow.WorkflowStateRepository
+import skillbill.ports.workflow.model.FeatureImplementSessionSummary
+import skillbill.ports.workflow.model.FeatureTaskExecutionIdentity
+import skillbill.ports.workflow.model.FeatureTaskWorkflowCandidate
+import skillbill.ports.workflow.model.FeatureVerifySessionSummary
+import skillbill.ports.workflow.model.WorkflowStateRecord
+import skillbill.workflow.engine.WorkflowSnapshotValidator
+import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_DIAGNOSTIC_SIGNALS_ARTIFACT_KEY
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeDecomposeTerminal
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeDiagnosticFailureClass
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeDiagnosticSignal
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFailureDisposition
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFeatureSize
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerAction
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerAction.BLOCKED
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerAction.COMPLETE
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerAction.LOOP_EDGE
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerAction.RESUME
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerAction.START
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeResolvedBranch
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRunInvariants
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeValidationGateProgress
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeValidationGateRunRecord
+import java.nio.file.Path
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
+import kotlin.test.assertNull
+import kotlin.test.assertTrue
+
+/**
+ * F-001 / F-008: unit coverage for [FeatureTaskRuntimeStatusService]'s projection
+ * branches that the CLI surface cannot reach directly:
+ *
+ *  - a workflow row that exists but has NO per-phase records yet projects status
+ *    `ok` with every phase pending and the first phase as current (distinct from
+ *    the null/not_found case);
+ *  - a phase whose newest append-only ledger entry is BLOCKED is reclassified as
+ *    blocked even though the runner leaves its durable per-phase record at
+ *    `running` (the runner never persists a blocked per-phase record).
+ *
+ * Uses a minimal in-memory recorder seam so the projection is exercised against
+ * real persisted artifacts without a database.
+ */
+class FeatureTaskRuntimeStatusServiceTest {
+  @Test
+  fun `null projection for an unknown workflow id`() {
+    val harness = statusHarness()
+
+    assertNull(harness.service.status(FeatureTaskRuntimeStatusRequest(workflowId = "wftr-missing")))
+  }
+
+  @Test
+  fun `workflow with no phase records projects every phase pending`() {
+    val harness = statusHarness()
+    harness.recorder.ensureWorkflowOpen(WORKFLOW_ID, SESSION_ID)
+    harness.recordRunInvariants(FeatureTaskRuntimeFeatureSize.LARGE)
+
+    val projection = requireNotNull(
+      harness.service.status(FeatureTaskRuntimeStatusRequest(workflowId = WORKFLOW_ID)),
+    )
+
+    assertEquals("LARGE", projection.featureSize)
+    assertEquals(0, projection.completeCount)
+    assertEquals(12, projection.pendingCount)
+    assertEquals(0, projection.blockedCount)
+    assertEquals("preplan", projection.currentPhaseId)
+    assertEquals(List(12) { "pending" }, projection.phases.map { it.status })
+  }
+
+  @Test
+  fun `the launched model rides the advancing phase write and reaches the phase status`() {
+    val harness = statusHarness()
+    harness.recorder.ensureWorkflowOpen(WORKFLOW_ID, SESSION_ID)
+    harness.recorder.recordPhaseState(
+      FeatureTaskRuntimePhaseStateRequest(
+        workflowId = WORKFLOW_ID,
+        phaseId = "implement",
+        status = "running",
+        attemptCount = 1,
+        resolvedAgentId = "cursor",
+        finished = false,
+        launchedModel = "claude-opus-4-8[effort=high]",
+        launchOutcomeKnown = true,
+      ),
+    )
+    harness.recordRunning("plan", attemptCount = 1)
+
+    val records = requireNotNull(harness.recorder.loadPhaseRecords(WORKFLOW_ID))
+    assertEquals("claude-opus-4-8[effort=high]", records.getValue("implement").launchedModel)
+    assertNull(records.getValue("implement").launchedEffort)
+    assertNull(records.getValue("plan").launchedModel)
+
+    val projection = requireNotNull(
+      harness.service.status(FeatureTaskRuntimeStatusRequest(workflowId = WORKFLOW_ID)),
+    )
+    assertEquals(
+      "claude-opus-4-8[effort=high]",
+      projection.phases.single { it.phaseId == "implement" }.launchedModel,
+    )
+  }
+
+  @Test
+  fun `a later block write keeps the launched model the phase actually ran with`() {
+    val harness = statusHarness()
+    harness.recorder.ensureWorkflowOpen(WORKFLOW_ID, SESSION_ID)
+    harness.recorder.recordPhaseState(
+      FeatureTaskRuntimePhaseStateRequest(
+        workflowId = WORKFLOW_ID,
+        phaseId = "implement",
+        status = "running",
+        attemptCount = 1,
+        resolvedAgentId = "cursor",
+        finished = false,
+        launchedModel = "claude-opus-4-8[effort=high]",
+        launchOutcomeKnown = true,
+      ),
+    )
+    harness.recorder.recordPhaseState(
+      FeatureTaskRuntimePhaseStateRequest(
+        workflowId = WORKFLOW_ID,
+        phaseId = "implement",
+        status = "blocked",
+        attemptCount = 1,
+        resolvedAgentId = "cursor",
+        finished = true,
+        blockedReason = "operator review",
+      ),
+    )
+
+    val records = requireNotNull(harness.recorder.loadPhaseRecords(WORKFLOW_ID))
+    assertEquals("claude-opus-4-8[effort=high]", records.getValue("implement").launchedModel)
+    assertEquals(
+      "claude-opus-4-8[effort=high]",
+      requireNotNull(harness.service.status(FeatureTaskRuntimeStatusRequest(workflowId = WORKFLOW_ID)))
+        .phases.single { it.phaseId == "implement" }.launchedModel,
+    )
+  }
+
+  @Test
+  fun `a settle write that knows no child launched clears the running write's model`() {
+    val harness = statusHarness()
+    harness.recorder.ensureWorkflowOpen(WORKFLOW_ID, SESSION_ID)
+    harness.recorder.recordPhaseState(
+      FeatureTaskRuntimePhaseStateRequest(
+        workflowId = WORKFLOW_ID,
+        phaseId = "implement",
+        status = "running",
+        attemptCount = 1,
+        resolvedAgentId = "claude",
+        finished = false,
+        launchedModel = "claude-opus-4-8",
+        launchedEffort = "high",
+        launchOutcomeKnown = true,
+      ),
+    )
+    harness.recorder.recordPhaseState(
+      FeatureTaskRuntimePhaseStateRequest(
+        workflowId = WORKFLOW_ID,
+        phaseId = "implement",
+        status = "blocked",
+        attemptCount = 1,
+        resolvedAgentId = "claude",
+        finished = false,
+        blockedReason = "the agent process could not be spawned",
+        launchOutcomeKnown = true,
+      ),
+    )
+
+    val record = requireNotNull(harness.recorder.loadPhaseRecords(WORKFLOW_ID)).getValue("implement")
+    assertNull(record.launchedModel)
+    assertNull(record.launchedEffort)
+    assertTrue("launched_model" !in record.toArtifactMap())
+  }
+
+  @Test
+  fun `a settle that advances the attempt or swaps the agent does not inherit the prior launch pair`() {
+    // Two pre-launch seams that never call the launcher: a cap-exhaustion block writes the *next*
+    // attempt, and a branch-setup block writes under a non-agent id. Both leave launchOutcomeKnown
+    // false, so without the identity gate they inherit the prior attempt's pair and the record — and
+    // the IDE popup reading it — asserts a model that attempt provably never launched.
+    listOf(
+      "advanced attempt" to Pair(2, "claude"),
+      "swapped agent" to Pair(1, "branch-setup"),
+    ).forEach { (case, identity) ->
+      val (attemptCount, agentId) = identity
+      val harness = statusHarness()
+      harness.recorder.ensureWorkflowOpen(WORKFLOW_ID, SESSION_ID)
+      harness.recorder.recordPhaseState(
+        FeatureTaskRuntimePhaseStateRequest(
+          workflowId = WORKFLOW_ID,
+          phaseId = "implement",
+          status = "running",
+          attemptCount = 1,
+          resolvedAgentId = "claude",
+          finished = false,
+          launchedModel = "claude-opus-4-8",
+          launchedEffort = "high",
+          launchOutcomeKnown = true,
+        ),
+      )
+      harness.recorder.recordPhaseState(
+        FeatureTaskRuntimePhaseStateRequest(
+          workflowId = WORKFLOW_ID,
+          phaseId = "implement",
+          status = "blocked",
+          attemptCount = attemptCount,
+          resolvedAgentId = agentId,
+          finished = false,
+          blockedReason = "settled before any launch",
+        ),
+      )
+
+      val record = requireNotNull(harness.recorder.loadPhaseRecords(WORKFLOW_ID)).getValue("implement")
+      assertNull(record.launchedModel, "$case must not inherit the model")
+      assertNull(record.launchedEffort, "$case must not inherit the effort")
+    }
+  }
+
+  @Test
+  fun `a Cursor-merged write replaces the launch pair instead of retaining the prior effort`() {
+    val harness = statusHarness()
+    harness.recorder.ensureWorkflowOpen(WORKFLOW_ID, SESSION_ID)
+    harness.recorder.recordPhaseState(
+      FeatureTaskRuntimePhaseStateRequest(
+        workflowId = WORKFLOW_ID,
+        phaseId = "implement",
+        status = "running",
+        attemptCount = 1,
+        resolvedAgentId = "claude",
+        finished = false,
+        launchedModel = "claude-opus-4-8",
+        launchedEffort = "medium",
+        launchOutcomeKnown = true,
+      ),
+    )
+    harness.recorder.recordPhaseState(
+      FeatureTaskRuntimePhaseStateRequest(
+        workflowId = WORKFLOW_ID,
+        phaseId = "implement",
+        status = "running",
+        attemptCount = 2,
+        resolvedAgentId = "cursor",
+        finished = false,
+        launchedModel = "claude-opus-4-8[effort=high]",
+        launchOutcomeKnown = true,
+      ),
+    )
+
+    val record = requireNotNull(harness.recorder.loadPhaseRecords(WORKFLOW_ID)).getValue("implement")
+    assertEquals("claude-opus-4-8[effort=high]", record.launchedModel)
+    assertNull(record.launchedEffort)
+  }
+
+  @Test
+  fun `phase whose latest ledger entry is blocked is reported blocked and current`() {
+    val harness = statusHarness()
+    harness.recorder.ensureWorkflowOpen(WORKFLOW_ID, SESSION_ID)
+    // The runner records a block only in the ledger, leaving the per-phase record at
+    // `running`; status must derive the blocked state from the newest ledger entry.
+    harness.recordRunning("implement", attemptCount = 3)
+    harness.recordCompleted("preplan", attemptCount = 1)
+    harness.recordCompleted("plan", attemptCount = 1)
+    harness.recordLedger(FeatureTaskRuntimePhaseLedgerAction.START, "implement", attemptCount = 1)
+    harness.recordLedger(FeatureTaskRuntimePhaseLedgerAction.BLOCKED, "implement", attemptCount = 3)
+
+    val projection = requireNotNull(
+      harness.service.status(FeatureTaskRuntimeStatusRequest(workflowId = WORKFLOW_ID)),
+    )
+
+    assertEquals(2, projection.completeCount)
+    assertEquals(1, projection.blockedCount)
+    assertEquals("implement", projection.currentPhaseId)
+    assertEquals("completed", projection.phases.single { it.phaseId == "plan" }.status)
+    assertEquals("blocked", projection.phases.single { it.phaseId == "implement" }.status)
+  }
+
+  @Test
+  fun `crash resume process retry and verifier reentry all surface as continuation kinds`() {
+    val cases = listOf(
+      Triple(FeatureTaskRuntimePhaseLedgerAction.RESUME, FeatureTaskRuntimeContinuationKind.CRASH_RESUME, ""),
+      Triple(FeatureTaskRuntimePhaseLedgerAction.START, FeatureTaskRuntimeContinuationKind.PROCESS_RETRY, ""),
+      Triple(
+        FeatureTaskRuntimePhaseLedgerAction.LOOP_EDGE,
+        FeatureTaskRuntimeContinuationKind.VERIFIER_REENTRY,
+        " driving_verdict=gaps_found",
+      ),
+      Triple(
+        FeatureTaskRuntimePhaseLedgerAction.FIX_LOOP_ITERATION,
+        FeatureTaskRuntimeContinuationKind.SCHEMA_CORRECTION,
+        "",
+      ),
+    )
+
+    cases.forEach { (action, kind, trailing) ->
+      val harness = statusHarness()
+      harness.recorder.ensureWorkflowOpen(WORKFLOW_ID, SESSION_ID)
+      harness.recordRunning("implement", attemptCount = 2)
+      harness.recordContinuationLedger(
+        phaseId = "implement",
+        attemptCount = 2,
+        action = action,
+        kind = kind,
+        trailingDetail = trailing,
+      )
+
+      val projection = requireNotNull(
+        harness.service.status(FeatureTaskRuntimeStatusRequest(workflowId = WORKFLOW_ID)),
+      )
+
+      assertEquals(
+        kind.wireValue,
+        projection.phases.single { it.phaseId == "implement" }.continuationKind,
+        "$action must surface ${kind.wireValue} rather than being filtered out of the lookup",
+      )
+    }
+  }
+
+  @Test
+  fun `the newest continuation entry across actions wins`() {
+    val harness = statusHarness()
+    harness.recorder.ensureWorkflowOpen(WORKFLOW_ID, SESSION_ID)
+    harness.recordRunning("implement", attemptCount = 3)
+    harness.recordContinuationLedger(
+      phaseId = "implement",
+      attemptCount = 2,
+      action = FeatureTaskRuntimePhaseLedgerAction.FIX_LOOP_ITERATION,
+      kind = FeatureTaskRuntimeContinuationKind.SCHEMA_CORRECTION,
+    )
+    harness.recordContinuationLedger(
+      phaseId = "implement",
+      attemptCount = 3,
+      action = FeatureTaskRuntimePhaseLedgerAction.RESUME,
+      kind = FeatureTaskRuntimeContinuationKind.CRASH_RESUME,
+    )
+
+    val projection = requireNotNull(
+      harness.service.status(FeatureTaskRuntimeStatusRequest(workflowId = WORKFLOW_ID)),
+    )
+
+    assertEquals(
+      FeatureTaskRuntimeContinuationKind.CRASH_RESUME.wireValue,
+      projection.phases.single { it.phaseId == "implement" }.continuationKind,
+    )
+  }
+
+  @Test
+  fun `a later resume entry supersedes an earlier block`() {
+    val harness = statusHarness()
+    harness.recorder.ensureWorkflowOpen(WORKFLOW_ID, SESSION_ID)
+    harness.recordRunning("implement", attemptCount = 4)
+    harness.recordLedger(FeatureTaskRuntimePhaseLedgerAction.BLOCKED, "implement", attemptCount = 3)
+    harness.recordLedger(FeatureTaskRuntimePhaseLedgerAction.RESUME, "implement", attemptCount = 4)
+
+    val projection = requireNotNull(
+      harness.service.status(FeatureTaskRuntimeStatusRequest(workflowId = WORKFLOW_ID)),
+    )
+
+    assertEquals(0, projection.blockedCount)
+    assertEquals("running", projection.phases.single { it.phaseId == "implement" }.status)
+  }
+
+  @Test
+  fun `phase with a durable blocked record is reported blocked even when the ledger has no blocked entry`() {
+    // F-002: blocked-ness derives primarily from the durable per-phase record, so it survives even
+    // when the append-only ledger's BLOCKED entry has been pruned by the retention cap.
+    val harness = statusHarness()
+    harness.recorder.ensureWorkflowOpen(WORKFLOW_ID, SESSION_ID)
+    harness.recordCompleted("preplan", attemptCount = 1)
+    harness.recordCompleted("plan", attemptCount = 1)
+    harness.recordBlocked("implement", attemptCount = 3, "fix loop exhausted")
+    // Ledger carries only a START (the BLOCKED entry was pruned away); the durable record stands.
+    harness.recordLedger(FeatureTaskRuntimePhaseLedgerAction.START, "implement", attemptCount = 1)
+
+    val projection = requireNotNull(
+      harness.service.status(FeatureTaskRuntimeStatusRequest(workflowId = WORKFLOW_ID)),
+    )
+
+    assertEquals(1, projection.blockedCount)
+    assertEquals("blocked", projection.phases.single { it.phaseId == "implement" }.status)
+    assertEquals("implement", projection.currentPhaseId)
+  }
+
+  @Test
+  fun `ledger-only audit gap projects reopened implement as current`() {
+    val harness = statusHarness()
+    harness.recorder.ensureWorkflowOpen(WORKFLOW_ID, SESSION_ID)
+    listOf("preplan", "plan", "implement", "audit", "review")
+      .forEach { harness.recordCompleted(it, attemptCount = 1) }
+    harness.recordLoopEdge(
+      phaseId = "implement",
+      attemptCount = 1,
+      loopId = "audit_gap",
+      edgeIteration = 1,
+    )
+
+    val projection = requireNotNull(
+      harness.service.status(FeatureTaskRuntimeStatusRequest(workflowId = WORKFLOW_ID)),
+    )
+
+    assertEquals("implement", projection.currentPhaseId)
+  }
+
+  @Test
+  fun `ledger-only review fix projects implement fix as current`() {
+    val harness = statusHarness()
+    harness.recorder.ensureWorkflowOpen(WORKFLOW_ID, SESSION_ID)
+    listOf("preplan", "plan", "implement", "audit", "review", "verify_findings")
+      .forEach { harness.recordCompleted(it, attemptCount = 1) }
+    harness.recordLoopEdge(
+      phaseId = "implement_fix",
+      attemptCount = 1,
+      loopId = "review_fix",
+      edgeIteration = 1,
+    )
+
+    val projection = requireNotNull(
+      harness.service.status(FeatureTaskRuntimeStatusRequest(workflowId = WORKFLOW_ID)),
+    )
+
+    assertEquals("implement_fix", projection.currentPhaseId)
+  }
+
+  @Test
+  fun `projection surfaces the durable resolved feature branch`() {
+    val harness = statusHarness()
+    harness.recorder.ensureWorkflowOpen(WORKFLOW_ID, SESSION_ID)
+    harness.recorder.recordResolvedBranch(
+      WORKFLOW_ID,
+      FeatureTaskRuntimeResolvedBranch(
+        branch = "feat/SKILL-65-runtime-feature-task-parity",
+        baseBranch = "main",
+        created = true,
+      ),
+    )
+
+    val projection = requireNotNull(
+      harness.service.status(FeatureTaskRuntimeStatusRequest(workflowId = WORKFLOW_ID)),
+    )
+
+    assertEquals("feat/SKILL-65-runtime-feature-task-parity", projection.resolvedBranch)
+  }
+
+  @Test
+  fun `projection resolved branch is null before branch setup`() {
+    val harness = statusHarness()
+    harness.recorder.ensureWorkflowOpen(WORKFLOW_ID, SESSION_ID)
+
+    val projection = requireNotNull(
+      harness.service.status(FeatureTaskRuntimeStatusRequest(workflowId = WORKFLOW_ID)),
+    )
+
+    assertNull(projection.resolvedBranch)
+  }
+
+  @Test
+  fun `projection surfaces the durable decompose terminal with subtask count and guidance fields`() {
+    // T-F001 / AC4: a durable decompose-terminal record projects into the status as a non-null
+    // decomposeTerminal carrying the reason, manifest/subtask paths, and the derived subtask count.
+    val harness = statusHarness()
+    harness.recorder.ensureWorkflowOpen(WORKFLOW_ID, SESSION_ID)
+    harness.decomposeTerminalRecorder.recordDecomposeTerminal(
+      WORKFLOW_ID,
+      FeatureTaskRuntimeDecomposeTerminal(
+        reason = "Plan needs ordered subtasks.",
+        parentSpecPath = ".feature-specs/SKILL-65-runtime/spec.md",
+        decompositionManifestPath = ".feature-specs/SKILL-65-runtime/decomposition-manifest.yaml",
+        subtaskSpecPaths = listOf(
+          ".feature-specs/SKILL-65-runtime/spec_subtask_1_domain.md",
+          ".feature-specs/SKILL-65-runtime/spec_subtask_2_runtime.md",
+        ),
+      ),
+    )
+
+    val projection = requireNotNull(
+      harness.service.status(FeatureTaskRuntimeStatusRequest(workflowId = WORKFLOW_ID)),
+    )
+
+    val terminal = requireNotNull(projection.decomposeTerminal)
+    assertEquals("Plan needs ordered subtasks.", terminal.reason)
+    assertEquals(".feature-specs/SKILL-65-runtime/decomposition-manifest.yaml", terminal.decompositionManifestPath)
+    assertEquals(
+      listOf(
+        ".feature-specs/SKILL-65-runtime/spec_subtask_1_domain.md",
+        ".feature-specs/SKILL-65-runtime/spec_subtask_2_runtime.md",
+      ),
+      terminal.subtaskSpecPaths,
+    )
+    assertEquals(2, terminal.subtaskCount)
+    assertEquals(0, projection.pendingCount)
+    assertEquals(0, projection.blockedCount)
+    assertNull(projection.currentPhaseId)
+  }
+
+  @Test
+  fun `projection decompose terminal is null when no decompose stop was recorded`() {
+    val harness = statusHarness()
+    harness.recorder.ensureWorkflowOpen(WORKFLOW_ID, SESSION_ID)
+
+    val projection = requireNotNull(
+      harness.service.status(FeatureTaskRuntimeStatusRequest(workflowId = WORKFLOW_ID)),
+    )
+
+    assertNull(projection.decomposeTerminal)
+  }
+
+  @Test
+  fun `projection feature size is null before run invariants are persisted`() {
+    val harness = statusHarness()
+    harness.recorder.ensureWorkflowOpen(WORKFLOW_ID, SESSION_ID)
+
+    val projection = requireNotNull(
+      harness.service.status(FeatureTaskRuntimeStatusRequest(workflowId = WORKFLOW_ID)),
+    )
+
+    assertNull(projection.featureSize)
+  }
+
+  @Test
+  fun `fully forward completed run does not project the loop-only implement_fix as current`() {
+    // SKILL-85 Subtask 4 (F-005/F-006): a clean forward run completes every phase except the loop-only
+    // implement_fix (never launched on a clean run, so permanently pending). currentPhaseId must skip
+    // it rather than report a never-run loop-only phase; with no other incomplete phase it reports none.
+    val harness = statusHarness()
+    harness.recorder.ensureWorkflowOpen(WORKFLOW_ID, SESSION_ID)
+    listOf(
+      "preplan",
+      "plan",
+      "implement",
+      "audit",
+      "review",
+      "verify_findings",
+      "validate",
+      "write_history",
+      "commit_push",
+      "pr",
+    )
+      .forEach { harness.recordCompleted(it, attemptCount = 1) }
+
+    val projection = requireNotNull(
+      harness.service.status(FeatureTaskRuntimeStatusRequest(workflowId = WORKFLOW_ID)),
+    )
+
+    assertEquals(10, projection.completeCount)
+    assertEquals("pending", projection.phases.single { it.phaseId == "implement_fix" }.status)
+    assertNull(projection.currentPhaseId, "a completed forward run reports no current phase, not implement_fix")
+  }
+
+  @Test
+  fun `a workflow with two durable signals reports count and the latest class phase and attempt`() {
+    val harness = statusHarness()
+    harness.recorder.ensureWorkflowOpen(WORKFLOW_ID, SESSION_ID)
+    harness.seedDiagnosticSignals(
+      diagnosticSignal(
+        failureClass = FeatureTaskRuntimeDiagnosticFailureClass.CONFLICT,
+        phaseId = "validate",
+        attempt = 1,
+      ),
+      diagnosticSignal(
+        failureClass = FeatureTaskRuntimeDiagnosticFailureClass.PERMISSION,
+        phaseId = "implement",
+        attempt = 2,
+      ),
+    )
+
+    val projection = requireNotNull(
+      harness.service.status(FeatureTaskRuntimeStatusRequest(workflowId = WORKFLOW_ID)),
+    )
+
+    val degraded = requireNotNull(projection.degradedDiagnostic)
+    assertEquals(2, degraded.count)
+    assertEquals("permission", degraded.failureClass)
+    assertEquals("implement", degraded.phaseId)
+    assertEquals(2, degraded.attempt)
+  }
+
+  @Test
+  fun `a workflow with no diagnostic-signals artifact reports degradedDiagnostic as null`() {
+    val harness = statusHarness()
+    harness.recorder.ensureWorkflowOpen(WORKFLOW_ID, SESSION_ID)
+
+    val projection = requireNotNull(
+      harness.service.status(FeatureTaskRuntimeStatusRequest(workflowId = WORKFLOW_ID)),
+    )
+
+    assertNull(projection.degradedDiagnostic)
+  }
+
+  @Test
+  fun `a diagnostic-signals artifact that is not an array loud-fails status`() {
+    val harness = statusHarness()
+    harness.recorder.ensureWorkflowOpen(WORKFLOW_ID, SESSION_ID)
+    harness.seedDiagnosticSignalsArtifact("not-an-array")
+
+    assertFailsWith<InvalidWorkflowStateSchemaError> {
+      harness.service.status(FeatureTaskRuntimeStatusRequest(workflowId = WORKFLOW_ID))
+    }
+  }
+
+  private companion object {
+    const val WORKFLOW_ID = "wftr-20260603-status-0001"
+    const val SESSION_ID = "ftr-status-001"
+  }
+}
+
+class FeatureTaskRuntimeStatusAttributionTest {
+  @Test
+  fun `attribution rolls up a single-agent run to participating equals finalizer`() {
+    val harness = statusHarness()
+    harness.recorder.ensureWorkflowOpen(WORKFLOW_ID, SESSION_ID)
+    harness.recordCompleted("implement", attemptCount = 1, resolvedAgentId = "codex")
+    harness.recordLedger(START, "implement", attemptCount = 1, resolvedAgentId = "codex")
+    harness.recordLedger(COMPLETE, "commit_push", attemptCount = 1, resolvedAgentId = "codex")
+
+    val attribution = harness.attribution()
+
+    assertEquals("codex", attribution.finalizingAgentId)
+    assertEquals(listOf("codex"), attribution.participatingAgentIds)
+  }
+
+  @Test
+  fun `attribution rolls up a multi-agent recovery handoff to order-stable participants and resuming finalizer`() {
+    val harness = statusHarness()
+    harness.recorder.ensureWorkflowOpen(WORKFLOW_ID, SESSION_ID)
+    // codex starts, hits a limit; claude resumes and completes.
+    // A phase record for the completed implement phase carries claude as its resolvedAgentId,
+    // exercising the phase-record sweep path in agentAttributionFromPhaseState.
+    harness.recordLedger(START, "implement", attemptCount = 1, resolvedAgentId = "codex")
+    harness.recordLedger(RESUME, "implement", attemptCount = 2, resolvedAgentId = "claude")
+    harness.recordCompleted("implement", attemptCount = 2, resolvedAgentId = "claude")
+    harness.recordLedger(COMPLETE, "commit_push", attemptCount = 1, resolvedAgentId = "claude")
+
+    val attribution = harness.attribution()
+
+    assertEquals("claude", attribution.finalizingAgentId)
+    // codex contributed via ledger (START); claude contributed via both ledger (RESUME/COMPLETE) and phase record.
+    assertEquals(listOf("codex", "claude"), attribution.participatingAgentIds)
+  }
+
+  @Test
+  fun `attribution finalizer is the terminal blocked ledger entry`() {
+    val harness = statusHarness()
+    harness.recorder.ensureWorkflowOpen(WORKFLOW_ID, SESSION_ID)
+    harness.recordLedger(START, "implement", attemptCount = 1, resolvedAgentId = "codex")
+    harness.recordLedger(BLOCKED, "review", attemptCount = 3, resolvedAgentId = "claude")
+
+    val attribution = harness.attribution()
+
+    assertEquals("claude", attribution.finalizingAgentId)
+    assertEquals(listOf("codex", "claude"), attribution.participatingAgentIds)
+  }
+
+  @Test
+  fun `attribution falls back to the durable terminal phase record when the ledger terminal entry is pruned`() {
+    // The 200-cap ledger may prune the COMPLETE/BLOCKED entry; the durable blocked record carries the finalizer.
+    val harness = statusHarness()
+    harness.recorder.ensureWorkflowOpen(WORKFLOW_ID, SESSION_ID)
+    harness.recordBlocked("implement", attemptCount = 3, blockedReason = "exhausted", resolvedAgentId = "claude")
+    // Ledger carries only a non-terminal START (the BLOCKED entry was pruned away).
+    harness.recordLedger(START, "implement", attemptCount = 1, resolvedAgentId = "codex")
+
+    val attribution = harness.attribution()
+
+    assertEquals("claude", attribution.finalizingAgentId)
+    // Participants still include the pruned-ledger record agent via the phase-record sweep.
+    assertEquals(listOf("codex", "claude"), attribution.participatingAgentIds)
+  }
+
+  @Test
+  fun `projection surfaces the ledger-derived finalizing agent even without a goal continuation`() {
+    val harness = statusHarness()
+    harness.recorder.ensureWorkflowOpen(WORKFLOW_ID, SESSION_ID)
+    harness.recordLedger(START, "implement", attemptCount = 1, resolvedAgentId = "codex")
+    harness.recordLedger(COMPLETE, "commit_push", attemptCount = 1, resolvedAgentId = "claude")
+
+    val projection = requireNotNull(
+      harness.service.status(FeatureTaskRuntimeStatusRequest(workflowId = WORKFLOW_ID)),
+    )
+
+    assertEquals("claude", projection.finalizingAgentId)
+  }
+
+  @Test
+  fun `first audit pass is a pass not semantic loop 1 when no audit-gap edge has fired`() {
+    val harness = statusHarness()
+    harness.recorder.ensureWorkflowOpen(WORKFLOW_ID, SESSION_ID)
+    listOf("preplan", "plan", "implement").forEach { harness.recordCompleted(it, attemptCount = 1) }
+    harness.recordRunning("audit", attemptCount = 1)
+
+    val projection = requireNotNull(
+      harness.service.status(FeatureTaskRuntimeStatusRequest(workflowId = WORKFLOW_ID)),
+    )
+    val execution = requireNotNull(projection.currentPhaseExecution)
+
+    assertEquals("audit", projection.currentPhaseId)
+    assertEquals("audit", execution.phaseId)
+    assertEquals(IdeStatusCurrentPhaseExecutionKind.PASS, execution.kind)
+    assertEquals(1, execution.count)
+    assertNull(execution.total)
+  }
+
+  @Test
+  fun `audit-gap reentry reports durable loop iteration and does not reset to zero`() {
+    val harness = statusHarness()
+    harness.recorder.ensureWorkflowOpen(WORKFLOW_ID, SESSION_ID)
+    listOf("preplan", "plan", "implement").forEach { harness.recordCompleted(it, attemptCount = 1) }
+    harness.recordRunning("audit", attemptCount = 2)
+    harness.recordLoopEdge(
+      phaseId = "implement",
+      attemptCount = 1,
+      loopId = "audit_gap",
+      edgeIteration = 2,
+    )
+
+    val projection = requireNotNull(
+      harness.service.status(FeatureTaskRuntimeStatusRequest(workflowId = WORKFLOW_ID)),
+    )
+    // Ledger-only reopen makes implement current; execution must carry the edge iteration.
+    assertEquals("implement", projection.currentPhaseId)
+    val execution = requireNotNull(projection.currentPhaseExecution)
+    assertEquals("implement", execution.phaseId)
+    assertEquals(IdeStatusCurrentPhaseExecutionKind.SEMANTIC_LOOP, execution.kind)
+    assertEquals(2, execution.count)
+    assertNull(execution.total)
+  }
+
+  @Test
+  fun `audit after gap reports semantic loop from durable audit-gap iteration`() {
+    val harness = statusHarness()
+    harness.recorder.ensureWorkflowOpen(WORKFLOW_ID, SESSION_ID)
+    listOf("preplan", "plan", "implement").forEach { harness.recordCompleted(it, attemptCount = 1) }
+    harness.recordLoopEdge(
+      phaseId = "implement",
+      attemptCount = 1,
+      loopId = "audit_gap",
+      edgeIteration = 1,
+    )
+    // After implement settles the reopen, audit is current again on loop 1.
+    harness.recorder.recordPhaseState(
+      FeatureTaskRuntimePhaseStateRequest(
+        workflowId = WORKFLOW_ID,
+        phaseId = "implement",
+        status = "completed",
+        attemptCount = 2,
+        resolvedAgentId = "claude",
+        finished = true,
+        outputArtifact = """{"contract_version":"0.1"}""",
+        loopId = "audit_gap",
+        edgeIteration = 1,
+      ),
+    )
+    harness.recordRunning("audit", attemptCount = 2)
+
+    val projection = requireNotNull(
+      harness.service.status(FeatureTaskRuntimeStatusRequest(workflowId = WORKFLOW_ID)),
+    )
+    assertEquals("audit", projection.currentPhaseId)
+    val execution = requireNotNull(projection.currentPhaseExecution)
+    assertEquals(IdeStatusCurrentPhaseExecutionKind.SEMANTIC_LOOP, execution.kind)
+    assertEquals(1, execution.count)
+  }
+
+  @Test
+  fun `review pass comes from durable review_pass_number not attempt_count`() {
+    val harness = statusHarness()
+    harness.recorder.ensureWorkflowOpen(WORKFLOW_ID, SESSION_ID)
+    listOf("preplan", "plan", "implement", "audit").forEach { harness.recordCompleted(it, attemptCount = 1) }
+    harness.recorder.recordPhaseState(
+      FeatureTaskRuntimePhaseStateRequest(
+        workflowId = WORKFLOW_ID,
+        phaseId = "review",
+        status = "running",
+        attemptCount = 5,
+        resolvedAgentId = "claude",
+        finished = false,
+        reviewPassNumber = 3,
+      ),
+    )
+
+    val projection = requireNotNull(
+      harness.service.status(FeatureTaskRuntimeStatusRequest(workflowId = WORKFLOW_ID)),
+    )
+    val execution = requireNotNull(projection.currentPhaseExecution)
+    assertEquals("review", projection.currentPhaseId)
+    assertEquals(IdeStatusCurrentPhaseExecutionKind.PASS, execution.kind)
+    assertEquals(3, execution.count)
+    assertNull(execution.total)
+  }
+
+  @Test
+  fun `stale completed review pass is omitted after review_fix implement_fix completes`() {
+    val harness = statusHarness()
+    harness.recorder.ensureWorkflowOpen(WORKFLOW_ID, SESSION_ID)
+    listOf("preplan", "plan", "implement", "audit", "review", "verify_findings")
+      .forEach { harness.recordCompleted(it, attemptCount = 1) }
+    harness.recorder.recordPhaseState(
+      FeatureTaskRuntimePhaseStateRequest(
+        workflowId = WORKFLOW_ID,
+        phaseId = "review",
+        status = "completed",
+        attemptCount = 1,
+        resolvedAgentId = "claude",
+        finished = true,
+        outputArtifact = """{"contract_version":"0.1"}""",
+        reviewPassNumber = 2,
+      ),
+    )
+    harness.recordLoopEdge(
+      phaseId = "implement_fix",
+      attemptCount = 1,
+      loopId = "review_fix",
+      edgeIteration = 1,
+    )
+    harness.recorder.recordPhaseState(
+      FeatureTaskRuntimePhaseStateRequest(
+        workflowId = WORKFLOW_ID,
+        phaseId = "implement_fix",
+        status = "completed",
+        attemptCount = 1,
+        resolvedAgentId = "claude",
+        finished = true,
+        outputArtifact = """{"contract_version":"0.1"}""",
+        loopId = "review_fix",
+        edgeIteration = 1,
+      ),
+    )
+
+    val projection = requireNotNull(
+      harness.service.status(FeatureTaskRuntimeStatusRequest(workflowId = WORKFLOW_ID)),
+    )
+    assertEquals("validate", projection.currentPhaseId)
+    val execution = projection.currentPhaseExecution
+    assertTrue(
+      execution == null || execution.kind != IdeStatusCurrentPhaseExecutionKind.PASS || execution.count != 2,
+      "stale completed review pass must not be reported as current, was $execution",
+    )
+  }
+
+  @Test
+  fun `completed review pass is omitted when a later phase is current`() {
+    val harness = statusHarness()
+    harness.recorder.ensureWorkflowOpen(WORKFLOW_ID, SESSION_ID)
+    listOf("preplan", "plan", "implement", "audit", "review", "verify_findings")
+      .forEach { harness.recordCompleted(it, attemptCount = 1) }
+    harness.recorder.recordPhaseState(
+      FeatureTaskRuntimePhaseStateRequest(
+        workflowId = WORKFLOW_ID,
+        phaseId = "review",
+        status = "completed",
+        attemptCount = 1,
+        resolvedAgentId = "claude",
+        finished = true,
+        outputArtifact = """{"contract_version":"0.1"}""",
+        reviewPassNumber = 3,
+      ),
+    )
+    harness.recordRunning("validate", attemptCount = 1)
+
+    val projection = requireNotNull(
+      harness.service.status(FeatureTaskRuntimeStatusRequest(workflowId = WORKFLOW_ID)),
+    )
+    assertEquals("validate", projection.currentPhaseId)
+    val execution = requireNotNull(projection.currentPhaseExecution)
+    assertEquals("validate", execution.phaseId)
+    assertEquals(IdeStatusCurrentPhaseExecutionKind.ATTEMPT, execution.kind)
+    assertEquals(1, execution.count)
+  }
+
+  @Test
+  fun `validation gate run count is gate_run after the gate begins and never invents a total`() {
+    val harness = statusHarness()
+    harness.recorder.ensureWorkflowOpen(WORKFLOW_ID, SESSION_ID)
+    listOf("preplan", "plan", "implement", "audit", "review", "verify_findings").forEach {
+      harness.recordCompleted(it, attemptCount = 1)
+    }
+    harness.recordRunning("validate", attemptCount = 2)
+    harness.recorder.persistValidationGateProgress(
+      WORKFLOW_ID,
+      FeatureTaskRuntimeValidationGateProgress(
+        gateRunCount = 2,
+        gateRuns = listOf(
+          FeatureTaskRuntimeValidationGateRunRecord(
+            durationMs = 10,
+            outcome = "failed",
+            cacheMode = "warm",
+            executedWorkUnits = 1,
+          ),
+          FeatureTaskRuntimeValidationGateRunRecord(
+            durationMs = 12,
+            outcome = "failed",
+            cacheMode = "warm",
+            executedWorkUnits = 1,
+          ),
+        ),
+      ),
+    )
+
+    val projection = requireNotNull(
+      harness.service.status(FeatureTaskRuntimeStatusRequest(workflowId = WORKFLOW_ID)),
+    )
+    val execution = requireNotNull(projection.currentPhaseExecution)
+    assertEquals("validate", execution.phaseId)
+    assertEquals(IdeStatusCurrentPhaseExecutionKind.GATE_RUN, execution.kind)
+    assertEquals(2, execution.count)
+    assertNull(execution.total)
+  }
+
+  @Test
+  fun `bounded regeneration edge exposes iteration and cap without labeling it a semantic loop`() {
+    val harness = statusHarness()
+    harness.recorder.ensureWorkflowOpen(WORKFLOW_ID, SESSION_ID)
+    harness.recordCompleted("preplan", attemptCount = 1)
+    harness.recordCompleted("plan", attemptCount = 1)
+    harness.recordCompleted("implement", attemptCount = 1)
+    harness.recorder.recordPhaseState(
+      FeatureTaskRuntimePhaseStateRequest(
+        workflowId = WORKFLOW_ID,
+        phaseId = "implement_fix",
+        status = "running",
+        attemptCount = 2,
+        resolvedAgentId = "claude",
+        finished = false,
+        loopId = "review_fix",
+        edgeIteration = 1,
+      ),
+    )
+    harness.recordLoopEdge(
+      phaseId = "implement_fix",
+      attemptCount = 2,
+      loopId = "review_fix",
+      edgeIteration = 1,
+    )
+
+    val projection = requireNotNull(
+      harness.service.status(FeatureTaskRuntimeStatusRequest(workflowId = WORKFLOW_ID)),
+    )
+    val execution = requireNotNull(projection.currentPhaseExecution)
+    assertEquals("implement_fix", execution.phaseId)
+    assertEquals(IdeStatusCurrentPhaseExecutionKind.BOUNDED_EDGE, execution.kind)
+    assertEquals(1, execution.count)
+    assertEquals(1, execution.total)
+  }
+
+  @Test
+  fun `newer LOOP_EDGE wins over a stale phase-record edge watermark`() {
+    val harness = statusHarness()
+    harness.recorder.ensureWorkflowOpen(WORKFLOW_ID, SESSION_ID)
+    harness.recordCompleted("preplan", attemptCount = 1)
+    harness.recordCompleted("plan", attemptCount = 1)
+    harness.recordCompleted("implement", attemptCount = 1)
+    harness.recorder.recordPhaseState(
+      FeatureTaskRuntimePhaseStateRequest(
+        workflowId = WORKFLOW_ID,
+        phaseId = "implement_fix",
+        status = "running",
+        attemptCount = 3,
+        resolvedAgentId = "claude",
+        finished = false,
+        loopId = "audit_gap",
+        edgeIteration = 5,
+      ),
+    )
+    harness.recordLoopEdge(
+      phaseId = "implement_fix",
+      attemptCount = 3,
+      loopId = "review_fix",
+      edgeIteration = 1,
+    )
+
+    val projection = requireNotNull(
+      harness.service.status(FeatureTaskRuntimeStatusRequest(workflowId = WORKFLOW_ID)),
+    )
+    val execution = requireNotNull(projection.currentPhaseExecution)
+    assertEquals("implement_fix", execution.phaseId)
+    assertEquals(IdeStatusCurrentPhaseExecutionKind.BOUNDED_EDGE, execution.kind)
+    assertEquals(1, execution.count)
+    assertEquals(1, execution.total)
+  }
+
+  @Test
+  fun `validate blocked with needs user action yields operator decision pause`() {
+    val harness = statusHarness()
+    harness.recorder.ensureWorkflowOpen(WORKFLOW_ID, SESSION_ID)
+    val operatorReason = "Configure GITHUB_REGISTRY_AUTH then run npm ci:safe"
+    harness.recorder.recordPhaseState(
+      FeatureTaskRuntimePhaseStateRequest(
+        workflowId = WORKFLOW_ID,
+        phaseId = "validate",
+        status = "blocked",
+        attemptCount = 1,
+        resolvedAgentId = "claude",
+        finished = true,
+        blockedReason = operatorReason,
+        failureDisposition = FeatureTaskRuntimeFailureDisposition.NEEDS_USER_ACTION,
+      ),
+    )
+
+    val projection = requireNotNull(
+      harness.service.status(FeatureTaskRuntimeStatusRequest(workflowId = WORKFLOW_ID)),
+    )
+
+    assertEquals("validate", projection.operatorDecisionPause?.phaseId)
+    assertEquals(operatorReason, projection.operatorDecisionPause?.reason)
+  }
+
+  @Test
+  fun `validate blocked without needs user action yields no operator decision pause`() {
+    val harness = statusHarness()
+    harness.recorder.ensureWorkflowOpen(WORKFLOW_ID, SESSION_ID)
+    harness.recordBlocked("validate", attemptCount = 2, blockedReason = "fix loop exhausted")
+
+    val projection = requireNotNull(
+      harness.service.status(FeatureTaskRuntimeStatusRequest(workflowId = WORKFLOW_ID)),
+    )
+
+    assertNull(projection.operatorDecisionPause)
+  }
+
+  @Test
+  fun `pending phase with no attempts omits current phase execution`() {
+    val harness = statusHarness()
+    harness.recorder.ensureWorkflowOpen(WORKFLOW_ID, SESSION_ID)
+
+    val projection = requireNotNull(
+      harness.service.status(FeatureTaskRuntimeStatusRequest(workflowId = WORKFLOW_ID)),
+    )
+
+    assertEquals("preplan", projection.currentPhaseId)
+    assertNull(projection.currentPhaseExecution)
+  }
+
+  private companion object {
+    const val WORKFLOW_ID = "wftr-20260603-status-0001"
+    const val SESSION_ID = "ftr-status-001"
+  }
+}
+
+private fun diagnosticSignal(
+  failureClass: FeatureTaskRuntimeDiagnosticFailureClass,
+  phaseId: String,
+  attempt: Int,
+): FeatureTaskRuntimeDiagnosticSignal = FeatureTaskRuntimeDiagnosticSignal(
+  operation = "retain-producer-output",
+  failureClass = failureClass,
+  conflictingKey = "wftr-20260603-status-0001:$phaseId:0:$attempt:1:cursor",
+  phaseId = phaseId,
+  attempt = attempt,
+  repairTurn = 1,
+  generation = 0,
+  recordedAt = "2026-08-12T20:19:51Z",
+)
+
+private fun statusHarness(): StatusHarness {
+  val repository = StatusInMemoryWorkflowRepository()
+  val database = StatusFakeDatabaseSessionFactory(repository)
+  val recorder = featureTaskRuntimePhaseRecorder(
+    database,
+    StatusNoopSnapshotValidator,
+    AcceptingFeatureTaskRuntimeHandoffEnvelopeValidator,
+    AcceptingFeatureTaskRuntimeHandoffFoundationValidator,
+    testHarnessClock,
+    NoopRuntimeDiagnostics,
+  )
+  val decomposeTerminalRecorder = FeatureTaskRuntimeDecomposeTerminalRecorder(database, StatusNoopSnapshotValidator)
+  val runInvariantsStore = FeatureTaskRuntimeRunInvariantsStore(database, StatusNoopSnapshotValidator)
+  return StatusHarness(
+    recorder,
+    decomposeTerminalRecorder,
+    runInvariantsStore,
+    FeatureTaskRuntimeStatusService(recorder, runInvariantsStore, decomposeTerminalRecorder),
+    repository,
+  )
+}
+
+private class StatusHarness(
+  val recorder: FeatureTaskRuntimePhaseRecorder,
+  val decomposeTerminalRecorder: FeatureTaskRuntimeDecomposeTerminalRecorder,
+  val runInvariantsStore: FeatureTaskRuntimeRunInvariantsStore,
+  val service: FeatureTaskRuntimeStatusService,
+  private val repository: StatusInMemoryWorkflowRepository,
+) {
+  fun recordRunning(phaseId: String, attemptCount: Int, resolvedAgentId: String = "claude") = recorder.recordPhaseState(
+    FeatureTaskRuntimePhaseStateRequest(
+      workflowId = WORKFLOW_ID,
+      phaseId = phaseId,
+      status = "running",
+      attemptCount = attemptCount,
+      resolvedAgentId = resolvedAgentId,
+      finished = false,
+      outputArtifact = null,
+    ),
+  )
+
+  fun recordCompleted(phaseId: String, attemptCount: Int, resolvedAgentId: String = "claude") =
+    recorder.recordPhaseState(
+      FeatureTaskRuntimePhaseStateRequest(
+        workflowId = WORKFLOW_ID,
+        phaseId = phaseId,
+        status = "completed",
+        attemptCount = attemptCount,
+        resolvedAgentId = resolvedAgentId,
+        finished = true,
+        outputArtifact = """{"contract_version":"0.1"}""",
+      ),
+    )
+
+  fun recordBlocked(phaseId: String, attemptCount: Int, blockedReason: String, resolvedAgentId: String = "claude") =
+    recorder.recordPhaseState(
+      FeatureTaskRuntimePhaseStateRequest(
+        workflowId = WORKFLOW_ID,
+        phaseId = phaseId,
+        status = "blocked",
+        attemptCount = attemptCount,
+        resolvedAgentId = resolvedAgentId,
+        finished = false,
+        outputArtifact = null,
+        blockedReason = blockedReason,
+      ),
+    )
+
+  fun recordLedger(
+    action: FeatureTaskRuntimePhaseLedgerAction,
+    phaseId: String,
+    attemptCount: Int,
+    resolvedAgentId: String = "claude",
+  ) = recorder.appendLedgerEntry(
+    FeatureTaskRuntimePhaseLedgerRequest(
+      workflowId = WORKFLOW_ID,
+      action = action,
+      phaseId = phaseId,
+      attemptCount = attemptCount,
+      resolvedAgentId = resolvedAgentId,
+      blockedReason = if (action == FeatureTaskRuntimePhaseLedgerAction.BLOCKED) "fix loop exhausted" else null,
+    ),
+  )
+
+  fun recordContinuationLedger(
+    phaseId: String,
+    attemptCount: Int,
+    action: FeatureTaskRuntimePhaseLedgerAction,
+    kind: FeatureTaskRuntimeContinuationKind,
+    trailingDetail: String = "",
+  ) = recorder.appendLedgerEntry(
+    FeatureTaskRuntimePhaseLedgerRequest(
+      workflowId = WORKFLOW_ID,
+      action = action,
+      phaseId = phaseId,
+      attemptCount = attemptCount,
+      resolvedAgentId = DEFAULT_LEDGER_AGENT,
+      blockedReason = FeatureTaskRuntimeContinuationKind.LEDGER_DETAIL_PREFIX + kind.wireValue + trailingDetail,
+    ),
+  )
+
+  fun recordLoopEdge(
+    phaseId: String,
+    attemptCount: Int,
+    loopId: String,
+    edgeIteration: Int,
+    resolvedAgentId: String = "claude",
+  ) = recorder.appendLedgerEntry(
+    FeatureTaskRuntimePhaseLedgerRequest(
+      workflowId = WORKFLOW_ID,
+      action = LOOP_EDGE,
+      phaseId = phaseId,
+      attemptCount = attemptCount,
+      resolvedAgentId = resolvedAgentId,
+      loopId = loopId,
+      edgeIteration = edgeIteration,
+    ),
+  )
+
+  fun seedDiagnosticSignals(vararg signals: FeatureTaskRuntimeDiagnosticSignal) {
+    seedDiagnosticSignalsArtifact(signals.map { it.toArtifactMap() })
+  }
+
+  fun seedDiagnosticSignalsArtifact(raw: Any?) {
+    val row = requireNotNull(repository.getFeatureTaskRuntimeWorkflow(WORKFLOW_ID))
+    val artifacts = decodeArtifacts(row.artifactsJson).toMutableMap()
+    artifacts[FEATURE_TASK_RUNTIME_DIAGNOSTIC_SIGNALS_ARTIFACT_KEY] = raw
+    repository.saveFeatureTaskRuntimeWorkflow(
+      row.copy(artifactsJson = JsonSupport.mapToJsonString(artifacts)),
+    )
+  }
+
+  fun attribution() = agentAttributionFromPhaseState(recorder, WORKFLOW_ID)
+
+  fun recordRunInvariants(featureSize: FeatureTaskRuntimeFeatureSize) {
+    runInvariantsStore.resolve(
+      workflowId = WORKFLOW_ID,
+      proposed =
+      FeatureTaskRuntimeRunInvariants(
+        specReference = ".feature-specs/SKILL-65/spec.md",
+        featureSize = featureSize,
+        acceptanceCriteria = listOf("AC-1"),
+        mandatesAndOverrides = emptyList(),
+      ),
+    )
+  }
+
+  private companion object {
+    const val WORKFLOW_ID = "wftr-20260603-status-0001"
+    const val SESSION_ID = "ftr-status-001"
+    const val DEFAULT_LEDGER_AGENT = "claude"
+  }
+}
+
+private class StatusFakeDatabaseSessionFactory(
+  private val repository: StatusInMemoryWorkflowRepository,
+) : DatabaseSessionFactory {
+  private val dbPath = Path.of("/fake/status-metrics.db")
+
+  override fun resolveDbPath(): Path = dbPath
+
+  override fun databaseExists(): Boolean = true
+
+  override fun <T> read(block: (UnitOfWork) -> T): T = block(unitOfWork())
+
+  override fun <T> selfManagedWrite(block: (UnitOfWork) -> T): T = block(unitOfWork())
+
+  override fun <T> transaction(block: (UnitOfWork) -> T): T = block(unitOfWork())
+
+  private fun unitOfWork(): UnitOfWork = object : UnitOfWork {
+    override val dbPath: Path = this@StatusFakeDatabaseSessionFactory.dbPath
+    override val reviews: ReviewRepository get() = error("unused")
+    override val learnings: LearningRepository get() = error("unused")
+    override val lifecycleTelemetry: LifecycleTelemetryRepository get() = error("unused")
+    override val telemetryReconciliation: TelemetryReconciliationRepository get() = error("unused")
+    override val telemetryOutbox: TelemetryOutboxRepository get() = error("unused")
+    override val workflowStates: WorkflowStateRepository = repository
+    override val workList = EmptyWorkListRepository
+    override val goalPlanningPreparations = EmptyGoalPlanningPreparationRepository
+    override val goalRunnerControls = EmptyGoalRunnerControlRepository
+    override val featureTaskRuntimeAuditGenerations =
+      EmptyFeatureTaskRuntimeAuditGenerationRepository
+  }
+}
+
+private class StatusInMemoryWorkflowRepository : WorkflowStateRepository {
+  override fun saveFeatureTaskExecutionIdentity(identity: FeatureTaskExecutionIdentity) = Unit
+
+  override fun findStandaloneFeatureTaskCandidates(normalizedIssueKey: String, repositoryIdentity: String) =
+    emptyList<FeatureTaskWorkflowCandidate>()
+
+  private val taskRuntimeRows = linkedMapOf<String, WorkflowStateRecord>()
+
+  override fun saveFeatureTaskRuntimeWorkflow(row: WorkflowStateRecord) {
+    taskRuntimeRows[row.workflowId] = row
+  }
+
+  override fun getFeatureTaskRuntimeWorkflow(workflowId: String): WorkflowStateRecord? = taskRuntimeRows[workflowId]
+
+  override fun listFeatureTaskRuntimeWorkflows(limit: Int): List<WorkflowStateRecord> =
+    taskRuntimeRows.values.toList().asReversed().take(limit)
+
+  override fun latestFeatureTaskRuntimeWorkflow(): WorkflowStateRecord? =
+    listFeatureTaskRuntimeWorkflows(1).firstOrNull()
+
+  override fun saveFeatureImplementWorkflow(row: WorkflowStateRecord) = Unit
+
+  override fun saveFeatureVerifyWorkflow(row: WorkflowStateRecord) = Unit
+
+  override fun getFeatureImplementWorkflow(workflowId: String): WorkflowStateRecord? = null
+
+  override fun getFeatureVerifyWorkflow(workflowId: String): WorkflowStateRecord? = null
+
+  override fun listFeatureImplementWorkflows(limit: Int): List<WorkflowStateRecord> = emptyList()
+
+  override fun listFeatureVerifyWorkflows(limit: Int): List<WorkflowStateRecord> = emptyList()
+
+  override fun latestFeatureImplementWorkflow(): WorkflowStateRecord? = null
+
+  override fun latestFeatureVerifyWorkflow(): WorkflowStateRecord? = null
+
+  override fun getFeatureImplementSessionSummary(sessionId: String): FeatureImplementSessionSummary? = null
+
+  override fun getFeatureVerifySessionSummary(sessionId: String): FeatureVerifySessionSummary? = null
+}
+
+private object StatusNoopSnapshotValidator : WorkflowSnapshotValidator {
+  override fun validate(snapshot: Map<String, Any?>, slug: String) = Unit
+}

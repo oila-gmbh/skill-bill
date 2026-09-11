@@ -1,7 +1,7 @@
 package skillbill.review
 
-import skillbill.db.core.DatabaseRuntime
 import skillbill.infrastructure.sqlite.SQLiteReviewRunCompletenessRepository
+import skillbill.infrastructure.sqlite.core.DatabaseRuntime
 import skillbill.review.model.ParallelReviewMergedFinding
 import skillbill.review.model.ParallelReviewSeverity
 import skillbill.review.model.ReviewClaimVerdict

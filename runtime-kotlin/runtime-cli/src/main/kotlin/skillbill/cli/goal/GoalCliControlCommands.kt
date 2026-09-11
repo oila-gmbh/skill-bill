@@ -7,16 +7,16 @@ import com.github.ajalt.clikt.parameters.options.option
 import com.github.ajalt.clikt.parameters.options.required
 import com.github.ajalt.clikt.parameters.types.int
 import me.tatarka.inject.annotations.Inject
-import skillbill.application.goalrunner.GoalOperatorDecisionService
-import skillbill.application.goalrunner.GoalRunnerStatusService
-import skillbill.application.goalrunner.model.GoalRunnerAcceptRequest
-import skillbill.application.goalrunner.model.GoalRunnerOperatorDecisionRequest
-import skillbill.application.goalrunner.model.GoalRunnerRepairRequest
-import skillbill.application.goalrunner.model.GoalRunnerReplanRequest
-import skillbill.application.goalrunner.model.GoalRunnerResetRequest
 import skillbill.cli.kernel.CliRunState
 import skillbill.cli.kernel.DocumentedCliCommand
 import skillbill.cli.model.CliRunInputs
+import skillbill.engine.goalrunner.GoalOperatorDecisionService
+import skillbill.engine.goalrunner.GoalRunnerStatusService
+import skillbill.engine.goalrunner.model.GoalRunnerAcceptRequest
+import skillbill.engine.goalrunner.model.GoalRunnerOperatorDecisionRequest
+import skillbill.engine.goalrunner.model.GoalRunnerRepairRequest
+import skillbill.engine.goalrunner.model.GoalRunnerReplanRequest
+import skillbill.engine.goalrunner.model.GoalRunnerResetRequest
 import skillbill.workflow.goal.model.GoalSubtaskOperatorDecision
 import java.nio.file.Path
 

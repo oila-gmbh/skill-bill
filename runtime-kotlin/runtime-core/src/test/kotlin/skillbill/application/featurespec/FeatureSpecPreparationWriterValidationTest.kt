@@ -2,9 +2,9 @@ package skillbill.application.featurespec
 
 import skillbill.application.decomposition.DecompositionManifestWriter
 import skillbill.application.decomposition.loadDecompositionManifest
-import skillbill.application.goalrunner.model.GoalRunnerStatusRequest
 import skillbill.di.RuntimeComponent
 import skillbill.di.create
+import skillbill.engine.goalrunner.model.GoalRunnerStatusRequest
 import skillbill.featurespec.model.FeatureSpecPreparationDecision
 import skillbill.featurespec.model.FeatureSpecPreparationMode
 import skillbill.featurespec.model.FeatureSpecSubtaskPreparation

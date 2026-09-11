@@ -1,10 +1,10 @@
-package skillbill.nativeagent
+package skillbill.infrastructure.fs.nativeagent
 
 import org.junit.jupiter.api.Assumptions
-import skillbill.nativeagent.composition.parseNativeAgentSourceText
-import skillbill.nativeagent.composition.renderNativeAgentSource
-import skillbill.nativeagent.rendering.discoverRepoNativeAgentSourceEntries
-import skillbill.nativeagent.validation.nativeAgentSourceDisplay
+import skillbill.infrastructure.fs.nativeagent.composition.parseNativeAgentSourceText
+import skillbill.infrastructure.fs.nativeagent.composition.renderNativeAgentSource
+import skillbill.infrastructure.fs.nativeagent.rendering.discoverRepoNativeAgentSourceEntries
+import skillbill.infrastructure.fs.nativeagent.validation.nativeAgentSourceDisplay
 import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.test.Test

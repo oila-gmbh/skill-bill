@@ -7,8 +7,8 @@ import skillbill.cli.goal.toGoalDiffStatCliMap
 import skillbill.cli.goal.toGoalSelectedDiffHunksCliMap
 import skillbill.cli.kernel.toPayload
 import skillbill.cli.workflow.toCliMap
-import skillbill.contracts.workflow.GoalObservabilityEventSchemaValidator
 import skillbill.error.InvalidGoalObservabilityEventSchemaError
+import skillbill.infrastructure.fs.contracts.workflow.GoalObservabilityEventSchemaValidator
 import skillbill.workflow.engine.WorkflowEngine
 import skillbill.workflow.engine.WorkflowSnapshotValidator
 import skillbill.workflow.engine.model.WorkflowSnapshotView

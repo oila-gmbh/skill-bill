@@ -1,12 +1,12 @@
-package skillbill.scaffold
+package skillbill.infrastructure.fs.scaffold
 
 import skillbill.error.AmbiguousLaneOwnershipError
 import skillbill.error.InvalidManifestSchemaError
+import skillbill.infrastructure.fs.scaffold.platformpack.discoverPlatformPackManifests
+import skillbill.infrastructure.fs.scaffold.platformpack.loadPlatformManifest
+import skillbill.infrastructure.fs.scaffold.platformpack.loadPlatformPack
 import skillbill.scaffold.model.CodeReviewCompositionMode
 import skillbill.scaffold.model.CodeReviewCompositionScope
-import skillbill.scaffold.platformpack.discoverPlatformPackManifests
-import skillbill.scaffold.platformpack.loadPlatformManifest
-import skillbill.scaffold.platformpack.loadPlatformPack
 import skillbill.scaffold.policy.scaffold.APPROVED_CODE_REVIEW_AREAS
 import skillbill.testing.repoRootFromTest
 import java.nio.file.Files

@@ -1,9 +1,9 @@
-package skillbill.install
+package skillbill.infrastructure.fs.install
 
-import skillbill.install.staging.StageInstalledSkillInput
-import skillbill.install.staging.stageInstalledSkill
-import skillbill.scaffold.platformpack.loadPlatformManifest
-import skillbill.testing.repoRootFromTest
+import skillbill.infrastructure.fs.install.staging.StageInstalledSkillInput
+import skillbill.infrastructure.fs.install.staging.stageInstalledSkill
+import skillbill.infrastructure.fs.scaffold.platformpack.loadPlatformManifest
+import skillbill.model.toPathimport skillbill.testing.repoRootFromTest
 import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.io.path.readText

@@ -35,6 +35,7 @@ object PrincipleEnforcementInventory {
 
   private fun packagePrefixForModule(moduleName: String): String = when (moduleName) {
     "runtime-application" -> APPLICATION_PACKAGE_PREFIX
+    "runtime-engine" -> "skillbill.engine."
     "runtime-cli" -> CLI_PACKAGE_PREFIX
     "runtime-ports" -> "skillbill.ports."
     "runtime-mcp" -> "skillbill.mcp."
@@ -89,7 +90,8 @@ object PrincipleEnforcementInventory {
   val spilloverFileNameExemptions: Set<String> = emptySet()
 
   val sanctionedCompositionEntrypoints: Set<String> = setOf(
-    "runtime-kotlin/runtime-infra-fs/src/main/kotlin/skillbill/scaffold/runtime/ScaffoldStandaloneEntrypoint.kt",
+    "runtime-kotlin/runtime-infra-fs/src/main/kotlin/skillbill/infrastructure/fs/scaffold/" +
+      "runtime/ScaffoldStandaloneEntrypoint.kt",
   )
 
   /**
@@ -138,7 +140,7 @@ object PrincipleEnforcementInventory {
   val parseBoundarySites: List<ArchitectureScanSupport.ParseBoundarySite> = listOf(
     ArchitectureScanSupport.ParseBoundarySite(
       relativePath =
-      "runtime-kotlin/runtime-infra-sqlite/src/main/kotlin/skillbill/db/workflow/" +
+      "runtime-kotlin/runtime-infra-sqlite/src/main/kotlin/skillbill/infrastructure/sqlite/workflow/" +
         "GoalRunnerControlStore.kt",
       functionNames = setOf(
         "decodeControlState",
@@ -217,7 +219,7 @@ object PrincipleEnforcementInventory {
     ),
     ArchitectureScanSupport.ParseBoundarySite(
       relativePath =
-      "runtime-kotlin/runtime-infra-fs/src/main/kotlin/skillbill/scaffold/platformpack/" +
+      "runtime-kotlin/runtime-infra-fs/src/main/kotlin/skillbill/infrastructure/fs/scaffold/platformpack/" +
         "ShellContentLoaderValidationGate.kt",
       functionNames = setOf(
         "parseValidationGate",

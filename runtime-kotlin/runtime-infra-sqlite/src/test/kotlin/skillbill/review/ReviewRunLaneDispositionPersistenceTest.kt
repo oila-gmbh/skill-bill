@@ -1,11 +1,11 @@
 package skillbill.review
 
-import skillbill.db.core.DatabaseReviewColumnMigrations
+import skillbill.infrastructure.sqlite.core.DatabaseReviewColumnMigrations
 import skillbill.infrastructure.sqlite.review.fetchReviewRunLanes
 import skillbill.infrastructure.sqlite.review.replaceReviewRunLanes
 import skillbill.review.context.model.ReviewLaneReviewDisposition
 import skillbill.review.context.model.ReviewLaneSegmentAccounting
-import skillbill.review.model.ReviewRunLane
+import skillbill.review.model.ReviewLaneResolutionStateimport skillbill.review.model.ReviewRunLane
 import skillbill.review.model.ReviewRunLaneSegmentAccountingJson
 import skillbill.tempDbConnection
 import java.nio.file.Files

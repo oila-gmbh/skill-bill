@@ -17,7 +17,7 @@ import skillbill.workflow.engine.model.WorkflowUpdateAcknowledgementView
  * `runtime-cli/src/main/kotlin/skillbill/cli/WorkflowCliResultMappers.kt`
  * and `runtime-mcp/src/main/kotlin/skillbill/mcp/WorkflowMcpResultMappers.kt`,
  * which delegate the field-order contract to
- * `skillbill.contracts.workflow.WorkflowContracts`.
+ * `skillbill.infrastructure.fs.contracts.workflow.WorkflowContracts`.
  *
  * Each result models `status` implicitly via either an Ok or Error
  * sealed variant, so callers do not branch on string status fields.

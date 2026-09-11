@@ -41,6 +41,7 @@ class PlanningProjectionNoopValidatorGuardTest {
       runtimeRoot.resolve("runtime-application/src/test"),
       runtimeRoot.resolve("runtime-domain/src/test"),
       runtimeRoot.resolve("runtime-cli/src/test"),
+      runtimeRoot.resolve("runtime-engine/src/test"),
     )
 
     val actualConsumers = testRoots

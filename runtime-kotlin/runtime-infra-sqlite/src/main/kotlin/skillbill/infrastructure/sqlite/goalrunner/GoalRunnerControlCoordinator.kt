@@ -1,6 +1,7 @@
 package skillbill.infrastructure.sqlite.goalrunner
 import skillbill.goalrunner.model.GoalRunnerControlState
 import skillbill.goalrunner.model.GoalRunnerExecutionLease
+import skillbill.infrastructure.sqlite.workflow.decompositionRuntime
 import skillbill.ports.db.DatabaseSessionFactory
 import skillbill.ports.goalrunner.acquireExecutionLease
 import skillbill.ports.goalrunner.executionLease

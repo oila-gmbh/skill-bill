@@ -1,9 +1,9 @@
 package skillbill.infrastructure.sqlite
 
 import me.tatarka.inject.annotations.Inject
-import skillbill.db.core.DatabaseRuntime
-import skillbill.db.core.databaseAccessError
 import skillbill.error.DatabaseAccessOperation
+import skillbill.infrastructure.sqlite.core.DatabaseRuntime
+import skillbill.infrastructure.sqlite.core.databaseAccessError
 import skillbill.model.EnvironmentContext
 import skillbill.ports.db.DatabaseSessionFactory
 import skillbill.ports.persistence.UnitOfWork

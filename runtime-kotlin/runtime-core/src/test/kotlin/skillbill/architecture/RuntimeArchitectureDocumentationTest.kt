@@ -136,25 +136,21 @@ class RuntimeArchitectureDocumentationTest {
         "skillbill.cli",
         "skillbill.config",
         "skillbill.contracts",
-        "skillbill.db",
         "skillbill.di",
         "skillbill.domain.skillremove",
+        "skillbill.engine",
         "skillbill.error",
         "skillbill.featurespec",
-        "skillbill.goalplanning",
         "skillbill.goalrunner",
         "skillbill.idestatus",
-        "skillbill.install",
         "skillbill.infrastructure",
-        "skillbill.launcher",
+        "skillbill.install",
         "skillbill.learnings",
         "skillbill.mcp",
         "skillbill.model",
-        "skillbill.nativeagent",
         "skillbill.ports",
         "skillbill.review",
         "skillbill.scaffold",
-        "skillbill.skillremove",
         "skillbill.telemetry",
         "skillbill.text",
         "skillbill.workflow",
@@ -226,7 +222,7 @@ class RuntimeArchitectureDocumentationTest {
         "the census and names sanctioned second entrypoints explicitly."
 
     const val SCAFFOLD_STANDALONE_ENTRYPOINT_GUARDRAIL =
-      "- `skillbill.scaffold.runtime.ScaffoldStandaloneEntrypoint` is the sanctioned\n  " +
+      "- `skillbill.infrastructure.fs.scaffold.runtime.ScaffoldStandaloneEntrypoint` is the sanctioned\n  " +
         "second scaffold entrypoint for in-tree parity and rollback tests that cannot\n  " +
         "reach `RuntimeComponent`; production paths use `FileSystemScaffoldOrchestrator`."
 

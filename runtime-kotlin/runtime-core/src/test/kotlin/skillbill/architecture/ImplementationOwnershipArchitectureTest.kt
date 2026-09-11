@@ -22,11 +22,11 @@ class ImplementationOwnershipArchitectureTest {
   @Test
   fun `implementation ownership moved out of runtime core`() {
     listOf(
-      "skillbill/install",
-      "skillbill/scaffold",
-      "skillbill/nativeagent",
-      "skillbill/launcher",
-      "skillbill/skillremove",
+      "skillbill/infrastructure/fs/install",
+      "skillbill/infrastructure/fs/scaffold",
+      "skillbill/infrastructure/fs/nativeagent",
+      "skillbill/infrastructure/fs/launcher",
+      "skillbill/infrastructure/fs/skillremove",
       "skillbill/workflow",
     ).forEach { packagePath ->
       assertTrue(
@@ -36,11 +36,11 @@ class ImplementationOwnershipArchitectureTest {
     }
 
     listOf(
-      "skillbill/install/runtime/InstallOperations.kt",
-      "skillbill/scaffold/runtime/ScaffoldService.kt",
-      "skillbill/nativeagent/rendering/NativeAgentOperations.kt",
-      "skillbill/launcher/mcp/McpRegistrationOperations.kt",
-      "skillbill/skillremove/SkillRemoveJvmFileSystem.kt",
+      "skillbill/infrastructure/fs/install/runtime/InstallOperations.kt",
+      "skillbill/infrastructure/fs/scaffold/runtime/ScaffoldService.kt",
+      "skillbill/infrastructure/fs/nativeagent/rendering/NativeAgentOperations.kt",
+      "skillbill/infrastructure/fs/launcher/mcp/McpRegistrationOperations.kt",
+      "skillbill/infrastructure/fs/skillremove/SkillRemoveJvmFileSystem.kt",
     ).forEach { packagePath ->
       assertTrue(
         Files.isRegularFile(runtimeRoot.resolve("runtime-infra-fs/src/main/kotlin/$packagePath")),
@@ -78,11 +78,11 @@ class ImplementationOwnershipArchitectureTest {
       ),
     )
     val movedPackageRoots = listOf(
-      "skillbill/install",
-      "skillbill/scaffold",
-      "skillbill/nativeagent",
-      "skillbill/launcher",
-      "skillbill/skillremove",
+      "skillbill/infrastructure/fs/install",
+      "skillbill/infrastructure/fs/scaffold",
+      "skillbill/infrastructure/fs/nativeagent",
+      "skillbill/infrastructure/fs/launcher",
+      "skillbill/infrastructure/fs/skillremove",
     ).map { packagePath -> runtimeRoot.resolve("runtime-infra-fs/src/main/kotlin/$packagePath") }
 
     val violations = movedPackageRoots
@@ -419,7 +419,7 @@ class ImplementationOwnershipArchitectureTest {
       emptyList(),
       violations,
       "Scaffold pure-policy packages must not import skillbill.infrastructure.fs.* or " +
-        "skillbill.scaffold.ScaffoldService/FileSystem* — those imports leak adapter ownership " +
+        "skillbill.infrastructure.fs.scaffold.ScaffoldService/FileSystem* — those imports leak adapter ownership " +
         "into runtime-domain/runtime-application policy code (SKILL-52.1 subtask 2).",
     )
   }
@@ -427,19 +427,21 @@ class ImplementationOwnershipArchitectureTest {
   @Test
   fun `io-coupled scaffold validators live in capability-aligned adapters`() {
     // SKILL-52.1 subtask 3 (AC1): the IO-coupled validators that previously lived as
-    // top-level functions in `skillbill.scaffold.ScaffoldService.kt` must live on the
+    // top-level functions in `skillbill.infrastructure.fs.scaffold.ScaffoldService.kt` must live on the
     // capability-aligned adapter classes in `runtime-infra-fs` under
     // `skillbill.infrastructure.fs`. The FQN-based lookup avoids short-name collisions
     // (subtask-1 pitfall) by binding each validator to the absolute file path of its
     // owning adapter.
     val repoValidationAdapter = runtimeRoot.resolve(
-      "runtime-infra-fs/src/main/kotlin/skillbill/scaffold/adapters/FileSystemScaffoldRepoValidation.kt",
+      "runtime-infra-fs/src/main/kotlin/skillbill/infrastructure/fs/scaffold/adapters/" +
+        "FileSystemScaffoldRepoValidation.kt",
     )
     val sourceLoaderAdapter = runtimeRoot.resolve(
-      "runtime-infra-fs/src/main/kotlin/skillbill/scaffold/adapters/FileSystemScaffoldSourceLoader.kt",
+      "runtime-infra-fs/src/main/kotlin/skillbill/infrastructure/fs/scaffold/adapters/" +
+        "FileSystemScaffoldSourceLoader.kt",
     )
     val legacyScaffoldService = runtimeRoot.resolve(
-      "runtime-infra-fs/src/main/kotlin/skillbill/scaffold/runtime/ScaffoldService.kt",
+      "runtime-infra-fs/src/main/kotlin/skillbill/infrastructure/fs/scaffold/runtime/ScaffoldService.kt",
     )
     assertTrue(Files.isRegularFile(repoValidationAdapter), "Repo-validation adapter file must exist.")
     assertTrue(Files.isRegularFile(sourceLoaderAdapter), "Source-loader adapter file must exist.")
@@ -496,7 +498,7 @@ class ImplementationOwnershipArchitectureTest {
     assertEquals(
       emptyList(),
       redeclared,
-      "Legacy skillbill.scaffold.ScaffoldService.kt must NOT redeclare IO-coupled validators " +
+      "Legacy skillbill.infrastructure.fs.scaffold.ScaffoldService.kt must NOT redeclare IO-coupled validators " +
         "moved to runtime-infra-fs capability adapters in SKILL-52.1 subtask 3 (AC1).",
     )
   }
@@ -626,9 +628,9 @@ class ImplementationOwnershipArchitectureTest {
     val mustBeDetectedAsForbidden = listOf(
       "import skillbill.infrastructure.fs.Foo",
       "import skillbill.infrastructure.fs.bar.Baz",
-      "import skillbill.scaffold.ScaffoldService",
-      "import skillbill.scaffold.FileSystemAnything",
-      "import skillbill.scaffold.adapters.FileSystemScaffoldSourceLoader",
+      "import skillbill.infrastructure.fs.scaffold.ScaffoldService",
+      "import skillbill.infrastructure.fs.scaffold.FileSystemAnything",
+      "import skillbill.infrastructure.fs.scaffold.adapters.FileSystemScaffoldSourceLoader",
     )
     val mustNotBeDetectedAsForbidden = listOf(
       "import skillbill.scaffold.policy.scaffold.X",
@@ -665,9 +667,9 @@ class ImplementationOwnershipArchitectureTest {
     // @Provides bindings. These explicit imports are not runtime-core implementation ownership.
     val ALLOWED_COMPOSITION_IMPORTS: Set<String> = setOf(
       "skillbill.install.model.InstallPlanWireValidator",
-      "skillbill.launcher.agentrun.FileSystemAgentRunLauncher",
-      "skillbill.launcher.agentrun.PathExecutableLookup",
-      "skillbill.launcher.review.UnixSocketGovernedReviewEvidenceEndpointBinder",
+      "skillbill.infrastructure.fs.launcher.agentrun.FileSystemAgentRunLauncher",
+      "skillbill.infrastructure.fs.launcher.agentrun.PathExecutableLookup",
+      "skillbill.infrastructure.fs.launcher.review.UnixSocketGovernedReviewEvidenceEndpointBinder",
       "skillbill.workflow.decomposition.DecompositionManifestValidator",
       "skillbill.workflow.taskruntime.FeatureTaskRuntimeHandoffEnvelopeValidator",
       "skillbill.workflow.taskruntime.FeatureTaskRuntimeHandoffFoundationValidator",
@@ -681,9 +683,9 @@ class ImplementationOwnershipArchitectureTest {
       "skillbill.workflow.goal.GoalProgressEventValidator",
       "skillbill.ports.idestatus.IdeStatusValidator",
       "skillbill.workflow.engine.WorkflowSnapshotValidator",
-      "skillbill.scaffold.adapters.FileSystemScaffoldRepoValidation",
-      "skillbill.scaffold.adapters.FileSystemScaffoldSourceLoader",
-      "skillbill.skillremove.FileSystemSkillRemoveFileSystem",
+      "skillbill.infrastructure.fs.scaffold.adapters.FileSystemScaffoldRepoValidation",
+      "skillbill.infrastructure.fs.scaffold.adapters.FileSystemScaffoldSourceLoader",
+      "skillbill.infrastructure.fs.skillremove.FileSystemSkillRemoveFileSystem",
     )
 
     val scaffoldApplicationServiceFileNames: Set<String> = emptySet()

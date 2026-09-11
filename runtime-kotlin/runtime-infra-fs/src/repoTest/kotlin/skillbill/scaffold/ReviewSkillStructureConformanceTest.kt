@@ -1,8 +1,8 @@
-package skillbill.scaffold
+package skillbill.infrastructure.fs.scaffold
 
 import com.fasterxml.jackson.dataformat.yaml.YAMLMapper
-import skillbill.scaffold.rendering.canonicalSeverityCloser
-import skillbill.scaffold.validation.ReviewSkillStructureValidator
+import skillbill.infrastructure.fs.scaffold.rendering.canonicalSeverityCloser
+import skillbill.infrastructure.fs.scaffold.validation.ReviewSkillStructureValidator
 import skillbill.testing.repoRootFromTest
 import java.nio.file.Files
 import java.nio.file.Path

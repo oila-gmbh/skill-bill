@@ -4,7 +4,7 @@ package skillbill.application.agentoutput
  * Head+tail excerpt of child-process [stderr], bounded to [maxChars]. Head+tail rather than a plain
  * tail because a plain tail drops the exception type and message at the top of a crash stack trace.
  */
-internal fun stderrExcerpt(stderr: String, maxChars: Int): String? {
+fun stderrExcerpt(stderr: String, maxChars: Int): String? {
   val trimmed = stderr.takeIf(String::isNotBlank) ?: return null
   if (trimmed.length <= maxChars) {
     return trimmed
@@ -25,7 +25,7 @@ internal fun stderrExcerpt(stderr: String, maxChars: Int): String? {
  * Prefer stderr, else stdout, skipping known harness status banners so a non-zero exit is not blamed
  * on Codex's normal "Reading prompt from stdin..." line.
  */
-internal fun agentFailureExcerpt(stderr: String, stdout: String, maxChars: Int): String? {
+fun agentFailureExcerpt(stderr: String, stdout: String, maxChars: Int): String? {
   val preferred = stderr.takeIf(String::isNotBlank) ?: stdout.takeIf(String::isNotBlank) ?: return null
   val signal = preferred.lineSequence()
     .map(String::trim)

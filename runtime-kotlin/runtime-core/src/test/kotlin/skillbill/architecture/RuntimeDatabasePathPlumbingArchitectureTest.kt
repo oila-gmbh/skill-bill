@@ -5,7 +5,7 @@ import kotlin.test.assertEquals
 
 class RuntimeDatabasePathPlumbingArchitectureTest {
   @Test
-  fun `runtime application and ports main source do not thread db override plumbing through signatures or request fields`() {
+  fun `application and ports main source omit db override plumbing from signatures and requests`() {
     val modules = setOf("runtime-application", "runtime-ports")
     val violations =
       declaredMainSourceFiles()

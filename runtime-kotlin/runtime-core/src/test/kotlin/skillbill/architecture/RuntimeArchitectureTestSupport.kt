@@ -20,6 +20,7 @@ internal val runtimeArchitectureSourceRoots: List<Path> =
     runtimeArchitectureRoot.resolve("runtime-contracts/src/main/kotlin"),
     runtimeArchitectureRoot.resolve("runtime-core/src/main/kotlin"),
     runtimeArchitectureRoot.resolve("runtime-domain/src/main/kotlin"),
+    runtimeArchitectureRoot.resolve("runtime-engine/src/main/kotlin"),
     runtimeArchitectureRoot.resolve("runtime-infra-fs/src/main/kotlin"),
     runtimeArchitectureRoot.resolve("runtime-infra-http/src/main/kotlin"),
     runtimeArchitectureRoot.resolve("runtime-infra-sqlite/src/main/kotlin"),
@@ -27,6 +28,84 @@ internal val runtimeArchitectureSourceRoots: List<Path> =
     runtimeArchitectureRoot.resolve("runtime-mcp/src/main/kotlin"),
     runtimeArchitectureRoot.resolve("runtime-ports/src/main/kotlin"),
   )
+
+internal fun engineInboundApiViolations(consumerSourceRoots: List<String>, allowedTypes: Set<String>): List<String> {
+  val violations = mutableListOf<String>()
+  consumerSourceRoots.forEach { relativeRoot ->
+    val root = runtimeArchitectureRoot.resolve(relativeRoot)
+    if (!Files.isDirectory(root)) return@forEach
+    Files.walk(root).use { paths ->
+      paths
+        .filter { path -> Files.isRegularFile(path) && path.toString().endsWith(".kt") }
+        .forEach { path ->
+          val relativePath = runtimeArchitectureRoot.relativize(path).toString()
+          val source = Files.readString(path)
+          source.lineSequence()
+            .flatMap { line ->
+              Regex("""skillbill\.engine\.[A-Za-z0-9_.]+""")
+                .findAll(line)
+                .map { it.value }
+                .filter { reference -> reference !in allowedTypes }
+                .mapNotNull { reference ->
+                  engineInboundApiViolationMessage(relativePath, reference, allowedTypes)
+                }
+            }
+            .forEach { violation -> violations += violation }
+        }
+    }
+  }
+  return violations.distinct().sorted()
+}
+
+internal fun engineInboundApiViolationMessage(
+  relativePath: String,
+  referencedType: String,
+  allowedTypes: Set<String>,
+): String? = if (referencedType in allowedTypes) {
+  null
+} else {
+  "$relativePath references unpinned engine type $referencedType"
+}
+
+internal fun mainPackageRootsForModule(moduleName: String): Set<String> {
+  val root = runtimeArchitectureRoot.resolve("$moduleName/src/main/kotlin")
+  if (!Files.isDirectory(root)) return emptySet()
+  return Files.walk(root).use { paths ->
+    paths.filter { path -> Files.isRegularFile(path) && path.toString().endsWith(".kt") }
+      .map { path ->
+        val source = Files.readString(path)
+        RuntimeArchitectureScanConstants.packagePattern.find(source)?.groupValues?.get(1).orEmpty()
+      }
+      .filter(String::isNotBlank)
+      .map(::mainPackageRootForPackageName)
+      .toList()
+      .toSet()
+  }
+}
+
+internal fun mainPackageRootForPackageName(packageName: String): String {
+  val segments = packageName.split('.')
+  return when {
+    segments.size >= 3 && segments[0] == "skillbill" && segments[1] == "infrastructure" ->
+      segments.take(3).joinToString(".")
+    segments.size >= 2 && segments[0] == "skillbill" ->
+      segments.take(2).joinToString(".")
+    else -> packageName
+  }
+}
+
+internal fun subsystemPackageRootViolationMessage(
+  moduleName: String,
+  actualRoots: Set<String>,
+  expectedRoot: String,
+): String? = when {
+  actualRoots.isEmpty() -> "$moduleName has no main-source package root"
+  actualRoots.size > 1 ->
+    "$moduleName has multiple main-source roots: ${actualRoots.sorted()}"
+  actualRoots.single() != expectedRoot ->
+    "$moduleName root ${actualRoots.single()} does not match expected $expectedRoot"
+  else -> null
+}
 
 internal const val MCP_SCAFFOLD_RUNTIME_PATH =
   "runtime-mcp/src/main/kotlin/skillbill/mcp/scaffold/McpScaffoldRuntime.kt"
@@ -785,159 +864,153 @@ internal object RuntimeArchitectureScanConstants {
     "skillbill.application.decomposition.parseStackBranches",
     "skillbill.application.decomposition.parseSubtasks",
     "skillbill.application.decomposition.specSource",
-    "skillbill.application.featuretask.CompletedImplementationOutputArgs.outputMap",
-    "skillbill.application.featuretask.CompletionProjectionRejectionArgs.outputMap",
-    "skillbill.application.featuretask.FeatureTaskPhaseSettlementService.auditSettle",
-    "skillbill.application.featuretask.FeatureTaskPhaseSettlementService.block",
-    "skillbill.application.featuretask.FeatureTaskPhaseSettlementService.complete",
-    "skillbill.application.featuretask.FeatureTaskPhaseSettlementService.findEnvelope",
-    "skillbill.application.featuretask.FeatureTaskRuntimeGoalContinuationArtifactPatcher.save",
-    "skillbill.application.featuretask.FeatureTaskRuntimeOutputVerification.auditProseValue",
-    "skillbill.application.featuretask.FeatureTaskRuntimeOutputVerification.dispositionsFrom",
-    "skillbill.application.featuretask.FeatureTaskRuntimeOutputVerification.rejectedFindingDispositions",
-    "skillbill.application.featuretask.FeatureTaskRuntimeOutputVerification.unresolvedReviewFindings",
-    "skillbill.application.featuretask.FeatureTaskRuntimeOutputVerification.verdictFor",
-    "skillbill.application.featuretask.FeatureTaskRuntimeOutputVerification.verifiedFindingDispositions",
-    "skillbill.application.featuretask.FeatureTaskRuntimePhaseReviewGenerationApi.recordedFindingVerdicts",
-    "skillbill.application.featuretask.FeatureTaskRuntimePhaseSafetyPolicy.dispositionForTerminalOutput",
-    "skillbill.application.featuretask.FeatureTaskRuntimeReviewEnvelope.envelopeMap",
-    "skillbill.application.featuretask.FeatureTaskRuntimeRunLoopAttemptSettlementRepairDispatch." +
-      "settleValidatedOutputBoundary",
-    "skillbill.application.featuretask.FeatureTaskRuntimeRunLoopAttemptSettlementReceiptFinalize.rejectValidatedOutput",
-    "skillbill.application.featuretask.FeatureTaskRuntimeRunLoopCheckpointOwnedPathRemediationEstablish." +
+    "skillbill.engine.featuretask.CompletedImplementationOutputArgs.outputMap",
+    "skillbill.engine.featuretask.CompletionProjectionRejectionArgs.outputMap",
+    "skillbill.engine.featuretask.FeatureTaskPhaseSettlementService.auditSettle",
+    "skillbill.engine.featuretask.FeatureTaskPhaseSettlementService.block",
+    "skillbill.engine.featuretask.FeatureTaskPhaseSettlementService.complete",
+    "skillbill.engine.featuretask.FeatureTaskPhaseSettlementService.findEnvelope",
+    "skillbill.engine.featuretask.FeatureTaskRuntimeGoalContinuationArtifactPatcher.save",
+    "skillbill.engine.featuretask.FeatureTaskRuntimeOutputVerification.auditProseValue",
+    "skillbill.engine.featuretask.FeatureTaskRuntimeOutputVerification.dispositionsFrom",
+    "skillbill.engine.featuretask.FeatureTaskRuntimeOutputVerification.rejectedFindingDispositions",
+    "skillbill.engine.featuretask.FeatureTaskRuntimeOutputVerification.unresolvedReviewFindings",
+    "skillbill.engine.featuretask.FeatureTaskRuntimeOutputVerification.verdictFor",
+    "skillbill.engine.featuretask.FeatureTaskRuntimeOutputVerification.verifiedFindingDispositions",
+    "skillbill.engine.featuretask.FeatureTaskRuntimePhaseReviewGenerationApi.recordedFindingVerdicts",
+    "skillbill.engine.featuretask.FeatureTaskRuntimePhaseSafetyPolicy.dispositionForTerminalOutput",
+    "skillbill.engine.featuretask.FeatureTaskRuntimeReviewEnvelope.envelopeMap",
+    "skillbill.engine.featuretask.FeatureTaskRuntimeRunLoopAttemptSettlement.settleValidatedOutputBoundary",
+    "skillbill.engine.featuretask.FeatureTaskRuntimeRunLoopAttemptSettlement.rejectValidatedOutput",
+    "skillbill.engine.featuretask.FeatureTaskRuntimeRunLoopCheckpointRemediation." +
       "completedImplementFixProducedOutputs",
-    "skillbill.application.featuretask.FeatureTaskRuntimeRunLoopDrivePhaseSelection.completeReservedGoalReviewPass",
-    "skillbill.application.featuretask.FeatureTaskRuntimeRunLoopLaunchProcessWait.outputEnvelopeOf",
-    "skillbill.application.featuretask.FeatureTaskRuntimeRunLoopOutputPersistence.persistRejectedVerificationFindings",
-    "skillbill.application.featuretask.FeatureTaskRuntimeRunLoopOutputVerification.firstValidatedOutputRejection",
-    "skillbill.application.featuretask.FeatureTaskRuntimeRunLoopOutputVerificationSchemaGate.auditGapProgressPause",
-    "skillbill.application.featuretask.FeatureTaskRuntimeRunLoopOutputVerificationEnvelopeWalk." +
+    "skillbill.engine.featuretask.FeatureTaskRuntimeRunLoopDrive.completeReservedGoalReviewPass",
+    "skillbill.engine.featuretask.FeatureTaskRuntimeRunLoopLaunch.outputEnvelopeOf",
+    "skillbill.engine.featuretask.FeatureTaskRuntimeRunLoopOutputPersistence.persistRejectedVerificationFindings",
+    "skillbill.engine.featuretask.FeatureTaskRuntimeRunLoopOutputVerification.firstValidatedOutputRejection",
+    "skillbill.engine.featuretask.FeatureTaskRuntimeRunLoopOutputVerification.auditGapProgressPause",
+    "skillbill.engine.featuretask.FeatureTaskRuntimeRunLoopOutputVerification." +
       "findingVerificationBoundaryBodyDeliveryDecision",
-    "skillbill.application.featuretask.FeatureTaskRuntimeRunLoopOutputVerificationEnvelopeWalk." +
+    "skillbill.engine.featuretask.FeatureTaskRuntimeRunLoopOutputVerification." +
       "findingVerificationBoundaryDispositionGate",
-    "skillbill.application.featuretask.FeatureTaskRuntimeRunLoopOutputVerificationEnvelopeWalk." +
+    "skillbill.engine.featuretask.FeatureTaskRuntimeRunLoopOutputVerification." +
       "findingVerificationBoundaryDispositionGateImpl",
-    "skillbill.application.featuretask.FeatureTaskRuntimeRunLoopOutputVerificationEnvelopeWalk." +
-      "outputVerificationGateReason",
-    "skillbill.application.featuretask.FeatureTaskRuntimeRunLoopOutputVerificationDuplicateKeyMerge." +
-      "verifyFindingsBoundaryContext",
-    "skillbill.application.featuretask.FeatureTaskRuntimeRunLoopOutputVerificationDuplicateKeyMerge." +
+    "skillbill.engine.featuretask.FeatureTaskRuntimeRunLoopOutputVerification.outputVerificationGateReason",
+    "skillbill.engine.featuretask.FeatureTaskRuntimeRunLoopOutputVerification.verifyFindingsBoundaryContext",
+    "skillbill.engine.featuretask.FeatureTaskRuntimeRunLoopOutputVerification." +
       "verifyFindingsDispositionGateContext",
-    "skillbill.application.featuretask.FeatureTaskRuntimeRunLoopRecordRejection.payloadFreeSemanticGateConstraint",
-    "skillbill.application.featuretask.FeatureTaskRuntimeRunLoopRecordRejection.scrubResponseDerivedGateDetail",
-    "skillbill.application.featuretask.FeatureTaskRuntimeRunLoopRepairReceipt.implementFixRepairReceiptSettlement",
-    "skillbill.application.featuretask.FeatureTaskRuntimeRunLoopRepairReceipt.repairReceiptShapeSettlement",
-    "skillbill.application.featuretask.FeatureTaskRuntimeRunLoopSubtaskCommit.revalidated",
-    "skillbill.application.featuretask.FeatureTaskRuntimeRunLoopValidationGateCollectCommand." +
-      "gateTriageCapturedProducedOutputs",
-    "skillbill.application.featuretask.FeatureTaskRuntimeRunLoopValidationGateCollectCommand.looseOutputEnvelope",
-    "skillbill.application.featuretask.FeatureTaskRuntimeRunState.parsedOutputsByPayload",
-    "skillbill.application.featuretask.FeatureTaskRuntimeSubtaskFinalisation.readHandoff",
-    "skillbill.application.featuretask.FeatureTaskRuntimeSubtaskFinalisation.withCommitSha",
-    "skillbill.application.featuretask.FeatureTaskRuntimeSubtaskFinalisationHandoff.readHandoff",
-    "skillbill.application.featuretask.FeatureTaskRuntimeSubtaskFinalisationHandoff.withCommitSha",
-    "skillbill.application.featuretask.FeatureTaskRuntimeVerificationGateReasons.findingVerificationDisposition",
-    "skillbill.application.featuretask.FeatureTaskRuntimeVerificationGateReasons.reviewVerificationSignal",
-    "skillbill.application.featuretask.FeatureTaskRuntimeWorkflowPersistence.persistPatch",
-    "skillbill.application.featuretask.GoalReviewPassCompletionRequest.normalizedOutput",
-    "skillbill.application.featuretask.ImplementFixRepairReceiptArgs.outputMap",
-    "skillbill.application.featuretask.SettleValidatedOutputAfterFingerprintArgs.outputMap",
-    "skillbill.application.featuretask.SettleValidatedOutputPauseArgs.outputMap",
-    "skillbill.application.featuretask.TerminalOutputAttemptArgs.outputMap",
-    "skillbill.application.featuretask.WorkflowRowAdvance.stepUpdates",
-    "skillbill.application.featuretask.checkpointIdentitiesFrom",
-    "skillbill.application.featuretask.continuationFromArtifacts",
-    "skillbill.application.featuretask.continuationPatch",
-    "skillbill.application.featuretask.decodeStrictKeyedArtifactMap",
-    "skillbill.application.featuretask.decomposeTerminalFrom",
-    "skillbill.application.featuretask.deliveredProjectionHistoryFrom",
-    "skillbill.application.featuretask.deliveredProjectionsFrom",
-    "skillbill.application.featuretask.featureSizeFromArtifacts",
-    "skillbill.application.featuretask.featureTaskRuntimeParseRepairReceipt",
-    "skillbill.application.featuretask.featureTaskRuntimeParseRepairReceiptOrNull",
-    "skillbill.application.featuretask.featureTaskRuntimeRepairReceiptShapeRejection",
-    "skillbill.application.featuretask.findingVerificationCheckpointPatch",
-    "skillbill.application.featuretask.goalContinuationFieldAdoptionFrom",
-    "skillbill.application.featuretask.implementationAttemptPatch",
-    "skillbill.application.featuretask.implementationAttemptsFrom",
-    "skillbill.application.featuretask.model.FeatureTaskRuntimePhaseLaunchBriefing.fromArtifactMap",
-    "skillbill.application.featuretask.model.FeatureTaskRuntimePhaseLaunchBriefing.toArtifactMap",
-    "skillbill.application.featuretask.mutatingReconciliationGateReason",
-    "skillbill.application.featuretask.operatorBlockRetryFrom",
-    "skillbill.application.featuretask.parsedOutput",
-    "skillbill.application.featuretask.phaseBriefingsFrom",
-    "skillbill.application.featuretask.phaseLedgerFrom",
-    "skillbill.application.featuretask.phaseRecordsFrom",
-    "skillbill.application.featuretask.producerProjectionGateReason",
-    "skillbill.application.featuretask.quarantineEntriesFrom",
-    "skillbill.application.featuretask.rawReviewResultsFromArtifacts",
-    "skillbill.application.featuretask.recordProjectionMeasurements",
-    "skillbill.application.featuretask.remediationBaseRecoveryEvidenceEntry",
-    "skillbill.application.featuretask.requireValidPlanningProjection",
-    "skillbill.application.featuretask.resolvedBranchFrom",
-    "skillbill.application.featuretask.reviewGenerationFrom",
-    "skillbill.application.featuretask.reviewStateFromArtifacts",
-    "skillbill.application.featuretask.reviewStatePatch",
-    "skillbill.application.featuretask.stepUpdatesFrom",
-    "skillbill.application.featuretask.terminalBlockedReasonFrom",
-    "skillbill.application.featuretask.validateEnvelopeWire",
-    "skillbill.application.featuretask.validatePersistenceWire",
-    "skillbill.application.goalplanning.toEnvelopeMap",
-    "skillbill.application.goalrunner.GoalRunnerChildRepairWedgeApplyLoop.ApplyState.artifacts",
-    "skillbill.application.goalrunner.GoalRunnerChildRepairWedgeApplyLoop.ApplyState.evidenceEntries",
-    "skillbill.application.goalrunner.GoalRunnerChildRepairWedgeApplyLoop.ApplyState.patch",
-    "skillbill.application.goalrunner.GoalRunnerMissingResultPrefixCandidate.output",
-    "skillbill.application.goalrunner.GoalRunnerStaleBlockedOutcomeContext.artifacts",
-    "skillbill.application.goalrunner.childRepairWedgeEvidenceMap",
-    "skillbill.application.goalrunner.continuationArtifactFromMap",
-    "skillbill.application.goalrunner.planning.GoalPlanningContextPromptFormatter.append",
-    "skillbill.application.goalrunner.planning.GoalPlanningSharedContext.planningPacket",
-    "skillbill.application.goalrunner.planning.GoalPlanningSharedContextPacket.catalog",
-    "skillbill.application.goalrunner.planning.GoalPlanningSharedContextPacket.catalogHeadingIds",
-    "skillbill.application.goalrunner.planning.GoalPlanningSharedContextPacket.digest",
-    "skillbill.application.goalrunner.planning.GoalPlanningSharedContextPacket.discardedCatalog",
-    "skillbill.application.goalrunner.planning.GoalPlanningSharedContextPacket.emptyCatalog",
-    "skillbill.application.goalrunner.planning.GoalPlanningSharedContextPacket.includedSubtaskIds",
-    "skillbill.application.goalrunner.planning.GoalPlanningSharedContextPacket.migrate",
-    "skillbill.application.goalrunner.planning.GoalPlanningSharedContextPacket.orderedSubtasks",
-    "skillbill.application.goalrunner.planning.GoalPlanningSharedContextPacket.validate",
-    "skillbill.application.goalrunner.planning.GoalPlanningSharedContextPacketLegacy.migrateFromV01",
-    "skillbill.application.goalrunner.planning.GoalPlanningSharedContextPacketLegacy.migrateFromV02",
-    "skillbill.application.goalrunner.planning.GoalPlanningSharedContextPacketLegacy.migrateFromV03",
-    "skillbill.application.goalrunner.planning.GoalPlanningSharedContextPacketValidation.digest",
-    "skillbill.application.goalrunner.planning.GoalPlanningSharedContextPacketValidation.normalizedSubtasks",
-    "skillbill.application.goalrunner.planning.enrichPreplan",
-    "skillbill.application.goalrunner.planning.freshPlanningPacket",
-    "skillbill.application.goalrunner.planning.gatherSharedContext",
-    "skillbill.application.goalrunner.planning.planningPacketFrom",
-    "skillbill.application.goalrunner.planning.unsuccessfulStatusReason",
-    "skillbill.application.goalrunner.terminalJsonObjectWithoutResultPrefix",
-    "skillbill.application.goalrunner.toStatusMap",
-    "skillbill.application.idestatus.model.IdeStatusProblem.details",
+    "skillbill.engine.featuretask.FeatureTaskRuntimeRunLoopRecordRejection.payloadFreeSemanticGateConstraint",
+    "skillbill.engine.featuretask.FeatureTaskRuntimeRunLoopRecordRejection.scrubResponseDerivedGateDetail",
+    "skillbill.engine.featuretask.FeatureTaskRuntimeRunLoopRepairReceipt.implementFixRepairReceiptSettlement",
+    "skillbill.engine.featuretask.FeatureTaskRuntimeRunLoopRepairReceipt.repairReceiptShapeSettlement",
+    "skillbill.engine.featuretask.FeatureTaskRuntimeRunLoopSubtaskCommit.revalidated",
+    "skillbill.engine.featuretask.FeatureTaskRuntimeRunLoopValidationGate.gateTriageCapturedProducedOutputs",
+    "skillbill.engine.featuretask.FeatureTaskRuntimeRunLoopValidationGate.looseOutputEnvelope",
+    "skillbill.engine.featuretask.FeatureTaskRuntimeRunState.parsedOutputsByPayload",
+    "skillbill.engine.featuretask.FeatureTaskRuntimeSubtaskFinalisation.readHandoff",
+    "skillbill.engine.featuretask.FeatureTaskRuntimeSubtaskFinalisation.withCommitSha",
+    "skillbill.engine.featuretask.FeatureTaskRuntimeSubtaskFinalisationHandoff.readHandoff",
+    "skillbill.engine.featuretask.FeatureTaskRuntimeSubtaskFinalisationHandoff.withCommitSha",
+    "skillbill.engine.featuretask.FeatureTaskRuntimeVerificationGateReasons.findingVerificationDisposition",
+    "skillbill.engine.featuretask.FeatureTaskRuntimeVerificationGateReasons.reviewVerificationSignal",
+    "skillbill.engine.featuretask.FeatureTaskRuntimeWorkflowPersistence.persistPatch",
+    "skillbill.engine.featuretask.GoalReviewPassCompletionRequest.normalizedOutput",
+    "skillbill.engine.featuretask.ImplementFixRepairReceiptArgs.outputMap",
+    "skillbill.engine.featuretask.SettleValidatedOutputAfterFingerprintArgs.outputMap",
+    "skillbill.engine.featuretask.SettleValidatedOutputPauseArgs.outputMap",
+    "skillbill.engine.featuretask.TerminalOutputAttemptArgs.outputMap",
+    "skillbill.engine.featuretask.WorkflowRowAdvance.stepUpdates",
+    "skillbill.engine.featuretask.checkpointIdentitiesFrom",
+    "skillbill.engine.featuretask.continuationFromArtifacts",
+    "skillbill.engine.featuretask.continuationPatch",
+    "skillbill.engine.featuretask.decodeStrictKeyedArtifactMap",
+    "skillbill.engine.featuretask.decomposeTerminalFrom",
+    "skillbill.engine.featuretask.deliveredProjectionHistoryFrom",
+    "skillbill.engine.featuretask.deliveredProjectionsFrom",
+    "skillbill.engine.featuretask.featureSizeFromArtifacts",
+    "skillbill.engine.featuretask.featureTaskRuntimeParseRepairReceipt",
+    "skillbill.engine.featuretask.featureTaskRuntimeParseRepairReceiptOrNull",
+    "skillbill.engine.featuretask.featureTaskRuntimeRepairReceiptShapeRejection",
+    "skillbill.engine.featuretask.findingVerificationCheckpointPatch",
+    "skillbill.engine.featuretask.goalContinuationFieldAdoptionFrom",
+    "skillbill.engine.featuretask.implementationAttemptPatch",
+    "skillbill.engine.featuretask.implementationAttemptsFrom",
+    "skillbill.engine.featuretask.model.FeatureTaskRuntimePhaseLaunchBriefing.fromArtifactMap",
+    "skillbill.engine.featuretask.model.FeatureTaskRuntimePhaseLaunchBriefing.toArtifactMap",
+    "skillbill.engine.featuretask.mutatingReconciliationGateReason",
+    "skillbill.engine.featuretask.operatorBlockRetryFrom",
+    "skillbill.engine.featuretask.FeatureTaskRuntimeRunState.parsedOutput",
+    "skillbill.engine.featuretask.phaseBriefingsFrom",
+    "skillbill.engine.featuretask.phaseLedgerFrom",
+    "skillbill.engine.featuretask.phaseRecordsFrom",
+    "skillbill.engine.featuretask.producerProjectionGateReason",
+    "skillbill.engine.featuretask.quarantineEntriesFrom",
+    "skillbill.engine.featuretask.rawReviewResultsFromArtifacts",
+    "skillbill.engine.featuretask.recordProjectionMeasurements",
+    "skillbill.engine.featuretask.remediationBaseRecoveryEvidenceEntry",
+    "skillbill.engine.featuretask.requireValidPlanningProjection",
+    "skillbill.engine.featuretask.resolvedBranchFrom",
+    "skillbill.engine.featuretask.reviewGenerationFrom",
+    "skillbill.engine.featuretask.reviewStateFromArtifacts",
+    "skillbill.engine.featuretask.reviewStatePatch",
+    "skillbill.engine.featuretask.stepUpdatesFrom",
+    "skillbill.engine.featuretask.terminalBlockedReasonFrom",
+    "skillbill.engine.featuretask.validateEnvelopeWire",
+    "skillbill.engine.featuretask.validatePersistenceWire",
+    "skillbill.engine.goalplanning.toEnvelopeMap",
+    "skillbill.engine.goalrunner.GoalRunnerChildRepairWedgeApplyLoop.ApplyState.artifacts",
+    "skillbill.engine.goalrunner.GoalRunnerChildRepairWedgeApplyLoop.ApplyState.evidenceEntries",
+    "skillbill.engine.goalrunner.GoalRunnerChildRepairWedgeApplyLoop.ApplyState.patch",
+    "skillbill.engine.goalrunner.GoalRunnerMissingResultPrefixCandidate.output",
+    "skillbill.engine.goalrunner.GoalRunnerStaleBlockedOutcomeContext.artifacts",
+    "skillbill.engine.goalrunner.childRepairWedgeEvidenceMap",
+    "skillbill.engine.goalrunner.continuationArtifactFromMap",
+    "skillbill.engine.goalrunner.planning.GoalPlanningContextPromptFormatter.append",
+    "skillbill.engine.goalrunner.planning.GoalPlanningSharedContext.planningPacket",
+    "skillbill.engine.goalrunner.planning.GoalPlanningSharedContextPacket.catalog",
+    "skillbill.engine.goalrunner.planning.GoalPlanningSharedContextPacket.catalogHeadingIds",
+    "skillbill.engine.goalrunner.planning.GoalPlanningSharedContextPacket.digest",
+    "skillbill.engine.goalrunner.planning.GoalPlanningSharedContextPacket.discardedCatalog",
+    "skillbill.engine.goalrunner.planning.GoalPlanningSharedContextPacket.emptyCatalog",
+    "skillbill.engine.goalrunner.planning.GoalPlanningSharedContextPacket.includedSubtaskIds",
+    "skillbill.engine.goalrunner.planning.GoalPlanningSharedContextPacket.migrate",
+    "skillbill.engine.goalrunner.planning.GoalPlanningSharedContextPacket.orderedSubtasks",
+    "skillbill.engine.goalrunner.planning.GoalPlanningSharedContextPacket.validate",
+    "skillbill.engine.goalrunner.planning.GoalPlanningSharedContextPacketLegacy.migrateFromPacketVersion1",
+    "skillbill.engine.goalrunner.planning.GoalPlanningSharedContextPacketLegacy.migrateFromPacketVersion2",
+    "skillbill.engine.goalrunner.planning.GoalPlanningSharedContextPacketLegacy.migrateFromPacketVersion3",
+    "skillbill.engine.goalrunner.planning.GoalPlanningSharedContextPacketValidation.digest",
+    "skillbill.engine.goalrunner.planning.GoalPlanningSharedContextPacketValidation.normalizedSubtasks",
+    "skillbill.engine.goalrunner.planning.enrichPreplan",
+    "skillbill.engine.goalrunner.planning.freshPlanningPacket",
+    "skillbill.engine.goalrunner.planning.gatherSharedContext",
+    "skillbill.engine.goalrunner.planning.planningPacketFrom",
+    "skillbill.engine.goalrunner.planning.unsuccessfulStatusReason",
+    "skillbill.engine.goalrunner.terminalJsonObjectWithoutResultPrefix",
+    "skillbill.engine.goalrunner.toStatusMap",    "skillbill.application.idestatus.model.IdeStatusProblem.details",
     "skillbill.application.idestatus.model.IdeStatusSnapshot.toStatusWireMap",
-    "skillbill.application.planningprojection.producerProjectionGateReason",
-    "skillbill.application.planningprojection.requireValidPlanningProjection",
+    "skillbill.engine.planningprojection.producerProjectionGateReason",
+    "skillbill.engine.planningprojection.requireValidPlanningProjection",
     "skillbill.application.review.model.ReviewContextEnvelope.asWireMap",
     "skillbill.application.review.toBoundedPayload",
-    "skillbill.application.subtaskreview.GoalSubtaskReviewOutcomeDispositionReduction.blockerDispositions",
-    "skillbill.application.subtaskreview.GoalSubtaskReviewStructuredFindingsParse.recordedVerdicts",
-    "skillbill.application.subtaskreview.GoalSubtaskReviewStructuredFindingsParse.reviewRunIdOf",
-    "skillbill.application.subtaskreview.GoalSubtaskReviewStructuredFindingsParse.structuredFindings",
-    "skillbill.application.subtaskreview.GoalSubtaskReviewSummaryReducer.blockerDispositions",
-    "skillbill.application.subtaskreview.GoalSubtaskReviewSummaryReducer.commitFocusedAccounting",
-    "skillbill.application.subtaskreview.GoalSubtaskReviewSummaryReducer.evidenceCoverageComplete",
-    "skillbill.application.subtaskreview.GoalSubtaskReviewSummaryReducer.fromOutput",
-    "skillbill.application.subtaskreview.GoalSubtaskReviewSummaryReducer.outcomeFor",
-    "skillbill.application.subtaskreview.GoalSubtaskReviewSummaryReducer.rejectedVerificationFindings",
-    "skillbill.application.subtaskreview.GoalSubtaskReviewSummaryReducer.unaddressedFindings",
-    "skillbill.application.subtaskreview.GoalSubtaskReviewSummaryReducer.unresolvedCount",
-    "skillbill.application.subtaskreview.GoalSubtaskReviewSummarySanitize.labelFor",
-    "skillbill.application.subtaskreview.GoalSubtaskReviewVerificationRejection.rejectedVerificationFindings",
-    "skillbill.application.subtaskreview.recordedVerdicts",
-    "skillbill.application.subtaskreview.reviewPassVerdict",
-    "skillbill.application.subtaskreview.reviewRunIdOf",
-    "skillbill.application.subtaskreview.structuredFindings",
-    "skillbill.application.telemetry.LifecycleTelemetryService.featureTaskRuntimeFinished",
+    "skillbill.application.review.toProjectionPayload",
+    "skillbill.goalrunner.subtaskreview.GoalSubtaskReviewOutcomeDispositionReduction.blockerDispositions",
+    "skillbill.goalrunner.subtaskreview.GoalSubtaskReviewStructuredFindingsParse.recordedVerdicts",
+    "skillbill.goalrunner.subtaskreview.GoalSubtaskReviewStructuredFindingsParse.reviewRunIdOf",
+    "skillbill.goalrunner.subtaskreview.GoalSubtaskReviewStructuredFindingsParse.structuredFindings",
+    "skillbill.goalrunner.subtaskreview.GoalSubtaskReviewSummaryReducer.blockerDispositions",
+    "skillbill.goalrunner.subtaskreview.GoalSubtaskReviewSummaryReducer.commitFocusedAccounting",
+    "skillbill.goalrunner.subtaskreview.GoalSubtaskReviewSummaryReducer.fromOutput",
+    "skillbill.goalrunner.subtaskreview.GoalSubtaskReviewSummaryReducer.outcomeFor",
+    "skillbill.goalrunner.subtaskreview.GoalSubtaskReviewSummaryReducer.rejectedVerificationFindings",
+    "skillbill.goalrunner.subtaskreview.GoalSubtaskReviewSummaryReducer.unaddressedFindings",
+    "skillbill.goalrunner.subtaskreview.GoalSubtaskReviewSummaryReducer.unresolvedCount",
+    "skillbill.goalrunner.subtaskreview.GoalSubtaskReviewSummarySanitize.labelFor",
+    "skillbill.goalrunner.subtaskreview.GoalSubtaskReviewVerificationRejection.rejectedVerificationFindings",
+    "skillbill.goalrunner.subtaskreview.recordedVerdicts",
+    "skillbill.goalrunner.subtaskreview.reviewPassVerdict",
+    "skillbill.goalrunner.subtaskreview.reviewRunIdOf",
+    "skillbill.goalrunner.subtaskreview.structuredFindings",    "skillbill.application.telemetry.LifecycleTelemetryService.featureTaskRuntimeFinished",
     "skillbill.application.telemetry.LifecycleTelemetryService.featureTaskRuntimeStarted",
     "skillbill.application.telemetry.LifecycleTelemetryService.featureVerifyFinished",
     "skillbill.application.telemetry.LifecycleTelemetryService.featureVerifyStarted",
@@ -1210,27 +1283,16 @@ internal object RuntimeArchitectureScanConstants {
     "skillbill.application.decomposition.manifestPathFromArtifacts",
     "skillbill.application.decomposition.decodeDecompositionManifestMap",
     "skillbill.application.decomposition.encodeDecompositionManifestMap",
-    "skillbill.application.goalrunner.planning.model.GoalChildPlanningHydration.stepUpdates",
-    "skillbill.application.goalrunner.planning.model.GoalChildPlanningHydration.artifacts",
-    "skillbill.application.goalrunner.backwardEdgeCountsFromLedger",
-    "skillbill.application.goalrunner.progressEventFrom",
-    "skillbill.application.goalrunner.declaredProgressEventFrom",
-    "skillbill.application.goalrunner.goalContinuation",
-    "skillbill.application.goalrunner.goalReviewArtifacts",
-    "skillbill.application.goalrunner.goalReviewEmissionEnvelope",
-    "skillbill.application.goalrunner.goalContinuationOutcome",
-    "skillbill.application.goalrunner.toArtifactsMap",
-    "skillbill.application.goalrunner.toArtifactMap",
-    "skillbill.application.goalrunner.GoalParentProjectionWriter.artifacts",
-    "skillbill.application.goalrunner.terminalOutcomeFor",
-    "skillbill.application.goalrunner.derivedTerminalOutcomeFor",
-    "skillbill.application.goalrunner.blockedReasonFrom",
-    "skillbill.application.goalrunner.commitShaFrom",
-    "skillbill.application.goalrunner.missingResultPrefixTerminalOutcomeArtifact",
-    "skillbill.application.goalrunner.maxHistorySequence",
-    "skillbill.application.workflow.GoalObservabilityArtifacts.patchForProgressEvent",
-    "skillbill.application.workflow.GoalObservabilityArtifacts.patchForRuntimeEvent",
-    "skillbill.application.workflow.reviewPolicyFromLegacyArtifacts",
+    "skillbill.engine.goalrunner.planning.model.GoalChildPlanningHydration.stepUpdates",
+    "skillbill.engine.goalrunner.planning.model.GoalChildPlanningHydration.artifacts",
+    "skillbill.engine.goalrunner.goalContinuation",
+    "skillbill.engine.goalrunner.goalReviewArtifacts",
+    "skillbill.engine.goalrunner.goalReviewEmissionEnvelope",
+    "skillbill.engine.goalrunner.toArtifactsMap",
+    "skillbill.engine.goalrunner.toArtifactMap",
+    "skillbill.engine.goalrunner.GoalParentProjectionWriter.artifacts",
+    "skillbill.engine.goalrunner.missingResultPrefixTerminalOutcomeArtifact",
+    "skillbill.engine.goalrunner.maxHistorySequence",    "skillbill.application.workflow.reviewPolicyFromLegacyArtifacts",
     "skillbill.application.workflow.outOfBandAcceptancesFromLegacyArtifacts",
     "skillbill.application.workflow.toPayload",
     "skillbill.application.phaseartifacts.decodeStrictKeyedArtifactMap",

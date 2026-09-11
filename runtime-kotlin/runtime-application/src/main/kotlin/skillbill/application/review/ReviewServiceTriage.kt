@@ -2,7 +2,7 @@ package skillbill.application.review
 
 import skillbill.application.review.model.TriageResult
 import skillbill.application.review.model.TriageResultKind
-import skillbill.application.telemetry.feedbackTelemetryOptions
+import skillbill.application.telemetry.settings.feedbackTelemetryOptions
 import skillbill.ports.db.DatabaseSessionFactory
 import skillbill.ports.review.ReviewRepository
 import skillbill.ports.telemetry.TelemetrySettingsProvider

@@ -1,7 +1,7 @@
 package skillbill.application.system
 
 import me.tatarka.inject.annotations.Inject
-import skillbill.application.telemetry.telemetrySettingsOrNull
+import skillbill.application.telemetry.settings.telemetrySettingsOrNull
 import skillbill.contracts.system.DoctorContract
 import skillbill.contracts.system.VersionContract
 import skillbill.ports.db.DatabaseSessionFactory

@@ -1,4 +1,4 @@
-package skillbill.scaffold.substance
+package skillbill.infrastructure.fs.scaffold.substance
 
 import skillbill.scaffold.policy.scaffold.APPROVED_CODE_REVIEW_AREAS
 import skillbill.testing.repoRootFromTest

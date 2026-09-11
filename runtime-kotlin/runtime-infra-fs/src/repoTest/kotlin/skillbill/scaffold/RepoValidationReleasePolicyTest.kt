@@ -1,6 +1,6 @@
-package skillbill.scaffold
-import skillbill.nativeagent.testNativeAgentCompositionContext
-import skillbill.scaffold.runtime.RepoValidationRuntime
+package skillbill.infrastructure.fs.scaffold
+import skillbill.infrastructure.fs.nativeagent.testNativeAgentCompositionContext
+import skillbill.infrastructure.fs.scaffold.runtime.RepoValidationRuntime
 import java.nio.file.Files
 import kotlin.test.Test
 import kotlin.test.assertEquals

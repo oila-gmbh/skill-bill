@@ -1,10 +1,10 @@
-package skillbill.scaffold
+package skillbill.infrastructure.fs.scaffold
 
-import skillbill.nativeagent.composition.parseNativeAgentBundle
-import skillbill.nativeagent.composition.renderNativeAgentBundle
-import skillbill.scaffold.authoring.renderAuthoringTarget
-import skillbill.scaffold.platformpack.loadPlatformManifest
-import skillbill.scaffold.runtime.scaffold
+import skillbill.infrastructure.fs.nativeagent.composition.parseNativeAgentBundle
+import skillbill.infrastructure.fs.nativeagent.composition.renderNativeAgentBundle
+import skillbill.infrastructure.fs.scaffold.authoring.renderAuthoringTarget
+import skillbill.infrastructure.fs.scaffold.platformpack.loadPlatformManifest
+import skillbill.infrastructure.fs.scaffold.runtime.scaffold
 import skillbill.testsupport.SnapshotAssertions
 import java.nio.file.Files
 import java.nio.file.Path

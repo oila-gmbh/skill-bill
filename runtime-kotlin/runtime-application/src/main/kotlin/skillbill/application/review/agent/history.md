@@ -1,54 +1,11 @@
 # Review Boundary History
 
-## [2026-09-11] Uncommitted standalone packet
+## [2026-09-11] SKILL-233 — uncommitted standalone packet
 Areas: application/review, runtime-cli/codereview
-- `UNCOMMITTED` is a working-tree packet against HEAD, not a commit range and not the durable implement base.
+- `UNCOMMITTED` is a working-tree packet: tracked dirty files plus untracked patches against HEAD, not a commit range and not the durable implement base.
 - Feature-task review stays last-commit `BRANCH`; this scope is standalone-only.
 Feature flag: N/A
-Acceptance criteria: N/A (hotfix)
-
-
-## [2026-09-11] SKILL-237 subtask 1 — Inline review coverage continuation
-Areas: application/review, runtime-infra-fs/{infrastructure/fs,launcher/review}, runtime-ports/review
-- Inline review now retains the governed broker and review_run_id across slices, merging findings and accounting until coverage completes or a bounded terminal condition occurs.
-- Discovery omits already-delivered selectors while preserving full-list cursor positions; endpoint unbind tears down transport without prematurely finishing delivery.
-- Reusable: the continuation seam, delivered-selector catalog filtering, and transport unbind lifecycle preserve coverage truth across worker exits.
-- Limitation: delegated single-use launches remain unchanged; continuation stops on zero progress, budget exhaustion, timeout, spawn failure, interrupt, or other non-coverage failure.
-Feature flag: N/A
-Acceptance criteria: 7/7 implemented
-
-## [2026-09-10] Inline reduced-depth vs full evidence wording
-Areas: application/review, skills/bill-code-review-inline, skills/bill-code-review, orchestration/review-orchestrator, docs
-- Parent prompt and inline skill now state that reduced depth is judgment-only (one merged checklist, one walk) and does not authorize sampling, a page budget, or early stop.
-- Broker delivery stays mandatory: workspace git/shell/Grep/Read do not count; `verdict: approved` is forbidden while required units remain undelivered.
-- Docs and playbook drop “bounded budget” phrasing that invited partial evidence work.
-Feature flag: N/A
-Acceptance criteria: prompt and skill contract clarified; runtime coverage gate unchanged.
-
-## [2026-09-10] SKILL-236 subtask 1: Single-session inline evidence and settlement
-Areas: application/review, runtime-infra-fs/launcher/review
-- Inline mode launches one parent worker session. Evidence stays broker-paged inside that session; the runtime no longer fans a large diff into sequential chunk agent processes.
-- Prelaunch expansions authorize against the parent broker assignment. Delegated launches with null visibleTargetPaths still authorize every prelaunch expansion.
-- handleFrame holds deliveryLock only for closing-state checks and pendingDeliveries. Broker I/O runs unlocked so close() can drain pending delivery confirmations.
-- Reusable: parentEvidenceBroker is the assignment-identity seam for the single inline parent launch.
-- Limitation: AC-007 still needs ./install.sh refresh and installed CLI smoke.
-Feature flag: N/A
-Acceptance criteria: 6/7 implemented; AC-007 external prerequisites remain unconfirmed.
-
-## [2026-09-09] SKILL-236 subtask 1: Governed review evidence recovery
-Areas: application/review, application/featuretask, runtime-cli/codereview, runtime-domain/review, runtime-ports/review, runtime-infra-fs, runtime-mcp/review, orchestration, platform-packs, skills/bill-code-review-inline, docs
-- Workers discover assigned targets and authorized expansions through bounded, paginated requests on the existing two governed operations. Parent prompts do not carry complete path inventories.
-- Prelaunch expansions bind to final broker assignments and retain source-lane provenance across merged rubrics. Whole-file expansion delivery remains separate from required delta delivery.
-- Coverage tracks delivered evidence units. Missing required units block approval; recoverable refusals can settle after complete delivery. Completion settlement preserves failed worker outcomes when incomplete accounting also records a terminal outcome.
-- Bridge-local rejections forward only evidence/refused, without rejected tool names or arguments. Endpoint-local rejections record malformed requests; each rejection consumes the existing request budget exactly once, including codec failures.
-- Endpoint shutdown rejects new reads and expansions, then allows up to one second for pending delivery acknowledgments before ending the session. Receipt tracking clears only after the acknowledgment response flushes.
-- Checkpoint capture retains regular-file, absent, and unavailable identities without following links. Preparation compares snapshots before launch; index identity and SHA-256 checks reject drift. Unrelated symlinks and populated submodules no longer abort capture, and unavailable entries stay unreadable after replacement.
-- Expansion admission checks regular-file availability at the bound coordinate before changing authorization, catalogs, or coverage obligations, including trusted records and retries. Unavailable whole-file and exact-selector or path-only delta reads return accounted evidence_unavailable refusals. Empty files remain deliverable; deleted-file deltas remain independent of expansion admission.
-- Required rubric companions resolve through pack metadata and governed composition. Missing required guidance fails before worker launch.
-- Reusable: governed discovery and delivery accounting across the broker, MCP transport, and review completion gate. Refusals remain bounded and deliver no evidence; corrected requests can recover until budget exhaustion blocks discovery and reads. Receipt replay, bridge initialization, tool listing, and notifications remain uncharged.
-- Limitation: AC-007 still requires external artifact refresh and installed CLI smoke verification for commit scope, paired revisions with --diff-file, and explicit expansions, with unavailable providers reported.
-Feature flag: N/A
-Acceptance criteria: 6/7 implemented; AC-007 regression implementation is present, but its external prerequisites remain unconfirmed.
+Acceptance criteria: n/a
 
 ## [2026-08-28] SKILL-218 subtask 1 — Cursor delegated parent fan-out
 Areas: application/review, runtime-ports/review, infra-fs, runtime-core/di, orchestration/review-delegation

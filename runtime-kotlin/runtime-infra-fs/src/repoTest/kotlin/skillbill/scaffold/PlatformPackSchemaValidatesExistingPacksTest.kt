@@ -1,11 +1,11 @@
-package skillbill.scaffold
+package skillbill.infrastructure.fs.scaffold
 
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.dataformat.yaml.YAMLMapper
 import com.networknt.schema.JsonSchema
 import com.networknt.schema.JsonSchemaFactory
 import com.networknt.schema.SpecVersion
-import skillbill.scaffold.platformpack.PlatformPackSchemaPaths
+import skillbill.infrastructure.fs.scaffold.platformpack.PlatformPackSchemaPaths
 import skillbill.testing.repoRootFromTest
 import java.nio.file.Files
 import java.nio.file.Path

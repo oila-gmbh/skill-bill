@@ -1,10 +1,9 @@
 package skillbill.infrastructure.sqlite.review
-import skillbill.db.PARAM_FOUR
-import skillbill.db.PARAM_ONE
-import skillbill.db.PARAM_THREE
-import skillbill.db.PARAM_TWO
-import skillbill.ports.time.JvmSystemClock
-import skillbill.review.model.ParallelReviewMergedFinding
+import skillbill.contracts.time.JvmSystemClock
+import skillbill.infrastructure.sqlite.PARAM_FOUR
+import skillbill.infrastructure.sqlite.PARAM_ONE
+import skillbill.infrastructure.sqlite.PARAM_THREE
+import skillbill.infrastructure.sqlite.PARAM_TWOimport skillbill.review.model.ParallelReviewMergedFinding
 import skillbill.review.model.ReviewClaimVerdict
 import skillbill.review.model.ReviewFindingVerdict
 import skillbill.review.model.ReviewPassClaimSnapshot

@@ -8,9 +8,9 @@ import skillbill.cli.work.padTerminalEnd
 import skillbill.cli.work.terminalDisplayWidth
 import skillbill.cli.work.toTerminalSafeText
 import skillbill.cli.work.truncateTerminalDisplayWidth
-import skillbill.db.core.DatabaseRuntime
 import skillbill.di.RuntimeComponent
 import skillbill.di.create
+import skillbill.infrastructure.sqlite.core.DatabaseRuntime
 import skillbill.model.EnvironmentContext
 import skillbill.model.OptionalCallbacks
 import skillbill.model.RuntimeContext

@@ -77,7 +77,7 @@ class RuntimeExceptionTelemetryTest {
         StackTraceElement("skillbill.application.telemetry.TelemetryService", "captureException", "x.kt", 11),
         StackTraceElement("java.util.concurrent.ThreadPoolExecutor", "runWorker", "y.java", 22),
         StackTraceElement("com.thirdparty.Widget", "render", "z.java", 33),
-        StackTraceElement("skillbill.db.telemetry.TelemetryOutboxStore", "enqueue", "w.kt", 44),
+        StackTraceElement("skillbill.infrastructure.sqlite.telemetry.TelemetryOutboxStore", "enqueue", "w.kt", 44),
       )
     }
 
@@ -85,7 +85,7 @@ class RuntimeExceptionTelemetryTest {
     enqueueRuntimeException(capturingOutbox(anonymous), "test_tool", error, "anonymous")
     val anonymousPayload = anonymous[0].second
     assertContains(anonymousPayload, "skillbill.application.telemetry.TelemetryService.captureException")
-    assertContains(anonymousPayload, "skillbill.db.telemetry.TelemetryOutboxStore.enqueue")
+    assertContains(anonymousPayload, "skillbill.infrastructure.sqlite.telemetry.TelemetryOutboxStore.enqueue")
     assertFalse(anonymousPayload.contains("java.util.concurrent"), "foreign frames must be dropped")
     assertFalse(anonymousPayload.contains("com.thirdparty"), "foreign frames must be dropped")
 

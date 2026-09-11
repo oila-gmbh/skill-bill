@@ -3,7 +3,7 @@ package skillbill.cli
 import skillbill.SkillBillVersion
 import skillbill.cli.core.CliRuntime
 import skillbill.cli.model.CliExecutionResult
-import skillbill.db.core.DatabaseRuntime
+import skillbill.infrastructure.sqlite.core.DatabaseRuntime
 import java.sql.DriverManager
 import kotlin.test.Test
 import kotlin.test.assertContains

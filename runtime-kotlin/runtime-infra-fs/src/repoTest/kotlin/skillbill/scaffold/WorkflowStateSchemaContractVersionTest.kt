@@ -1,10 +1,10 @@
-package skillbill.scaffold
+package skillbill.infrastructure.fs.scaffold
 
 import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.dataformat.yaml.YAMLMapper
-import skillbill.contracts.workflow.CanonicalWorkflowStateSchemaValidator
 import skillbill.contracts.workflow.WORKFLOW_STATE_CONTRACT_VERSION
 import skillbill.contracts.workflow.WorkflowStateSchemaPaths
+import skillbill.infrastructure.fs.contracts.workflow.CanonicalWorkflowStateSchemaValidator
 import skillbill.testing.repoRootFromTest
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import skillbill.workflow.verify.FeatureVerifyWorkflowDefinition

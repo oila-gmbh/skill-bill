@@ -9,8 +9,8 @@ import skillbill.application.review.model.ReviewFeedbackResult
 import skillbill.application.review.model.ReviewPreviewResult
 import skillbill.application.review.model.ReviewStatsResult
 import skillbill.application.review.model.TriageResult
-import skillbill.application.telemetry.feedbackTelemetryOptions
-import skillbill.application.telemetry.telemetrySettingsOrNull
+import skillbill.application.telemetry.settings.feedbackTelemetryOptions
+import skillbill.application.telemetry.settings.telemetrySettingsOrNull
 import skillbill.model.EnvironmentContext
 import skillbill.ports.db.DatabaseSessionFactory
 import skillbill.ports.diagnostics.RuntimeDiagnostics

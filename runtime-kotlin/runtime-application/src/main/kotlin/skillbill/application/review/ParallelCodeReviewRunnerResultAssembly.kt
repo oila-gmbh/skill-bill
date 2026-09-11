@@ -1,6 +1,5 @@
 package skillbill.application.review
 
-import skillbill.application.goalplanning.sha256HexUtf8
 import skillbill.application.review.model.ParallelCodeReviewResult
 import skillbill.application.review.model.ParallelReviewLaneStatus
 import skillbill.application.review.model.ReviewIntegrationPassRunRequest
@@ -42,6 +41,7 @@ import skillbill.review.model.ReviewStageBoundary
 import skillbill.review.model.ReviewStageDegradationSelectionRequest
 import skillbill.review.model.ReviewStageReached
 import skillbill.review.model.ReviewStageResumeReport
+import skillbill.text.sha256HexUtf8
 import java.time.Clock
 
 class ParallelCodeReviewRunnerResultAssembly(

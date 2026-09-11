@@ -1,11 +1,17 @@
 package skillbill.infrastructure.fs
 
 import me.tatarka.inject.annotations.Inject
-import skillbill.agentaddon.AgentAddonDeliveryResolver
 import skillbill.agentaddon.model.AgentAddonCatalogueEntry
 import skillbill.error.MissingAgentAddonDeclarationError
-import skillbill.install.nativeagent.installNativeAgentCompositionContext
-import skillbill.ports.scaffold.ScaffoldCatalogGateway
+import skillbill.infrastructure.fs.agentaddon.AgentAddonDeliveryResolver
+import skillbill.infrastructure.fs.install.nativeagent.installNativeAgentCompositionContext
+import skillbill.infrastructure.fs.scaffold.authoring.AuthoringOperations
+import skillbill.infrastructure.fs.scaffold.authoring.AuthoringRenderResult
+import skillbill.infrastructure.fs.scaffold.authoring.recommendedCommands
+import skillbill.infrastructure.fs.scaffold.authoring.renderAuthoringTarget
+import skillbill.infrastructure.fs.scaffold.catalog.ScaffoldCatalog
+import skillbill.infrastructure.fs.scaffold.runtime.scaffold
+import skillbill.model.toPathimport skillbill.ports.scaffold.ScaffoldCatalogGateway
 import skillbill.ports.scaffold.ScaffoldGateway
 import skillbill.ports.scaffold.UnsupportedScaffoldGateway
 import skillbill.ports.scaffold.catalog.model.ScaffoldExplainResult
@@ -24,16 +30,10 @@ import skillbill.ports.scaffold.repo.model.ScaffoldValidationStatus
 import skillbill.ports.scaffold.source.model.ScaffoldEditWithBodyFileResult
 import skillbill.ports.scaffold.source.model.ScaffoldFillResult
 import skillbill.ports.scaffold.source.model.ScaffoldSaveExactContentResult
-import skillbill.scaffold.authoring.AuthoringOperations
-import skillbill.scaffold.authoring.AuthoringRenderResult
-import skillbill.scaffold.authoring.recommendedCommands
-import skillbill.scaffold.authoring.renderAuthoringTarget
-import skillbill.scaffold.catalog.ScaffoldCatalog
 import skillbill.scaffold.model.command.ScaffoldCommandRequest
-import skillbill.scaffold.runtime.scaffold
 import java.nio.file.Files
 import java.nio.file.Path
-import skillbill.agentaddon.inspectAgentAddons as inspectFsAgentAddons
+import skillbill.infrastructure.fs.agentaddon.inspectAgentAddons as inspectFsAgentAddons
 
 private const val CONTENT_PREVIEW_MAX_CHARS = 500
 

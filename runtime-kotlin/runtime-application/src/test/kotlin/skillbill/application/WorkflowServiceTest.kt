@@ -17,8 +17,7 @@ import skillbill.application.goalrunner.testGoalChildPlanningHydratorPort
 import skillbill.application.goalrunner.testGoalRunnerStatusService
 import skillbill.application.goalrunner.testPhaseRecorder
 import skillbill.application.goalrunner.testWorkflowGoalRunnerManifestStore
-import skillbill.application.goalrunner.testWorkflowGoalRunnerOutcomeStore
-import skillbill.application.workflow.DecompositionWorkflowContinuation
+import skillbill.application.goalrunner.testWorkflowGoalRunnerOutcomeStoreimport skillbill.application.workflow.DecompositionWorkflowContinuation
 import skillbill.application.workflow.WorkflowService
 import skillbill.application.workflow.alignSubtaskResumeStep
 import skillbill.application.workflow.decompositionRuntime
@@ -42,6 +41,17 @@ import skillbill.application.workflow.workflowFamily
 import skillbill.contracts.JsonSupport
 import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_CONTRACT_VERSION
 import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_PERSISTENCE_CONTRACT_VERSION
+import skillbill.engine.RecordingWorkflowGitOperations
+import skillbill.engine.featuretask.AcceptingFeatureTaskRuntimeHandoffEnvelopeValidator
+import skillbill.engine.featuretask.AcceptingFeatureTaskRuntimeHandoffFoundationValidator
+import skillbill.engine.featuretask.AlwaysValidValidator
+import skillbill.engine.goalrunner.GoalRunnerStatusService
+import skillbill.engine.goalrunner.OutcomeStoreTestArtifactPorts
+import skillbill.engine.goalrunner.model.GoalRunnerStatusRequest
+import skillbill.engine.goalrunner.testGoalRunnerStatusService
+import skillbill.engine.goalrunner.testPhaseRecorder
+import skillbill.engine.goalrunner.testWorkflowGoalRunnerManifestStore
+import skillbill.engine.goalrunner.testWorkflowGoalRunnerOutcomeStore
 import skillbill.error.IncompatibleGoalPlanningPreparationRecoveryError
 import skillbill.error.InvalidDecompositionManifestSchemaError
 import skillbill.error.InvalidFeatureTaskRuntimePhaseOutputSchemaError
@@ -59,8 +69,7 @@ import skillbill.goalrunner.model.GoalRunnerWorkerSubtaskRequestRejectionReason
 import skillbill.model.RepositoryRoot
 import skillbill.ports.db.DatabaseSessionFactory
 import skillbill.ports.featuretask.model.FeatureTaskRuntimeWorkerOwnership
-import skillbill.ports.goalrunner.EmptyGoalPlanningPreparationRepository
-import skillbill.ports.goalrunner.EmptyGoalRunnerControlRepository
+import skillbill.ports.goalrunner.EmptyGoalPlanningPreparationRepositoryimport skillbill.ports.goalrunner.EmptyGoalRunnerControlRepository
 import skillbill.ports.goalrunner.GoalPlanningPreparationRepository
 import skillbill.ports.goalrunner.GoalRunnerControlRepository
 import skillbill.ports.goalrunner.model.GoalPlanningContractProvenance
@@ -85,8 +94,7 @@ import skillbill.ports.review.ReviewRepository
 import skillbill.ports.telemetry.LifecycleTelemetryRepository
 import skillbill.ports.telemetry.TelemetryOutboxRepository
 import skillbill.ports.telemetry.TelemetryReconciliationRepository
-import skillbill.ports.work.EmptyWorkListRepository
-import skillbill.ports.workflow.WorkflowStateRepository
+import skillbill.ports.work.EmptyWorkListRepositoryimport skillbill.ports.workflow.WorkflowStateRepository
 import skillbill.ports.workflow.decomposition.DecompositionManifestStore
 import skillbill.ports.workflow.decomposition.UnavailableDecompositionManifestStore
 import skillbill.ports.workflow.gitops.NoopWorkflowGitOperations
@@ -97,12 +105,11 @@ import skillbill.ports.workflow.model.FeatureImplementSessionSummary
 import skillbill.ports.workflow.model.FeatureTaskExecutionIdentity
 import skillbill.ports.workflow.model.FeatureTaskRouteScope
 import skillbill.ports.workflow.model.FeatureTaskRuntimeSnapshot
-import skillbill.ports.workflow.model.FeatureTaskWorkflowCandidate
-import skillbill.ports.workflow.model.FeatureTaskWorkflowMode
-import skillbill.ports.workflow.model.FeatureVerifySessionSummary
+import skillbill.ports.workflow.model.FeatureTaskWorkflowCandidateimport skillbill.ports.workflow.model.FeatureTaskWorkflowMode
 import skillbill.ports.workflow.model.GoalChildWorkflowDeletionScope
 import skillbill.ports.workflow.model.WorkflowStateRecord
 import skillbill.review.context.model.CodeReviewExecutionMode
+import skillbill.text.sha256HexUtf8
 import skillbill.workflow.decomposition.DecompositionManifestValidator
 import skillbill.workflow.decomposition.model.CurrentSubtaskIntent
 import skillbill.workflow.decomposition.model.DecompositionExecutionModel
@@ -3984,7 +3991,6 @@ internal class FakeDatabaseSessionFactory(
     override val goalRunnerControls = this@FakeDatabaseSessionFactory.goalRunnerControls
   }
 }
-
 private class RecordingGoalRunnerControlRepository : GoalRunnerControlRepository {
   private val policies = mutableMapOf<String, GoalRunnerReviewPolicy>()
   private val acceptances = mutableMapOf<String, MutableMap<Int, GoalRunnerOutOfBandAcceptance>>()
@@ -4236,7 +4242,6 @@ internal class InMemoryWorkflowStates : WorkflowStateRepository {
     return true
   }
 }
-
 private fun InMemoryWorkflowStates.decomposedParentRows(issueKey: String): List<WorkflowStateRecord> =
   listFeatureTaskRuntimeWorkflows(Int.MAX_VALUE).filter { row ->
     val snapshot = row.toSnapshot()

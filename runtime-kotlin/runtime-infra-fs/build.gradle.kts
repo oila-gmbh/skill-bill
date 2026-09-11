@@ -18,7 +18,8 @@ dependencies {
   implementation(libs.jackson.databind)
   implementation(libs.jackson.dataformat.yaml)
   testImplementation(project(":runtime-application"))
-  testImplementation(libs.junit.jupiter)
+  testImplementation(project(":runtime-engine"))
+  testImplementation(testFixtures(project(":runtime-ports")))  testImplementation(libs.junit.jupiter)
   testImplementation(libs.kotlin.test)
 }
 
@@ -43,7 +44,11 @@ val copyAgentAddonSchema =
   tasks.register<Copy>("copyAgentAddonSchema") {
     val schemaPath = canonicalAgentAddonSchemaPath
     from(schemaPath)
-    into(layout.buildDirectory.dir("generated/skillbill-contracts/skillbill/contracts"))
+    into(
+      layout.buildDirectory.dir(
+        "generated/skillbill-infrastructure-fs/skillbill/infrastructure/fs/contracts",
+      ),
+    )
     inputs.file(schemaPath)
     doFirst {
       require(File(schemaPath).exists()) {
@@ -65,7 +70,7 @@ val copySpecialistContract =
   tasks.register<Copy>("copySpecialistContract") {
     val contractPath = canonicalSpecialistContractPath
     from(contractPath)
-    into(layout.buildDirectory.dir("generated/skillbill-contracts/skillbill/review"))
+    into(layout.buildDirectory.dir("generated/skillbill-infrastructure-fs/skillbill/review"))
     inputs.file(contractPath)
     doFirst {
       require(File(contractPath).isFile) {
@@ -78,7 +83,11 @@ val copyReviewContextSchema =
   tasks.register<Copy>("copyReviewContextSchema") {
     val schemaPath = canonicalReviewContextSchemaPath
     from(schemaPath)
-    into(layout.buildDirectory.dir("generated/skillbill-contracts/skillbill/contracts"))
+    into(
+      layout.buildDirectory.dir(
+        "generated/skillbill-infrastructure-fs/skillbill/infrastructure/fs/contracts",
+      ),
+    )
     inputs.file(schemaPath)
     doFirst {
       require(File(schemaPath).exists()) {
@@ -91,7 +100,11 @@ val copyPlatformPackSchema =
   tasks.register<Copy>("copyPlatformPackSchema") {
     val schemaPath = canonicalPlatformPackSchemaPath
     from(schemaPath)
-    into(layout.buildDirectory.dir("generated/skillbill-contracts/skillbill/contracts"))
+    into(
+      layout.buildDirectory.dir(
+        "generated/skillbill-infrastructure-fs/skillbill/infrastructure/fs/contracts",
+      ),
+    )
     inputs.file(schemaPath)
     doFirst {
       require(File(schemaPath).exists()) {
@@ -111,7 +124,11 @@ val copyNativeAgentCompositionSchema =
   tasks.register<Copy>("copyNativeAgentCompositionSchema") {
     val schemaPath = canonicalNativeAgentCompositionSchemaPath
     from(schemaPath)
-    into(layout.buildDirectory.dir("generated/skillbill-contracts/skillbill/contracts"))
+    into(
+      layout.buildDirectory.dir(
+        "generated/skillbill-infrastructure-fs/skillbill/infrastructure/fs/contracts",
+      ),
+    )
     inputs.file(schemaPath)
     doFirst {
       require(File(schemaPath).exists()) {
@@ -130,7 +147,11 @@ val copyNativeAgentLinkInventorySchema =
   tasks.register<Copy>("copyNativeAgentLinkInventorySchema") {
     val schemaPath = canonicalNativeAgentLinkInventorySchemaPath
     from(schemaPath)
-    into(layout.buildDirectory.dir("generated/skillbill-contracts/skillbill/contracts"))
+    into(
+      layout.buildDirectory.dir(
+        "generated/skillbill-infrastructure-fs/skillbill/infrastructure/fs/contracts",
+      ),
+    )
     inputs.file(schemaPath)
     doFirst {
       require(File(schemaPath).exists()) {
@@ -152,7 +173,11 @@ val copyWorkflowStateSchema =
   tasks.register<Copy>("copyWorkflowStateSchema") {
     val schemaPath = canonicalWorkflowStateSchemaPath
     from(schemaPath)
-    into(layout.buildDirectory.dir("generated/skillbill-contracts/skillbill/contracts"))
+    into(
+      layout.buildDirectory.dir(
+        "generated/skillbill-infrastructure-fs/skillbill/infrastructure/fs/contracts",
+      ),
+    )
     inputs.file(schemaPath)
     doFirst {
       require(File(schemaPath).exists()) {
@@ -171,7 +196,11 @@ val copyInstallPlanSchema =
   tasks.register<Copy>("copyInstallPlanSchema") {
     val schemaPath = canonicalInstallPlanSchemaPath
     from(schemaPath)
-    into(layout.buildDirectory.dir("generated/skillbill-contracts/skillbill/contracts"))
+    into(
+      layout.buildDirectory.dir(
+        "generated/skillbill-infrastructure-fs/skillbill/infrastructure/fs/contracts",
+      ),
+    )
     inputs.file(schemaPath)
     doFirst {
       require(File(schemaPath).exists()) {
@@ -190,7 +219,11 @@ val copyDecompositionManifestSchema =
   tasks.register<Copy>("copyDecompositionManifestSchema") {
     val schemaPath = canonicalDecompositionManifestSchemaPath
     from(schemaPath)
-    into(layout.buildDirectory.dir("generated/skillbill-contracts/skillbill/contracts"))
+    into(
+      layout.buildDirectory.dir(
+        "generated/skillbill-infrastructure-fs/skillbill/infrastructure/fs/contracts",
+      ),
+    )
     inputs.file(schemaPath)
     doFirst {
       require(File(schemaPath).exists()) {
@@ -209,7 +242,11 @@ val copyGoalObservabilityEventSchema =
   tasks.register<Copy>("copyGoalObservabilityEventSchema") {
     val schemaPath = canonicalGoalObservabilityEventSchemaPath
     from(schemaPath)
-    into(layout.buildDirectory.dir("generated/skillbill-contracts/skillbill/contracts"))
+    into(
+      layout.buildDirectory.dir(
+        "generated/skillbill-infrastructure-fs/skillbill/infrastructure/fs/contracts",
+      ),
+    )
     inputs.file(schemaPath)
     doFirst {
       require(File(schemaPath).exists()) {
@@ -228,7 +265,11 @@ val copyGoalProgressEventSchema =
   tasks.register<Copy>("copyGoalProgressEventSchema") {
     val schemaPath = canonicalGoalProgressEventSchemaPath
     from(schemaPath)
-    into(layout.buildDirectory.dir("generated/skillbill-contracts/skillbill/contracts"))
+    into(
+      layout.buildDirectory.dir(
+        "generated/skillbill-infrastructure-fs/skillbill/infrastructure/fs/contracts",
+      ),
+    )
     inputs.file(schemaPath)
     doFirst {
       require(File(schemaPath).exists()) {
@@ -247,7 +288,11 @@ val copyIdeStatusSchema =
   tasks.register<Copy>("copyIdeStatusSchema") {
     val schemaPath = canonicalIdeStatusSchemaPath
     from(schemaPath)
-    into(layout.buildDirectory.dir("generated/skillbill-contracts/skillbill/contracts"))
+    into(
+      layout.buildDirectory.dir(
+        "generated/skillbill-infrastructure-fs/skillbill/infrastructure/fs/contracts",
+      ),
+    )
     inputs.file(schemaPath)
     doFirst {
       require(File(schemaPath).exists()) {
@@ -266,7 +311,11 @@ val copyGoalSubtaskReviewStateSchema =
   tasks.register<Copy>("copyGoalSubtaskReviewStateSchema") {
     val schemaPath = canonicalGoalSubtaskReviewStateSchemaPath
     from(schemaPath)
-    into(layout.buildDirectory.dir("generated/skillbill-contracts/skillbill/contracts"))
+    into(
+      layout.buildDirectory.dir(
+        "generated/skillbill-infrastructure-fs/skillbill/infrastructure/fs/contracts",
+      ),
+    )
     inputs.file(schemaPath)
     doFirst {
       require(File(schemaPath).exists()) {
@@ -289,7 +338,11 @@ val copyRejectedOutputDiagnosticSchema =
   tasks.register<Copy>("copyRejectedOutputDiagnosticSchema") {
     val schemaPath = canonicalRejectedOutputDiagnosticSchemaPath
     from(schemaPath)
-    into(layout.buildDirectory.dir("generated/skillbill-contracts/skillbill/contracts"))
+    into(
+      layout.buildDirectory.dir(
+        "generated/skillbill-infrastructure-fs/skillbill/infrastructure/fs/contracts",
+      ),
+    )
     inputs.file(schemaPath)
     doFirst {
       require(File(schemaPath).exists()) {
@@ -307,7 +360,11 @@ val copyProducerOutputEvidenceSchema =
   tasks.register<Copy>("copyProducerOutputEvidenceSchema") {
     val schemaPath = canonicalProducerOutputEvidenceSchemaPath
     from(schemaPath)
-    into(layout.buildDirectory.dir("generated/skillbill-contracts/skillbill/contracts"))
+    into(
+      layout.buildDirectory.dir(
+        "generated/skillbill-infrastructure-fs/skillbill/infrastructure/fs/contracts",
+      ),
+    )
     inputs.file(schemaPath)
     doFirst {
       require(File(schemaPath).exists()) {
@@ -330,7 +387,11 @@ val copyFeatureTaskRuntimeWorkerOwnershipSchema =
   tasks.register<Copy>("copyFeatureTaskRuntimeWorkerOwnershipSchema") {
     val schemaPath = canonicalFeatureTaskRuntimeWorkerOwnershipSchemaPath
     from(schemaPath)
-    into(layout.buildDirectory.dir("generated/skillbill-contracts/skillbill/contracts"))
+    into(
+      layout.buildDirectory.dir(
+        "generated/skillbill-infrastructure-fs/skillbill/infrastructure/fs/contracts",
+      ),
+    )
     inputs.file(schemaPath)
     doFirst {
       require(File(schemaPath).exists()) {
@@ -344,7 +405,11 @@ val copyFeatureTaskExecutionIdentitySchema =
   tasks.register<Copy>("copyFeatureTaskExecutionIdentitySchema") {
     val schemaPath = canonicalFeatureTaskExecutionIdentitySchemaPath
     from(schemaPath)
-    into(layout.buildDirectory.dir("generated/skillbill-contracts/skillbill/contracts"))
+    into(
+      layout.buildDirectory.dir(
+        "generated/skillbill-infrastructure-fs/skillbill/infrastructure/fs/contracts",
+      ),
+    )
     inputs.file(schemaPath)
     doFirst {
       require(File(schemaPath).exists()) {
@@ -357,7 +422,11 @@ val copyFeatureTaskRuntimePhaseOutputSchema =
   tasks.register<Copy>("copyFeatureTaskRuntimePhaseOutputSchema") {
     val schemaPath = canonicalFeatureTaskRuntimePhaseOutputSchemaPath
     from(schemaPath)
-    into(layout.buildDirectory.dir("generated/skillbill-contracts/skillbill/contracts"))
+    into(
+      layout.buildDirectory.dir(
+        "generated/skillbill-infrastructure-fs/skillbill/infrastructure/fs/contracts",
+      ),
+    )
     inputs.file(schemaPath)
     doFirst {
       require(File(schemaPath).exists()) {
@@ -376,7 +445,11 @@ val copyFeatureTaskRuntimeHandoffEnvelopeSchema =
   tasks.register<Copy>("copyFeatureTaskRuntimeHandoffEnvelopeSchema") {
     val schemaPath = canonicalFeatureTaskRuntimeHandoffEnvelopeSchemaPath
     from(schemaPath)
-    into(layout.buildDirectory.dir("generated/skillbill-contracts/skillbill/contracts"))
+    into(
+      layout.buildDirectory.dir(
+        "generated/skillbill-infrastructure-fs/skillbill/infrastructure/fs/contracts",
+      ),
+    )
     inputs.file(schemaPath)
     doFirst {
       require(File(schemaPath).exists()) {
@@ -394,7 +467,11 @@ val copyFeatureTaskRuntimePhaseLaunchBriefingSchema =
   tasks.register<Copy>("copyFeatureTaskRuntimePhaseLaunchBriefingSchema") {
     val schemaPath = canonicalFeatureTaskRuntimePhaseLaunchBriefingSchemaPath
     from(schemaPath)
-    into(layout.buildDirectory.dir("generated/skillbill-contracts/skillbill/contracts"))
+    into(
+      layout.buildDirectory.dir(
+        "generated/skillbill-infrastructure-fs/skillbill/infrastructure/fs/contracts",
+      ),
+    )
     inputs.file(schemaPath)
     doFirst {
       require(File(schemaPath).exists()) {
@@ -412,7 +489,11 @@ val copyFeatureTaskRuntimePhaseHandoffSchema =
   tasks.register<Copy>("copyFeatureTaskRuntimePhaseHandoffSchema") {
     val schemaPath = canonicalFeatureTaskRuntimePhaseHandoffSchemaPath
     from(schemaPath)
-    into(layout.buildDirectory.dir("generated/skillbill-contracts/skillbill/contracts"))
+    into(
+      layout.buildDirectory.dir(
+        "generated/skillbill-infrastructure-fs/skillbill/infrastructure/fs/contracts",
+      ),
+    )
     inputs.file(schemaPath)
     doFirst {
       require(File(schemaPath).exists()) {
@@ -430,7 +511,11 @@ val copyFeatureTaskRuntimePersistenceSchema =
   tasks.register<Copy>("copyFeatureTaskRuntimePersistenceSchema") {
     val schemaPath = canonicalFeatureTaskRuntimePersistenceSchemaPath
     from(schemaPath)
-    into(layout.buildDirectory.dir("generated/skillbill-contracts/skillbill/contracts"))
+    into(
+      layout.buildDirectory.dir(
+        "generated/skillbill-infrastructure-fs/skillbill/infrastructure/fs/contracts",
+      ),
+    )
     inputs.file(schemaPath)
     doFirst {
       require(File(schemaPath).exists()) {
@@ -448,7 +533,11 @@ val copyFeatureTaskRuntimeProjectionMeasurementSchema =
   tasks.register<Copy>("copyFeatureTaskRuntimeProjectionMeasurementSchema") {
     val schemaPath = canonicalFeatureTaskRuntimeProjectionMeasurementSchemaPath
     from(schemaPath)
-    into(layout.buildDirectory.dir("generated/skillbill-contracts/skillbill/contracts"))
+    into(
+      layout.buildDirectory.dir(
+        "generated/skillbill-infrastructure-fs/skillbill/infrastructure/fs/contracts",
+      ),
+    )
     inputs.file(schemaPath)
     doFirst {
       require(File(schemaPath).exists()) {
@@ -466,7 +555,11 @@ val copyFeatureTaskRuntimeSharedEvidenceProjectionSchema =
   tasks.register<Copy>("copyFeatureTaskRuntimeSharedEvidenceProjectionSchema") {
     val schemaPath = canonicalFeatureTaskRuntimeSharedEvidenceProjectionSchemaPath
     from(schemaPath)
-    into(layout.buildDirectory.dir("generated/skillbill-contracts/skillbill/contracts"))
+    into(
+      layout.buildDirectory.dir(
+        "generated/skillbill-infrastructure-fs/skillbill/infrastructure/fs/contracts",
+      ),
+    )
     inputs.file(schemaPath)
     doFirst {
       require(File(schemaPath).exists()) {
@@ -486,7 +579,11 @@ val copyFeatureTaskRuntimeBuildReceiptSchema =
   tasks.register<Copy>("copyFeatureTaskRuntimeBuildReceiptSchema") {
     val schemaPath = canonicalFeatureTaskRuntimeBuildReceiptSchemaPath
     from(schemaPath)
-    into(layout.buildDirectory.dir("generated/skillbill-contracts/skillbill/contracts"))
+    into(
+      layout.buildDirectory.dir(
+        "generated/skillbill-infrastructure-fs/skillbill/infrastructure/fs/contracts",
+      ),
+    )
     inputs.file(schemaPath)
     doFirst {
       require(File(schemaPath).exists()) {
@@ -504,7 +601,11 @@ val copyGoalPlanningPreparationSchema =
   tasks.register<Copy>("copyGoalPlanningPreparationSchema") {
     val schemaPath = canonicalGoalPlanningPreparationSchemaPath
     from(schemaPath)
-    into(layout.buildDirectory.dir("generated/skillbill-contracts/skillbill/contracts"))
+    into(
+      layout.buildDirectory.dir(
+        "generated/skillbill-infrastructure-fs/skillbill/infrastructure/fs/contracts",
+      ),
+    )
     inputs.file(schemaPath)
     doFirst {
       require(File(schemaPath).exists()) {
@@ -522,7 +623,11 @@ val copyFeatureTaskRuntimePlanningProjectionsSchema =
   tasks.register<Copy>("copyFeatureTaskRuntimePlanningProjectionsSchema") {
     val schemaPath = canonicalFeatureTaskRuntimePlanningProjectionsSchemaPath
     from(schemaPath)
-    into(layout.buildDirectory.dir("generated/skillbill-contracts/skillbill/contracts"))
+    into(
+      layout.buildDirectory.dir(
+        "generated/skillbill-infrastructure-fs/skillbill/infrastructure/fs/contracts",
+      ),
+    )
     inputs.file(schemaPath)
     doFirst {
       require(File(schemaPath).exists()) {
@@ -540,7 +645,11 @@ val copyFeatureTaskRuntimeImplementationAttemptSchema =
   tasks.register<Copy>("copyFeatureTaskRuntimeImplementationAttemptSchema") {
     val schemaPath = canonicalFeatureTaskRuntimeImplementationAttemptSchemaPath
     from(schemaPath)
-    into(layout.buildDirectory.dir("generated/skillbill-contracts/skillbill/contracts"))
+    into(
+      layout.buildDirectory.dir(
+        "generated/skillbill-infrastructure-fs/skillbill/infrastructure/fs/contracts",
+      ),
+    )
     inputs.file(schemaPath)
     doFirst {
       require(File(schemaPath).exists()) {
@@ -558,7 +667,11 @@ val copyFeatureTaskRuntimeCheckpointIdentitySchema =
   tasks.register<Copy>("copyFeatureTaskRuntimeCheckpointIdentitySchema") {
     val schemaPath = canonicalFeatureTaskRuntimeCheckpointIdentitySchemaPath
     from(schemaPath)
-    into(layout.buildDirectory.dir("generated/skillbill-contracts/skillbill/contracts"))
+    into(
+      layout.buildDirectory.dir(
+        "generated/skillbill-infrastructure-fs/skillbill/infrastructure/fs/contracts",
+      ),
+    )
     inputs.file(schemaPath)
     doFirst {
       require(File(schemaPath).exists()) {
@@ -576,7 +689,11 @@ val copyFeatureTaskRuntimeQuarantineSchema =
   tasks.register<Copy>("copyFeatureTaskRuntimeQuarantineSchema") {
     val schemaPath = canonicalFeatureTaskRuntimeQuarantineSchemaPath
     from(schemaPath)
-    into(layout.buildDirectory.dir("generated/skillbill-contracts/skillbill/contracts"))
+    into(
+      layout.buildDirectory.dir(
+        "generated/skillbill-infrastructure-fs/skillbill/infrastructure/fs/contracts",
+      ),
+    )
     inputs.file(schemaPath)
     doFirst {
       require(File(schemaPath).exists()) {
@@ -586,7 +703,7 @@ val copyFeatureTaskRuntimeQuarantineSchema =
   }
 
 sourceSets.named("main") {
-  resources.srcDir(layout.buildDirectory.dir("generated/skillbill-contracts"))
+  resources.srcDir(layout.buildDirectory.dir("generated/skillbill-infrastructure-fs"))
 }
 
 tasks.named("processResources") {
@@ -657,7 +774,7 @@ tasks.register<JavaExec>("platformPackSubstanceReport") {
   group = "verification"
   description = "Emit the maintained platform-pack substance report in text or JSON form."
   classpath = sourceSets.main.get().runtimeClasspath
-  mainClass.set("skillbill.scaffold.substance.PlatformPackSubstanceReportMainKt")
+  mainClass.set("skillbill.infrastructure.fs.scaffold.substance.PlatformPackSubstanceReportMainKt")
   args(
     "--repo-root=${providers.gradleProperty(
       "repoRoot",
@@ -681,15 +798,15 @@ val infraFsAreaLayerOrder =
 
 val infraFsAreaSourceDirs =
   mapOf(
-    "Infrastructure" to "skillbill/infrastructure",
-    "Install" to "skillbill/install",
-    "Launcher" to "skillbill/launcher",
-    "NativeAgent" to "skillbill/nativeagent",
-    "Scaffold" to "skillbill/scaffold",
-    "AgentAddon" to "skillbill/agentaddon",
-    "Contracts" to "skillbill/contracts",
-    "GoalPlanning" to "skillbill/goalplanning",
-    "SkillRemove" to "skillbill/skillremove",
+    "Infrastructure" to "skillbill/infrastructure/fs",
+    "Install" to "skillbill/infrastructure/fs/install",
+    "Launcher" to "skillbill/infrastructure/fs/launcher",
+    "NativeAgent" to "skillbill/infrastructure/fs/nativeagent",
+    "Scaffold" to "skillbill/infrastructure/fs/scaffold",
+    "AgentAddon" to "skillbill/infrastructure/fs/agentaddon",
+    "Contracts" to "skillbill/infrastructure/fs/contracts",
+    "GoalPlanning" to "skillbill/infrastructure/fs/goalplanning",
+    "SkillRemove" to "skillbill/infrastructure/fs/skillremove",
   )
 
 val javaPlugin = extensions.getByType(JavaPluginExtension::class.java)

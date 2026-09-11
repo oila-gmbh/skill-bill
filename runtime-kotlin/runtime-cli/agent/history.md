@@ -1,10 +1,8 @@
-## [2026-09-11] Named standalone code-review targets
-Areas: runtime-cli/codereview
+## [2026-09-11] SKILL-233 — named standalone code-review targetsAreas: runtime-cli/codereview
 - Positional `pr`, `uncommitted`, `staged`, `unstaged`, `last`, and `HEAD` map to the matching packet. A SHA still reviews that commit against its first parent.
 - Conflicting `--scope` still fails; matching tokens stay valid.
 Feature flag: N/A
-Acceptance criteria: N/A (hotfix)
-
+Acceptance criteria: n/a
 ## [2026-09-03] SKILL-229 loud-fail seams and package structure (subtask 3)
 Areas: runtime-kotlin/runtime-cli/{core,kernel,model,system,telemetry,scaffold,install,learning,featuretask,goal}, runtime-kotlin/runtime-core/{skillbill/di,src/test/kotlin/skillbill/architecture{,/baselines}}, runtime-kotlin/ARCHITECTURE.md
 - `uninstall`'s six mutation sites (launcher, desktop entry, recursive tree removal, agent-target cleanup, native-agent unlink, MCP unregistration) route every failure through one `UninstallMutationRecorder` to a `RuntimeDiagnostics` error record plus a non-zero exit; the old warning-string-on-zero-exit path is gone. reusable: one recorder owns the failure policy for a whole command family instead of per-site handling.

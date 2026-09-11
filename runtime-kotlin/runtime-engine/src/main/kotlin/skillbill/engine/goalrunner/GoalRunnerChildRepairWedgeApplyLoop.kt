@@ -1,0 +1,421 @@
+package skillbill.engine.goalrunner
+import skillbill.application.decomposition.decodeArtifacts
+import skillbill.engine.workflow.model.WorkflowFamily
+import skillbill.engine.workflow.updateGoalParentForBlockedPhaseRetry
+import skillbill.contracts.JsonSupport
+import skillbill.engine.featuretask.buildCompletedUpstreamMissingOutputRepair
+import skillbill.engine.featuretask.diagnoseUnsettledCompletedUpstreamPhaseId
+import skillbill.engine.featuretask.featureSizeFromArtifacts
+import skillbill.engine.featuretask.model.CompletedUpstreamRepairRequest
+import skillbill.engine.goalrunner.model.GoalContinuation
+import skillbill.engine.goalrunner.model.GoalRunnerAppliedRepair
+import skillbill.engine.goalrunner.model.GoalRunnerChildRepairApplyRequest
+import skillbill.engine.goalrunner.model.GoalRunnerChildRepairApplyResult
+import skillbill.engine.goalrunner.model.GoalRunnerWedgeClass
+import skillbill.goalrunner.derivedTerminalOutcomeFor
+import skillbill.goalrunner.goalContinuationOutcomeimport skillbill.goalrunner.model.GoalRunnerTerminalStatus
+import skillbill.ports.featuretask.FeatureTaskPhaseSettlementRepository
+import skillbill.ports.workflow.WorkflowStateRepository
+import skillbill.ports.workflow.gitops.WorkflowGitOperations
+import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewBaselineRecoveryRequest
+import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewInputFailureReason
+import skillbill.ports.workflow.gitops.recoverGoalSubtaskReviewBaseline
+import skillbill.workflow.decomposition.DecompositionManifestValidator
+import skillbill.workflow.engine.WorkflowEngine
+import skillbill.workflow.engine.model.WorkflowStateSnapshot
+import skillbill.workflow.engine.model.WorkflowUpdateInput
+import skillbill.workflow.goal.model.GOAL_REVIEW_BASE_RECOVERIES_ARTIFACT_KEY
+import skillbill.workflow.goal.model.GOAL_SUBTASK_REVIEW_STATE_ARTIFACT_KEY
+import skillbill.workflow.goal.model.GoalSubtaskReviewArtifactDecoder
+import skillbill.workflow.goal.model.GoalSubtaskReviewState
+import skillbill.workflow.goal.model.ValidationDepth
+import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_GOAL_CONTINUATION_ARTIFACT_KEY
+import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_RECORDS_ARTIFACT_KEY
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeGoalContinuationArtifact
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeQualityGateSelection
+import java.nio.file.Path
+import java.time.Clock
+
+class GoalRunnerChildRepairWedgeApplyLoop(
+  private val engine: WorkflowEngine,
+  private val gitOperations: WorkflowGitOperations,
+  private val wedgeDiagnosis: GoalRunnerChildRepairWedgeDiagnosis,
+  private val decompositionManifestValidator: DecompositionManifestValidator,
+  private val phaseSettlements: FeatureTaskPhaseSettlementRepository,
+  private val clock: Clock,
+) {
+  fun apply(request: GoalRunnerChildRepairApplyRequest): GoalRunnerChildRepairApplyResult {
+    if (request.wedgeClasses.isEmpty()) return GoalRunnerChildRepairApplyResult()
+    val workflowStates = request.unitOfWork.workflowStates
+    var record = WorkflowFamily.TASK_RUNTIME.get(workflowStates, request.workflowId)
+      ?: return GoalRunnerChildRepairApplyResult()
+    var artifacts = decodeArtifacts(record.artifactsJson)
+    val state = ApplyState(
+      request = request,
+      record = record,
+      artifacts = artifacts,
+      workingContinuation = continuationArtifactFromMap(artifacts),
+      workingReview = GoalSubtaskReviewArtifactDecoder.decode(artifacts)?.state,
+      clock = clock,
+    )
+    for (wedgeClass in request.wedgeClasses.distinct()) {
+      applyWedgeClass(wedgeClass, state, workflowStates)
+      record = state.record
+      artifacts = state.artifacts
+    }
+    if (state.applied.isEmpty()) return GoalRunnerChildRepairApplyResult()
+    val priorEvidence = (artifacts[GOAL_CHILD_REPAIR_EVIDENCE_ARTIFACT_KEY] as? List<*>).orEmpty()
+    state.patch[GOAL_CHILD_REPAIR_EVIDENCE_ARTIFACT_KEY] = priorEvidence + state.evidenceEntries
+    val updated = engine.updateRecord(
+      WorkflowFamily.TASK_RUNTIME.definition,
+      record,
+      WorkflowUpdateInput(
+        workflowStatus = record.workflowStatus,
+        currentStepId = record.currentStepId,
+        stepUpdates = null,
+        artifactsPatch = state.patch,
+        sessionId = record.sessionId.orEmpty(),
+      ),
+    )
+    WorkflowFamily.TASK_RUNTIME.save(workflowStates, updated)
+    return GoalRunnerChildRepairApplyResult(
+      repairs = state.applied,
+      manifestProjectionArtifactsJson = state.manifestProjectionArtifactsJson,
+    )
+  }
+
+  private fun applyWedgeClass(
+    wedgeClass: GoalRunnerWedgeClass,
+    state: ApplyState,
+    workflowStates: WorkflowStateRepository,
+  ) {
+    when (wedgeClass) {
+      GoalRunnerWedgeClass.PHASE_OUTPUT_CONTRACT_INCOMPATIBLE -> Unit
+      GoalRunnerWedgeClass.MISSING_VALIDATION_DEPTH -> applyMissingValidationDepth(wedgeClass, state)
+      GoalRunnerWedgeClass.MISSING_QUALITY_GATE_SELECTION -> applyMissingQualityGateSelection(wedgeClass, state)
+      GoalRunnerWedgeClass.UNREACHABLE_REVIEW_BASE,
+      GoalRunnerWedgeClass.UNREACHABLE_REMEDIATION_BASE,
+      -> applyUnreachableReviewBase(wedgeClass, state)
+      GoalRunnerWedgeClass.STALE_BLOCKED_CONTINUATION_OUTCOME ->
+        applyStaleBlockedChildRepairWedge(wedgeClass, state)
+      GoalRunnerWedgeClass.COMPLETED_UPSTREAM_MISSING_OUTPUT ->
+        applyCompletedUpstreamChildRepairWedge(
+          wedgeClass = wedgeClass,
+          state = state,
+          workflowStates = workflowStates,
+          deps = CompletedUpstreamRepairDeps(engine, decompositionManifestValidator, phaseSettlements),
+        )
+    }
+  }
+
+  private fun applyMissingValidationDepth(wedgeClass: GoalRunnerWedgeClass, state: ApplyState) {
+    val continuation = state.workingContinuation ?: return
+    if (continuation.validationDepth != null) return
+    val depth = ValidationDepth.FULL
+    val healed = continuation.copy(validationDepth = depth)
+    state.workingContinuation = healed
+    state.patch[FEATURE_TASK_RUNTIME_GOAL_CONTINUATION_ARTIFACT_KEY] = healed.toArtifactMap()
+    recordChildRepairWedge(state, wedgeClass, priorValue = null, newValue = depth.wireValue)
+  }
+
+  private fun applyMissingQualityGateSelection(wedgeClass: GoalRunnerWedgeClass, state: ApplyState) {
+    val continuation = state.workingContinuation ?: return
+    if (continuation.qualityGateSelection != null) return
+    val selection = FeatureTaskRuntimeQualityGateSelection.VALIDATE
+    val healed = continuation.copy(qualityGateSelection = selection)
+    state.workingContinuation = healed
+    state.patch[FEATURE_TASK_RUNTIME_GOAL_CONTINUATION_ARTIFACT_KEY] = healed.toArtifactMap()
+    recordChildRepairWedge(state, wedgeClass, priorValue = null, newValue = selection.wireValue)
+  }
+
+  private fun applyUnreachableReviewBase(wedgeClass: GoalRunnerWedgeClass, state: ApplyState) {
+    val context = unreachableReviewRepairContext(
+      UnreachableReviewRepairLookup(
+        wedgeClass = wedgeClass,
+        wedgeDiagnosis = wedgeDiagnosis,
+        repoRoot = state.request.repoRoot,
+        gitOperations = gitOperations,
+        review = state.workingReview,
+        continuation = state.workingContinuation,
+      ),
+    ) ?: return
+    applyUnreachableReviewRepairToState(wedgeClass, state, context)
+  }
+
+  class ApplyState(
+    val request: GoalRunnerChildRepairApplyRequest,
+    record: WorkflowStateSnapshot,
+    artifacts: Map<String, Any?>,
+    workingContinuation: FeatureTaskRuntimeGoalContinuationArtifact?,
+    workingReview: GoalSubtaskReviewState?,
+    val clock: Clock,
+  ) {
+    var record: WorkflowStateSnapshot = record
+    var artifacts: Map<String, Any?> = artifacts
+    val patch: LinkedHashMap<String, Any?> = linkedMapOf()
+    val applied: MutableList<GoalRunnerAppliedRepair> = mutableListOf()
+    val evidenceEntries: MutableList<Map<String, Any?>> = mutableListOf()
+    var workingContinuation: FeatureTaskRuntimeGoalContinuationArtifact? =
+      workingContinuation
+    var workingReview: GoalSubtaskReviewState? = workingReview
+    var manifestProjectionArtifactsJson: String? = null
+  }
+}
+
+internal data class UnreachableReviewRepairContext(
+  val review: GoalSubtaskReviewState,
+  val continuation: FeatureTaskRuntimeGoalContinuationArtifact,
+  val failedSha: String,
+  val replacement: String,
+)
+
+fun unreachableReviewFailedSha(wedgeClass: GoalRunnerWedgeClass, review: GoalSubtaskReviewState): String? =
+  when (wedgeClass) {
+    GoalRunnerWedgeClass.UNREACHABLE_REVIEW_BASE -> review.reviewBaseSha
+    GoalRunnerWedgeClass.UNREACHABLE_REMEDIATION_BASE -> review.remediationBaseSha
+    GoalRunnerWedgeClass.PHASE_OUTPUT_CONTRACT_INCOMPATIBLE,
+    GoalRunnerWedgeClass.MISSING_VALIDATION_DEPTH,
+    GoalRunnerWedgeClass.MISSING_QUALITY_GATE_SELECTION,
+    GoalRunnerWedgeClass.STALE_BLOCKED_CONTINUATION_OUTCOME,
+    GoalRunnerWedgeClass.COMPLETED_UPSTREAM_MISSING_OUTPUT,
+    -> null
+  }
+
+internal data class UnreachableReviewRepairLookup(
+  val wedgeClass: GoalRunnerWedgeClass,
+  val wedgeDiagnosis: GoalRunnerChildRepairWedgeDiagnosis,
+  val repoRoot: Path,
+  val gitOperations: WorkflowGitOperations,
+  val review: GoalSubtaskReviewState?,
+  val continuation: FeatureTaskRuntimeGoalContinuationArtifact?,
+)
+
+internal fun unreachableReviewRepairContext(lookup: UnreachableReviewRepairLookup): UnreachableReviewRepairContext? {
+  val wedgeClass = lookup.wedgeClass
+  val review = lookup.review
+  val continuation = lookup.continuation
+  val failedSha = review?.let { unreachableReviewFailedSha(wedgeClass, it) }
+  if (review == null || continuation == null || failedSha == null) return null
+  if (!lookup.wedgeDiagnosis.isUnreachable(lookup.repoRoot, failedSha)) return null
+  val recovered = lookup.gitOperations.recoverGoalSubtaskReviewBaseline(
+    lookup.repoRoot,
+    GoalSubtaskReviewBaselineRecoveryRequest(
+      unreachableSha = failedSha,
+      failureReason = GoalSubtaskReviewInputFailureReason.BASE_NOT_ANCESTOR,
+    ),
+    continuation.goalBranch,
+  )
+  val recoveredBaseline = recovered.baseline
+  if (!recovered.ok || recoveredBaseline == null) return null
+  return UnreachableReviewRepairContext(
+    review = review,
+    continuation = continuation,
+    failedSha = failedSha,
+    replacement = recoveredBaseline.reviewBaseSha,
+  )
+}
+
+internal fun healedUnreachableReviewState(
+  wedgeClass: GoalRunnerWedgeClass,
+  context: UnreachableReviewRepairContext,
+): GoalSubtaskReviewState? = when (wedgeClass) {
+  GoalRunnerWedgeClass.UNREACHABLE_REVIEW_BASE -> context.review.copy(
+    reviewBaseSha = context.replacement,
+  )
+  GoalRunnerWedgeClass.UNREACHABLE_REMEDIATION_BASE -> context.review.copy(remediationBaseSha = context.replacement)
+  GoalRunnerWedgeClass.PHASE_OUTPUT_CONTRACT_INCOMPATIBLE,
+  GoalRunnerWedgeClass.MISSING_VALIDATION_DEPTH,
+  GoalRunnerWedgeClass.MISSING_QUALITY_GATE_SELECTION,
+  GoalRunnerWedgeClass.STALE_BLOCKED_CONTINUATION_OUTCOME,
+  GoalRunnerWedgeClass.COMPLETED_UPSTREAM_MISSING_OUTPUT,
+  -> null
+}
+
+internal fun applyUnreachableReviewRepairToState(
+  wedgeClass: GoalRunnerWedgeClass,
+  state: GoalRunnerChildRepairWedgeApplyLoop.ApplyState,
+  context: UnreachableReviewRepairContext,
+) {
+  val healed = healedUnreachableReviewState(wedgeClass, context) ?: return
+  state.workingReview = healed
+  state.patch[GOAL_SUBTASK_REVIEW_STATE_ARTIFACT_KEY] = healed.toArtifactMap()
+  val recoveryEvidence = linkedMapOf<String, Any?>(
+    "original_sha" to context.failedSha,
+    "replacement_sha" to context.replacement,
+    "repointed_field" to wedgeClass.durableField,
+    "failure_reason" to "base_not_ancestor",
+    "failure_message" to "Operator goal repair repointed unreachable ${wedgeClass.durableField}.",
+    "goal_branch" to context.continuation.goalBranch,
+  )
+  val priorRecoveries = (state.artifacts[GOAL_REVIEW_BASE_RECOVERIES_ARTIFACT_KEY] as? List<*>).orEmpty()
+  val existingRecoveries = (state.patch[GOAL_REVIEW_BASE_RECOVERIES_ARTIFACT_KEY] as? List<*>) ?: priorRecoveries
+  state.patch[GOAL_REVIEW_BASE_RECOVERIES_ARTIFACT_KEY] = existingRecoveries + recoveryEvidence
+  recordChildRepairWedge(state, wedgeClass, priorValue = context.failedSha, newValue = context.replacement)
+}
+
+internal fun applyStaleBlockedChildRepairWedge(
+  wedgeClass: GoalRunnerWedgeClass,
+  state: GoalRunnerChildRepairWedgeApplyLoop.ApplyState,
+) {
+  val continuation = state.workingContinuation ?: return
+  val identity = GoalContinuation(
+    issueKey = continuation.issueKey,
+    subtaskId = continuation.subtaskId,
+    suppressPr = continuation.suppressPr,
+    goalBranch = continuation.goalBranch,
+  )
+  val stored = goalContinuationOutcome(
+    state.artifacts,
+    state.request.issueKey,
+    state.request.subtaskId,
+    continuation.suppressPr,
+  )?.takeIf { it.status == GoalRunnerTerminalStatus.BLOCKED } ?: return
+  val derived = derivedTerminalOutcomeFor(state.record, state.artifacts, identity) { null }
+  if (
+    nonCompleteStoredOutcomeIsCorroborated(
+      stored.copy(workflowId = state.request.workflowId),
+      derived,
+      state.record,
+    )
+  ) {
+    return
+  }
+  state.patch["goal_continuation_outcome"] = null
+  recordChildRepairWedge(state, wedgeClass, priorValue = stored.blockedReason, newValue = null)
+}
+
+internal fun applyCompletedUpstreamChildRepairWedge(
+  wedgeClass: GoalRunnerWedgeClass,
+  state: GoalRunnerChildRepairWedgeApplyLoop.ApplyState,
+  workflowStates: WorkflowStateRepository,
+  deps: CompletedUpstreamRepairDeps,
+) {
+  val engine = deps.engine
+  val featureSize = featureSizeFromArtifacts(state.artifacts)
+  val qualityGateSelection = state.workingContinuation?.qualityGateSelection
+    ?: FeatureTaskRuntimeQualityGateSelection.VALIDATE
+  val unsettledPhaseId = diagnoseUnsettledCompletedUpstreamPhaseId(
+    phaseRecordsFrom(state.artifacts),
+    featureSize,
+    qualityGateSelection,
+  ) ?: return
+  rehydrateSettledPhaseOutput(wedgeClass, state, workflowStates, deps, unsettledPhaseId)
+  val phaseRecords = phaseRecordsFrom(state.artifacts)
+  val resumePhaseId = diagnoseUnsettledCompletedUpstreamPhaseId(
+    phaseRecords,
+    featureSize,
+    qualityGateSelection,
+  ) ?: return
+  val input = buildCompletedUpstreamMissingOutputRepair(
+    CompletedUpstreamRepairRequest(
+      phaseRecords = phaseRecords,
+      ledger = phaseLedgerFrom(state.artifacts),
+      featureSize = featureSize,
+      resumePhaseId = resumePhaseId,
+      reason = "Operator goal repair reopened '$resumePhaseId' because a completed upstream phase " +
+        "record had no settled output for a blocked consumer.",
+      qualityGateSelection = qualityGateSelection,
+    ),
+  )
+  val updated = engine.updateRecord(WorkflowFamily.TASK_RUNTIME.definition, state.record, input)
+  WorkflowFamily.TASK_RUNTIME.save(workflowStates, updated)
+  state.record = updated
+  state.artifacts = decodeArtifacts(updated.artifactsJson)
+  state.workingContinuation = continuationArtifactFromMap(state.artifacts)
+  state.workingReview = GoalSubtaskReviewArtifactDecoder.decode(state.artifacts)?.state
+  state.manifestProjectionArtifactsJson = engine.updateGoalParentForBlockedPhaseRetry(
+    unitOfWork = state.request.unitOfWork,
+    childWorkflowId = state.request.workflowId,
+    childArtifacts = state.artifacts,
+    phaseId = resumePhaseId,
+    validator = deps.decompositionManifestValidator,
+  )
+  val repair = GoalRunnerAppliedRepair(
+    subtaskId = state.request.subtaskId,
+    workflowId = state.request.workflowId,
+    wedgeClass = wedgeClass,
+    field = resumePhaseId,
+    priorValue = "completed_without_output",
+    newValue = "pending",
+  )
+  state.applied += repair
+  state.evidenceEntries += childRepairWedgeEvidenceMap(repair, state.clock)
+}
+
+internal data class CompletedUpstreamRepairDeps(
+  val engine: WorkflowEngine,
+  val decompositionManifestValidator: DecompositionManifestValidator,
+  val phaseSettlements: FeatureTaskPhaseSettlementRepository,
+)
+
+internal fun rehydrateSettledPhaseOutput(
+  wedgeClass: GoalRunnerWedgeClass,
+  state: GoalRunnerChildRepairWedgeApplyLoop.ApplyState,
+  workflowStates: WorkflowStateRepository,
+  deps: CompletedUpstreamRepairDeps,
+  phaseId: String,
+): Boolean {
+  val engine = deps.engine
+  val phaseRecords = phaseRecordsFrom(state.artifacts)
+  val record = phaseRecords[phaseId] ?: return false
+  if (!record.outputArtifact.isNullOrBlank()) return false
+  val settlement = deps.phaseSettlements.findLatestCompleted(state.request.workflowId, phaseId) ?: return false
+  val restored = phaseRecords + (phaseId to record.copy(outputArtifact = settlement.envelopeJson))
+  val updated = engine.updateRecord(
+    WorkflowFamily.TASK_RUNTIME.definition,
+    state.record,
+    WorkflowUpdateInput(
+      workflowStatus = state.record.workflowStatus,
+      currentStepId = state.record.currentStepId,
+      stepUpdates = null,
+      artifactsPatch = mapOf(
+        FEATURE_TASK_RUNTIME_PHASE_RECORDS_ARTIFACT_KEY to restored.mapValues { (_, value) -> value.toArtifactMap() },
+      ),
+      sessionId = "",
+    ),
+  )
+  WorkflowFamily.TASK_RUNTIME.save(workflowStates, updated)
+  state.record = updated
+  state.artifacts = decodeArtifacts(updated.artifactsJson)
+  recordChildRepairWedge(
+    state,
+    wedgeClass,
+    priorValue = "absent",
+    newValue = "rehydrated_from_settlement_attempt_${settlement.attempt}",
+  )
+  return true
+}
+
+internal fun recordChildRepairWedge(
+  state: GoalRunnerChildRepairWedgeApplyLoop.ApplyState,
+  wedgeClass: GoalRunnerWedgeClass,
+  priorValue: String?,
+  newValue: String?,
+) {
+  val repair = GoalRunnerAppliedRepair(
+    subtaskId = state.request.subtaskId,
+    workflowId = state.request.workflowId,
+    wedgeClass = wedgeClass,
+    field = wedgeClass.durableField,
+    priorValue = priorValue,
+    newValue = newValue,
+  )
+  state.applied += repair
+  state.evidenceEntries += childRepairWedgeEvidenceMap(repair, state.clock)
+}
+
+fun childRepairWedgeEvidenceMap(repair: GoalRunnerAppliedRepair, clock: Clock): Map<String, Any?> = linkedMapOf(
+  "wedge_class" to repair.wedgeClass.wireValue,
+  "field" to repair.field,
+  "prior_value" to repair.priorValue,
+  "new_value" to repair.newValue,
+  "subtask_id" to repair.subtaskId,
+  "workflow_id" to repair.workflowId,
+  "repaired_at" to clock.instant().toString(),
+)
+
+fun continuationArtifactFromMap(artifacts: Map<String, Any?>): FeatureTaskRuntimeGoalContinuationArtifact? {
+  val raw = JsonSupport.anyToStringAnyMap(artifacts[FEATURE_TASK_RUNTIME_GOAL_CONTINUATION_ARTIFACT_KEY])
+    ?: return null
+  return FeatureTaskRuntimeGoalContinuationArtifact.fromArtifactMap(raw)
+}
