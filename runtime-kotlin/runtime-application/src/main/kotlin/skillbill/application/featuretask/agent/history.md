@@ -1,5 +1,14 @@
 # featuretask runtime boundary history
 
+## [2026-09-11] Validate repair is one occupancy with in-session proofs
+Areas: runtime-application/featuretask, runtime-application/featuretask/validation
+- Validate `MAX_REPAIR_TURNS` is 1: discovery, one agent occupancy, one POST_REPAIR_VERIFY, then complete or block. Operator resume still resets an exhausted window.
+- Repair prompts require iterating targeted proofs in that occupancy and require project-wide `./gradlew spotlessApply` when findings name spotless, ktlint, or format.
+- Pattern: runtime-owned collect-all stays after the agent stops; format findings cannot close by indent guesswork without Apply. reusable
+Feature flag: N/A
+Acceptance criteria: N/A (hotfix)
+
+
 ## [2026-09-10] SKILL-236 — write_history and commit_push stay forward-only
 Areas: runtime-application/featuretask, runtime-domain/workflow/taskruntime
 - Removed the commit_push stale-review reaudit path that wiped audit/review and bounced the drive loop back to audit after implement_fix left owned dirty files.

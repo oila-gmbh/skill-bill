@@ -183,8 +183,8 @@ class FeatureTaskRuntimeValidationGateCoordinator(
           ),
         )
         return terminalBlockedResult(
-          "Validation gate still reports ${currentFindings.size} finding(s) after $MAX_REPAIR_TURNS repair " +
-            "turns; remaining findings are recorded for the operator.",
+          "Validation gate still reports ${currentFindings.size} finding(s) after the repair occupancy; " +
+            "remaining findings are recorded for the operator.",
           remainingFindings = projection,
           measurements = measurements,
         )
@@ -313,7 +313,7 @@ class FeatureTaskRuntimeValidationGateCoordinator(
   }
 
   companion object {
-    const val MAX_REPAIR_TURNS: Int = 3
+    const val MAX_REPAIR_TURNS: Int = 1
 
     private fun operatorResumeRepairTurns(repairsUsed: Int): Int =
       if (repairsUsed >= MAX_REPAIR_TURNS) 0 else repairsUsed
