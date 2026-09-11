@@ -625,10 +625,11 @@ runtime-ports
     - `skillbill.workflow.taskruntime.phaseartifacts.phaseRecordsFrom`
     - `skillbill.workflow.taskruntime.phaseartifacts.resolvedBranchFrom`
     - `skillbill.workflow.taskruntime.phaseartifacts.reviewGenerationFrom`
-    - `skillbill.ports.review.GovernedReviewEvidenceCodec.TOOL_SPECS`
-    - `skillbill.ports.review.GovernedReviewEvidenceCodec.expansionRequest`
-    - `skillbill.ports.review.GovernedReviewEvidenceCodec.payload`
-    - `skillbill.ports.review.GovernedReviewEvidenceCodec.readRequest`
+- `skillbill.ports.review.model.GovernedReviewEvidenceCodec.TOOL_SPECS`
+- `skillbill.ports.review.model.GovernedReviewEvidenceCodec.discoveryRequest`
+- `skillbill.ports.review.model.GovernedReviewEvidenceCodec.expansionRequest`
+- `skillbill.ports.review.model.GovernedReviewEvidenceCodec.payload`
+- `skillbill.ports.review.model.GovernedReviewEvidenceCodec.readRequest`
     - `skillbill.ports.review.model.ReviewAccountingRecord.boundedPayload`
     - `skillbill.ports.validation.model.ReleaseRefMetadata.toPayload`
     - `skillbill.ports.validation.model.RepoValidationReport.toPayload`
@@ -1787,6 +1788,7 @@ Categories:
 - `skillbill.goalrunner.subtaskreview.GoalSubtaskReviewStructuredFindingsParse.structuredFindings`
 - `skillbill.goalrunner.subtaskreview.GoalSubtaskReviewSummaryReducer.blockerDispositions`
 - `skillbill.goalrunner.subtaskreview.GoalSubtaskReviewSummaryReducer.commitFocusedAccounting`
+- `skillbill.goalrunner.subtaskreview.GoalSubtaskReviewSummaryReducer.evidenceCoverageComplete`
 - `skillbill.goalrunner.subtaskreview.GoalSubtaskReviewSummaryReducer.fromOutput`
 - `skillbill.goalrunner.subtaskreview.GoalSubtaskReviewSummaryReducer.outcomeFor`
 - `skillbill.goalrunner.subtaskreview.GoalSubtaskReviewSummaryReducer.rejectedVerificationFindings`
@@ -1853,10 +1855,11 @@ Categories:
 - `skillbill.workflow.taskruntime.phaseartifacts.phaseRecordsFrom`
 - `skillbill.workflow.taskruntime.phaseartifacts.resolvedBranchFrom`
 - `skillbill.workflow.taskruntime.phaseartifacts.reviewGenerationFrom`
-- `skillbill.ports.review.GovernedReviewEvidenceCodec.TOOL_SPECS`
-- `skillbill.ports.review.GovernedReviewEvidenceCodec.expansionRequest`
-- `skillbill.ports.review.GovernedReviewEvidenceCodec.payload`
-- `skillbill.ports.review.GovernedReviewEvidenceCodec.readRequest`
+- `skillbill.ports.review.model.GovernedReviewEvidenceCodec.TOOL_SPECS`
+- `skillbill.ports.review.model.GovernedReviewEvidenceCodec.discoveryRequest`
+- `skillbill.ports.review.model.GovernedReviewEvidenceCodec.expansionRequest`
+- `skillbill.ports.review.model.GovernedReviewEvidenceCodec.payload`
+- `skillbill.ports.review.model.GovernedReviewEvidenceCodec.readRequest`
 - `skillbill.ports.review.model.ReviewAccountingRecord.boundedPayload`
 - `skillbill.ports.validation.model.ReleaseRefMetadata.toPayload`
 - `skillbill.ports.validation.model.RepoValidationReport.toPayload`
@@ -1928,6 +1931,7 @@ Categories:
 - `skillbill.workflow.goal.model.appendBoundedHistoryBySequence`
 - `skillbill.workflow.goal.model.goalObservabilityHistoryFromArtifacts`
 - `skillbill.workflow.goal.model.goalObservabilityLatestEventFromArtifacts`
+- `skillbill.workflow.goal.model.goalObservabilityLatestEventForLiveness`
 - `skillbill.ports.idestatus.IdeStatusValidator.validate`
 - `skillbill.workflow.taskruntime.FeatureTaskRuntimeBuildReceiptValidator.validateBuildReceipt`
 - `skillbill.workflow.taskruntime.FeatureTaskRuntimeHandoffEnvelopeValidator.validateEnvelope`

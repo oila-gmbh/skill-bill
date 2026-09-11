@@ -33,7 +33,7 @@ private data class InlineMergedOutcomeRequest(
 internal class ParallelCodeReviewInlineCoverageContinuation(
   private val parentReviewLauncher: GoalRunnerSubtaskLauncher,
   private val governedEvidenceEndpointBinder: GovernedReviewEvidenceEndpointBinder,
-  private val failureHelpers: ParallelCodeReviewRunnerFailureAdmission,
+  private val failureAdmission: ParallelCodeReviewRunnerFailureAdmission,
   private val sliceOutcome: (LaunchedBoundParentArgs, AgentRunLaunchFacts) -> ParallelReviewLaneOutcome,
   private val evidenceReadCallback: (ParallelCodeReviewRequest) -> (() -> Unit)?,
 ) {
@@ -101,7 +101,7 @@ internal class ParallelCodeReviewInlineCoverageContinuation(
     facts: AgentRunLaunchFacts,
     accounting: ReviewLaneAccounting,
     deliveredBefore: Int,
-  ): Boolean = failureHelpers.laneFailureReason(facts) == null &&
+  ): Boolean = failureAdmission.laneFailureReason(facts) == null &&
     accounting.terminalOutcome == null &&
     accounting.requiredEvidenceUnits > accounting.deliveredEvidenceUnits &&
     accounting.deliveredEvidenceUnits > deliveredBefore

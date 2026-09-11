@@ -28,7 +28,7 @@ private class ReviewFinishedTelemetryPayloadContract(
     telemetry.fallbackReason?.let { put("fallback_reason", it) }
     put("platform_slug", telemetry.platformSlug)
     put("scope_type", telemetry.scopeType)
-    put("execution_mode", telemetry.executionMode)
+    put("execution_mode", telemetry.executionMode?.wireValue)
     put("review_finished_at", telemetry.reviewFinishedAt)
     put("learnings", telemetry.learnings.toPayload())
     putAll(telemetry.stageMetrics.toStageMetricsPayload())

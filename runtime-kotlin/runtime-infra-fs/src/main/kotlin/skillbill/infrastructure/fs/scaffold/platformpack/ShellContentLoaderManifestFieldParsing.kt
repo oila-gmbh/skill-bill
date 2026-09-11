@@ -139,6 +139,26 @@ internal fun parseAreaMetadata(manifest: Map<*, *>, slug: String, declaredAreas:
   return areaMetadata
 }
 
+internal fun parseRequiredRubricCompanions(manifest: Map<*, *>, slug: String): Map<String, List<String>> {
+  val raw = manifest["required_rubric_companions"] ?: return emptyMap()
+  val companions = raw as? Map<*, *> ?: invalidManifestSchema(
+    "Platform pack '$slug': 'required_rubric_companions' must be a mapping.",
+  )
+  return companions.entries.associate { (key, value) ->
+    val area = key as? String ?: invalidManifestSchema(
+      "Platform pack '$slug': required_rubric_companions keys must be strings.",
+    )
+    val files = value as? List<*> ?: invalidManifestSchema(
+      "Platform pack '$slug': required_rubric_companions['$area'] must be a list.",
+    )
+    area to files.mapIndexed { index, file ->
+      (file as? String)?.takeIf(String::isNotBlank) ?: invalidManifestSchema(
+        "Platform pack '$slug': required_rubric_companions['$area'][$index] must be a non-blank string.",
+      )
+    }
+  }
+}
+
 internal fun parseCodeReviewComposition(manifest: Map<*, *>, slug: String): CodeReviewComposition? {
   val raw = manifest["code_review_composition"] ?: return null
   val composition = raw as? Map<*, *>

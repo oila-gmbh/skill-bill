@@ -87,7 +87,7 @@ val copyReviewContextSchema =
     from(schemaPath)
     into(
       layout.buildDirectory.dir(
-        "generated/skillbill-infrastructure-fs/skillbill/infrastructure/fs/contracts",
+        "generated/skillbill-infrastructure-fs/skillbill/contracts",
       ),
     )
     inputs.file(schemaPath)

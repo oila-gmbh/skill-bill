@@ -50,6 +50,7 @@ class PlatformPackSchemaAnchoredBijectionTest {
     "addon_usage",
     "feature_addon_usage",
     "lane_conditions",
+    "required_rubric_companions",
     "validation_gate",
   )
 

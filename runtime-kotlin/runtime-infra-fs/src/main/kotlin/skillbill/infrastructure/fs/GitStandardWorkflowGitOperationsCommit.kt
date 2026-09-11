@@ -82,7 +82,20 @@ internal fun gitLocalBranchHasUnpushedCommits(repoRoot: Path, branch: String): W
   val remoteRef = "origin/$normalized"
   val remote = runGitCommand(repoRoot, "rev-parse", "--verify", remoteRef)
   if (remote !is WorkflowGitOperationResult.Ok) {
-    return WorkflowGitOperationResult.Ok(value = "true")
+    val published = runGitCommand(
+      repoRoot,
+      "for-each-ref",
+      "--contains",
+      normalized,
+      "--format=%(refname)",
+      "refs/remotes/origin",
+    )
+    if (published !is WorkflowGitOperationResult.Ok) {
+      return WorkflowGitOperationResult.Failed(
+        error = "Could not inspect remote refs for local '$normalized': ${published.error}",
+      )
+    }
+    return WorkflowGitOperationResult.Ok(value = if (published.value.isBlank()) "true" else "false")
   }
   val ahead = runGitCommand(repoRoot, "rev-list", "--count", "$remoteRef..$normalized")
   val count = ahead.value.trim().toIntOrNull()

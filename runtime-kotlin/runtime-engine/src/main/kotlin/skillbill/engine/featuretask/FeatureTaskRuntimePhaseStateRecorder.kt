@@ -179,7 +179,7 @@ fun featureTaskRuntimePhaseRecordFor(
     finishedAt = if (request.finished) now else null,
     durationMillis = if (request.finished) durationMillis(startedAt, now) else null,
     resolvedAgentId = request.resolvedAgentId,
-    outputArtifact = request.outputArtifact,
+    outputArtifact = request.outputArtifact ?: previous?.outputArtifact,
     rejectedOutput = request.rejectedOutput,
     blockedReason = request.blockedReason,
     failureDisposition = request.failureDisposition,

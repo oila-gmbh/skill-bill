@@ -221,6 +221,7 @@ data class GoalSubtaskReviewState(
     "emitted_pass_count" to emittedPassCount,
     "blocker_dispositions" to blockerDispositions.map(GoalSubtaskBlockerDisposition::toArtifactMap),
   ).apply {
+    if (baselineUntrackedPaths.isNotEmpty()) put("baseline_untracked_paths", baselineUntrackedPaths)
     reservedPassNumber?.let { put("reserved_pass_number", it) }
     reviewInputArtifact?.let { put("review_input_artifact", it) }
     reviewedDeltaDigest?.let { put("reviewed_delta_digest", it) }

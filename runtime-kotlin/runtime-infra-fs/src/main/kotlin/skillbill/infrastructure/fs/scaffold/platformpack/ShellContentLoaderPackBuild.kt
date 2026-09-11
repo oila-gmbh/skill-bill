@@ -58,6 +58,7 @@ internal fun assemblePlatformManifest(
   val laneConditions = parseLaneConditions(manifest, slug, declaredAreas)
   val declaredQualityCheckFile = parseOptionalPath(manifest, slug, "declared_quality_check_file", packRoot)
   val pointers = parsePointers(manifest, slug)
+  val requiredRubricCompanions = parseRequiredRubricCompanions(manifest, slug)
   return PlatformManifest(
     slug = slug,
     packRoot = packRoot.toFileLocation(),
@@ -87,6 +88,7 @@ internal fun assemblePlatformManifest(
     ),
     featureAddonUsage = parseFeatureAddonUsage(manifest, slug, packRoot, pointers),
     customFields = validatedCustomFields(slug, manifestPath, typedManifest),
+    requiredRubricCompanions = requiredRubricCompanions,
   )
 }
 

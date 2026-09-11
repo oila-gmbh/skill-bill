@@ -1,7 +1,7 @@
 package skillbill.ports.review.model
 
 import skillbill.boundary.OpenBoundaryMap
-import skillbill.contracts.JsonSupport
+import skillbill.contracts.JsonCodec
 import skillbill.error.InvalidReviewContextSchemaError
 import skillbill.review.context.model.ReviewEvidenceLimits
 import skillbill.review.context.model.ReviewExpansionRecord
@@ -104,7 +104,7 @@ object GovernedReviewEvidenceCodec {
   @OpenBoundaryMap("JSON-RPC wire maps at the governed review evidence MCP seam")
   fun payload(record: ReviewExpansionRecord): Map<String, Any?> =
     GovernedReviewEvidenceCodecWire.expansionPayload(record)
-  fun requestMetadataBytes(request: ReviewEvidenceBatchRequest): Int = JsonSupport.mapToJsonString(
+  fun requestMetadataBytes(request: ReviewEvidenceBatchRequest): Int = JsonCodec.mapToJsonString(
     mapOf(
       "lane" to request.lane,
       "requests" to request.requests.map { item ->
@@ -123,7 +123,7 @@ object GovernedReviewEvidenceCodec {
   ).toByteArray(Charsets.UTF_8).size
 
   private fun requestMetadata(arguments: Map<String, Any?>) {
-    if (JsonSupport.mapToJsonString(arguments).toByteArray(Charsets.UTF_8).size > ReviewEvidenceLimits.REQUEST_BYTES) {
+    if (JsonCodec.mapToJsonString(arguments).toByteArray(Charsets.UTF_8).size > ReviewEvidenceLimits.REQUEST_BYTES) {
       throw InvalidReviewContextSchemaError("review-evidence", "Request metadata exceeds its byte limit.")
     }
   }

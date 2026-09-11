@@ -1,7 +1,7 @@
 package skillbill.contracts.review
 
-const val REVIEW_CONTEXT_CONTRACT_VERSION: String = "2.2"
-const val REVIEW_CONTEXT_SCHEMA_RESOURCE: String = "skillbill/infrastructure/fs/contracts/review-context-schema.yaml"
+const val REVIEW_CONTEXT_CONTRACT_VERSION: String = "2.3"
+const val REVIEW_CONTEXT_SCHEMA_RESOURCE: String = "skillbill/contracts/review-context-schema.yaml"
 
 object ReviewContextSchemaPaths {
   const val REPO_RELATIVE_PATH: String =

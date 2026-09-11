@@ -2,6 +2,7 @@ package skillbill.application.review
 
 import skillbill.contracts.JsonCodec
 import skillbill.contracts.review.REVIEW_CONTEXT_CONTRACT_VERSION
+import skillbill.error.InvalidReviewContextSchemaError
 import skillbill.review.context.model.GovernedReviewIntegrationLaunch
 import skillbill.review.context.model.GovernedReviewLaunch
 import skillbill.review.context.model.REVIEW_RULE_EXCERPT_MAX_CHARS
@@ -161,7 +162,7 @@ class ReviewPacketProjectionTest {
   }
 
   @Test fun `expansion records require a reachability reason`() {
-    assertFailsWith<IllegalArgumentException> {
+    assertFailsWith<InvalidReviewContextSchemaError> {
       ReviewExpansionRecord("exp-1", "d".repeat(64), "src/C.kt", " ", true, 0)
     }
   }

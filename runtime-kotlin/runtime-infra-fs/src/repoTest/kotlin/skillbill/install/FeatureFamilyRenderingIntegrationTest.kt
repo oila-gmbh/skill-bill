@@ -47,7 +47,7 @@ class FeatureFamilyRenderingIntegrationTest {
 
     val feature = staged.renderedSkillFile.toPath().readText()
 
-    assertContains(feature, "skill-bill goal preflight <issue-key> --format json")
+    assertContains(feature, "skill-bill goal preflight <issue-key> --agent <currently-executing-agent> --format json")
     assertEquals(1, "skill-bill goal preflight".toRegex().findAll(feature).count())
     assertContains(feature, "concise human-readable summary")
     assertContains(feature, "issue key, feature name, child agent")

@@ -114,7 +114,15 @@ object McpToolRegistry {
           "phase_id" to stringSchema(enum = listOf("preplan", "plan", "implement", "audit")),
           "attempt" to mapOf("type" to "integer", "minimum" to 1),
           "reason" to stringSchema(minLength = 1),
-          "failure_disposition" to stringSchema(minLength = 1),
+          "failure_disposition" to stringSchema(
+            enum = listOf(
+              "retryable",
+              "non_retryable_policy_conflict",
+              "needs_user_action",
+              "process_failure",
+              "invalid_output",
+            ),
+          ),
         ),
       ),
       "feature_task_audit_settle" to objectSchema(

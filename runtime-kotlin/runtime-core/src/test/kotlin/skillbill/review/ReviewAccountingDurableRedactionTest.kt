@@ -154,7 +154,7 @@ class ReviewAccountingDurableRedactionTest {
       upsertReviewAccounting(connection, ReviewAccountingRecord(REVIEW_RUN_ID, summary.packetDigest, current))
       val regenerated = assertNotNull(loadReviewAccounting(connection, REVIEW_RUN_ID))
       assertEquals(REVIEW_CONTEXT_CONTRACT_VERSION, regenerated.boundedPayload["contract_version"])
-      assertEquals("2.2", regenerated.boundedPayload["contract_version"])
+      assertEquals("2.3", regenerated.boundedPayload["contract_version"])
     }
   }
 
