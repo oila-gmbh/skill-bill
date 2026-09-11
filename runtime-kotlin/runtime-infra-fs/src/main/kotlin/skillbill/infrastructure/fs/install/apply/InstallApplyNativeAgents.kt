@@ -17,7 +17,8 @@ import skillbill.install.model.NativeAgentApplyOutcome
 import skillbill.install.model.NativeAgentApplyStatus
 import skillbill.install.model.NativeAgentProviderId
 import skillbill.model.toPath
-import skillbill.ports.repository.toFileLocationimport java.nio.file.Path
+import skillbill.ports.repository.toFileLocation
+import java.nio.file.Path
 
 internal fun applyNativeAgents(
   plan: InstallPlan,
@@ -68,9 +69,9 @@ private data class NativeAgentApplyContext(
 private fun nativeAgentLinkRequest(context: NativeAgentApplyContext): NativeAgentLinkRequest {
   val plan = context.plan
   return NativeAgentLinkRequest(
-    platformPacksRoot = plan.installationTargetPaths.platformPacksRoot,
-    skillsRoot = plan.installationTargetPaths.skillsRoot,
-    home = plan.request.home,
+    platformPacksRoot = plan.installationTargetPaths.platformPacksRoot.toPath(),
+    skillsRoot = plan.installationTargetPaths.skillsRoot.toPath(),
+    home = plan.request.home.toPath(),
     selectedPlatforms = plan.selectedPlatformSlugs,
     overrides = NativeAgentLinkOverrides(
       installCacheRoot = context.installCacheRoot,
@@ -89,7 +90,7 @@ private fun nativeAgentProviderOutcomes(
       provider = installer.provider,
       agent = installer.agent,
       status = NativeAgentApplyStatus.LINKED,
-      path = link,
+      path = link.toFileLocation(),
       message = "linked",
     )
   }
@@ -98,7 +99,7 @@ private fun nativeAgentProviderOutcomes(
       provider = installer.provider,
       agent = installer.agent,
       status = NativeAgentApplyStatus.SKIPPED,
-      path = skipped.path,
+      path = skipped.path.toFileLocation(),
       message = skipped.reason,
     )
   }
@@ -120,7 +121,7 @@ private fun failedNativeAgentOutcome(installer: NativeAgentInstaller, error: Thr
     kind = InstallApplyIssueKind.NATIVE_AGENT_LINK_FAILED,
     message = error.message.orEmpty(),
     agent = installer.agent,
-    path = symlinkError?.linkPath,
+    path = symlinkError?.linkPath?.toFileLocation(),
     guidance = symlinkError?.guidance,
     causeClass = error::class.qualifiedName,
   )
@@ -128,7 +129,7 @@ private fun failedNativeAgentOutcome(installer: NativeAgentInstaller, error: Thr
     provider = installer.provider,
     agent = installer.agent,
     status = NativeAgentApplyStatus.FAILED,
-    path = symlinkError?.linkPath,
+    path = symlinkError?.linkPath?.toFileLocation(),
     message = error.message.orEmpty(),
     issue = issue,
   )
@@ -142,9 +143,9 @@ private data class NativeAgentInstaller(
 )
 
 private fun nativeAgentApplyCacheRoot(plan: InstallPlan): Path = currentNativeAgentApplyCacheRoot(
-  plan.request.home,
-  plan.installationTargetPaths.platformPacksRoot,
-  plan.installationTargetPaths.skillsRoot,
+  plan.request.home.toPath(),
+  plan.installationTargetPaths.platformPacksRoot.toPath(),
+  plan.installationTargetPaths.skillsRoot.toPath(),
 )
 
 fun currentNativeAgentApplyCacheRoot(home: Path, platformPacksRoot: Path, skillsRoot: Path?): Path {
@@ -153,9 +154,9 @@ fun currentNativeAgentApplyCacheRoot(home: Path, platformPacksRoot: Path, skills
 }
 
 private fun nativeAgentLegacyCacheRoot(plan: InstallPlan): Path = NativeAgentOperations.installCacheRoot(
-  home = plan.request.home,
-  platformPacksRoot = plan.installationTargetPaths.platformPacksRoot,
-  skillsRoot = plan.installationTargetPaths.skillsRoot,
+  home = plan.request.home.toPath(),
+  platformPacksRoot = plan.installationTargetPaths.platformPacksRoot.toPath(),
+  skillsRoot = plan.installationTargetPaths.skillsRoot.toPath(),
 )
 
 // Unlike standaloneInstallableSkills, internal skills stay enumerated here: a native-agents
@@ -164,7 +165,7 @@ private fun nativeAgentLegacyCacheRoot(plan: InstallPlan): Path = NativeAgentOpe
 internal fun nativeAgentSourceRoots(skills: List<InstallPlanSkill>, selectedPlatformSlugs: Set<String>): List<Path> =
   skills
     .filter { skill -> skill.platformSlug == null || skill.platformSlug in selectedPlatformSlugs }
-    .map { skill -> skill.sourceDir }
+    .map { skill -> skill.sourceDir.toPath() }
 
 private val nativeAgentInstallers: List<NativeAgentInstaller> = NativeAgentProvider.entries.map { provider ->
   when (provider) {

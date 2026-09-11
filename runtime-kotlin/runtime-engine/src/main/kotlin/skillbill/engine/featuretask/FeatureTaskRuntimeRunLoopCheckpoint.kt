@@ -5,12 +5,15 @@ import skillbill.engine.featuretask.model.FeatureTaskRuntimeCheckpointDecision
 import skillbill.engine.featuretask.model.FeatureTaskRuntimeCheckpointScopeInput
 import skillbill.engine.featuretask.model.FeatureTaskRuntimeSubtaskCommitIdentity
 import skillbill.ports.workflow.gitops.headCommitMessage
-import skillbill.ports.workflow.gitops.model.WorkflowGitOperationResultimport skillbill.ports.workflow.gitops.restoreIndexState
+import skillbill.ports.workflow.gitops.model.WorkflowGitOperationResult
+import skillbill.ports.workflow.gitops.restoreIndexState
 import skillbill.ports.workflow.gitops.stagedPaths
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeResolvedBranch
+import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_STANDALONE_SUBTASK_ID
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeBackwardEdge
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeCheckpointIdentity
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeVerdict
 
-@Inject
-class FeatureTaskRuntimeRunLoopCheckpoint {
+object FeatureTaskRuntimeRunLoopCheckpoint {
   fun resolveCheckpointScope(
     runLoop: FeatureTaskRuntimeRunLoop,
     precedingPhaseId: String,
@@ -34,20 +37,26 @@ class FeatureTaskRuntimeRunLoopCheckpoint {
         deletedPaths = preparation.deletedPaths,
       ),
     )
-  }  fun checkpointDeletedPaths(runLoop: FeatureTaskRuntimeRunLoop): List<String> {
+  }
+  fun checkpointDeletedPaths(runLoop: FeatureTaskRuntimeRunLoop): List<String> {
     val status = runLoop.phaseGates.gitOperations.worktreeStatus(runLoop.request.repoRoot)
-    if (!status.ok) return emptyList()
+    if (status !is WorkflowGitOperationResult.Ok) return emptyList()
     return FeatureTaskRuntimePhaseSafetyPolicy.deletedPaths(status.value.orEmpty())
   }
 
-  fun absorbableDeletedPaths(
-    deleted: List<String>,
-    ownedOrIntroduced: List<String>,
-    phaseManifestDeleted: List<String> = emptyList(),
-  ): List<String> {
-    if (deleted.isEmpty()) return emptyList()
-    val proven = (ownedOrIntroduced + phaseManifestDeleted).map(::normalizeRepoPath).toSet()
-    return deleted.filter { normalizeRepoPath(it) in proven }
+  fun absorbableDeletedPaths(deleted: List<String>, ownedOrIntroduced: List<String>): List<String> {
+    if (deleted.isEmpty() || ownedOrIntroduced.isEmpty()) return emptyList()
+    val anchors = ownedOrIntroduced.map { path -> path.substringBeforeLast('/', missingDelimiterValue = path) }
+      .filter(String::isNotBlank)
+      .distinct()
+    return deleted.filter { removed ->
+      val parent = removed.substringBeforeLast('/', missingDelimiterValue = removed)
+      anchors.any { anchor ->
+        parent == anchor ||
+          anchor.startsWith("$parent/") ||
+          parent.startsWith("$anchor/")
+      }
+    }
   }
 
   fun mayExtendOwnedInventory(phaseId: String): Boolean = phaseId in INVENTORY_EXTENDING_PHASES
@@ -100,17 +109,18 @@ class FeatureTaskRuntimeRunLoopCheckpoint {
 
   fun persistOwnedInventory(runLoop: FeatureTaskRuntimeRunLoop, inventory: List<String>, persisted: List<String>) {
     if (inventory.sorted() == persisted.sorted()) return
-    runLoop.recorder.recordWorkflowOwnedPaths(runLoop.request.workflowId, inventory)  }
+    runLoop.recorder.recordWorkflowOwnedPaths(runLoop.request.workflowId, inventory)
+  }
 
-  internal fun stagedCheckpointPaths(
+  private fun stagedCheckpointPaths(
     runLoop: FeatureTaskRuntimeRunLoop,
     precedingPhaseId: String,
     branch: String,
     blockedReason: (String, String) -> String,
   ): List<String>? {
     val staged = runLoop.phaseGates.gitOperations.stagedPaths(runLoop.request.repoRoot)
-    if (!staged.ok) {
-      runLoop.collaborators.checkpointContinued1.blockCheckpointScope(
+    if (staged !is WorkflowGitOperationResult.Ok) {
+      FeatureTaskRuntimeRunLoopCheckpointRemediation.blockCheckpointScope(
         runLoop,
         precedingPhaseId,
         branch,
@@ -177,184 +187,16 @@ class FeatureTaskRuntimeRunLoopCheckpoint {
       seedOwned = seedOwned,
       deletedPaths = deletedPaths,
     )
-  }  internal fun checkpointOwnedInventory(
+  }
+  internal fun checkpointOwnedInventory(
     runLoop: FeatureTaskRuntimeRunLoop,
     preparation: CheckpointScopePreparation,
   ): List<String> = reconcileCheckpointPathInventory(
     repoRoot = runLoop.request.repoRoot,
+    issueKey = runLoop.request.issueKey,
     specReference = runLoop.request.runInvariants.specReference,
     paths = (preparation.seedOwned + preparation.deletedPaths)
-      .filterNot { path -> isFeatureSpecPathForIssue(path, runLoop.request.issueKey) }
-      .filterNot(::isGovernedSpecPath)
-      .filterNot(::isRuntimePrivatePath),
-  )
-}
-
-private fun FeatureTaskRuntimeRunLoopCheckpoint.resolveCheckpointScopeForRuntime(
-  runLoop: FeatureTaskRuntimeRunLoop,
-  precedingPhaseId: String,
-  branch: String,
-  blockedReason: (String, String) -> String,
-): FeatureTaskRuntimeCheckpointDecision? {
-  val preparation = prepareCheckpointScope(runLoop, precedingPhaseId, branch, blockedReason) ?: return null
-  val ownedInventory = checkpointOwnedInventory(runLoop, preparation)
-  val resolved = loadResolvedCheckpointBranch(runLoop, precedingPhaseId, branch, blockedReason) ?: return null
-  if (!persistOwnedInventory(runLoop, ownedInventory, resolved.workflowOwnedPaths, preparation.stagedPaths)) {
-    runLoop.collaborators.checkpointContinued1.blockCheckpointScope(
-      runLoop,
-      precedingPhaseId,
-      branch,
-      "durable subtask ownership could not be persisted; operator decision: repair the workflow store before " +
-        "allowing checkpoint staging",
-      blockedReason,
-    )
-    return null
-  }
-  runLoop.session.checkpointOwnershipDecided = true
-  return FeatureTaskRuntimeCheckpointScope.decide(
-    FeatureTaskRuntimeCheckpointScopeInput(
-      issueKey = runLoop.request.issueKey,
-      ownedPaths = ownedInventory,
-      phaseIntroducedPaths = preparation.phaseWritten,
-      worktreeDeltaPaths = preparation.worktreeDelta,
-      foreignStagedPaths = preparation.stagedPaths,
-      concurrentlyModifiedOwnedPaths = runLoop.collaborators.checkpointContinued1
-        .concurrentlyModifiedOwnedPaths(runLoop, precedingPhaseId, ownedInventory),
-      deletedPaths = preparation.deletedPaths,
-    ),
-  )
-}
-
-private fun loadResolvedCheckpointBranch(
-  runLoop: FeatureTaskRuntimeRunLoop,
-  precedingPhaseId: String,
-  branch: String,
-  blockedReason: (String, String) -> String,
-): FeatureTaskRuntimeResolvedBranch? = try {
-  runLoop.recorder.loadResolvedBranch(runLoop.request.workflowId, runLoop.request.dbPathOverride)
-    ?: blockMissingCheckpointBranch(runLoop, precedingPhaseId, branch, blockedReason)
-} catch (error: IllegalStateException) {
-  val reconciliationError = FeatureTaskRuntimeSubtaskCommitReconciliationError(
-    workflowId = runLoop.request.workflowId,
-    issueKey = runLoop.request.issueKey,
-    subtaskId = runLoop.request.goalContinuation?.subtaskId?.toString() ?: "unknown",
-    reason = "the resolved workflow row could not be read (${error.message.orEmpty()}); refusing checkpoint scope",
-    cause = error,
-  )
-  runCatching {
-    runLoop.diagnostics.warning(
-      "record_kind=refusal seam=FeatureTaskRuntimeRunLoopCheckpoint.resolveCheckpointScope " +
-        "value_used='resolved workflow row' value_expected=durable resolved-branch ownership " +
-        "cause=${reconciliationError.reason}",
-      reconciliationError,
-    )
-  }
-  runLoop.collaborators.checkpointContinued1.blockCheckpointScope(
-    runLoop,
-    precedingPhaseId,
-    branch,
-    reconciliationError.message.orEmpty(),
-    blockedReason,
-  )
-  null
-}
-
-private fun blockMissingCheckpointBranch(
-  runLoop: FeatureTaskRuntimeRunLoop,
-  precedingPhaseId: String,
-  branch: String,
-  blockedReason: (String, String) -> String,
-): FeatureTaskRuntimeResolvedBranch? {
-  val error = FeatureTaskRuntimeSubtaskCommitReconciliationError(
-    workflowId = runLoop.request.workflowId,
-    issueKey = runLoop.request.issueKey,
-    subtaskId = runLoop.request.goalContinuation?.subtaskId?.toString() ?: "unknown",
-    reason = "the resolved workflow row is missing; refusing to persist or stage subtask ownership",
-  )
-  runLoop.collaborators.checkpointContinued1.blockCheckpointScope(
-    runLoop,
-    precedingPhaseId,
-    branch,
-    error.message.orEmpty(),
-    blockedReason,
-  )
-  return null
-}
-
-private fun prepareCheckpointScopeForRuntime(
-  runLoop: FeatureTaskRuntimeRunLoop,
-  precedingPhaseId: String,
-  branch: String,
-  blockedReason: (String, String) -> String,
-): CheckpointScopePreparation? {
-  val resolved = loadResolvedCheckpointBranch(runLoop, precedingPhaseId, branch, blockedReason) ?: return null
-  val worktreeDelta = runLoop.collaborators.checkpointContinued1.checkpointWorktreeDelta(
-    runLoop,
-    resolved.baselineOwnedPathsForCheckpoint(),
-  ) ?: return blockCheckpointScopePreparation(runLoop, precedingPhaseId, branch, blockedReason)
-  val stagedPaths = runLoop.collaborators.checkpoint.stagedCheckpointPaths(
-    runLoop,
-    precedingPhaseId,
-    branch,
-    blockedReason,
-  ) ?: return null
-  return buildCheckpointScopePreparation(runLoop, precedingPhaseId, resolved, worktreeDelta, stagedPaths)
-}
-
-private fun blockCheckpointScopePreparation(
-  runLoop: FeatureTaskRuntimeRunLoop,
-  precedingPhaseId: String,
-  branch: String,
-  blockedReason: (String, String) -> String,
-): CheckpointScopePreparation? {
-  runLoop.collaborators.checkpointContinued1.blockCheckpointScope(
-    runLoop,
-    precedingPhaseId,
-    branch,
-    "the owned-path inventory could not be read",
-    blockedReason,
-  )
-  return null
-}
-
-private fun buildCheckpointScopePreparation(
-  runLoop: FeatureTaskRuntimeRunLoop,
-  precedingPhaseId: String,
-  resolved: FeatureTaskRuntimeResolvedBranch,
-  worktreeDelta: List<String>,
-  stagedPaths: List<String>,
-): CheckpointScopePreparation {
-  val persistedOwned = resolved.workflowOwnedPaths.filterNot(::isGovernedSpecPath).filterNot(::isRuntimePrivatePath)
-  val evictedFeatureSpecs = resolved.workflowOwnedPaths.filter(::isGovernedSpecPath).toSet()
-  val phaseWritten = runLoop.collaborators.checkpoint.phaseWrittenPaths(
-    runLoop,
-    precedingPhaseId,
-    worktreeDelta,
-    persistedOwned,
-  ).filterNot { it in evictedFeatureSpecs }
-  val writingIntroduced = runLoop.collaborators.checkpoint.writingPhaseIntroducedPaths(runLoop, worktreeDelta)
-  val seedOwned = (
-    resolved.workflowOwnedPaths + phaseWritten.takeIf {
-      runLoop.collaborators.checkpoint.mayExtendOwnedInventory(precedingPhaseId)
-    }.orEmpty() + writingIntroduced
-    ).distinct()
-  val deletedPaths = runLoop.collaborators.checkpoint.absorbableDeletedPaths(
-    deleted = runLoop.collaborators.checkpoint.checkpointDeletedPaths(runLoop),
-    ownedOrIntroduced = seedOwned + phaseWritten,
-    phaseManifestDeleted = runLoop.recorder.loadPhaseRecords(
-      runLoop.request.workflowId,
-      runLoop.request.dbPathOverride,
-    ).orEmpty().values.flatMap { record ->
-      record.fileManifestBefore.map(::normalizeRepoPath) - record.fileManifestAfter.map(::normalizeRepoPath).toSet()
-    },
-  )
-  return CheckpointScopePreparation(
-    worktreeDelta,
-    stagedPaths,
-    phaseWritten,
-    writingIntroduced,
-    seedOwned,
-    deletedPaths,
+      .filterNot { path -> isFeatureSpecPathForIssue(path, runLoop.request.issueKey) },
   )
 
   internal fun finalizeRemediationCommit(
@@ -633,4 +475,5 @@ private fun buildCheckpointScopePreparation(
     phaseId: String,
     verdict: FeatureTaskRuntimeVerdict,
   ): FeatureTaskRuntimeBackwardEdge? =
-    runLoop.transitions.backwardEdges.firstOrNull { it.fromPhaseId == phaseId && it.triggeringVerdict == verdict }}
+    runLoop.transitions.backwardEdges.firstOrNull { it.fromPhaseId == phaseId && it.triggeringVerdict == verdict }
+}

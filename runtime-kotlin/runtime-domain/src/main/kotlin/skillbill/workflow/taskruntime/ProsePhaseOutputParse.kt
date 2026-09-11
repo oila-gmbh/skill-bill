@@ -1,8 +1,7 @@
 package skillbill.workflow.taskruntime
 
-import skillbill.contracts.JsonSupport
+import skillbill.contracts.JsonCodec
 import skillbill.contracts.SharedPayloadKeys
-import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_CONTRACT_VERSION
 import skillbill.workflow.taskruntime.model.SettlementStatus
 
 internal object ProsePhaseOutputParse {
@@ -23,8 +22,6 @@ internal object ProsePhaseOutputParse {
   }
 
   fun identityCompatible(parsed: Map<String, Any?>, phaseId: String): Boolean {
-    val parsedContractVersion = parsed[SharedPayloadKeys.CONTRACT_VERSION]?.toString()
-    if (parsedContractVersion != null && parsedContractVersion != FEATURE_TASK_RUNTIME_CONTRACT_VERSION) return false
     val parsedPhase = parsed[SharedPayloadKeys.PHASE_ID]?.toString()
     if (parsedPhase != null && parsedPhase != phaseId) return false
     val parsedStatus = parsed[SharedPayloadKeys.STATUS]?.toString()?.trim()?.lowercase()
@@ -42,6 +39,6 @@ internal object ProsePhaseOutputParse {
 
 private fun parseObject(raw: String): Map<String, Any?>? {
   if (raw.isBlank()) return null
-  val obj = JsonSupport.parseObjectOrNull(raw) ?: return null
-  return JsonSupport.anyToStringAnyMap(JsonSupport.jsonElementToValue(obj))
+  val obj = JsonCodec.parseObjectOrNull(raw) ?: return null
+  return JsonCodec.anyToStringAnyMap(JsonCodec.jsonElementToValue(obj))
 }

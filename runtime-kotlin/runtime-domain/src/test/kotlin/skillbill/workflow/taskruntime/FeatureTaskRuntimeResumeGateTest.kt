@@ -98,7 +98,7 @@ class FeatureTaskRuntimeResumeGateTest {
     assertEquals(emptyList(), resume.missingArtifacts)
 
     val decision = engine.continueDecision(runtimeDefinition, record)
-    assertEquals("reopened", decision.view.continueStatus)
+    assertEquals("reopened", decision.view.continueStatus.wireValue)
     assertEquals("implement", decision.resumeStepId)
   }
 
@@ -126,7 +126,7 @@ class FeatureTaskRuntimeResumeGateTest {
 
     val resume = engine.resumeView(runtimeDefinition, record)
 
-    assertEquals("done", resume.resumeMode)
+    assertEquals("done", resume.resumeMode.wireValue)
     val terminalSummaryKey = runtimeDefinition.completedTerminalSummaryArtifact
     assertTrue(
       resume.nextAction.contains(terminalSummaryKey),
@@ -260,6 +260,6 @@ class FeatureTaskRuntimeResumeGateTest {
     value.replace("\\", "\\\\").replace("\"", "\\\"").let { """"$it"""" }
 
   private object NoopWorkflowSnapshotValidator : WorkflowSnapshotValidator {
-    override fun validate(snapshot: Map<String, Any?>, slug: String) = Unit
+    override fun validate(snapshot: WorkflowStateSnapshot, slug: String) = Unit
   }
 }

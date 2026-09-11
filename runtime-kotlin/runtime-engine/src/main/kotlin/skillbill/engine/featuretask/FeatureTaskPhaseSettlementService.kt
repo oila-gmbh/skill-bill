@@ -2,7 +2,11 @@ package skillbill.engine.featuretask
 
 import me.tatarka.inject.annotations.Inject
 import skillbill.boundary.OpenBoundaryMap
-import skillbill.contracts.JsonSupportimport skillbill.ports.featuretask.FeatureTaskPhaseSettlementRepository
+import skillbill.contracts.JsonCodec
+import skillbill.engine.featuretask.model.FeatureTaskPhaseSettlementAuditRequest
+import skillbill.engine.featuretask.model.FeatureTaskPhaseSettlementBlockRequest
+import skillbill.engine.featuretask.model.FeatureTaskPhaseSettlementCompleteRequest
+import skillbill.ports.featuretask.FeatureTaskPhaseSettlementRepository
 import skillbill.ports.featuretask.model.FeatureTaskPhaseSettlement
 import skillbill.ports.featuretask.model.FeatureTaskPhaseSettlementKind
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
@@ -97,14 +101,15 @@ class FeatureTaskPhaseSettlementService(
   @OpenBoundaryMap("Durable MCP phase-settlement envelope wire map for gate consumption")
   fun findEnvelope(workflowId: String, phaseId: String, attempt: Int): Map<String, Any?>? {
     val settlement = repository.find(workflowId, phaseId, attempt) ?: return null
-    return JsonSupport.parseObjectOrNull(settlement.envelopeJson)
-      ?.let { JsonSupport.anyToStringAnyMap(JsonSupport.jsonElementToValue(it)) }  }
+    return JsonCodec.parseObjectOrNull(settlement.envelopeJson)
+      ?.let { JsonCodec.anyToStringAnyMap(JsonCodec.jsonElementToValue(it)) }
+  }
 
   fun clear(workflowId: String, phaseId: String, attempt: Int): Boolean =
     repository.delete(workflowId, phaseId, attempt)
 
   private fun persist(request: PersistRequest): Map<String, Any?> {
-    val envelopeJson = JsonSupport.mapToJsonString(request.envelope)
+    val envelopeJson = JsonCodec.mapToJsonString(request.envelope)
     repository.upsert(
       FeatureTaskPhaseSettlement(
         workflowId = request.workflowId,

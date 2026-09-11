@@ -25,7 +25,8 @@ import skillbill.infrastructure.fs.scaffold.runtime.TemplateContext
 import skillbill.infrastructure.fs.scaffold.runtime.requiredSupportingFilesForSkill
 import skillbill.infrastructure.fs.scaffold.runtime.scaffold
 import skillbill.infrastructure.fs.scaffold.runtime.supportingFileTargets
-import skillbill.model.toPathimport skillbill.scaffold.policy.platformpack.model.PlatformPackManifestRenderRequest
+import skillbill.model.toPath
+import skillbill.scaffold.policy.platformpack.model.PlatformPackManifestRenderRequest
 import skillbill.scaffold.policy.platformpack.renderPlatformPackManifest
 import skillbill.scaffold.policy.scaffold.APPROVED_CODE_REVIEW_AREAS
 import skillbill.testsupport.SkillClassFixtures
@@ -230,7 +231,7 @@ class PlatformPackScaffoldParityTest {
     APPROVED_CODE_REVIEW_AREAS.forEach { area ->
       assertEquals(
         repo.resolve("platform-packs/java/code-review/bill-java-code-review-$area/content.md"),
-        pack.declaredFiles.areas.getValue(area),
+        pack.declaredFiles.areas.getValue(area).toPath(),
       )
       assertNoGeneratedWrapperOrSupportingFiles(
         repo.resolve("platform-packs/java/code-review/bill-java-code-review-$area"),
@@ -389,8 +390,13 @@ class ScaffoldAuthoringParityTest {
     val manifest = Files.readString(manifestPath)
     val addonBody = Files.readString(repo.resolve("platform-packs/kotlin/addons/review-helper.md"))
 
-    assertEquals(listOf(repo.resolve("platform-packs/kotlin/addons/review-helper.md")), result.createdFiles)
-    assertEquals(listOf(manifestPath), result.manifestEdits)
+    assertEquals(
+      listOf(repo.resolve("platform-packs/kotlin/addons/review-helper.md")),
+      result.createdFiles.map {
+        it.toPath()
+      },
+    )
+    assertEquals(listOf(manifestPath), result.manifestEdits.map { it.toPath() })
     assertContains(addonBody, "# review-helper")
     assertContains(addonBody, "TODO: replace this placeholder with the add-on guidance body.")
     assertTrue(

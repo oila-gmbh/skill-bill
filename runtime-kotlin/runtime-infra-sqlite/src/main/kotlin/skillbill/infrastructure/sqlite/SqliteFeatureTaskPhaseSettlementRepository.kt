@@ -63,7 +63,8 @@ class SqliteFeatureTaskPhaseSettlementRepository(
   }
 
   override fun delete(workflowId: String, phaseId: String, attempt: Int): Boolean {
-    DatabaseRuntime.openDbAt(databaseSessionFactory.resolveDbPath()).use { database ->      database.connection.prepareStatement(
+    DatabaseRuntime.openDbAt(databaseSessionFactory.resolveDbPath()).use { database ->
+      database.connection.prepareStatement(
         """
         DELETE FROM feature_task_phase_settlements
         WHERE workflow_id = ? AND phase_id = ? AND attempt = ?

@@ -1,5 +1,6 @@
 package skillbill.engine.goalrunner.planning
-import skillbill.contracts.JsonSupportimport skillbill.ports.goalrunner.model.GoalPlanningContractProvenance
+import skillbill.contracts.JsonCodec
+import skillbill.ports.goalrunner.model.GoalPlanningContractProvenance
 import skillbill.ports.goalrunner.model.SharedGoalPreplanCheckpoint
 import skillbill.text.sha256HexUtf8
 
@@ -40,22 +41,22 @@ internal fun classifyGoalPlanningProvenanceRecoverability(
 }
 
 fun preplanProseValue(preplanPayload: String): String = runCatching {
-  JsonSupport.parseObjectOrNull(preplanPayload)
-    ?.let(JsonSupport::jsonElementToValue)
-    ?.let(JsonSupport::anyToStringAnyMap)
+  JsonCodec.parseObjectOrNull(preplanPayload)
+    ?.let(JsonCodec::jsonElementToValue)
+    ?.let(JsonCodec::anyToStringAnyMap)
     ?.get("produced_outputs")
-    ?.let(JsonSupport::anyToStringAnyMap)
+    ?.let(JsonCodec::anyToStringAnyMap)
     ?.get("value")
     ?.toString()
     .orEmpty()
 }.getOrDefault("")
 
 fun preplanProsePrompt(preplanPayload: String): String? = runCatching {
-  JsonSupport.parseObjectOrNull(preplanPayload)
-    ?.let(JsonSupport::jsonElementToValue)
-    ?.let(JsonSupport::anyToStringAnyMap)
+  JsonCodec.parseObjectOrNull(preplanPayload)
+    ?.let(JsonCodec::jsonElementToValue)
+    ?.let(JsonCodec::anyToStringAnyMap)
     ?.get("produced_outputs")
-    ?.let(JsonSupport::anyToStringAnyMap)
+    ?.let(JsonCodec::anyToStringAnyMap)
     ?.get("prompt")
     ?.toString()
     ?.takeIf(String::isNotBlank)

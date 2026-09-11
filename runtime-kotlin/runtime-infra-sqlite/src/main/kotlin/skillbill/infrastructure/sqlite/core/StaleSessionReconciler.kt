@@ -6,9 +6,9 @@ import skillbill.infrastructure.sqlite.telemetry.emitFeatureTaskRuntimeFinished
 import skillbill.infrastructure.sqlite.telemetry.emitFeatureVerifyFinished
 import skillbill.infrastructure.sqlite.telemetry.emitGoalIssueFinished
 import skillbill.infrastructure.sqlite.telemetry.emitQualityCheckFinished
-import skillbill.infrastructure.sqlite.telemetry.nextGoalStateEnteredAtSqlimport skillbill.ports.telemetry.model.TelemetryReconciliationRequest
+import skillbill.infrastructure.sqlite.telemetry.nextGoalStateEnteredAtSql
+import skillbill.ports.telemetry.model.TelemetryReconciliationRequest
 import skillbill.ports.telemetry.model.TelemetryReconciliationResult
-import skillbill.ports.time.JvmSystemClock
 import java.sql.Connection
 import java.time.temporal.ChronoUnit
 

@@ -14,6 +14,7 @@ dependencies {
   api(project(":runtime-engine"))
   implementation(project(":runtime-domain"))
   implementation(project(":runtime-contracts"))
+  implementation(libs.kotlinx.serialization.json)
   implementation(project(":runtime-infra-fs"))
   implementation(project(":runtime-infra-http"))
   implementation(project(":runtime-infra-sqlite"))
@@ -24,6 +25,7 @@ dependencies {
   testImplementation(testFixtures(project(":runtime-application")))
   testImplementation(testFixtures(project(":runtime-engine")))
   testImplementation(testFixtures(project(":runtime-ports")))
+  testImplementation(testFixtures(project(":runtime-domain")))
   testImplementation(libs.junit.jupiter)
   testImplementation(libs.kotlin.test)
 }

@@ -72,11 +72,11 @@ private fun baselineLayer(layer: CodeReviewBaselineLayer): ScaffoldBaselineLayer
 internal fun recommendedCommands(
   repoRoot: Path,
   target: AuthoringTarget,
-  completionStatus: String,
+  completionStatus: ScaffoldCompletionStatus,
   issues: List<String>,
 ): List<String> {
   val commands = mutableListOf("skill-bill show ${target.skillName} --repo-root $repoRoot")
-  if (completionStatus != "complete") {
+  if (completionStatus != ScaffoldCompletionStatus.COMPLETE) {
     commands += "skill-bill fill ${target.skillName} --repo-root $repoRoot --body-file <file>"
   }
   if (issues.isNotEmpty()) {

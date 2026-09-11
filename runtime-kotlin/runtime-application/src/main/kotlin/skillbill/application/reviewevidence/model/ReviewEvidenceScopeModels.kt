@@ -6,6 +6,7 @@ enum class ParallelReviewScope {
   UNCOMMITTED,
   BRANCH,
   PR,
+  WORKTREE_FROM_BASE,
 }
 
 class DiffResolutionException(message: String) : RuntimeException(message)

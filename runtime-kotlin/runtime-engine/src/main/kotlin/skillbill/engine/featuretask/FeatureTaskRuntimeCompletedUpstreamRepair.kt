@@ -1,7 +1,8 @@
 package skillbill.engine.featuretask
 
-import skillbill.contracts.JsonSupport
-import skillbill.engine.featuretask.model.CompletedUpstreamRepairRequestimport skillbill.workflow.engine.model.WorkflowUpdateInput
+import skillbill.contracts.JsonCodec
+import skillbill.engine.featuretask.model.CompletedUpstreamRepairRequest
+import skillbill.workflow.engine.model.WorkflowUpdateInput
 import skillbill.workflow.model.WorkflowStepStatus
 import skillbill.workflow.model.workflowStepStatus
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
@@ -14,7 +15,7 @@ import skillbill.workflow.taskruntime.model.featureTaskRuntimeRunInvariantsFromA
 fun featureSizeFromArtifacts(artifacts: Map<String, Any?>): FeatureTaskRuntimeFeatureSize {
   val raw = artifacts[FEATURE_TASK_RUNTIME_RUN_INVARIANTS_ARTIFACT_KEY] as? Map<*, *>
     ?: return FeatureTaskRuntimeFeatureSize.MEDIUM
-  val invariantsMap = JsonSupport.anyToStringAnyMap(raw) ?: return FeatureTaskRuntimeFeatureSize.MEDIUM
+  val invariantsMap = JsonCodec.anyToStringAnyMap(raw) ?: return FeatureTaskRuntimeFeatureSize.MEDIUM
   return featureTaskRuntimeRunInvariantsFromArtifactMap(invariantsMap).featureSize
 }
 
@@ -26,7 +27,9 @@ fun diagnoseUnsettledCompletedUpstreamPhaseId(
 ): String? {
   val recordedOutputs = settledPhaseOutputs(phaseRecords)
   val stepOrder = FeatureTaskRuntimePhaseWorkflowDefinition.definition.stepIds
-  val blockedConsumers = phaseRecords.filterValues { it.status == "blocked" }.keys
+  val blockedConsumers = phaseRecords.filterValues {
+    it.status.workflowStepStatus() == WorkflowStepStatus.BLOCKED
+  }.keys
   for (consumerPhaseId in blockedConsumers) {
     val declaration = phaseDeclaration(consumerPhaseId, featureSize, qualityGateSelection)
     val blockedReason = phaseRecords[consumerPhaseId]?.blockedReason.orEmpty()

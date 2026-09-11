@@ -1,30 +1,9 @@
 package skillbill.ports.validation.model
 
 import skillbill.scaffold.model.ValidationGateDeclaration
+import skillbill.workflow.taskruntime.model.ValidationGateCacheMode
+import skillbill.workflow.taskruntime.model.ValidationGateRunOutcome
 import java.nio.file.Path
-
-enum class ValidationGateCacheMode(val wireValue: String) {
-  CACHE_ELIGIBLE("cache_eligible"),
-  FORCED_FULL("forced_full"),
-  ;
-
-  companion object {
-    fun fromWire(value: String): ValidationGateCacheMode? = entries.firstOrNull { it.wireValue == value }
-  }
-}
-
-enum class ValidationGateRunOutcome(val wireValue: String) {
-  PASSED("passed"),
-  FAILED("failed"),
-
-  /** Historical wire value only; runners no longer emit this outcome. */
-  REJECTED_ZERO_WORK("rejected_zero_work"),
-  ;
-
-  companion object {
-    fun fromWire(value: String): ValidationGateRunOutcome? = entries.firstOrNull { it.wireValue == value }
-  }
-}
 
 data class ValidationGateFinding(
   val module: String,
@@ -58,26 +37,3 @@ data class ValidationGateRunResult(
   val findings: List<ValidationGateFinding>,
   val stdout: String = "",
 )
-
-const val GATE_STDOUT_EXCERPT_MAX_CHARS: Int = 3_000
-
-fun unparseableGateFailureMessage(
-  gateLabel: String,
-  outcome: String,
-  exitCode: Int,
-  stdout: String,
-): String {
-  val lead = "$gateLabel reported outcome=$outcome exit=$exitCode without parseable findings; " +
-    "repair the underlying failure the gate detected."
-  val excerpt = gateStdoutExcerpt(stdout) ?: return "$lead Gate stdout was empty."
-  return "$lead Gate stdout (head+tail):\n$excerpt"
-}
-
-fun gateStdoutExcerpt(stdout: String, maxChars: Int = GATE_STDOUT_EXCERPT_MAX_CHARS): String? {
-  val trimmed = stdout.trim().takeIf { it.isNotEmpty() } ?: return null
-  if (trimmed.length <= maxChars) return trimmed
-  val headChars = maxChars / 2
-  val tailChars = maxChars - headChars
-  val omitted = trimmed.length - headChars - tailChars
-  return trimmed.take(headChars) + "\n…[$omitted chars omitted]…\n" + trimmed.takeLast(tailChars)
-}

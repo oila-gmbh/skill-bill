@@ -114,6 +114,10 @@ internal fun MutableList<String>.addGoalContinuationArguments(context: SkillRunG
   context.reviewBaseline?.let { baseline ->
     add("--goal-review-base-sha")
     add(baseline.reviewBaseSha)
+    baseline.baselineUntrackedPaths.forEach { path ->
+      add("--goal-baseline-untracked-path")
+      add(path)
+    }
   }
   if (context.agentAddonSelection.entries.isNotEmpty()) {
     add("--agent-addon-selection-json")

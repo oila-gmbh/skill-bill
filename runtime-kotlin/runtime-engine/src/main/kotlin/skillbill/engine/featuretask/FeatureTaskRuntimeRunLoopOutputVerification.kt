@@ -2,17 +2,21 @@ package skillbill.engine.featuretask
 
 import skillbill.application.reviewevidence.FeatureTaskRuntimeSharedReviewEvidenceResolver
 import skillbill.application.reviewevidence.model.FeatureTaskRuntimeSharedReviewEvidenceResolved
-import skillbill.contracts.JsonSupport
+import skillbill.contracts.JsonCodec
 import skillbill.engine.featuretask.model.FeatureTaskRuntimeFindingBoundaryMemoryRequest
 import skillbill.engine.featuretask.model.FeatureTaskRuntimeFindingBoundaryMemorySection
 import skillbill.engine.featuretask.model.FeatureTaskRuntimeImplementationContinuation
 import skillbill.error.FeatureTaskRuntimeHandoffProjectionFailureKind
-import skillbill.error.InvalidFeatureTaskRuntimeHandoffProjectionContextimport skillbill.error.InvalidFeatureTaskRuntimeHandoffProjectionError
+import skillbill.error.InvalidFeatureTaskRuntimeHandoffProjectionContext
+import skillbill.error.InvalidFeatureTaskRuntimeHandoffProjectionError
 import skillbill.error.InvalidFeatureTaskRuntimePhaseBriefingFramingError
 import skillbill.error.InvalidFeatureTaskRuntimePhaseOutputSchemaError
 import skillbill.goalrunner.subtaskreview.GoalSubtaskReviewStructuredFindingsParse
 import skillbill.ports.workflow.gitops.model.WorkflowGitOperationResult
-import skillbill.ports.workflow.gitops.repositoryCheckpointFingerprintimport skillbill.ports.workflow.gitops.repositoryFingerprint
+import skillbill.ports.workflow.gitops.repositoryCheckpointFingerprint
+import skillbill.ports.workflow.gitops.repositoryFingerprint
+import skillbill.ports.workflow.gitops.repositoryOwnedPaths
+import skillbill.ports.workflow.gitops.runtimePhaseChangedPathsBetweenCommits
 import skillbill.review.model.ReviewFindingVerdict
 import skillbill.workflow.model.WorkflowStepStatus
 import skillbill.workflow.model.workflowStepStatus
@@ -24,14 +28,24 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditGapProgress
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditRepairProgressDecision
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditRepairSnapshot
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFailureDisposition
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFindingVerificationDispositionimport skillbill.workflow.taskruntime.model.FeatureTaskRuntimeHandoffAssemblyRequest
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFindingVerificationDisposition
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeHandoffAssemblyRequest
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeHandoffSourceRef
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutput
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutputFormat
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutputRepairEvidence
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutputRepairOperation
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutputSourceLocation
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepositoryCheckpoint
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepositoryCheckpointPolicy
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeVerdict
 import skillbill.workflow.taskruntime.model.NormalizedFeatureTaskRuntimePhaseOutput
+import skillbill.workflow.taskruntime.model.UNPROVEN_REPOSITORY_FINGERPRINT
+import skillbill.workflow.taskruntime.model.detectAuditRepairNonProgress
 import skillbill.workflow.taskruntime.model.requireAcceptedOutput
 import skillbill.workflow.taskruntime.model.validateDispositionCoverage
-@Inject
-class FeatureTaskRuntimeRunLoopOutputVerification {
+
+object FeatureTaskRuntimeRunLoopOutputVerification {
   internal fun attestAbsentGateValidationReceipt(
     runLoop: FeatureTaskRuntimeRunLoop,
     run: PhaseRun,
@@ -39,12 +53,12 @@ class FeatureTaskRuntimeRunLoopOutputVerification {
   ): NormalizedFeatureTaskRuntimePhaseOutput {
     val eligible = run.agentRunValidateFallback &&
       run.phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VALIDATE &&
-      normalizedOutput.envelope["status"] == STATUS_COMPLETED
+      (normalizedOutput.envelope["status"] as? String).workflowStepStatus() == WorkflowStepStatus.COMPLETED
     if (!eligible) return normalizedOutput
-    val produced = JsonSupport.anyToStringAnyMap(normalizedOutput.envelope["produced_outputs"])
+    val produced = JsonCodec.anyToStringAnyMap(normalizedOutput.envelope["produced_outputs"])
       ?.toMutableMap()
       ?: return normalizedOutput
-    val validationResult = JsonSupport.anyToStringAnyMap(produced["validation_result"])
+    val validationResult = JsonCodec.anyToStringAnyMap(produced["validation_result"])
       ?.toMutableMap()
       ?: return normalizedOutput
     validationResult["gate_run_count"] = 0
@@ -54,7 +68,7 @@ class FeatureTaskRuntimeRunLoopOutputVerification {
     val envelope = normalizedOutput.envelope.toMutableMap()
     envelope["produced_outputs"] = produced
     return runLoop.outputValidator.validatePhaseOutput(
-      JsonSupport.mapToJsonString(envelope),
+      JsonCodec.mapToJsonString(envelope),
       sourceLabel = run.phaseId,
     ).requireAcceptedOutput(run.phaseId).normalizedOutput
   }
@@ -78,14 +92,6 @@ class FeatureTaskRuntimeRunLoopOutputVerification {
       ?.takeIf { it.priorValueSegments.isNotEmpty() }
   }
 
-  /**
-   * The structural contract a phase claiming completion owes its consumer, as the first failing rule.
-   *
-   * Grouped so the settle function reads as one structural-gate step: these three share a disposition
-   * (all route through the SKILL-153 reject path and its bounded cap) and an ordering constraint (all
-   * run before the semantic incompleteness gate, so a repairable contract defect is named to the agent
-   * rather than burning continuation segments).
-   */
   internal fun completionProjectionRejection(
     runLoop: FeatureTaskRuntimeRunLoop,
     args: CompletionProjectionRejectionArgs,
@@ -104,7 +110,7 @@ class FeatureTaskRuntimeRunLoopOutputVerification {
         repositoryFingerprint = args.repositoryFingerprint,
       ),
     )?.let { "consumer-projection" to it }
-    ?: runLoop.collaborators.outputVerificationContinued2.outputVerificationGateReason(
+    ?: FeatureTaskRuntimeRunLoopOutputVerification.outputVerificationGateReason(
       runLoop,
       args.run,
       args.outputMap,
@@ -116,11 +122,6 @@ class FeatureTaskRuntimeRunLoopOutputVerification {
       outputMap,
     )?.let { "mutating-reconciliation" to it }
 
-  /**
-   * A completed producer must satisfy the exact projection its immediate forward consumer will parse.
-   * This shares the launch assembler and validator instead of restating receipt shapes. Rejecting here
-   * keeps malformed finalization receipts in the producer's bounded correction loop.
-   */
   internal fun immediateConsumerProjectionGateReason(
     runLoop: FeatureTaskRuntimeRunLoop,
     args: ImmediateConsumerProjectionGateArgs,
@@ -131,9 +132,6 @@ class FeatureTaskRuntimeRunLoopOutputVerification {
     val repairEvidence = args.repairEvidence
     val repositoryFingerprint = args.repositoryFingerprint
     if (run.phaseId != FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VALIDATE) return null
-    // Gate-repair segments are not the validate→write_history handoff. They must not invent
-    // gate_run_count/gate_runs; the coordinator re-runs the gate and settleRuntimeOwnedValidation
-    // publishes the measured receipt. Matching persistAcceptedOutput's skip for the same flag.
     if (run.validationGateFindings != null) return null
     val producerIndex = runLoop.transitions.forwardPhaseIds.indexOf(run.phaseId)
     if (producerIndex < 0 || producerIndex == runLoop.transitions.forwardPhaseIds.lastIndex) return null
@@ -141,7 +139,7 @@ class FeatureTaskRuntimeRunLoopOutputVerification {
     val declaration = phaseDeclaration(
       consumerPhaseId,
       run.request.runInvariants.featureSize,
-      runLoop.collaborators.transitions.qualityGateSelection(runLoop),
+      FeatureTaskRuntimeRunLoopTransitions.qualityGateSelection(runLoop),
     )
     val currentOutput = FeatureTaskRuntimePhaseOutput(
       phaseId = run.phaseId,
@@ -195,9 +193,9 @@ class FeatureTaskRuntimeRunLoopOutputVerification {
     }
     val review = state.outputFor(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW) ?: return emptyList()
     val envelope = review.normalizedOutput?.envelope
-      ?: JsonSupport.parseObjectOrNull(review.payload)
-        ?.let { JsonSupport.jsonElementToValue(it) }
-        ?.let(JsonSupport::anyToStringAnyMap)
+      ?: JsonCodec.parseObjectOrNull(review.payload)
+        ?.let { JsonCodec.jsonElementToValue(it) }
+        ?.let(JsonCodec::anyToStringAnyMap)
       ?: return emptyList()
     return runLoop.recorder.recordedFindingVerdicts(envelope)
   }
@@ -354,19 +352,19 @@ class FeatureTaskRuntimeRunLoopOutputVerification {
   }
 
   private fun auditCriterionRefs(auditOutputArtifact: String): Set<String> {
-    val envelope = JsonSupport.parseObjectOrNull(auditOutputArtifact)
-      ?.let(JsonSupport::jsonElementToValue)
-      ?.let(JsonSupport::anyToStringAnyMap)
-    val produced = envelope?.let { JsonSupport.anyToStringAnyMap(it["produced_outputs"]) }
+    val envelope = JsonCodec.parseObjectOrNull(auditOutputArtifact)
+      ?.let(JsonCodec::jsonElementToValue)
+      ?.let(JsonCodec::anyToStringAnyMap)
+    val produced = envelope?.let { JsonCodec.anyToStringAnyMap(it["produced_outputs"]) }
     val value = when (val raw = produced?.get("value")) {
-      is String -> JsonSupport.parseObjectOrNull(raw)
-        ?.let(JsonSupport::jsonElementToValue)
-        ?.let(JsonSupport::anyToStringAnyMap)
-      is Map<*, *> -> JsonSupport.anyToStringAnyMap(raw)
+      is String -> JsonCodec.parseObjectOrNull(raw)
+        ?.let(JsonCodec::jsonElementToValue)
+        ?.let(JsonCodec::anyToStringAnyMap)
+      is Map<*, *> -> JsonCodec.anyToStringAnyMap(raw)
       else -> null
     }
     return (value?.get("gaps") as? List<*>).orEmpty()
-      .mapNotNull { JsonSupport.anyToStringAnyMap(it)?.get("criterion") as? String }
+      .mapNotNull { JsonCodec.anyToStringAnyMap(it)?.get("criterion") as? String }
       .map(String::trim)
       .filter(String::isNotEmpty)
       .toSet()
@@ -498,9 +496,9 @@ class FeatureTaskRuntimeRunLoopOutputVerification {
     outputText: String,
   ) {
     if (run.phaseId != FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VERIFY_FINDINGS) return
-    val outputMap = JsonSupport.parseObjectOrNull(outputText)
-      ?.let(JsonSupport::jsonElementToValue)
-      ?.let(JsonSupport::anyToStringAnyMap)
+    val outputMap = JsonCodec.parseObjectOrNull(outputText)
+      ?.let(JsonCodec::jsonElementToValue)
+      ?.let(JsonCodec::anyToStringAnyMap)
       ?: return
     val dispositions = FeatureTaskRuntimeOutputVerification.dispositionsFrom(outputMap)
     if (dispositions.isEmpty()) return
@@ -911,4 +909,5 @@ class FeatureTaskRuntimeRunLoopOutputVerification {
         repairEvidence,
       ),
     ),
-  )}
+  )
+}

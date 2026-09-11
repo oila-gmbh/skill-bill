@@ -5,7 +5,8 @@ import skillbill.engine.featuretask.model.RemediationReconciliationBlocked
 import skillbill.engine.featuretask.model.RemediationReconciliationCoherent
 import skillbill.engine.featuretask.model.RemediationReconciliationDecision
 import skillbill.engine.featuretask.model.RemediationReconciliationHeal
-import skillbill.engine.featuretask.model.ResolvedReviewFixCheckpointimport skillbill.ports.workflow.gitops.WorkflowGitOperations
+import skillbill.engine.featuretask.model.ResolvedReviewFixCheckpoint
+import skillbill.ports.workflow.gitops.WorkflowGitOperations
 import skillbill.ports.workflow.gitops.model.WorkflowGitOperationResult
 import skillbill.ports.workflow.gitops.resolveCheckpointRef
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
@@ -29,11 +30,7 @@ internal fun latestResolvedReviewFixCheckpointCommit(
 
 fun resolvesCommit(gitOperations: WorkflowGitOperations, repoRoot: Path, sha: String): Boolean {
   val resolved = gitOperations.resolveCommit(repoRoot, sha.trim())
-  if (!resolved.ok) throw remediationGitFailure("commit '$sha' could not be read (${resolved.error})")
-  if (resolved.value.orEmpty().trim().isBlank()) {
-    throw remediationGitFailure("commit '$sha' resolved to a blank Git object")
-  }
-  return true
+  return resolved is WorkflowGitOperationResult.Ok && resolved.value.orEmpty().trim().isNotBlank()
 }
 
 fun resolveCheckpointRefCommit(gitOperations: WorkflowGitOperations, repoRoot: Path, checkpointRef: String): String? {
@@ -42,10 +39,8 @@ fun resolveCheckpointRefCommit(gitOperations: WorkflowGitOperations, repoRoot: P
     FEATURE_TASK_RUNTIME_CHECKPOINT_REF_NAMESPACE,
     checkpointRef,
   )
-  if (!resolved.ok) throw remediationGitFailure("checkpoint ref could not be read (${resolved.error})")
-  val value = resolved.value.orEmpty().trim()
-  if (value.isBlank()) throw remediationGitFailure("checkpoint ref '$checkpointRef' resolved to a blank Git object")
-  return value
+  if (resolved !is WorkflowGitOperationResult.Ok) return null
+  return resolved.value.orEmpty().trim().takeIf(String::isNotBlank)
 }
 
 val remediationBlockedCause: (String?, Boolean, String?) -> String = { stored, storedResolves, failedRef ->
@@ -116,11 +111,11 @@ private fun storedBranchReconciliation(
   latestRemediationResolved: ResolvedReviewFixCheckpoint?,
 ): RemediationReconciliationDecision {
   val head = gitOperations.headCommitSha(repoRoot)
-  if (!head.ok || head.value.isBlank()) throw remediationGitFailure("HEAD could not be read (${head.error})")
+  if (head !is WorkflowGitOperationResult.Ok || head.value.isBlank()) return RemediationReconciliationCoherent
   val headSha = head.value.trim()
   val onBranch = gitOperations.isCommitAncestor(repoRoot, stored, headSha)
   return when {
-    !onBranch.ok -> throw remediationGitFailure("ancestry could not be read (${onBranch.error})")
+    onBranch !is WorkflowGitOperationResult.Ok -> RemediationReconciliationCoherent
     onBranch.value == "true" -> RemediationReconciliationCoherent
     latestRemediationResolved != null -> RemediationReconciliationHeal(latestRemediationResolved.sha)
     else -> RemediationReconciliationBlocked
@@ -135,13 +130,5 @@ private fun isStrictAncestor(
 ): Boolean {
   if (ancestor == descendant) return false
   val ancestry = gitOperations.isCommitAncestor(repoRoot, ancestor, descendant)
-  if (!ancestry.ok) throw remediationGitFailure("ancestry could not be read (${ancestry.error})")
-  return ancestry.value == "true"
+  return ancestry is WorkflowGitOperationResult.Ok && ancestry.value == "true"
 }
-
-internal fun remediationGitFailure(reason: String) = FeatureTaskRuntimeSubtaskCommitReconciliationError(
-  workflowId = "unknown",
-  issueKey = "unknown",
-  subtaskId = "unknown",
-  reason = "$reason; operator decision: repair Git access before resuming",
-)

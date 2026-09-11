@@ -146,7 +146,7 @@ data class GoalSubtaskReviewState(
     blockerDispositions: List<GoalSubtaskBlockerDisposition> = emptyList(),
     revision: GoalSubtaskReviewRevision = GoalSubtaskReviewRevision(),
   ): GoalSubtaskReviewState {
-    val commitFocusedAccounting = revision.commitFocusedAccounting
+    val effectiveCommitFocusedAccounting = revision.commitFocusedAccounting
     val reviewedRevision = revision.reviewedRevision
     val passNumber = reservedPassNumber
       ?: reviewStateError("reserved_pass_number", "must be present before completing a review pass.")
@@ -164,7 +164,9 @@ data class GoalSubtaskReviewState(
       unresolvedFindingCount = unresolvedFindingCount,
       findings = findings,
       executedMode = executedMode,
-      commitFocusedAccounting = commitFocusedAccounting
+      // An inline pass carries no delegated commit sequence, so accounting a caller offers anyway is
+      // dropped rather than fabricated into durable state.
+      commitFocusedAccounting = effectiveCommitFocusedAccounting
         ?.takeIf { executedMode != CodeReviewExecutionMode.INLINE },
     )
     return copy(

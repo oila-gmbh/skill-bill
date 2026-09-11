@@ -11,12 +11,8 @@ import skillbill.engine.featuretask.model.FeatureTaskRuntimePhaseStatus
 import skillbill.goalrunner.model.GoalPlanningStatusSnapshot
 import skillbill.goalrunner.model.GoalRunnerStatusProjection
 import skillbill.ports.work.model.WorkItemKind
-<<<<<<<< HEAD:runtime-kotlin/runtime-application/src/main/kotlin/skillbill/application/work/IdeStatusProjectorSupport.kt
-import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_STATUS_COMPLETED
-========
 import skillbill.workflow.model.WorkflowStepStatus
 import skillbill.workflow.model.workflowStepStatus
->>>>>>>> 9d724a13f (SKILL-233: Engine module and package roots):runtime-kotlin/runtime-engine/src/main/kotlin/skillbill/engine/work/IdeStatusProjectorMapping.kt
 import java.time.Instant
 import java.time.LocalDateTime
 import java.time.OffsetDateTime
@@ -59,7 +55,7 @@ internal fun goalStep(
 }
 
 internal fun FeatureTaskRuntimePhaseStatus.toIdeStatusCurrentModel(): IdeStatusCurrentModel? {
-  if (status == FEATURE_TASK_RUNTIME_PHASE_STATUS_COMPLETED) return null
+  if (status.workflowStepStatus() == WorkflowStepStatus.COMPLETED) return null
   return launchedModel?.takeIf(String::isNotBlank)?.let { model ->
     IdeStatusCurrentModel(
       model = model,

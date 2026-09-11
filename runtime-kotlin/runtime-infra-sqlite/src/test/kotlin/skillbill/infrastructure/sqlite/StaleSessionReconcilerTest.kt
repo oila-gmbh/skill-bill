@@ -1,10 +1,11 @@
 package skillbill.infrastructure.sqlite
 
-import skillbill.contracts.JsonSupport
-import skillbill.db.core.DatabaseRuntime
-import skillbill.db.core.reconcileStaleFeatureTaskRuntimeSessions
-import skillbill.db.core.reconcileStaleTelemetrySessions
-import skillbill.db.telemetry.LifecycleTelemetryStoreimport skillbill.ports.telemetry.model.TelemetryReconciliationRequest
+import skillbill.contracts.JsonCodec
+import skillbill.infrastructure.sqlite.core.DatabaseRuntime
+import skillbill.infrastructure.sqlite.core.reconcileStaleFeatureTaskRuntimeSessions
+import skillbill.infrastructure.sqlite.core.reconcileStaleTelemetrySessions
+import skillbill.infrastructure.sqlite.telemetry.LifecycleTelemetryStore
+import skillbill.ports.telemetry.model.TelemetryReconciliationRequest
 import skillbill.telemetry.model.FeatureTaskRuntimeFinishedRecord
 import skillbill.telemetry.model.FeatureVerifyFinishedRecord
 import skillbill.telemetry.model.QualityCheckFinishedRecord
@@ -471,8 +472,8 @@ class StaleSessionReconcilerTest {
       issueKey?.let { statement.setString(2, it) }
       statement.executeQuery().use { resultSet ->
         resultSet.next()
-        val element = requireNotNull(JsonSupport.parseObjectOrNull(resultSet.getString("payload_json")))
-        requireNotNull(JsonSupport.anyToStringAnyMap(JsonSupport.jsonElementToValue(element)))
+        val element = requireNotNull(JsonCodec.parseObjectOrNull(resultSet.getString("payload_json")))
+        requireNotNull(JsonCodec.anyToStringAnyMap(JsonCodec.jsonElementToValue(element)))
       }
     }
   }

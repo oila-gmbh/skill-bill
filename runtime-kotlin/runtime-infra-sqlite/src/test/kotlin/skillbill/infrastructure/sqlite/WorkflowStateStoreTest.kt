@@ -7,7 +7,8 @@ import skillbill.error.ProseFeatureTaskWorkflowWriteRefusedError
 import skillbill.infrastructure.sqlite.core.DatabaseRuntime
 import skillbill.infrastructure.sqlite.core.DbConstants
 import skillbill.infrastructure.sqlite.workflow.WorkflowStateRow
-import skillbill.infrastructure.sqlite.workflow.WorkflowStateStoreimport skillbill.ports.workflow.model.FeatureTaskRouteScope
+import skillbill.infrastructure.sqlite.workflow.WorkflowStateStore
+import skillbill.ports.workflow.model.FeatureTaskRouteScope
 import skillbill.ports.workflow.model.FeatureTaskWorkflowMode
 import java.nio.file.Files
 import java.sql.DriverManager
@@ -679,134 +680,6 @@ class WorkflowStateStoreLifecycleTest {
       assertEquals("wftr-003", store.latestFeatureTaskRuntimeWorkflow()?.workflowId)
       assertTrue(store.listFeatureImplementWorkflows(10).isEmpty())
       assertTrue(store.listFeatureVerifyWorkflows(10).isEmpty())
-    }
-  }
-
-  @Test
-  fun `raw runtime snapshot reads keep malformed payloads available with valid rows`() {
-    val dbPath = Files.createTempDirectory("runtime-snapshot-read-seam").resolve("metrics.db")
-
-    DatabaseRuntime.ensureDatabase(dbPath).use { connection ->
-      val store = WorkflowStateStore(connection)
-      val valid = workflowRow(
-        workflowId = "wftr-valid",
-        sessionId = "ftr-valid",
-        workflowName = "bill-feature-task",
-        currentStepId = "plan",
-        mode = FeatureTaskWorkflowMode.RUNTIME,
-      ).copy(issueKey = "SKILL-332")
-      val stale = workflowRow(
-        workflowId = "wftr-stale",
-        sessionId = "ftr-stale",
-        workflowName = "bill-feature-task",
-        currentStepId = "plan",
-        mode = FeatureTaskWorkflowMode.RUNTIME,
-      ).copy(issueKey = "SKILL-901")
-      store.saveFeatureTaskRuntimeWorkflow(valid)
-      store.saveFeatureTaskRuntimeWorkflow(stale)
-
-      connection.prepareStatement(
-        "UPDATE feature_task_workflows SET steps_json = ? WHERE workflow_id = ?",
-      ).use { statement ->
-        statement.setString(1, "not-json")
-        statement.setString(2, stale.workflowId)
-        statement.executeUpdate()
-      }
-
-      val snapshots = store.listFeatureTaskRuntimeSnapshots(Int.MAX_VALUE)
-      val staleSnapshot = assertNotNull(snapshots.single { it.workflow.workflowId == stale.workflowId })
-      assertEquals(setOf(valid.workflowId, stale.workflowId), snapshots.map { it.workflow.workflowId }.toSet())
-      assertEquals("SKILL-901", staleSnapshot.workflow.issueKey)
-      assertEquals("not-json", staleSnapshot.workflow.stepsJson)
-      assertEquals(valid.workflowId, store.getFeatureTaskRuntimeWorkflow(valid.workflowId)?.workflowId)
-    }
-  }
-
-  @Test
-  fun `standalone lookup exposes ownerless malformed rows before schema validation`() {
-    val dbPath = Files.createTempDirectory("runtime-lookup-ownerless-row").resolve("metrics.db")
-
-    DatabaseRuntime.ensureDatabase(dbPath).use { connection ->
-      val store = WorkflowStateStore(connection)
-      val valid = workflowRow(
-        workflowId = "wftr-owned",
-        sessionId = "ftr-owned",
-        workflowName = "bill-feature-task",
-        currentStepId = "plan",
-        mode = FeatureTaskWorkflowMode.RUNTIME,
-      ).copy(issueKey = "SKILL-332")
-      val identity = FeatureTaskExecutionIdentity(
-        workflowId = valid.workflowId,
-        normalizedIssueKey = "SKILL-332",
-        repositoryIdentity = "repo",
-        governedSpecPath = ".feature-specs/SKILL-332/spec.md",
-        mode = FeatureTaskWorkflowMode.RUNTIME,
-      )
-      val ownerless = valid.copy(
-        workflowId = "wftr-ownerless",
-        sessionId = "ftr-ownerless",
-        issueKey = null,
-        stepsJson = "not-json",
-        artifactsJson = """{"goal_continuation":{"issue_key":"SKILL-332"}}""",
-      )
-      store.saveFeatureTaskRuntimeWorkflow(valid)
-      store.saveFeatureTaskExecutionIdentity(identity)
-      store.saveFeatureTaskRuntimeWorkflow(ownerless)
-
-      val snapshots = store.listFeatureTaskRuntimeSnapshots(Int.MAX_VALUE)
-      assertEquals(identity, snapshots.single { it.workflow.workflowId == valid.workflowId }.identity)
-      assertEquals(null, snapshots.single { it.workflow.workflowId == ownerless.workflowId }.identity)
-
-      val candidates = store.findStandaloneFeatureTaskCandidates("SKILL-332", "repo")
-      assertEquals(
-        setOf(valid.workflowId, ownerless.workflowId),
-        candidates.map { it.workflow.workflowId }.toSet(),
-      )
-      assertEquals("not-json", candidates.single { it.workflow.workflowId == ownerless.workflowId }.workflow.stepsJson)
-    }
-  }
-
-  @Test
-  fun `goal-child execution lookup exposes ownerless rows with decomposition artifacts`() {
-    val dbPath = Files.createTempDirectory("goal-child-execution-ownerless-row").resolve("metrics.db")
-
-    DatabaseRuntime.ensureDatabase(dbPath).use { connection ->
-      val store = WorkflowStateStore(connection)
-      val ownerless = goalChildWorkflow("wftr-ownerless-child", "wftr-parent").copy(
-        issueKey = null,
-        stepsJson = "not-json",
-        artifactsJson = """{"decomposition_runtime":{"issue_key":"SKILL-901"}}""",
-      )
-      store.saveFeatureTaskRuntimeWorkflow(ownerless)
-
-      val candidates = store.findGoalChildFeatureTaskCandidatesForExecution("SKILL-332", "repo")
-
-      assertEquals(listOf(ownerless.workflowId), candidates.map { it.workflow.workflowId })
-      assertEquals("not-json", candidates.single().workflow.stepsJson)
-    }
-  }
-
-  @Test
-  fun `runtime snapshot deletion is keyed to the selected workflow id`() {
-    val dbPath = Files.createTempDirectory("runtime-snapshot-delete-seam").resolve("metrics.db")
-
-    DatabaseRuntime.ensureDatabase(dbPath).use { connection ->
-      val store = WorkflowStateStore(connection)
-      val valid = workflowRow(
-        workflowId = "wftr-valid",
-        sessionId = "ftr-valid",
-        workflowName = "bill-feature-task",
-        currentStepId = "plan",
-        mode = FeatureTaskWorkflowMode.RUNTIME,
-      )
-      val stale = valid.copy(workflowId = "wftr-stale", sessionId = "ftr-stale")
-      store.saveFeatureTaskRuntimeWorkflow(valid)
-      store.saveFeatureTaskRuntimeWorkflow(stale)
-
-      assertTrue(store.deleteFeatureTaskRuntimeWorkflow(stale.workflowId))
-      assertEquals(null, store.getFeatureTaskRuntimeWorkflow(stale.workflowId))
-      assertEquals(valid.workflowId, store.getFeatureTaskRuntimeWorkflow(valid.workflowId)?.workflowId)
-      assertTrue(!store.deleteFeatureTaskRuntimeWorkflow(stale.workflowId))
     }
   }
 

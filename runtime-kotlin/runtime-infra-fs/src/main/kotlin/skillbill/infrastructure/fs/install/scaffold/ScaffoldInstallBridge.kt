@@ -14,7 +14,8 @@ import skillbill.install.model.InstallPlanSkill
 import skillbill.install.model.InstallPlanSkillKind
 import skillbill.install.model.InstallTransaction
 import skillbill.model.toPath
-import skillbill.ports.repository.toFileLocationimport skillbill.scaffold.policy.scaffold.SKILL_KIND_ADD_ON
+import skillbill.ports.repository.toFileLocation
+import skillbill.scaffold.policy.scaffold.SKILL_KIND_ADD_ON
 import skillbill.scaffold.policy.scaffold.SKILL_KIND_AGENT_ADDON
 import skillbill.scaffold.policy.scaffold.SKILL_KIND_PLATFORM_PACK
 import java.nio.file.Files
@@ -64,7 +65,7 @@ internal fun internalPlatformInstallSkills(plan: ScaffoldPlan): List<InstallPlan
     val internalFor = parseInternalForFrontmatter(installPath.resolve("content.md")) ?: return@mapNotNull null
     InstallPlanSkill(
       name = installPath.fileName.toString(),
-      sourceDir = installPath.toAbsolutePath().normalize(),
+      sourceDir = installPath.toAbsolutePath().normalize().toFileLocation(),
       kind = InstallPlanSkillKind.PLATFORM_PACK,
       platformSlug = plan.platform,
       internalFor = internalFor,
@@ -77,7 +78,7 @@ internal fun platformPackInstallPaths(
   repoRoot: Path,
   internalPlatformSkills: List<InstallPlanSkill>,
 ): List<Path> {
-  val internalSkillDirs = internalPlatformSkills.map { skill -> skill.sourceDir }.toSet()
+  val internalSkillDirs = internalPlatformSkills.map { skill -> skill.sourceDir.toPath() }.toSet()
   val listedPaths = plan.installPaths.filterNot { installPath ->
     installPath.toAbsolutePath().normalize() in internalSkillDirs
   }

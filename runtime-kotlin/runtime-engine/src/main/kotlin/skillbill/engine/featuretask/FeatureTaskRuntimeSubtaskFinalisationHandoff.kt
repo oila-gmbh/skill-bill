@@ -1,10 +1,11 @@
 package skillbill.engine.featuretask
 
-import skillbill.contracts.JsonSupport
+import skillbill.contracts.JsonCodec
 import skillbill.engine.featuretask.model.FeatureTaskRuntimeCommitPushHandoff
 import skillbill.engine.featuretask.model.FeatureTaskRuntimeCommitPushHandoffInvalid
 import skillbill.engine.featuretask.model.FeatureTaskRuntimeCommitPushHandoffResult
 import skillbill.engine.featuretask.model.FeatureTaskRuntimeCommitPushHandoffValid
+
 private const val COMMIT_PUSH_RESULT_KEY = "commit_push_result"
 private const val OUTCOME_MESSAGE_KEY = "message"
 private const val CHANGED_PATHS_KEY = "changed_paths"
@@ -28,9 +29,9 @@ object FeatureTaskRuntimeSubtaskFinalisationHandoff {
   }
 
   fun withCommitSha(envelope: Map<String, Any?>, commitSha: String): Map<String, Any?> {
-    val produced = JsonSupport.anyToStringAnyMap(envelope["produced_outputs"])?.toMutableMap()
+    val produced = JsonCodec.anyToStringAnyMap(envelope["produced_outputs"])?.toMutableMap()
       ?: return envelope
-    val result = JsonSupport.anyToStringAnyMap(produced[COMMIT_PUSH_RESULT_KEY])?.toMutableMap()
+    val result = JsonCodec.anyToStringAnyMap(produced[COMMIT_PUSH_RESULT_KEY])?.toMutableMap()
       ?: return envelope
     result[COMMIT_SHA_KEY] = commitSha
     produced[COMMIT_PUSH_RESULT_KEY] = result
@@ -41,9 +42,9 @@ object FeatureTaskRuntimeSubtaskFinalisationHandoff {
     (result[CHANGED_PATHS_KEY] as? List<*>)?.mapNotNull { it?.toString()?.trim()?.takeIf(String::isNotBlank) }
 
   private fun commitPushResult(envelope: Map<String, Any?>): Map<String, Any?>? =
-    JsonSupport.anyToStringAnyMap(envelope["produced_outputs"])?.let { produced ->
-      JsonSupport.anyToStringAnyMap(produced[COMMIT_PUSH_RESULT_KEY])
-    } ?: JsonSupport.anyToStringAnyMap(envelope[COMMIT_PUSH_RESULT_KEY])
+    JsonCodec.anyToStringAnyMap(envelope["produced_outputs"])?.let { produced ->
+      JsonCodec.anyToStringAnyMap(produced[COMMIT_PUSH_RESULT_KEY])
+    } ?: JsonCodec.anyToStringAnyMap(envelope[COMMIT_PUSH_RESULT_KEY])
 
   private fun invalid(detail: String) = FeatureTaskRuntimeCommitPushHandoffInvalid(
     "needs_human: commit_push completed but $detail. The runtime performs the commit and push from " +

@@ -16,6 +16,8 @@ import skillbill.workflow.decomposition.model.DecompositionManifest
 import skillbill.workflow.decomposition.model.DecompositionSubtask
 import skillbill.workflow.engine.WorkflowEngine
 import skillbill.workflow.engine.model.WorkflowStateSnapshot
+import skillbill.workflow.model.DecompositionStatus
+import skillbill.workflow.model.decompositionStatus
 import java.nio.file.Path
 
 internal data class AdvancementResult(
@@ -32,7 +34,7 @@ internal data class CommitAdvanceResult(
 internal fun WorkflowEngine.advanceCompletedSubtasks(request: AdvanceCompletedSubtasksRequest): AdvancementResult {
   var updated = request.manifest
   request.manifest.subtasks
-    .filter { it.status == "complete" && it.commitSha.isNullOrBlank() }
+    .filter { it.status.decompositionStatus() == DecompositionStatus.COMPLETE && it.commitSha.isNullOrBlank() }
     .forEach { subtask ->
       val advanced = commitCompletedSubtask(
         updated,
@@ -67,12 +69,12 @@ internal fun commitCompletedSubtask(
   } else {
     null
   }
-  return if (checkout?.ok == false) {
+  return if (checkout is WorkflowGitOperationResult.Failed) {
     CommitAdvanceResult(manifest, checkout.error.ifBlank { "Git branch checkout failed." })
   } else {
     val commitMessage = "${manifest.issueKey} subtask $subtaskId: $subtaskName"
     val commit = gitOperations.createCommit(repoRootProvider(), commitMessage)
-    if (commit.ok) {
+    if (commit is WorkflowGitOperationResult.Ok) {
       CommitAdvanceResult(manifest.withCommittedSubtask(subtaskId, commit.value))
     } else {
       CommitAdvanceResult(manifest, commit.error.ifBlank { "Git commit failed." })
@@ -100,13 +102,14 @@ fun WorkflowEngine.checkoutAndValidateBranch(request: CheckoutAndValidateBranchR
       branchPlan.baseBranch,
     )
     errorResult = checkout.takeUnless { it is WorkflowGitOperationResult.Ok }
-      ?.let { blockedBranchStartResult(it.error) }    if (errorResult == null && branchPlan.validateBase) {
+      ?.let { blockedBranchStartResult(it.error) }
+    if (errorResult == null && branchPlan.validateBase) {
       errorResult = request.gitOperations.validateBranchBase(
         request.repoRootProvider(),
         branchPlan.branch,
         branchPlan.baseBranch,
       )
-        .takeUnless { it.ok }
+        .takeUnless { it is WorkflowGitOperationResult.Ok }
         ?.let { blockedBranchStartResult(it.error) }
     }
   }

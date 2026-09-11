@@ -5,7 +5,8 @@ import skillbill.infrastructure.fs.install.plan.CURSOR_AGENTS_KIND
 import skillbill.infrastructure.fs.install.plan.JUNIE_AGENTS_KIND
 import skillbill.infrastructure.fs.nativeagent.rendering.NativeAgentProvider
 import skillbill.install.model.AgentTarget
-import skillbill.ports.repository.toFileLocationimport java.nio.file.Files
+import skillbill.ports.repository.toFileLocation
+import java.nio.file.Files
 import java.nio.file.Path
 
 data class NativeAgentLinkOutcome(
@@ -36,7 +37,9 @@ object InstallNativeAgentOperations {
       provider = NativeAgentProvider.Claude,
       request = request,
       detectTargets = {
-        NativeAgentProvider.Claude.homeAgentDirs(resolvedHome).map { AgentTarget(CLAUDE_AGENTS_KIND, it) }
+        NativeAgentProvider.Claude.homeAgentDirs(
+          resolvedHome,
+        ).map { AgentTarget(CLAUDE_AGENTS_KIND, it.toFileLocation()) }
       },
     )
   }
@@ -50,7 +53,7 @@ object InstallNativeAgentOperations {
     provider = NativeAgentProvider.Codex,
     request = request,
     detectTargets = { home ->
-      NativeAgentProvider.Codex.activeHomeAgentDirs(home).map { AgentTarget("codex-agents", it) }
+      NativeAgentProvider.Codex.activeHomeAgentDirs(home).map { AgentTarget("codex-agents", it.toFileLocation()) }
     },
   )
 
@@ -71,7 +74,7 @@ object InstallNativeAgentOperations {
     detectTargets = { resolvedHome ->
       val targetPath = NativeAgentProvider.Junie.homeAgentDirs(resolvedHome).first()
       if (Files.exists(targetPath) || Files.exists(resolvedHome.resolve(".junie"))) {
-        listOf(AgentTarget(JUNIE_AGENTS_KIND, targetPath))
+        listOf(AgentTarget(JUNIE_AGENTS_KIND, targetPath.toFileLocation()))
       } else {
         emptyList()
       }
@@ -96,7 +99,7 @@ object InstallNativeAgentOperations {
     detectTargets = { resolvedHome ->
       val targetPath = NativeAgentProvider.Cursor.homeAgentDirs(resolvedHome).first()
       if (Files.exists(targetPath) || Files.exists(resolvedHome.resolve(".cursor"))) {
-        listOf(AgentTarget(CURSOR_AGENTS_KIND, targetPath))
+        listOf(AgentTarget(CURSOR_AGENTS_KIND, targetPath.toFileLocation()))
       } else {
         emptyList()
       }

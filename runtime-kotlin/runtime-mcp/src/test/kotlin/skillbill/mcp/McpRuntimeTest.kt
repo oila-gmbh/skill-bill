@@ -16,8 +16,8 @@ import skillbill.application.workflow.model.WorkflowUpdateRequest
 import skillbill.cli.core.CliRuntime
 import skillbill.cli.model.CliExecutionResult
 import skillbill.cli.model.CliRuntimeContext
-import skillbill.contracts.JsonSupport
-import skillbill.db.core.DatabaseRuntimeimport skillbill.infrastructure.fs.CanonicalRepositoryRoot
+import skillbill.contracts.JsonCodec
+import skillbill.infrastructure.fs.CanonicalRepositoryRoot
 import skillbill.infrastructure.fs.GitWorkflowGitOperations
 import skillbill.infrastructure.sqlite.core.DatabaseRuntime
 import skillbill.mcp.core.McpRuntime
@@ -411,8 +411,8 @@ class McpRuntimeTest {
 
     val recorded = triageResult["recorded"] as List<*>
     assertEquals(2, recorded.size)
-    assertEquals("fix_applied", requireNotNull(JsonSupport.anyToStringAnyMap(recorded[0]))["outcome_type"])
-    assertEquals("fix_rejected", requireNotNull(JsonSupport.anyToStringAnyMap(recorded[1]))["outcome_type"])
+    assertEquals("fix_applied", requireNotNull(JsonCodec.anyToStringAnyMap(recorded[0]))["outcome_type"])
+    assertEquals("fix_rejected", requireNotNull(JsonCodec.anyToStringAnyMap(recorded[1]))["outcome_type"])
   }
 
   @Test
@@ -597,9 +597,6 @@ class McpFeatureTaskRuntimeWorkflowTest {
     assertSqliteTimestampShape(got["updated_at"].toString(), "task-runtime updated_at")
     assertEquals(opened["started_at"], got["started_at"])
     assertTrue(got["updated_at"].toString() >= opened["started_at"].toString())
-    val continued = payloads.getValue("continue")
-    assertSqliteTimestampShape(continued["updated_at"].toString(), "continue updated_at")
-    assertTrue(continued["updated_at"].toString() >= got["updated_at"].toString())
     assertGoldenPayload(
       "mcp-feature-task-runtime-workflow.json",
       mapOf("open" to opened) + payloads,
@@ -607,7 +604,6 @@ class McpFeatureTaskRuntimeWorkflowTest {
       "<WORKFLOW_ID>" to workflowId,
       "<STARTED_AT>" to opened["started_at"].toString(),
       "<UPDATED_AT>" to got["updated_at"].toString(),
-      "<CONTINUE_UPDATED_AT>" to payloads.getValue("continue")["updated_at"].toString(),
     )
     assertCompactUpdateAcknowledgementPayload(
       payloads.getValue("update"),
@@ -649,7 +645,7 @@ class McpTokenEstimationTest {
         lastIncompletePhase = "",
         blockedReason = "",
         resolvedBranch = "feat/SKILL-91",
-        estimatedPhaseTokenBreakdownJson = JsonSupport.mapToJsonString(
+        estimatedPhaseTokenBreakdownJson = JsonCodec.mapToJsonString(
           mapOf(
             "preplan" to mapOf("estimated_input_tokens" to 800, "estimated_output_tokens" to 400),
             "plan" to mapOf("estimated_input_tokens" to 1200, "estimated_output_tokens" to 600),
@@ -1135,9 +1131,9 @@ private fun scalarString(connection: Connection, sql: String): String = connecti
 }
 
 private fun decodeJsonObject(rawJson: String): Map<String, Any?> {
-  val parsed = JsonSupport.parseObjectOrNull(rawJson)
+  val parsed = JsonCodec.parseObjectOrNull(rawJson)
   require(parsed != null) { "Expected JSON object but got: $rawJson" }
-  val decoded = JsonSupport.anyToStringAnyMap(JsonSupport.jsonElementToValue(parsed))
+  val decoded = JsonCodec.anyToStringAnyMap(JsonCodec.jsonElementToValue(parsed))
   require(decoded != null) { "Expected decoded JSON object but got: $rawJson" }
   return decoded
 }

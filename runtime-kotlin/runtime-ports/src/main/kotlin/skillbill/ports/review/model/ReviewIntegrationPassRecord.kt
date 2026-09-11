@@ -5,14 +5,6 @@ data class ReviewIntegrationPassRecord(
   val commitSequenceDigest: String,
   val terminalOutcome: String,
 ) {
-  constructor(commitSequenceDigest: String, terminalOutcome: String) : this(
-    commitSequenceDigest = commitSequenceDigest,
-    terminalOutcome = requireNotNull(
-      ReviewIntegrationTerminalOutcome.entries.firstOrNull { it.wireValue == terminalOutcome },
-    ) {
-      "Unknown review integration terminal outcome '$terminalOutcome'."
-    },
-  )
   init {
     require(commitSequenceDigest.isNotBlank()) { "Integration pass record must name its commit sequence." }
     require(terminalOutcome.isNotBlank()) { "Integration pass record must name its terminal outcome." }

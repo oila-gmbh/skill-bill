@@ -7,31 +7,48 @@ import skillbill.engine.featuretask.agentAttributionFromPhaseState
 import skillbill.engine.featuretask.model.FeatureTaskRuntimeStatusRequest
 import skillbill.engine.goalrunner.model.GoalRunnerStatusRequest
 import skillbill.engine.goalrunner.planning.GoalPlanningStatusReasonCoherence
-import skillbill.engine.goalrunner.planning.model.GoalPlanningStatusAlignRequestimport skillbill.error.ShellContentContractException
+import skillbill.engine.goalrunner.planning.model.GoalPlanningStatusAlignRequest
+import skillbill.error.ShellContentContractException
 import skillbill.goalrunner.model.ExecutionLiveness
 import skillbill.goalrunner.model.GoalRunnerStatusProjection
-import skillbill.goalrunner.model.GoalRunnerStatusProjectionExtras
+import skillbill.goalrunner.model.GoalRunnerStatusProjectionRuntimeInputs
 import skillbill.goalrunner.model.GoalRunnerStatusProjector
+import skillbill.model.RepositoryRoot
+import skillbill.ports.diagnostics.RuntimeDiagnostics
+import skillbill.ports.featuretask.model.FeatureTaskRuntimeWorkerOwnership
+import skillbill.ports.goalrunner.runner.GoalRunnerAttemptLedgerStore
+import skillbill.ports.goalrunner.runner.GoalRunnerManifestStore
+import skillbill.ports.goalrunner.runner.GoalRunnerWorkflowOutcomeStore
 import skillbill.ports.goalrunner.runner.model.GoalRunnerManifestState
 import skillbill.ports.goalrunner.runner.model.GoalRunnerOutOfBandAcceptance
+import skillbill.ports.taskruntime.FeatureTaskRuntimeWorkerSupervisor
+import skillbill.ports.taskruntime.model.FeatureTaskRuntimeProcessInspection
+import skillbill.ports.workflow.gitops.WorkflowGitOperations
+import skillbill.ports.workflow.gitops.model.WorkflowGitOperationStatus
 import skillbill.ports.workflow.gitops.model.WorkflowSelectedDiffHunksRequest
 import skillbill.ports.workflow.model.FeatureTaskWorkflowMode
 import skillbill.workflow.decomposition.model.DecompositionManifest
 import skillbill.workflow.decomposition.model.DecompositionSubtask
+import skillbill.workflow.model.DecompositionStatus
+import skillbill.workflow.model.decompositionStatus
 import java.io.IOException
+import java.time.Clock
 import java.time.Instant
 
-class GoalRunnerStatusProjectionAssembler(deps: GoalRunnerStatusProjectionAssemblerDeps) {
-  val manifestStore = deps.manifestStore
-  val outcomeStore = deps.outcomeStore
-  val phaseRecorder = deps.phaseRecorder
-  val gitOperations = deps.gitOperations
-  val attemptLedgerStore = deps.attemptLedgerStore
-  val clock = deps.clock
-  val planningStatusReasonCoherence = deps.planningStatusReasonCoherence
-  val diagnostics = deps.diagnostics
-  val runtimeStatusService = deps.runtimeStatusService
-  val repositoryRoot = deps.repositoryRoot
+@Inject
+class GoalRunnerStatusProjectionAssembler(
+  val manifestStore: GoalRunnerManifestStore,
+  val outcomeStore: GoalRunnerWorkflowOutcomeStore,
+  val phaseRecorder: FeatureTaskRuntimePhaseRecorder,
+  val gitOperations: WorkflowGitOperations,
+  val attemptLedgerStore: GoalRunnerAttemptLedgerStore,
+  val clock: Clock,
+  val workerSupervisor: FeatureTaskRuntimeWorkerSupervisor,
+  val planningStatusReasonCoherence: GoalPlanningStatusReasonCoherence,
+  val diagnostics: RuntimeDiagnostics,
+  val runtimeStatusService: FeatureTaskRuntimeStatusService?,
+  val repositoryRoot: RepositoryRoot,
+) {
   fun project(loadedState: GoalRunnerManifestState, request: GoalRunnerStatusRequest): GoalRunnerStatusProjection {
     val acceptances = manifestStore.outOfBandAcceptances(loadedState.parentWorkflowId)
     val manifest = reconcileStatusManifest(loadedState, request, acceptances)
@@ -41,7 +58,8 @@ class GoalRunnerStatusProjectionAssembler(deps: GoalRunnerStatusProjectionAssemb
     return GoalRunnerStatusProjector.project(
       manifest = manifest,
       activeAgent = resolveActiveAgent(currentSubtask),
-      extras = statusProjectionRuntimeInputs(        loadedState = loadedState,
+      extras = statusProjectionRuntimeInputs(
+        loadedState = loadedState,
         request = request,
         manifest = manifest,
         currentSubtask = currentSubtask,
@@ -61,13 +79,13 @@ class GoalRunnerStatusProjectionAssembler(deps: GoalRunnerStatusProjectionAssemb
   }
 }
 
-internal fun GoalRunnerStatusProjectionAssembler.statusProjectionExtras(
+internal fun GoalRunnerStatusProjectionAssembler.statusProjectionRuntimeInputs(
   loadedState: GoalRunnerManifestState,
   request: GoalRunnerStatusRequest,
   manifest: DecompositionManifest,
   currentSubtask: DecompositionSubtask?,
   acceptances: Map<Int, GoalRunnerOutOfBandAcceptance>,
-): GoalRunnerStatusProjectionExtras {
+): GoalRunnerStatusProjectionRuntimeInputs {
   val childWorkflowId = currentSubtask?.workflowId?.takeIf(String::isNotBlank)
   val progress = childWorkflowId?.let { workflowId ->
     outcomeStore.progress(workflowId)
@@ -76,7 +94,7 @@ internal fun GoalRunnerStatusProjectionAssembler.statusProjectionExtras(
   val ledgerSummary = runCatching {
     attemptLedgerStore.readAttemptLedgerSummary(loadedState.manifest.issueKey)
   }.getOrNull()
-  return GoalRunnerStatusProjectionExtras(
+  return GoalRunnerStatusProjectionRuntimeInputs(
     executionLiveness = resolveExecutionLiveness(
       parentWorkflowId = loadedState.parentWorkflowId,
       currentSubtask = currentSubtask,
@@ -113,11 +131,12 @@ internal fun GoalRunnerStatusProjectionAssembler.alignedPlanningStatus(
   manifest: DecompositionManifest,
   currentSubtask: DecompositionSubtask?,
 ) = currentSubtask?.takeIf { subtask ->
-  subtask.status == "blocked" && subtask.lastResumableStep in setOf("preplan", "plan")
+  subtask.status.decompositionStatus() == DecompositionStatus.BLOCKED &&
+    subtask.lastResumableStep in setOf("preplan", "plan")
 }.let { planningBlock ->
   manifestStore.planningStatus(
     loadedState.parentWorkflowId,
-    manifest.subtasks.filter { it.status != "skipped" }.map { it.id },
+    manifest.subtasks.filter { it.status.decompositionStatus() != DecompositionStatus.SKIPPED }.map { it.id },
     planningBlock?.id,
     planningBlock?.blockedReason,
   )?.let { snapshot ->
@@ -184,7 +203,8 @@ internal fun GoalRunnerStatusProjectionAssembler.derivedChildCurrentStep(childWo
 internal fun GoalRunnerStatusProjectionAssembler.resolveChildExecutionLiveness(workflowId: String): ExecutionLiveness =
   runCatching {
     if (phaseRecorder.existingWorkflowMode(workflowId) != FeatureTaskWorkflowMode.RUNTIME) {
-      ExecutionLiveness.UNKNOWN    } else {
+      ExecutionLiveness.UNKNOWN
+    } else {
       val ownership = phaseRecorder.workerOwnership(workflowId)
       if (ownership != null && Instant.parse(ownership.expiresAt).isAfter(clock.instant())) {
         livenessOfLeaseOwner(ownership)
@@ -200,13 +220,21 @@ internal fun GoalRunnerStatusProjectionAssembler.resolveParentExecutionLiveness(
   val lease = manifestStore.executionLease(parentWorkflowId)
     ?: return@runCatching ExecutionLiveness.IDLE
   if (Instant.parse(lease.expiresAt).isAfter(clock.instant())) {
-    livenessOfLeaseOwner()
+    livenessOfLeaseOwner(lease.asWorkerOwnership(parentWorkflowId))
   } else {
     ExecutionLiveness.IDLE
   }
 }.getOrDefault(ExecutionLiveness.UNKNOWN)
 
-internal fun GoalRunnerStatusProjectionAssembler.livenessOfLeaseOwner(): ExecutionLiveness = ExecutionLiveness.LIVE
+internal fun GoalRunnerStatusProjectionAssembler.livenessOfLeaseOwner(
+  ownership: FeatureTaskRuntimeWorkerOwnership,
+): ExecutionLiveness = when (workerSupervisor.inspect(ownership)) {
+  FeatureTaskRuntimeProcessInspection.NotRunning -> ExecutionLiveness.IDLE
+  FeatureTaskRuntimeProcessInspection.ExactLive,
+  is FeatureTaskRuntimeProcessInspection.OwnershipMismatch,
+  is FeatureTaskRuntimeProcessInspection.Unsupported,
+  -> ExecutionLiveness.LIVE
+}
 
 internal fun GoalRunnerStatusProjectionAssembler.resolveActiveAgent(currentSubtask: DecompositionSubtask?): String? {
   if (currentSubtask == null) return null
@@ -226,7 +254,7 @@ internal fun GoalRunnerStatusProjectionAssembler.requestedDiffStat(request: Goal
   if (request.includeDiffStat) {
     request.repoRoot
       ?.let(gitOperations::worktreeActivity)
-      ?.takeIf { result -> result.ok }
+      ?.takeIf { result -> result.status == WorkflowGitOperationStatus.OK }
       ?.diffStat
   } else {
     null
@@ -246,7 +274,7 @@ internal fun GoalRunnerStatusProjectionAssembler.requestedSelectedDiffHunks(requ
           ),
         )
       }
-      ?.takeIf { result -> result.ok }
+      ?.takeIf { result -> result.status == WorkflowGitOperationStatus.OK }
       ?.selectedDiffHunks
   } else {
     null

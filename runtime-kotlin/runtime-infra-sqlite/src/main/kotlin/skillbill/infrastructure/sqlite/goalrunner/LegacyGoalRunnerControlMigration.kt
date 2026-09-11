@@ -1,20 +1,12 @@
-<<<<<<<< HEAD:runtime-kotlin/runtime-ports/src/main/kotlin/skillbill/ports/goalrunner/persistence/LegacyGoalRunnerControlMigration.kt
-package skillbill.ports.goalrunner.persistence
-
-import skillbill.boundary.OpenBoundaryMap
-import skillbill.contracts.JsonSupport
-========
 package skillbill.infrastructure.sqlite.goalrunner
 import skillbill.boundary.OpenBoundaryMap
 import skillbill.contracts.JsonCodec
 import skillbill.goalrunner.GOAL_OUT_OF_BAND_ACCEPTANCE_ARTIFACT_KEY
 import skillbill.goalrunner.GOAL_REVIEW_POLICY_ARTIFACT_KEY
 import skillbill.infrastructure.sqlite.decomposition.decodeArtifacts
->>>>>>>> 9d724a13f (SKILL-233: Engine module and package roots):runtime-kotlin/runtime-infra-sqlite/src/main/kotlin/skillbill/infrastructure/sqlite/goalrunner/LegacyGoalRunnerControlMigration.kt
 import skillbill.ports.goalrunner.GoalRunnerPersistenceSession
 import skillbill.ports.goalrunner.runner.model.GoalRunnerOutOfBandAcceptance
 import skillbill.ports.goalrunner.runner.model.GoalRunnerReviewPolicy
-import skillbill.ports.workflow.decomposition.runtime.decodeArtifacts
 import skillbill.review.context.model.CodeReviewExecutionMode
 import skillbill.workflow.engine.model.WorkflowStateSnapshot
 
@@ -37,7 +29,7 @@ fun migrateLegacyGoalRunnerControls(unitOfWork: GoalRunnerPersistenceSession, ex
 @OpenBoundaryMap("Legacy goal review policy artifact decode before durable control migration")
 fun reviewPolicyFromLegacyArtifacts(artifacts: Map<String, Any?>): GoalRunnerReviewPolicy? {
   val raw = artifacts[GOAL_REVIEW_POLICY_ARTIFACT_KEY] ?: return null
-  val policy = JsonSupport.anyToStringAnyMap(raw)
+  val policy = JsonCodec.anyToStringAnyMap(raw)
     ?: error("Goal review policy artifact '$GOAL_REVIEW_POLICY_ARTIFACT_KEY' must be a map.")
   val allowedKeys = setOf("code_review_mode", "parallel_review_agent", "agent_addon_selection")
   policy.keys.forEach { key ->
@@ -62,7 +54,7 @@ fun outOfBandAcceptancesFromLegacyArtifacts(artifacts: Map<String, Any?>): Map<I
   val entries = raw as? List<*>
     ?: error("Goal acceptance artifact '$GOAL_OUT_OF_BAND_ACCEPTANCE_ARTIFACT_KEY' must be a list.")
   return entries.associate { element ->
-    val entry = JsonSupport.anyToStringAnyMap(element)
+    val entry = JsonCodec.anyToStringAnyMap(element)
       ?: error("Goal acceptance artifact '$GOAL_OUT_OF_BAND_ACCEPTANCE_ARTIFACT_KEY' entries must be maps.")
     val acceptance = GoalRunnerOutOfBandAcceptance(
       subtaskId = (entry["subtask_id"] as? Number)?.toInt()

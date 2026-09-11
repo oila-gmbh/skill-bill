@@ -14,7 +14,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertNull
 
 class FeatureTaskRuntimeGoalContinuationPolicyTest {
-  private val baseline = GoalSubtaskReviewBaseline("0".repeat(40))
+  private val baseline = GoalSubtaskReviewBaseline("0".repeat(40), emptyList())
 
   @Test
   fun `absent durable validation depth adopts supplied depth without conflict`() {

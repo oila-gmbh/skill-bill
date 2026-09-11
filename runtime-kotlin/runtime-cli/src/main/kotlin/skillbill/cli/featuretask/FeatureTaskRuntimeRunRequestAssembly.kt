@@ -97,7 +97,7 @@ internal fun FeatureTaskRuntimePhaseAgentCommand.parseGoalContinuationContext(
     reviewBaseline = requireNotNull(goalReviewBaseSha?.takeIf(String::isNotBlank)) {
       "--goal-review-base-sha is required with goal-continuation options."
     }.let { base ->
-      GoalSubtaskReviewBaseline(base)
+      GoalSubtaskReviewBaseline(base, goalBaselineUntrackedPaths.distinct().sorted())
     },
   )
 }

@@ -7,7 +7,8 @@ import skillbill.infrastructure.fs.nativeagent.platformpack.NativeAgentGovernedA
 import skillbill.infrastructure.fs.nativeagent.platformpack.NativeAgentPlatformPack
 import skillbill.infrastructure.fs.nativeagent.platformpack.NativeAgentPlatformPackLoader
 import skillbill.infrastructure.fs.nativeagent.platformpack.NativeAgentPointerSpec
-import skillbill.model.toPathimport skillbill.scaffold.model.GovernedAddonActivation
+import skillbill.model.toPath
+import skillbill.scaffold.model.GovernedAddonActivation
 import skillbill.scaffold.model.GovernedAddonSelection
 import skillbill.scaffold.model.GovernedAddonUsage
 import skillbill.scaffold.model.PlatformManifest
@@ -26,15 +27,14 @@ object InstallNativeAgentPlatformPackLoader : NativeAgentPlatformPackLoader {
 
 fun PlatformManifest.toNativeAgentPlatformPack(): NativeAgentPlatformPack = NativeAgentPlatformPack(
   slug = slug,
-  packRoot = packRoot,
+  packRoot = packRoot.toPath(),
   declaredFiles = NativeAgentDeclaredFiles(
-    baseline = declaredFiles.baseline,
-    areas = declaredFiles.areas,
+    baseline = declaredFiles.baseline?.toPath(),
+    areas = declaredFiles.areas.mapValues { (_, entry) -> entry.toPath() },
   ),
-  declaredQualityCheckFile = declaredQualityCheckFile,
+  declaredQualityCheckFile = declaredQualityCheckFile?.toPath(),
   pointers = pointers.map(PointerSpec::toNativeAgentPointerSpec),
   addonUsage = addonUsage.map(GovernedAddonUsage::toNativeAgentGovernedAddonUsage),
-  requiredRubricCompanions = requiredRubricCompanions,
 )
 
 private fun PointerSpec.toNativeAgentPointerSpec(): NativeAgentPointerSpec = NativeAgentPointerSpec(

@@ -2,13 +2,12 @@ package skillbill.infrastructure.sqlite.goalrunner
 
 import skillbill.goalrunner.model.GoalRunnerControlState
 import skillbill.ports.agentrun.model.AgentRunSpawnAuthorization
-import skillbill.ports.goalrunner.runner.GoalRunnerManifestPauseOps
 import skillbill.ports.goalrunner.runner.model.GoalRunnerLaunchAuthorization
 import skillbill.ports.goalrunner.runner.model.GoalRunnerManifestState
 
 internal class WorkflowGoalRunnerManifestControlOpsImpl(
   private val ctx: WorkflowGoalRunnerManifestStoreContext,
-) : GoalRunnerManifestControlOps,
+) : GoalRunnerManifestControlCommands,
   GoalRunnerManifestPauseOps by WorkflowGoalRunnerManifestPauseOpsImpl(ctx) {
   override fun controlState(parentWorkflowId: String): GoalRunnerControlState =
     ctx.controls.controlState(parentWorkflowId)

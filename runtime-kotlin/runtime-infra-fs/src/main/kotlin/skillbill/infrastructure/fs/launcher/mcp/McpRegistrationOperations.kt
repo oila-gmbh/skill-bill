@@ -6,7 +6,8 @@ import skillbill.install.model.ClaudeMcpProfileFailure
 import skillbill.install.model.InstallAgent
 import skillbill.install.model.McpMutationResult
 import skillbill.install.model.McpProfileOutcome
-import skillbill.ports.repository.toFileLocationimport java.nio.file.Path
+import skillbill.ports.repository.toFileLocation
+import java.nio.file.Path
 
 object McpRegistrationOperations {
   fun register(
@@ -130,7 +131,7 @@ object McpRegistrationOperations {
 
     return McpMutationResult(
       agent = agent,
-      configPath = representativePath,
+      configPath = representativePath.toFileLocation(),
       changed = outcomes.any { it.changed },
       profiles = outcomes,
     )

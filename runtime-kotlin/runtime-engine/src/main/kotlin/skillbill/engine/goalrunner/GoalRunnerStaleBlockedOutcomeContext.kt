@@ -2,7 +2,9 @@ package skillbill.engine.goalrunner
 import skillbill.engine.goalrunner.model.GoalRunnerWedgeClass
 import skillbill.engine.goalrunner.model.GoalRunnerWedgeFinding
 import skillbill.goalrunner.derivedTerminalOutcomeFor
-import skillbill.goalrunner.goalContinuationOutcomeimport skillbill.goalrunner.model.GoalRunnerTerminalStatus
+import skillbill.goalrunner.goalContinuationOutcome
+import skillbill.goalrunner.model.GoalRunnerTerminalStatus
+import skillbill.goalrunner.nonCompleteStoredOutcomeIsCorroborated
 import skillbill.workflow.engine.model.WorkflowStateSnapshot
 
 internal data class GoalRunnerStaleBlockedOutcomeContext(

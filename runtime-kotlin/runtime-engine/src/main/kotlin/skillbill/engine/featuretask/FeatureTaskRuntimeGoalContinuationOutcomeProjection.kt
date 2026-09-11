@@ -1,16 +1,16 @@
 package skillbill.engine.featuretask
 
-import skillbill.contracts.JsonSupport
+import skillbill.contracts.JsonCodec
 import skillbill.engine.featuretask.model.FeatureTaskRuntimeGoalContinuationContext
 import skillbill.engine.featuretask.model.FeatureTaskRuntimeRunReport
 import skillbill.engine.featuretask.model.FeatureTaskRuntimeRunRequest
 import skillbill.engine.featuretask.model.FeatureTaskRuntimeSubtaskOutcome
-import skillbill.goalrunner.model.GoalRunnerTerminalStatusimport skillbill.ports.workflow.gitops.WorkflowGitOperations
+import skillbill.goalrunner.model.GoalRunnerTerminalStatus
+import skillbill.ports.workflow.gitops.WorkflowGitOperations
 import skillbill.ports.workflow.gitops.model.WorkflowGitOperationResult
 import skillbill.workflow.model.WorkflowStepStatus
 import skillbill.workflow.model.workflowStepStatus
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
-import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_STATUS_BLOCKED
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerAction
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseRecord
 
@@ -42,7 +42,7 @@ fun completedGoalContinuationOutcome(
     FeatureTaskRuntimeSubtaskOutcome(
       issueKey = context.parentIssueKey,
       subtaskId = context.subtaskId,
-      status = "blocked",
+      status = GoalRunnerTerminalStatus.BLOCKED,
       commitSha = null,
       workflowId = request.workflowId,
       blockedReason = "commit_push completed under suppress_pr but no commit SHA could be captured " +
@@ -60,7 +60,7 @@ fun completeSubtaskOutcome(
 ): FeatureTaskRuntimeSubtaskOutcome = FeatureTaskRuntimeSubtaskOutcome(
   issueKey = context.parentIssueKey,
   subtaskId = context.subtaskId,
-  status = "complete",
+  status = GoalRunnerTerminalStatus.COMPLETE,
   commitSha = commitSha,
   workflowId = request.workflowId,
   blockedReason = null,
@@ -71,7 +71,7 @@ fun completeSubtaskOutcome(
 // result is ok and non-blank (mirrors GoalRunnerWorkflowStores.measuredCommitSha).
 fun measuredHeadSha(gitOperations: WorkflowGitOperations, request: FeatureTaskRuntimeRunRequest): String? {
   val result = gitOperations.headCommitSha(request.repoRoot)
-  return result.value.trim().takeIf { result.ok && it.isNotBlank() }
+  return result.value.trim().takeIf { result is WorkflowGitOperationResult.Ok && it.isNotBlank() }
 }
 
 /**
@@ -129,7 +129,7 @@ internal fun agentAttributionFromPhaseState(
 // ordering. Branch-setup-sentinel records are excluded: they carry no real agent id.
 private fun terminalRecordAgentId(records: Map<String, FeatureTaskRuntimePhaseRecord>): String? {
   val realRecords = records.values.filter { it.resolvedAgentId.isRuntimeAgentId() }
-  realRecords.filter { it.status == FEATURE_TASK_RUNTIME_PHASE_STATUS_BLOCKED }
+  realRecords.filter { it.status.workflowStepStatus() == WorkflowStepStatus.BLOCKED }
     .maxByOrNull { it.finishedAt.orEmpty() }
     ?.let { return it.resolvedAgentId }
   return realRecords
@@ -146,14 +146,14 @@ fun commitShaFromPhaseRecords(
     .orEmpty()[FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_COMMIT_PUSH]
     ?.outputArtifact
   val payload = commitOutput
-    ?.let(JsonSupport::parseObjectOrNull)
-    ?.let(JsonSupport::jsonElementToValue)
-    ?.let(JsonSupport::anyToStringAnyMap)
+    ?.let(JsonCodec::parseObjectOrNull)
+    ?.let(JsonCodec::jsonElementToValue)
+    ?.let(JsonCodec::anyToStringAnyMap)
   return payload?.commitShaFromPhasePayload()
 }
 
 fun Map<String, Any?>.commitShaFromPhasePayload(): String? {
-  val producedOutputs = JsonSupport.anyToStringAnyMap(this["produced_outputs"])
+  val producedOutputs = JsonCodec.anyToStringAnyMap(this["produced_outputs"])
   return (this["commit_push_result"] as? Map<*, *>)?.get("commit_sha")?.toString()?.takeIf(String::isNotBlank)
     ?: (producedOutputs?.get("commit_push_result") as? Map<*, *>)?.get("commit_sha")?.toString()
       ?.takeIf(String::isNotBlank)

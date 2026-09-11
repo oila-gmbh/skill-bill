@@ -7,6 +7,7 @@ import skillbill.engine.featuretask.model.FeatureTaskRuntimeRunRequest
 import skillbill.engine.featuretask.model.FeatureTaskRuntimeSubtaskOutcome
 import skillbill.goalrunner.model.FeatureTaskRuntimeGoalContinuationOutcome
 import skillbill.goalrunner.model.GoalRunnerLaunchFacts
+import skillbill.goalrunner.model.GoalRunnerTerminalStatus
 import skillbill.ports.agentrun.model.AgentRunLaunchFacts
 import skillbill.ports.workflow.gitops.WorkflowGitOperations
 import skillbill.workflow.model.WorkflowStepStatus
@@ -27,7 +28,8 @@ fun terminalBlockedReasonFrom(phaseId: String, outputMap: Map<String, Any?>): St
   val status = outputMap["status"] as? String
   if (status.workflowStepStatus() != WorkflowStepStatus.BLOCKED &&
     status.workflowStepStatus() != WorkflowStepStatus.FAILED
-  ) {    return null
+  ) {
+    return null
   }
   val summary = (outputMap["summary"] as? String).orEmpty().trim()
   val blockingReasons = (outputMap["produced_outputs"] as? Map<*, *>)
@@ -97,7 +99,8 @@ fun persistGoalContinuationOutcome(
           GoalRunnerTerminalStatus.TIMEOUT,
           GoalRunnerTerminalStatus.NO_TERMINAL_STORE_OUTCOME,
           GoalRunnerTerminalStatus.RECONCILABLE,
-          -> "blocked"        },
+          -> "blocked"
+        },
       ),
     )
   }
@@ -121,7 +124,7 @@ private fun goalContinuationOutcomeFor(
   is FeatureTaskRuntimeRunReport.Blocked -> FeatureTaskRuntimeSubtaskOutcome(
     issueKey = context.parentIssueKey,
     subtaskId = context.subtaskId,
-    status = "blocked",
+    status = GoalRunnerTerminalStatus.BLOCKED,
     commitSha = null,
     workflowId = request.workflowId,
     blockedReason = report.blockedReason,
@@ -130,7 +133,7 @@ private fun goalContinuationOutcomeFor(
   is FeatureTaskRuntimeRunReport.Paused -> FeatureTaskRuntimeSubtaskOutcome(
     issueKey = context.parentIssueKey,
     subtaskId = context.subtaskId,
-    status = "paused",
+    status = GoalRunnerTerminalStatus.PAUSED,
     commitSha = null,
     workflowId = request.workflowId,
     blockedReason = report.pauseReason,

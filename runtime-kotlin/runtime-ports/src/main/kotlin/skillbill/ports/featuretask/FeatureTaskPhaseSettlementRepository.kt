@@ -7,4 +7,5 @@ interface FeatureTaskPhaseSettlementRepository {
 
   fun find(workflowId: String, phaseId: String, attempt: Int): FeatureTaskPhaseSettlement?
 
-  fun delete(workflowId: String, phaseId: String, attempt: Int): Boolean}
+  fun delete(workflowId: String, phaseId: String, attempt: Int): Boolean
+}

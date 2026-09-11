@@ -10,6 +10,10 @@ import skillbill.review.context.model.ReviewIntegrationAccounting
 import skillbill.review.context.model.ReviewLaneSegmentAccounting
 import skillbill.review.context.model.ReviewParentAnalysisConsumption
 
+/**
+ * The sole durable/wire projection for review accounting. Content-bearing inputs are intentionally
+ * absent.
+ */
 @OpenBoundaryMap("Schema-bounded review-accounting wire projection")
 fun ReviewAccountingSummary.toBoundedPayload(): Map<String, Any?> = linkedMapOf(
   "contract_version" to REVIEW_CONTEXT_CONTRACT_VERSION,
@@ -34,25 +38,17 @@ private fun ReviewAccountingNode.toPayload(): Map<String, Any?> = linkedMapOf(
   "tool_calls" to counters.toolCalls.toLong(),
   "model_turns" to counters.modelTurns.toLong(),
   "inclusive_counters" to inclusiveCounters.toPayload(),
-  "terminal_outcome" to terminalOutcome,
+  "terminal_outcome" to terminalOutcome.wireValue,
 ).apply {
-  evidenceDelivery?.let { delivery ->
-    put(
-      "evidence_delivery",
-      linkedMapOf(
-        "required_units" to delivery.requiredUnits,
-        "delivered_units" to delivery.deliveredUnits,
-        "remaining_units" to delivery.remainingUnits,
-        "request_count" to delivery.requestCount,
-      ),
-    )
-  }
+  // Bundle keys are present-or-absent, never null: a lane with no bundle stays byte-identical.
   bundleCompositionDigest?.let { put("bundle_composition_digest", it) }
   segmentAccounting.takeIf { it.isNotEmpty() }
     ?.let { segments -> put("segment_accounting", segments.map { it.toPayload() }) }
   unreviewedSegmentIds.takeIf { it.isNotEmpty() }?.let { put("unreviewed_segment_ids", it) }
 }
 
+// Identity, counts, and lane names only. No commit subject, no path, no diff text: a routing shape
+// is safe to persist, the code it routed is not.
 private fun ReviewCommitRoutingAccounting.toPayload(): Map<String, Any?> = linkedMapOf(
   "commit_sequence_digest" to commitSequenceDigest,
   "routing_digest" to routingDigest,
@@ -74,7 +70,7 @@ private fun ReviewParentAnalysisConsumption.toPayload(): Map<String, Any?> = lin
 
 private fun ReviewIntegrationAccounting.toPayload(): Map<String, Any?> = linkedMapOf(
   "commit_sequence_digest" to commitSequenceDigest,
-  "terminal_outcome" to terminalOutcome,
+  "terminal_outcome" to terminalOutcome.wireValue,
   "summarized_lane_count" to summarizedLaneCount,
   "finding_count" to findingCount,
   "counters" to counters.toPayload(),

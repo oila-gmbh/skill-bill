@@ -28,7 +28,7 @@ Feature flag: N/A
 Acceptance criteria: 5/5 implemented
 
 ## [2026-09-06] SKILL-233 subtask 2 — Ports evacuation and domain purity
-Areas: runtime-kotlin/{runtime-ports,runtime-domain,runtime-contracts,runtime-application,runtime-cli,runtime-core,runtime-infra-{fs,sqlite,http},runtime-mcp,agent,ARCHITECTURE.md}
+Areas: runtime-kotlin/{runtime-ports,runtime-domain,runtime-contracts,runtime-application,runtime-cli,runtime-core,runtime-infra-{fs,http,sqlite},runtime-mcp,agent,ARCHITECTURE.md}
 - Evacuated runtime behavior from ports into domain and infrastructure seams, leaving interfaces, DTOs, and pure DTO extensions; the non-interface census is 84 files / 2,886 lines versus 7,031 at start. reusable
 - Removed production null objects and diagnostic sinks, moved test substitutes to testFixtures, and made UnitOfWork members explicit at every implementation boundary. reusable
 - Kept wire mapping at the adapter boundary where contract modules cannot depend on domain snapshots; import and dependency ownership rules now enforce the thin-port/domain-purity shape. reusable
@@ -48,25 +48,8 @@ Areas: runtime-kotlin/{runtime-application/featuretask,runtime-core/{di,architec
 - Over-injection in tests was solved with test-only fixture value types (`GoalRunnerStatusTestPorts`, `OutcomeStoreTestArtifactPorts`) rather than default args on production constructors; the store factories live in `testFixtures`, the only test tree allowed to import `skillbill.infrastructure.*`. reusable
 - Public-ABI fallout to expect when flattening DI: the `RepositoryRoot` `@Provides` had to leave `RuntimeComponent` for `RuntimeWorkflowProvides`, and the raw-map allowlist FQN became `FeatureTaskRuntimeRunState.parsedOutput` in both ARCHITECTURE.md lists and the test — both only surface once compilation succeeds.
 - Limitation: the run loop stays in `runtime-application` and ports/domain/null-object work is untouched; subtasks 2–4 own those. Renames reached `runtime-ports`, `runtime-domain`, and `runtime-contracts` as rename-only steps to empty the all-module census.
-
-## [2026-09-08] SKILL-235 subtask 1 — Commit-based subtask review
-Areas: runtime-kotlin/{runtime-application/{featuretask,review,reviewevidence,goalrunner},runtime-domain, runtime-infra-fs, runtime-ports}, docs, orchestration/contracts, platform-packs/generic/code-review, skills
-- Added a runtime-owned one-commit boundary before each goal-child review, with exact base/target/tree identity and ownership-aware amendment/retry handling. reusable
-- Review launch now carries immutable Git coordinates and bounded configuration; reviewers retrieve committed content on demand instead of receiving expanded worktree paths and hunks. reusable
-- Finalization, interruption recovery, migration, approval invalidation, checkpoint preservation, and exclusion rules now share the same identity and reconciliation policy.
-- Limitation: provider-bound prompt-growth coverage and focused real-Git recovery coverage remain follow-up validation/review work.
 Feature flag: N/A
 Acceptance criteria: 9/9 implemented
-
-## [2026-09-09] 332 subtask 1 — Resilient stale workflow handling
-Areas: runtime-kotlin/{runtime-application/{featuretask,goalrunner,workflow},runtime-cli/goal,runtime-core/di,runtime-domain/workflow/taskruntime/model,runtime-infra-fs/{install/apply,nativeagent/discovery},runtime-infra-sqlite/{db/workflow,infrastructure/sqlite/goalrunner},runtime-ports/{goalrunner/persistence/model,workflow/{model,persistence}}}
-- Candidate loading now validates task-runtime snapshots independently, keeps valid rows, warns with the skipped workflow identity, and preserves the typed schema error for a requested invalid goal.
-- Status, refresh/watch, and authoritative-outcome projections tolerate unrelated invalid snapshots; normal correlation and valid continuation behavior remain unchanged.
-- Added `goal prune-stale-workflows` with report-only default and explicit selective retirement, plus focused application, SQLite, and CLI regression coverage. reusable
-- Pattern: classify snapshot ownership before schema validation so unrelated corruption degrades locally while requested-goal failures stay loud. reusable
-- Limitation: stale snapshots are not migrated; retirement is limited to selected invalid task-runtime rows, and the workflow-state contract version stays unchanged.
-Feature flag: N/A
-Acceptance criteria: 7/7 implemented
 
 ## [2026-09-04] SKILL-232 subtask 1 — Unused private/internal deletion pass
 Areas: runtime-kotlin/{runtime-application/{featuretask,goalrunner,work},runtime-domain/review/context/model,runtime-infra-fs/{infrastructure/fs,install/nativeagent,launcher/mcp,scaffold/platformpack},runtime-infra-sqlite/{db/workflow,infrastructure/sqlite/goalrunner},runtime-core/architecture/baselines}

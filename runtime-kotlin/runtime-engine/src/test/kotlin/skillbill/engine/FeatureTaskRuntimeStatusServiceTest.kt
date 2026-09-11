@@ -3,7 +3,21 @@ import skillbill.application.decomposition.decodeArtifacts
 import skillbill.application.decomposition.decompositionManifestPath
 import skillbill.application.decomposition.parentSpecPath
 import skillbill.application.idestatus.model.IdeStatusCurrentPhaseExecutionKind
-import skillbill.contracts.JsonSupportimport skillbill.error.InvalidWorkflowStateSchemaError
+import skillbill.application.testHarnessClock
+import skillbill.contracts.JsonCodec
+import skillbill.engine.featuretask.AcceptingFeatureTaskRuntimeHandoffEnvelopeValidator
+import skillbill.engine.featuretask.AcceptingFeatureTaskRuntimeHandoffFoundationValidator
+import skillbill.engine.featuretask.FeatureTaskRuntimeContinuationKind
+import skillbill.engine.featuretask.FeatureTaskRuntimeDecomposeTerminalRecorder
+import skillbill.engine.featuretask.FeatureTaskRuntimePhaseRecorder
+import skillbill.engine.featuretask.FeatureTaskRuntimeRunInvariantsStore
+import skillbill.engine.featuretask.FeatureTaskRuntimeStatusService
+import skillbill.engine.featuretask.agentAttributionFromPhaseState
+import skillbill.engine.featuretask.featureTaskRuntimePhaseRecorder
+import skillbill.engine.featuretask.model.FeatureTaskRuntimePhaseLedgerRequest
+import skillbill.engine.featuretask.model.FeatureTaskRuntimePhaseStateRequest
+import skillbill.engine.featuretask.model.FeatureTaskRuntimeStatusRequest
+import skillbill.error.InvalidWorkflowStateSchemaError
 import skillbill.ports.db.DatabaseSessionFactory
 import skillbill.ports.diagnostics.NoopRuntimeDiagnostics
 import skillbill.ports.featuretask.EmptyFeatureTaskRuntimeAuditGenerationRepository
@@ -11,6 +25,7 @@ import skillbill.ports.goalrunner.EmptyGoalPlanningPreparationRepository
 import skillbill.ports.goalrunner.EmptyGoalRunnerControlRepository
 import skillbill.ports.learning.LearningRepository
 import skillbill.ports.persistence.UnitOfWork
+import skillbill.ports.persistence.UnitOfWorkDefaults
 import skillbill.ports.review.ReviewRepository
 import skillbill.ports.telemetry.LifecycleTelemetryRepository
 import skillbill.ports.telemetry.TelemetryOutboxRepository
@@ -23,6 +38,7 @@ import skillbill.ports.workflow.model.FeatureTaskWorkflowCandidate
 import skillbill.ports.workflow.model.FeatureVerifySessionSummary
 import skillbill.ports.workflow.model.WorkflowStateRecord
 import skillbill.workflow.engine.WorkflowSnapshotValidator
+import skillbill.workflow.engine.model.WorkflowStateSnapshot
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_DIAGNOSTIC_SIGNALS_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeDecomposeTerminal
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeDiagnosticFailureClass
@@ -1196,7 +1212,7 @@ private class StatusHarness(
     val artifacts = decodeArtifacts(row.artifactsJson).toMutableMap()
     artifacts[FEATURE_TASK_RUNTIME_DIAGNOSTIC_SIGNALS_ARTIFACT_KEY] = raw
     repository.saveFeatureTaskRuntimeWorkflow(
-      row.copy(artifactsJson = JsonSupport.mapToJsonString(artifacts)),
+      row.copy(artifactsJson = JsonCodec.mapToJsonString(artifacts)),
     )
   }
 
@@ -1237,7 +1253,7 @@ private class StatusFakeDatabaseSessionFactory(
 
   override fun <T> transaction(block: (UnitOfWork) -> T): T = block(unitOfWork())
 
-  private fun unitOfWork(): UnitOfWork = object : UnitOfWork {
+  private fun unitOfWork(): UnitOfWork = object : UnitOfWorkDefaults() {
     override val dbPath: Path = this@StatusFakeDatabaseSessionFactory.dbPath
     override val reviews: ReviewRepository get() = error("unused")
     override val learnings: LearningRepository get() = error("unused")
@@ -1295,5 +1311,5 @@ private class StatusInMemoryWorkflowRepository : WorkflowStateRepository {
 }
 
 private object StatusNoopSnapshotValidator : WorkflowSnapshotValidator {
-  override fun validate(snapshot: Map<String, Any?>, slug: String) = Unit
+  override fun validate(snapshot: WorkflowStateSnapshot, slug: String) = Unit
 }

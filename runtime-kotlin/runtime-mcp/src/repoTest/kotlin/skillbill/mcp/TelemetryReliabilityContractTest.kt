@@ -2,9 +2,8 @@ package skillbill.mcp
 
 import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.dataformat.yaml.YAMLMapper
-import skillbill.contracts.JsonSupport
-import skillbill.db.core.DatabaseRuntime
-import skillbill.db.telemetry.LifecycleTelemetryStoreimport skillbill.error.InvalidTelemetryEventSchemaError
+import skillbill.contracts.JsonCodec
+import skillbill.error.InvalidTelemetryEventSchemaError
 import skillbill.goalrunner.model.GoalRunnerStopReason
 import skillbill.infrastructure.sqlite.core.DatabaseRuntime
 import skillbill.infrastructure.sqlite.review.ReviewFinishedPayloadBuildRequest
@@ -14,7 +13,7 @@ import skillbill.infrastructure.sqlite.telemetry.LifecycleTelemetryStore
 import skillbill.mcp.telemetry.TELEMETRY_EVENT_CONTRACT_VERSION
 import skillbill.mcp.telemetry.TelemetryEventSchemaPaths
 import skillbill.mcp.telemetry.TelemetryEventSchemaValidator
-import skillbill.ports.telemetry.model.toReviewFinishedTelemetryPayload
+import skillbill.ports.review.toReviewFinishedTelemetryPayload
 import skillbill.review.ReviewParser
 import skillbill.review.normalizeTelemetrySlug
 import skillbill.telemetry.model.FeatureTaskRuntimeFinishedRecord
@@ -436,7 +435,7 @@ class TelemetryReliabilityContractTest {
           resultSet.getString("payload_json")
         }
       }
-      val parsed = requireNotNull(JsonSupport.parseObjectOrNull(payloadJson))
+      val parsed = requireNotNull(JsonCodec.parseObjectOrNull(payloadJson))
       linkedMapOf<String, Any?>().apply {
         val contractEventName = if (eventName == "skillbill_review_finished") {
           eventName
@@ -445,7 +444,7 @@ class TelemetryReliabilityContractTest {
         }
         put("event_name", contractEventName)
         put("contract_version", TELEMETRY_EVENT_CONTRACT_VERSION)
-        putAll(requireNotNull(JsonSupport.anyToStringAnyMap(JsonSupport.jsonElementToValue(parsed))))
+        putAll(requireNotNull(JsonCodec.anyToStringAnyMap(JsonCodec.jsonElementToValue(parsed))))
       }
     }
   }

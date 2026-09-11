@@ -1,6 +1,6 @@
 package skillbill.infrastructure.http
 
-import skillbill.contracts.JsonSupport
+import skillbill.contracts.JsonCodec
 import skillbill.contracts.telemetry.TelemetryProxyBatchEvent
 import skillbill.contracts.telemetry.TelemetryProxyBatchPayload
 import skillbill.ports.telemetry.model.TelemetryOutboxRecord
@@ -26,8 +26,8 @@ private fun telemetryProperties(
   installId: String,
   skillBillVersion: String?,
 ): MutableMap<String, Any?> = (
-  JsonSupport.parseObjectOrNull(payloadJson)?.let {
-    JsonSupport.anyToStringAnyMap(JsonSupport.jsonElementToValue(it))
+  JsonCodec.parseObjectOrNull(payloadJson)?.let {
+    JsonCodec.anyToStringAnyMap(JsonCodec.jsonElementToValue(it))
   } ?: emptyMap()
   ).toMutableMap().apply {
   this["install_id"] = installId

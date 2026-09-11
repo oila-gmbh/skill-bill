@@ -1,7 +1,7 @@
 package skillbill.workflow.taskruntime.model
 
 import skillbill.boundary.OpenBoundaryMap
-import skillbill.contracts.JsonSupport
+import skillbill.contracts.JsonCodec
 import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_CHECKPOINT_IDENTITY_CONTRACT_VERSION
 import skillbill.error.InvalidFeatureTaskRuntimeCheckpointIdentityVersionError
 import skillbill.error.InvalidWorkflowStateSchemaError
@@ -219,7 +219,7 @@ fun featureTaskRuntimeCheckpointIdentitiesToArtifact(
 @OpenBoundaryMap("Feature-task-runtime checkpoint-identity store decode from the durable workflow-artifact map")
 fun featureTaskRuntimeCheckpointIdentitiesFromArtifact(raw: Any?): List<FeatureTaskRuntimeCheckpointIdentity> {
   if (raw == null) return emptyList()
-  val map = JsonSupport.anyToStringAnyMap(raw)
+  val map = JsonCodec.anyToStringAnyMap(raw)
     ?: checkpointIdentityError("Feature-task-runtime checkpoint-identity record must be an object.")
   val version = map["contract_version"] as? String
   if (version != FEATURE_TASK_RUNTIME_CHECKPOINT_IDENTITY_CONTRACT_VERSION) {
@@ -234,7 +234,7 @@ fun featureTaskRuntimeCheckpointIdentitiesFromArtifact(raw: Any?): List<FeatureT
     )
   val decoded = checkpoints.map { entry ->
     FeatureTaskRuntimeCheckpointIdentity.fromArtifactMap(
-      JsonSupport.anyToStringAnyMap(entry)
+      JsonCodec.anyToStringAnyMap(entry)
         ?: checkpointIdentityError("Feature-task-runtime checkpoint-identity entry must be an object."),
     )
   }

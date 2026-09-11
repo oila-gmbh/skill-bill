@@ -117,8 +117,6 @@ class FeatureTaskRuntimeSharedEvidenceProjectionSchemaValidatorTest {
     "store_path" to ".skill-bill/run-evidence/wftr-1/fp-abc",
     "base_ref" to "main",
     "head_ref" to "HEAD",
-    "changed_file_count" to 1,
-    "changed_hunk_count" to 1,
-    "file_hunk_index_digest" to "a".repeat(64),
+    "file_hunk_index" to listOf("modified src/A.kt hunks=1"),
   )
 }

@@ -1,12 +1,14 @@
 package skillbill.application.workflow
 
-import skillbill.application.decomposition.DecompositionManifestProjectionSupport
+import skillbill.application.decomposition.DecompositionManifestWriteGuard
 import skillbill.application.decomposition.DecompositionManifestWriter
 import skillbill.application.workflow.model.WorkflowUpdateResult
 import skillbill.model.RepositoryRoot
 import skillbill.ports.db.DatabaseSessionFactory
 import skillbill.ports.persistence.UnitOfWork
 import skillbill.ports.workflow.decomposition.DecompositionManifestStore
+import skillbill.ports.workflow.get
+import skillbill.ports.workflow.save
 import skillbill.workflow.decomposition.DecompositionManifestValidator
 import skillbill.workflow.engine.WorkflowEngine
 import skillbill.workflow.engine.model.WorkflowStateSnapshot
@@ -63,7 +65,7 @@ class WorkflowServiceBlockedPhaseRetry(
       retryInTransaction(unitOfWork, request)
     }
     persistence.projectionArtifactsJson?.let { artifactsJson ->
-      DecompositionManifestProjectionSupport.requireWritten(
+      DecompositionManifestWriteGuard.requireWritten(
         decompositionManifestWriter.writeProjectionFromWorkflowState(
           repositoryRoot.path,
           artifactsJson,
@@ -90,7 +92,7 @@ class WorkflowServiceBlockedPhaseRetry(
           unitOfWork.dbPath.toString(),
         ),
       )
-    if (existing.workflowStatus in family.definition.terminalStatuses) {
+    if (family.definition.isTerminalStatus(existing.workflowStatus)) {
       return BlockedPhaseRetryPersistence.error(
         WorkflowUpdateResult.Error(
           request.workflowId,
@@ -110,7 +112,7 @@ class WorkflowServiceBlockedPhaseRetry(
           unitOfWork.dbPath.toString(),
         ),
       )
-    return if (blockedRecord.status != "blocked") {
+    return if (blockedRecord.status.workflowStepStatus() != WorkflowStepStatus.BLOCKED) {
       BlockedPhaseRetryPersistence.error(
         WorkflowUpdateResult.Error(
           request.workflowId,
@@ -201,9 +203,10 @@ private data class BlockedPhaseRetryState(
 ) {
   fun reopenedPhaseRecords(): Map<String, FeatureTaskRuntimePhaseRecord> = LinkedHashMap(phaseRecords).apply {
     this[blockedRecord.phaseId] = blockedRecord.copy(
-      status = "pending",
+      status = WorkflowStepStatus.PENDING,
       finishedAt = null,
       durationMillis = null,
+      outputArtifact = null,
       rejectedOutput = null,
       blockedReason = null,
       failureDisposition = null,

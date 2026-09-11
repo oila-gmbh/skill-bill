@@ -73,6 +73,17 @@ fun phaseWrittenPaths(worktreeDeltaPaths: List<String>, phaseManifestPaths: List
     }.distinct().sorted()
 }
 
+fun reviewUntrackedExclusions(
+  baselineUntrackedPaths: List<String>,
+  currentUntrackedPaths: List<String>,
+  ownedPaths: List<String>,
+): List<String> {
+  val ownedAliases = ownedPaths.map(::normalizeForAliasComparison).toSet()
+  val foreign = currentUntrackedPaths.filter(String::isNotBlank)
+    .filterNot { normalizeForAliasComparison(it) in ownedAliases }
+  return (baselineUntrackedPaths + foreign).filter(String::isNotBlank).distinct().sorted()
+}
+
 fun adoptionWarning(branch: String, paths: List<String>): String =
   "Feature-task-runtime checkpoint adopted owned path(s) ${formatCheckpointPaths(paths)} whose index or " +
     "working-tree content diverged from what this run wrote. The working-tree content is committed " +

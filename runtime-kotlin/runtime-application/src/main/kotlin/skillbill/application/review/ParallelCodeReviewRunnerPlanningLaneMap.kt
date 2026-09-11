@@ -44,21 +44,30 @@ internal fun ParallelCodeReviewRunnerPlanning.resolveDiff(
     ParallelReviewScope.UNSTAGED -> runDiff(listOf("git", "diff"), request.repoRoot)
     ParallelReviewScope.UNCOMMITTED,
     ParallelReviewScope.WORKTREE_FROM_BASE,
-    -> resolveWorktreeFromBaseDiff(request, base)    ParallelReviewScope.BRANCH -> runDiff(listOf("git", "diff", base, head), request.repoRoot)
+    -> resolveWorktreeFromBaseDiff(request, base)
+    ParallelReviewScope.BRANCH -> runDiff(listOf("git", "diff", base, head), request.repoRoot)
     ParallelReviewScope.PR -> diffResolver.runProcess(listOf("git", "diff", base, head), request.repoRoot)
       ?: runDiff(listOf("gh", "pr", "diff"), request.repoRoot)
   }
-  if (diffText.isBlank()) {
+  if (diffText.isBlank() && request.scope != ParallelReviewScope.WORKTREE_FROM_BASE) {
     throw DiffResolutionException("Diff is empty for scope '${request.scope.name.lowercase()}'.")
   }
   return diffText
 }
 
-internal fun ParallelCodeReviewRunnerPlanning.resolveUncommittedDiff(
+internal fun ParallelCodeReviewRunnerPlanning.resolveWorktreeFromBaseDiff(
   request: ParallelCodeReviewRequest,
   base: String,
 ): String {
-  val tracked = diffResolver.runProcess(listOf("git", "diff", "--binary", base), request.repoRoot).orEmpty()
+  val args = buildList {
+    addAll(listOf("git", "diff", "--binary", base))
+    if (request.ownedPathspec.isNotEmpty()) {
+      add("--")
+      addAll(request.ownedPathspec)
+    }
+  }
+  val tracked = diffResolver.runProcess(args, request.repoRoot).orEmpty()
+  val excluded = request.baselineUntrackedPolicy.excludedPaths.toSet()
   val untracked = diffResolver.runProcess(
     listOf("git", "ls-files", "-o", "--exclude-standard", "-z"),
     request.repoRoot,
@@ -66,6 +75,12 @@ internal fun ParallelCodeReviewRunnerPlanning.resolveUncommittedDiff(
     .split('\u0000')
     .map(String::trim)
     .filter(String::isNotBlank)
+    .filterNot { it in excluded }
+    .filter { path ->
+      request.ownedPathspec.isEmpty() || request.ownedPathspec.any { owned ->
+        path == owned || path.startsWith("$owned/")
+      }
+    }
   val patches = StringBuilder()
   untracked.forEach { path ->
     val patch = diffResolver.runProcess(

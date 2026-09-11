@@ -1,6 +1,7 @@
 package skillbill.infrastructure.fs.launcher.process
 
 import skillbill.goalrunner.model.GoalRunnerLivenessState
+import skillbill.goalrunner.model.GoalRunnerProcessState
 import skillbill.idestatus.model.AgentActivityLabel
 import java.util.concurrent.TimeUnit
 import kotlin.math.min
@@ -49,7 +50,12 @@ internal fun ProcessWaitLoop.declaredProgressWait(nowNanos: Long): ProcessWait? 
       progressIdleTimedOut = true,
       fileActivityGraceExhausted = false,
       wallClockTimedOut = false,
-      liveness = declaredLiveness("watchdog", "operation_deadline_overrun", "killed", decision.state),
+      liveness = declaredLiveness(
+        "watchdog",
+        "operation_deadline_overrun",
+        GoalRunnerProcessState.KILLED,
+        decision.state,
+      ),
     )
     GoalRunnerLivenessState.IDLE ->
       if (idleTimeoutNanos != null && nowNanos - declaredTracker.lastAdvanceNanos >= idleTimeoutNanos) {
@@ -62,7 +68,12 @@ internal fun ProcessWaitLoop.declaredProgressWait(nowNanos: Long): ProcessWait? 
             progressIdleTimedOut = true,
             fileActivityGraceExhausted = false,
             wallClockTimedOut = false,
-            liveness = declaredLiveness("watchdog", "progress_idle_timeout", "killed", decision.state),
+            liveness = declaredLiveness(
+              "watchdog",
+              "progress_idle_timeout",
+              GoalRunnerProcessState.KILLED,
+              decision.state,
+            ),
           )
         }
       } else {
@@ -86,7 +97,12 @@ internal fun ProcessWaitLoop.legacyIdleWait(nowNanos: Long): ProcessWait? =
         progressIdleTimedOut = true,
         fileActivityGraceExhausted = fileActivityWindowStartNanos != null,
         wallClockTimedOut = false,
-        liveness = declaredLiveness("watchdog", "progress_idle_timeout", "killed", GoalRunnerLivenessState.IDLE),
+        liveness = declaredLiveness(
+          "watchdog",
+          "progress_idle_timeout",
+          GoalRunnerProcessState.KILLED,
+          GoalRunnerLivenessState.IDLE,
+        ),
       )
     }
   } else {

@@ -2,7 +2,8 @@ package skillbill.infrastructure.fs
 
 import me.tatarka.inject.annotations.Inject
 import skillbill.infrastructure.fs.scaffold.platformpack.loadPlatformManifest
-import skillbill.model.toPathimport skillbill.ports.install.addon.ExternalAddonOverlayPort
+import skillbill.model.toPath
+import skillbill.ports.install.addon.ExternalAddonOverlayPort
 import skillbill.ports.install.addon.model.AppliedExternalAddonSource
 import skillbill.ports.install.addon.model.ExternalAddonOverlayRequest
 import skillbill.ports.install.addon.model.ExternalAddonOverlayResult
@@ -37,7 +38,7 @@ class FileSystemExternalAddonOverlay : ExternalAddonOverlayPort {
       if (!Files.isRegularFile(manifestPath)) {
         skipped += SkippedExternalAddonSource(
           platform = source.platform,
-          sourcePath = source.path,
+          sourcePath = source.path.toPath(),
           reason = "platform pack '${source.platform}' is not installed; skipping external addon source.",
         )
         continue

@@ -1,5 +1,7 @@
 package skillbill.review.model
 
+import skillbill.review.context.model.ReviewLaneReviewDisposition
+
 data class ImportedFinding(
   val findingId: String,
   val severity: String,
@@ -24,18 +26,29 @@ data class ReviewRunLane(
   val required: Boolean,
   val orderIndex: Int,
   val originLayerChain: List<String>,
-  val resolutionState: String,
+  val resolutionState: ReviewLaneResolutionState,
   /**
    * Durable single-pass disposition. Deliberately has no default: a row may only claim `complete`
    * where a durable complete result was observed, so every writer states it explicitly and an
    * unknown disposition can never fail open into skipped resume coverage.
    */
-  val reviewDisposition: String,
+  val reviewDisposition: ReviewLaneReviewDisposition,
   val bundleCompositionDigest: String? = null,
   val segmentAccountingJson: String? = null,
   val unreviewedSegmentIds: List<String> = emptyList(),
   val budgetDimension: String? = null,
 )
+
+enum class ReviewLaneResolutionState(val wireValue: String) {
+  RESOLVED("resolved"),
+  UNRESOLVED("unresolved"),
+  ;
+
+  companion object {
+    fun fromWire(value: String?): ReviewLaneResolutionState? =
+      value?.trim()?.let { candidate -> entries.firstOrNull { it.wireValue == candidate } }
+  }
+}
 
 data class ReviewLaneEffectivenessRow(
   val routedSkillCanonical: String,
@@ -53,7 +66,7 @@ data class ImportedReview(
   val routedSkill: String?,
   val detectedScope: String?,
   val detectedStack: String?,
-  val executionMode: String?,
+  val executionMode: ReviewExecutionMode?,
   val specialistReviews: List<String>,
   val findings: List<ImportedFinding>,
   val routedSkillCanonical: String = "unresolved",
@@ -70,7 +83,7 @@ data class ReviewSummary(
   val routedSkill: String?,
   val detectedScope: String?,
   val detectedStack: String?,
-  val executionMode: String?,
+  val executionMode: ReviewExecutionMode?,
   val specialistReviewsRaw: String?,
   val reviewFinishedAt: String?,
   val reviewFinishedEventEmittedAt: String?,

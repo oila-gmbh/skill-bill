@@ -2,6 +2,7 @@ package skillbill.infrastructure.fs
 
 import skillbill.ports.workflow.gitops.buildGoalSubtaskReviewInput
 import skillbill.ports.workflow.gitops.captureGoalSubtaskReviewBaseline
+import skillbill.ports.workflow.gitops.model.WorkflowGitOperationStatus
 import skillbill.ports.workflow.gitops.model.WorkflowSelectedDiffHunksRequest
 import java.nio.file.Files
 import kotlin.test.Test
@@ -31,7 +32,7 @@ class GitWorkflowGitOperationsDiffTest {
       WorkflowSelectedDiffHunksRequest(paths = listOf("tracked.txt"), maxHunks = 1, maxLines = 10, maxBytes = 400),
     )
 
-    assertTrue(result.ok, result.error)
+    assertEquals(WorkflowGitOperationStatus.OK, result.status, result.error)
     assertEquals(1, result.selectedDiffHunks.hunks.size)
     assertEquals(true, result.selectedDiffHunks.truncated)
     assertEquals("tracked.txt", result.selectedDiffHunks.hunks.single().path)
@@ -61,7 +62,7 @@ class GitWorkflowGitOperationsDiffTest {
       ),
     )
 
-    assertTrue(result.ok, result.error)
+    assertEquals(WorkflowGitOperationStatus.OK, result.status, result.error)
     assertEquals(1, result.selectedDiffHunks.hunks.size)
     assertFalse(result.selectedDiffHunks.truncated)
   }
@@ -84,7 +85,7 @@ class GitWorkflowGitOperationsDiffTest {
       WorkflowSelectedDiffHunksRequest(paths = listOf("tracked.txt"), maxHunks = 4, maxLines = 3, maxBytes = 1_000),
     )
 
-    assertTrue(result.ok, result.error)
+    assertEquals(WorkflowGitOperationStatus.OK, result.status, result.error)
     assertEquals(3, result.selectedDiffHunks.hunks.sumOf { it.lines.size })
     assertTrue(result.selectedDiffHunks.truncated)
   }
@@ -111,7 +112,7 @@ class GitWorkflowGitOperationsDiffTest {
       ),
     )
 
-    assertTrue(result.ok, result.error)
+    assertEquals(WorkflowGitOperationStatus.OK, result.status, result.error)
     assertContains(result.selectedDiffHunks.hunks.single().lines, " ")
     assertContains(result.selectedDiffHunks.hunks.single().lines, " beta  ")
   }
@@ -138,7 +139,7 @@ class GitWorkflowGitOperationsDiffTest {
       ),
     )
 
-    assertTrue(result.ok, result.error)
+    assertEquals(WorkflowGitOperationStatus.OK, result.status, result.error)
     assertEquals(1, result.selectedDiffHunks.hunks.size)
     assertEquals(5, result.selectedDiffHunks.hunks.single().lines.size)
     assertTrue(result.selectedDiffHunks.truncated)
@@ -166,7 +167,7 @@ class GitWorkflowGitOperationsDiffTest {
       ),
     )
 
-    assertTrue(result.ok, result.error)
+    assertEquals(WorkflowGitOperationStatus.OK, result.status, result.error)
     val hunk = result.selectedDiffHunks.hunks.single()
     val emittedBytes = hunk.lines.sumOf { line -> line.toByteArray().size + 1 }
     assertTrue(result.selectedDiffHunks.truncated)
@@ -190,7 +191,7 @@ class GitWorkflowGitOperationsDiffTest {
     val branch = git(repoRoot, "branch", "--show-current")
     val baseline = ops.captureGoalSubtaskReviewBaseline(repoRoot, branch)
 
-    assertTrue(baseline.ok, baseline.error)
+    assertTrue(baseline.status == WorkflowGitOperationStatus.OK, baseline.error)
     Files.writeString(repoRoot.resolve("tracked.txt"), "base\ncommitted\n")
     git(repoRoot, "add", "tracked.txt")
     git(repoRoot, "commit", "-m", "subtask commit")
@@ -205,16 +206,19 @@ class GitWorkflowGitOperationsDiffTest {
       branch,
     )
 
-    assertTrue(input.ok, input.error)
-    val coordinates = requireNotNull(input.input)
-    val reviewText = git(repoRoot, "diff", coordinates.reviewBaseSha, coordinates.currentHeadSha)
-    assertTrue("committed" in reviewText)
-    assertFalse("unstaged" in reviewText)
-    assertFalse("+base\n+committed\n+staged" in reviewText)
+    assertTrue(input.status == WorkflowGitOperationStatus.OK, input.error)
+    val reviewText = requireNotNull(input.input).reviewText
+    assertTrue(reviewText.startsWith("scope-fingerprint:"), reviewText)
+    assertFalse("committed" in reviewText)
     assertFalse("owned content" in reviewText)
     assertFalse("preexisting.tmp" in reviewText)
   }
 
+  /**
+   * WE-4860 subtask 3 retired a module: 1.1MB of its 1.7MB delta was the bodies of 170 deleted
+   * files. Blocking there refuses to review the additions and modifications too, so an over-bound
+   * delta keeps every surviving patch in full and reduces the deletions to a named manifest.
+   */
   @Test
   fun `an oversized worktree still resolves as a scope fingerprint without inlining bodies`() {
     val repoRoot = Files.createTempDirectory("skillbill-goal-review-elided-deletions")
@@ -228,16 +232,16 @@ class GitWorkflowGitOperationsDiffTest {
     val ops = GitWorkflowGitOperations()
     val branch = git(repoRoot, "branch", "--show-current")
     val baseline = ops.captureGoalSubtaskReviewBaseline(repoRoot, branch)
-    assertTrue(baseline.ok, baseline.error)
+    assertTrue(baseline.status == WorkflowGitOperationStatus.OK, baseline.error)
     Files.delete(repoRoot.resolve("retired.txt"))
     Files.writeString(repoRoot.resolve("kept.txt"), "base\nsurviving edit\n")
     git(repoRoot, "add", "-A")
 
     val input = ops.buildGoalSubtaskReviewInput(repoRoot, requireNotNull(baseline.baseline), branch)
 
-    assertTrue(input.ok, input.error)
-    val coordinates = requireNotNull(input.input)
-    val reviewText = git(repoRoot, "diff", coordinates.reviewBaseSha, coordinates.currentHeadSha)
+    assertTrue(input.status == WorkflowGitOperationStatus.OK, input.error)
+    val reviewText = requireNotNull(input.input).reviewText
+    assertTrue(reviewText.startsWith("scope-fingerprint:"), reviewText)
     assertFalse("retired body line" in reviewText)
     assertFalse("surviving edit" in reviewText)
   }
@@ -254,15 +258,15 @@ class GitWorkflowGitOperationsDiffTest {
     val ops = GitWorkflowGitOperations()
     val branch = git(repoRoot, "branch", "--show-current")
     val baseline = ops.captureGoalSubtaskReviewBaseline(repoRoot, branch)
-    assertTrue(baseline.ok, baseline.error)
+    assertTrue(baseline.status == WorkflowGitOperationStatus.OK, baseline.error)
     Files.delete(repoRoot.resolve("retired.txt"))
     git(repoRoot, "add", "-A")
 
     val input = ops.buildGoalSubtaskReviewInput(repoRoot, requireNotNull(baseline.baseline), branch)
 
-    assertTrue(input.ok, input.error)
-    val coordinates = requireNotNull(input.input)
-    val reviewText = git(repoRoot, "diff", coordinates.reviewBaseSha, coordinates.currentHeadSha)
+    assertTrue(input.status == WorkflowGitOperationStatus.OK, input.error)
+    val reviewText = requireNotNull(input.input).reviewText
+    assertTrue(reviewText.startsWith("scope-fingerprint:"), reviewText)
     assertFalse("retired body line" in reviewText)
   }
 
@@ -278,7 +282,7 @@ class GitWorkflowGitOperationsDiffTest {
 
     val result = GitWorkflowGitOperations().captureGoalSubtaskReviewBaseline(repoRoot, "feat/another-child")
 
-    assertFalse(result.ok)
+    assertEquals(WorkflowGitOperationStatus.ERROR, result.status)
     assertContains(result.error, "durable child branch 'feat/another-child'")
   }
 
@@ -299,7 +303,7 @@ class GitWorkflowGitOperationsDiffTest {
       git(repoRoot, "branch", "--show-current"),
     )
 
-    assertTrue(result.ok, result.error)
+    assertEquals(WorkflowGitOperationStatus.OK, result.status, result.error)
     assertEquals(git(repoRoot, "rev-parse", "HEAD"), requireNotNull(result.baseline).reviewBaseSha)
   }
 }

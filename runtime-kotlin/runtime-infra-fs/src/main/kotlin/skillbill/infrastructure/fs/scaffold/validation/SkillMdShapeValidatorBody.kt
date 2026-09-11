@@ -27,7 +27,7 @@ internal fun validateSkillMdBodyShape(path: Path, fileName: String, text: String
   val body = text.substring(bodyStartOffset)
   val bodyStartLine = text.substring(0, bodyStartOffset).count { it == '\n' } + 1
   val headings = mutableListOf<String>()
-  var foundFirstH2 = false
+  var foundFirstSecondLevelHeading = false
   body.lineSequence().forEachIndexed { index, line ->
     val fileLine = bodyStartLine + index
     val stripped = line.trim()
@@ -36,10 +36,10 @@ internal fun validateSkillMdBodyShape(path: Path, fileName: String, text: String
     }
     if (line.startsWith("## ")) {
       headings += stripped
-      foundFirstH2 = true
+      foundFirstSecondLevelHeading = true
       return@forEachIndexed
     }
-    if (!foundFirstH2) {
+    if (!foundFirstSecondLevelHeading) {
       if (stripped.isNotBlank()) {
         skillShapeFailure(
           "$path:$fileLine: intro paragraph or content is not allowed before the first H2.",

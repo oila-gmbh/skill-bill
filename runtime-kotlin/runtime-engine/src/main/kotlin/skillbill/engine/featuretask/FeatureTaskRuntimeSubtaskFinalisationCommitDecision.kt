@@ -11,7 +11,8 @@ internal fun FeatureTaskRuntimeSubtaskFinalisation.decide(
   sequenceNumber: Int,
 ): FeatureTaskRuntimeSubtaskCommitDecision {
   val headSha = gitOperations.headCommitSha(repoRoot)
-    .takeIf { it is WorkflowGitOperationResult.Ok }?.value?.trim()?.takeIf(String::isNotBlank)  val unpushed = gitOperations.localBranchHasUnpushedCommits(repoRoot, branch)
+    .takeIf { it is WorkflowGitOperationResult.Ok }?.value?.trim()?.takeIf(String::isNotBlank)
+  val unpushed = gitOperations.localBranchHasUnpushedCommits(repoRoot, branch)
   return FeatureTaskRuntimeSubtaskCommitResolver.decide(
     identity = identity,
     durableCommitSha = durableCommitSha,
@@ -19,7 +20,8 @@ internal fun FeatureTaskRuntimeSubtaskFinalisation.decide(
       sha = headSha,
       commitMessage = if (durableCommitSha == null && headSha != null) headMessage() else null,
       isUnpushed = unpushed is WorkflowGitOperationResult.Ok &&
-        unpushed.value.orEmpty().trim().equals("true", ignoreCase = true),    ),
+        unpushed.value.orEmpty().trim().equals("true", ignoreCase = true),
+    ),
     sequenceNumber = sequenceNumber,
   )
 }
@@ -35,9 +37,10 @@ fun FeatureTaskRuntimeSubtaskFinalisation.ownedHeadAlreadyFinalised(durableCommi
   if (durable != headSha) return false
   return headMessage().orEmpty().contains(FeatureTaskRuntimeCheckpointMessage.INTENT_FINALISED_SUBTASK)
 }
+
 fun FeatureTaskRuntimeSubtaskFinalisation.remoteDiverged(branch: String, commitSha: String): Boolean {
   val remoteTip = gitOperations.resolveCommit(repoRoot, "origin/$branch")
-    .takeIf { it.ok }?.value?.trim()?.takeIf(String::isNotBlank) ?: return false
+    .takeIf { it is WorkflowGitOperationResult.Ok }?.value?.trim()?.takeIf(String::isNotBlank) ?: return false
   val ancestor = gitOperations.isCommitAncestor(repoRoot, remoteTip, commitSha)
-  return ancestor.ok && ancestor.value.orEmpty().trim().equals("false", ignoreCase = true)
+  return ancestor is WorkflowGitOperationResult.Ok && ancestor.value.orEmpty().trim().equals("false", ignoreCase = true)
 }

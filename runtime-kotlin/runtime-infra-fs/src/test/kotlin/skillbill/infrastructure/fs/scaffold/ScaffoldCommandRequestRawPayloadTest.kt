@@ -1,6 +1,9 @@
 package skillbill.infrastructure.fs.scaffold
 
-import skillbill.contracts.JsonSupportimport skillbill.scaffold.model.CodeReviewBaselineLayer
+import skillbill.contracts.JsonCodec
+import skillbill.infrastructure.fs.scaffold.payload.toRawScaffoldPayload
+import skillbill.infrastructure.fs.scaffold.runtime.scaffold
+import skillbill.scaffold.model.CodeReviewBaselineLayer
 import skillbill.scaffold.model.CodeReviewCompositionMode
 import skillbill.scaffold.model.CodeReviewCompositionScope
 import skillbill.scaffold.model.command.RoutingSignalsInput
@@ -155,7 +158,7 @@ class ScaffoldCommandRequestRawPayloadTest {
       nameOverride = null,
       scaffoldPayloadVersion = "1.0",
     ).toRawScaffoldPayload()
-    val emitted = requireNotNull(JsonSupport.anyToStringAnyMapList(raw["baseline_layers"]))
+    val emitted = requireNotNull(JsonCodec.anyToStringAnyMapList(raw["baseline_layers"]))
     assertEquals(2, emitted.size)
     assertEquals("kotlin", emitted[0]["platform"])
     assertEquals("bill-kotlin-code-review", emitted[0]["skill"])

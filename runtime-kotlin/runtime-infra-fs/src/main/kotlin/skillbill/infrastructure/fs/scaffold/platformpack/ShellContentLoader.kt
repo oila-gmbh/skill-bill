@@ -6,7 +6,8 @@ import skillbill.infrastructure.fs.scaffold.runtime.SHELL_CONTRACT_VERSION
 import skillbill.infrastructure.fs.scaffold.validation.ReviewSkillStructureValidator
 import skillbill.infrastructure.fs.scaffold.validation.validateReviewSkillStructure
 import skillbill.model.toPath
-import skillbill.ports.repository.toFileLocationimport skillbill.scaffold.model.GovernedAddonFile
+import skillbill.ports.repository.toFileLocation
+import skillbill.scaffold.model.GovernedAddonFile
 import skillbill.scaffold.model.PlatformManifest
 import java.nio.file.Files
 import java.nio.file.Path
@@ -30,7 +31,7 @@ internal fun loadPlatformPack(packRoot: Path, enforceGovernedReviewStructure: Bo
   validatePlatformPack(pack, SHELL_CONTRACT_VERSION)
   pack.declaredQualityCheckFile?.let { loadQualityCheckContent(pack) }
   if (enforceGovernedReviewStructure) {
-    ReviewSkillStructureValidator.validate(pack.packRoot)
+    ReviewSkillStructureValidator.validate(pack.packRoot.toPath())
   }
   return pack
 }
@@ -86,7 +87,9 @@ fun discoverGovernedAddonFiles(repoRoot: Path): List<GovernedAddonFile> {
     if (!Files.isDirectory(addonsRoot)) {
       emptyList()
     } else {
-      childMarkdownFiles(addonsRoot).map { addon -> GovernedAddonFile(packDir.fileName.toString(), addon) }
+      childMarkdownFiles(
+        addonsRoot,
+      ).map { addon -> GovernedAddonFile(packDir.fileName.toString(), addon.toFileLocation()) }
     }
   }
 }
@@ -121,10 +124,10 @@ internal fun validatePlatformPack(
   }
 
   pack.declaredFiles.baseline?.let { baseline ->
-    validateGovernedSkill(pack, "baseline", baseline, "code-review")
+    validateGovernedSkill(pack, "baseline", baseline.toPath(), "code-review")
   }
   pack.declaredCodeReviewAreas.forEach { area ->
-    validateGovernedSkill(pack, "areas.$area", declaredAreaFiles.getValue(area), "code-review")
+    validateGovernedSkill(pack, "areas.$area", declaredAreaFiles.getValue(area).toPath(), "code-review")
   }
   validateReviewSkillStructure(pack)
 }

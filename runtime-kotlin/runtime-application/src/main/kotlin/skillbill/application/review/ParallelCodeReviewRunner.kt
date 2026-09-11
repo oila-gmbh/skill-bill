@@ -7,6 +7,7 @@ import skillbill.application.review.model.ParallelCodeReviewResult
 import skillbill.application.review.model.ParallelCodeReviewRunnerLaneLaunchPort
 import skillbill.application.review.model.ParallelCodeReviewRunnerPlanningPort
 import skillbill.application.review.model.ReviewWorkerKind
+import skillbill.application.reviewevidence.model.ParallelReviewScope
 import skillbill.application.runtimepersistence.RuntimeOwnedPersistenceBoundary
 import skillbill.ports.review.model.ReviewAccountingRecord
 import skillbill.ports.review.model.ReviewNativeAgentPreflightRequest
@@ -39,34 +40,29 @@ class ParallelCodeReviewRunner(
   private val clock = planningPort.clock
   private val repositoryEnclosingRootPort = planningPort.repositoryEnclosingRootPort
   private val runtimeOwnedPersistence = RuntimeOwnedPersistenceBoundary(database, diagnostics)
-  private val failureHelpers = ParallelCodeReviewRunnerFailureAdmission(registerParse)
+  private val failureAdmission = ParallelCodeReviewRunnerFailureAdmission(registerParse)
   private val rubricPlanning = ParallelCodeReviewRunnerRubricPlanning(reviewRubricResolver, installedPackCatalog)
   private val planning = ParallelCodeReviewRunnerPlanning(
-    ParallelCodeReviewRunnerPlanningDeps(
-      diffResolver = diffResolver,
-      repoLocalConfig = repoLocalConfig,
-      reviewContextEnvelopeValidator = reviewContextEnvelopeValidator,
-      reviewSpecialistContractProvider = reviewSpecialistContractProvider,
-      installedPackCatalog = installedPackCatalog,
-      sharedEvidenceResolver = sharedEvidenceResolver,
-      sharedEvidenceLocatorReader = sharedEvidenceLocatorReader,
-      specIntentProjectionResolver = specIntentProjectionResolver,
-      runtimeOwnedPersistence = runtimeOwnedPersistence,
-      rubricPlanning = rubricPlanning,
-      clock = clock,
-      repositoryEnclosingRootPort = repositoryEnclosingRootPort,
-    ),
+    diffResolver = diffResolver,
+    repoLocalConfig = repoLocalConfig,
+    reviewContextEnvelopeValidator = reviewContextEnvelopeValidator,
+    reviewSpecialistContractProvider = reviewSpecialistContractProvider,
+    installedPackCatalog = installedPackCatalog,
+    sharedEvidenceResolver = sharedEvidenceResolver,
+    sharedEvidenceLocatorReader = sharedEvidenceLocatorReader,
+    specIntentProjectionResolver = specIntentProjectionResolver,
+    rubricPlanning = rubricPlanning,
+    lanePlanRecording = ParallelCodeReviewRunnerLanePlanRecording(runtimeOwnedPersistence, clock),
+    repositoryEnclosingRootPort = repositoryEnclosingRootPort,
   )
   private val laneLaunch = ParallelCodeReviewRunnerLaneLaunch(
-    ParallelCodeReviewRunnerLaneLaunchDeps(
-      parentReviewLauncher = laneLaunchPort.parentReviewLauncher,
-      reviewEvidenceBrokerFactory = laneLaunchPort.reviewEvidenceBrokerFactory,
-      governedEvidenceEndpointBinder = laneLaunchPort.governedEvidenceEndpointBinder,
-      reviewLaunchAgentStaging = laneLaunchPort.reviewLaunchAgentStaging,
-      sharedEvidenceLocatorReader = laneLaunchPort.sharedEvidenceLocatorReader,
-      failureHelpers = failureHelpers,
-      activityStampWriter = activityStampWriter,
-    ),
+    parentReviewLauncher = laneLaunchPort.parentReviewLauncher,
+    reviewEvidenceBrokerFactory = laneLaunchPort.reviewEvidenceBrokerFactory,
+    governedEvidenceEndpointBinder = laneLaunchPort.governedEvidenceEndpointBinder,
+    reviewLaunchAgentStaging = laneLaunchPort.reviewLaunchAgentStaging,
+    sharedEvidenceLocatorReader = laneLaunchPort.sharedEvidenceLocatorReader,
+    failureAdmission = failureAdmission,
+    activityStampWriter = activityStampWriter,
   )
   private val resultAssembly = ParallelCodeReviewRunnerResultAssembly(
     parentReviewLauncher,
@@ -141,6 +137,17 @@ class ParallelCodeReviewRunner(
     if (originalRequest.suppliedDiff != null && originalRequest.suppliedDiff.isBlank()) {
       return planning.completeEmptySuppliedDelta(originalRequest) { reviewRunId ->
         verificationStages.recordAdjudicationBoundary(reviewRunId)
+      }
+    }
+    if (
+      originalRequest.scope == ParallelReviewScope.WORKTREE_FROM_BASE &&
+      !planning.hasSuppliedDiff(originalRequest)
+    ) {
+      val revisions = planning.resolveReviewRevisions(originalRequest)
+      if (planning.resolveDiff(originalRequest, revisions).isBlank()) {
+        return planning.completeEmptySuppliedDelta(originalRequest) { reviewRunId ->
+          verificationStages.recordAdjudicationBoundary(reviewRunId)
+        }
       }
     }
     return null

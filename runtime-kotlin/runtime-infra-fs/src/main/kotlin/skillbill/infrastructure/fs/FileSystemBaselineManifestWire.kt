@@ -1,19 +1,19 @@
 package skillbill.infrastructure.fs
 
-import skillbill.contracts.JsonSupport
+import skillbill.contracts.JsonCodec
 import skillbill.error.UnreadableBaselineManifestError
 import skillbill.install.model.BaselineManifest
 import java.nio.file.Path
 
 /**
  * SKILL-76 Subtask 2: wire codec for the baseline manifest. Mirrors
- * [FileSystemInstallSelectionWire] — `JsonSupport.mapToJsonString`, a
+ * [FileSystemInstallSelectionWire] — `JsonCodec.mapToJsonString`, a
  * `contract_version`, and SORTED keys so writes are byte-stable and a no-change
  * reinstall produces a byte-identical file (AC-9 idempotency). The persistence
  * adapter round-trips the rendered JSON through [parseBaselineManifestPayload]
  * before committing so a malformed write loud-fails before touching disk.
  */
-internal fun BaselineManifest.toBaselineManifestJson(): String = JsonSupport.mapToJsonString(toWireMap())
+internal fun BaselineManifest.toBaselineManifestJson(): String = JsonCodec.mapToJsonString(toWireMap())
 
 private fun BaselineManifest.toWireMap(): Map<String, Any?> = linkedMapOf(
   "contract_version" to BASELINE_MANIFEST_CONTRACT_VERSION,
@@ -22,8 +22,8 @@ private fun BaselineManifest.toWireMap(): Map<String, Any?> = linkedMapOf(
 )
 
 internal fun parseBaselineManifestPayload(path: Path, rawPayload: String): BaselineManifest {
-  val payload = JsonSupport.anyToStringAnyMap(
-    JsonSupport.parseObjectOrNull(rawPayload)?.let(JsonSupport::jsonElementToValue),
+  val payload = JsonCodec.anyToStringAnyMap(
+    JsonCodec.parseObjectOrNull(rawPayload)?.let(JsonCodec::jsonElementToValue),
   ) ?: throw unreadableBaseline(path, "Root value must be a JSON object.")
   return runCatching { payload.toBaselineManifest(path) }
     .getOrElse { error -> throw error.toUnreadableBaseline(path) }
@@ -32,7 +32,7 @@ internal fun parseBaselineManifestPayload(path: Path, rawPayload: String): Basel
 private fun Map<String, Any?>.toBaselineManifest(path: Path): BaselineManifest {
   requireBaselineKeys(path, keys, BASELINE_MANIFEST_KEYS)
   requireBaselineContractVersion(path, requireBaselineString(path, "contract_version"))
-  val rawBaselines = JsonSupport.anyToStringAnyMap(get("baselines"))
+  val rawBaselines = JsonCodec.anyToStringAnyMap(get("baselines"))
     ?: throw unreadableBaseline(path, "Field 'baselines' must be an object.")
   val entries = rawBaselines.entries.associate { (skillRelativePath, rawHash) ->
     if (skillRelativePath.isBlank()) {

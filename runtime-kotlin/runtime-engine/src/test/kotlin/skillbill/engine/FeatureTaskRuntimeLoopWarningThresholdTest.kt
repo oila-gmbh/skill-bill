@@ -46,7 +46,7 @@ class FeatureTaskRuntimeLoopWarningThresholdTest {
     val diagnostics = RecordingDiagnostics()
     val harness = runnerHarness(
       RuntimeHarnessConfig(
-        launcher = progressingAuditGapLauncher(convergeOnAudit = crossingIteration + 1),
+        launcher = auditGapLauncher(convergeOnAudit = crossingIteration + 1),
         diagnostics = diagnostics,
       ),
     )
@@ -84,7 +84,7 @@ class FeatureTaskRuntimeLoopWarningThresholdTest {
     val auditDiagnostics = RecordingDiagnostics()
     val auditHarness = runnerHarness(
       RuntimeHarnessConfig(
-        launcher = progressingAuditGapLauncher(convergeOnAudit = threshold + 1),
+        launcher = auditGapLauncher(convergeOnAudit = threshold + 1),
         diagnostics = auditDiagnostics,
       ),
     )
@@ -101,7 +101,7 @@ class FeatureTaskRuntimeLoopWarningThresholdTest {
     val diagnostics = RecordingDiagnostics()
     val harness = runnerHarness(
       RuntimeHarnessConfig(
-        launcher = progressingAuditGapLauncher(convergeOnAudit = 9),
+        launcher = auditGapLauncher(convergeOnAudit = 9),
         diagnostics = diagnostics,
       ),
     )
@@ -208,7 +208,7 @@ class FeatureTaskRuntimeLoopWarningThresholdTest {
     val diagnostics = RecordingDiagnostics()
     val harness = runnerHarness(
       RuntimeHarnessConfig(
-        launcher = progressingAuditGapLauncher(convergeOnAudit = crossingIteration + 2),
+        launcher = auditGapLauncher(convergeOnAudit = crossingIteration + 2),
         diagnostics = diagnostics,
       ),
     )
@@ -237,7 +237,7 @@ class FeatureTaskRuntimeLoopWarningThresholdTest {
         launchedPhases = harness.launchedPromptPhaseOrder(),
         reviewFixIterations = loopEdgeIterations(harness, FeatureTaskRuntimePhaseWorkflowDefinition.REVIEW_FIX_LOOP_ID),
         phaseStatuses = harness.recorder.loadPhaseRecords(WORKFLOW_ID).orEmpty()
-          .mapValues { (_, record) -> record.status },
+          .mapValues { (_, record) -> record.status.wireValue },
       )
     }
 
@@ -248,7 +248,7 @@ class FeatureTaskRuntimeLoopWarningThresholdTest {
   @Test
   fun `status reports the honest iteration count after a warn-threshold crossing`() {
     val harness = runnerHarness(
-      RuntimeHarnessConfig(launcher = progressingAuditGapLauncher(convergeOnAudit = crossingIteration + 1)),
+      RuntimeHarnessConfig(launcher = auditGapLauncher(convergeOnAudit = crossingIteration + 1)),
     )
 
     assertIs<FeatureTaskRuntimeRunReport.Completed>(harness.runner.run(harness.request()))
@@ -280,7 +280,7 @@ class FeatureTaskRuntimeLoopWarningThresholdTest {
     assertIs<FeatureTaskRuntimeRunReport.Completed>(reviewHarness.runner.run(reviewHarness.request))
     assertEquals(1, reviewHarness.lifecycle.finishedRecords.single().reviewFixIterationCount)
 
-    val auditHarness = telemetryRunnerHarness(launcher = progressingAuditGapLauncher(convergeOnAudit = 2))
+    val auditHarness = telemetryRunnerHarness(launcher = auditGapLauncher(convergeOnAudit = 2))
     assertIs<FeatureTaskRuntimeRunReport.Completed>(auditHarness.runner.run(auditHarness.request))
     assertEquals(1, auditHarness.lifecycle.finishedRecords.single().auditGapIterationCount)
   }
@@ -348,7 +348,7 @@ private fun bothLoopsLauncher(convergeOnAudit: Int, convergeOnReview: Int): Runt
         auditLaunches += 1
         facts(
           if (auditLaunches < convergeOnAudit) {
-            auditCriteriaOutput("AC-${convergeOnAudit - auditLaunches}")
+            auditGapsOutput()
           } else {
             auditSatisfiedOutput()
           },
@@ -385,10 +385,7 @@ private fun crashingAuditGapLauncher(
         } else {
           facts(
             if (auditLaunches < convergeOnAudit) {
-              auditCriteriaOutput(
-                *(1..(convergeOnAudit - auditLaunches)).map { index -> "AC-${index.toString().padStart(3, '0')}" }
-                  .toTypedArray(),
-              )
+              auditGapsOutput()
             } else {
               auditSatisfiedOutput()
             },
@@ -404,28 +401,6 @@ private fun crashingAuditGapLauncher(
         }
       }
       else -> facts(defaultPhaseOutput(request))
-    }
-  }
-}
-
-private fun progressingAuditGapLauncher(convergeOnAudit: Int): RuntimeRecordingLauncher {
-  var auditLaunches = 0
-  return RuntimeRecordingLauncher { request ->
-    val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
-    if (phaseId == "audit") {
-      auditLaunches += 1
-      facts(
-        if (auditLaunches < convergeOnAudit) {
-          auditCriteriaOutput(
-            *(1..(convergeOnAudit - auditLaunches)).map { index -> "AC-${index.toString().padStart(3, '0')}" }
-              .toTypedArray(),
-          )
-        } else {
-          auditSatisfiedOutput()
-        },
-      )
-    } else {
-      facts(defaultPhaseOutput(request))
     }
   }
 }

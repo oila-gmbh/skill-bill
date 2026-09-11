@@ -12,6 +12,7 @@ import skillbill.error.InvalidAgentAddonSelectionError
 import skillbill.error.InvalidFeatureTaskExecutionIdentitySchemaError
 import skillbill.goalrunner.GoalRunnerPlanner
 import skillbill.goalrunner.model.GoalRunnerSelection
+import skillbill.model.toPath
 import skillbill.ports.agentaddon.AgentAddonSelectionPort
 import skillbill.ports.agentaddon.ExternalAgentAddonSourceConfigPort
 import skillbill.ports.agentaddon.model.ExternalAgentAddonSourceConfigRequest
@@ -54,7 +55,7 @@ class GoalPreflightGateBlockBuilder(
         receivingAgentIds = receivingAgents,
         externalSourceRoots = externalAgentAddonSourceConfigPort.readExternalAgentAddonSources(
           ExternalAgentAddonSourceConfigRequest(request.userHome, request.environment),
-        ).sources.map { it.path },
+        ).sources.map { source -> source.path.toPath() },
       )
     }
     return if (persisted == null || persisted.entries.isEmpty()) {
@@ -134,7 +135,9 @@ class GoalPreflightGateBlockBuilder(
         ).takeUnless { manifestFileStore.isRegularFileWithoutRecovery(root.resolve(it.targetPath)) },
       )
       manifest.subtasks
-        .filterNot { it.status == "complete" || it.status == "skipped" }
+        .filterNot {
+          it.status.decompositionStatus() in setOf(DecompositionStatus.COMPLETE, DecompositionStatus.SKIPPED)
+        }
         .forEach { subtask ->
           add(
             GoalPreflightRehydrateTarget(

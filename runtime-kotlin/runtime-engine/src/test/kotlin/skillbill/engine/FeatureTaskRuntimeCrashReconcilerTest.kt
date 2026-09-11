@@ -1,6 +1,7 @@
 package skillbill.engine
 import skillbill.application.testHarnessClock
-import skillbill.engine.featuretask.FeatureTaskRuntimeCrashReconcilerimport skillbill.ports.diagnostics.NoopRuntimeDiagnostics
+import skillbill.engine.featuretask.FeatureTaskRuntimeCrashReconciler
+import skillbill.ports.diagnostics.NoopRuntimeDiagnostics
 import skillbill.ports.featuretask.model.FeatureTaskRuntimeWorkerLeaseState
 import skillbill.ports.featuretask.model.FeatureTaskRuntimeWorkerOwnership
 import skillbill.ports.taskruntime.FeatureTaskRuntimeWorkerSupervisor
@@ -9,28 +10,22 @@ import skillbill.ports.taskruntime.model.FeatureTaskRuntimeHeartbeatPlan
 import skillbill.ports.taskruntime.model.FeatureTaskRuntimeHeartbeatTick
 import skillbill.ports.taskruntime.model.FeatureTaskRuntimeProcessIdentity
 import skillbill.ports.taskruntime.model.FeatureTaskRuntimeProcessInspection
+import skillbill.ports.taskruntime.model.isConfirmedDead
 import skillbill.ports.workflow.model.FeatureTaskWorkflowMode.RUNTIME
 import skillbill.ports.workflow.model.WorkflowStateRecord
 import java.time.Duration
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 class FeatureTaskRuntimeCrashReconcilerTest {
   @Test
   fun `only NotRunning is confirmed dead while ExactLive and ambiguous evidence stay conservative`() {
-    assertTrue(FeatureTaskRuntimeCrashLiveness.isConfirmedDead(FeatureTaskRuntimeProcessInspection.NotRunning))
-    assertFalse(FeatureTaskRuntimeCrashLiveness.isConfirmedDead(FeatureTaskRuntimeProcessInspection.ExactLive))
-    assertFalse(
-      FeatureTaskRuntimeCrashLiveness.isConfirmedDead(
-        FeatureTaskRuntimeProcessInspection.OwnershipMismatch("pid reuse"),
-      ),
-    )
-    assertFalse(
-      FeatureTaskRuntimeCrashLiveness.isConfirmedDead(FeatureTaskRuntimeProcessInspection.Unsupported("no probe")),
-    )
+    assertTrue(FeatureTaskRuntimeProcessInspection.NotRunning.isConfirmedDead())
+    assertFalse(FeatureTaskRuntimeProcessInspection.ExactLive.isConfirmedDead())
+    assertFalse(FeatureTaskRuntimeProcessInspection.OwnershipMismatch("pid reuse").isConfirmedDead())
+    assertFalse(FeatureTaskRuntimeProcessInspection.Unsupported("no probe").isConfirmedDead())
   }
 
   @Test
@@ -104,7 +99,7 @@ class FeatureTaskRuntimeCrashReconcilerTest {
   }
 
   @Test
-  fun `an unexpected reconciliation fault fails with its typed cause and preserves worker state`() {
+  fun `an unexpected fault is counted under a distinct reason class and not as a reconciliation`() {
     val repository = crashCandidateRepository()
     val faultingSupervisor = object : FeatureTaskRuntimeWorkerSupervisor {
       override fun currentProcess() = FeatureTaskRuntimeProcessIdentity("h", "b", 1, "birth")
@@ -129,7 +124,8 @@ class FeatureTaskRuntimeCrashReconcilerTest {
     val result = reconciler.reconcile()
 
     assertEquals(0, result.reconciledCount)
-    assertEquals(mapOf("reconcile_fault" to 1), result.reasonClassCounts)    assertEquals("running", repository.getFeatureTaskRuntimeWorkflow(WORKFLOW_ID)?.workflowStatus)
+    assertEquals(mapOf("reconcile_fault" to 1), result.reasonClassCounts)
+    assertEquals("running", repository.getFeatureTaskRuntimeWorkflow(WORKFLOW_ID)?.workflowStatus)
   }
 
   private fun crashCandidateRepository(): InMemoryRuntimeWorkflowRepository =

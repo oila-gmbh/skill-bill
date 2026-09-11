@@ -1,6 +1,6 @@
 package skillbill.install.model
 
-import java.nio.file.Path
+import skillbill.model.FileLocation
 import kotlin.test.Test
 import kotlin.test.assertEquals
 
@@ -56,11 +56,11 @@ class SharedInstallSelectionModelTest {
       InstallAppliedSkill(
         skillName = "bill-code-review",
         kind = InstallPlanSkillKind.BASE,
-        sourceDir = Path.of("/repo/skills/bill-code-review"),
+        sourceDir = FileLocation("/repo/skills/bill-code-review"),
         staging = InstallSkillStagingOutcome(
           status = InstallSkillStagingStatus.STAGED,
-          sourceDir = Path.of("/repo/skills/bill-code-review"),
-          stagingDir = Path.of("/home/.skill-bill/installed-skills/bill-code-review-hash"),
+          sourceDir = FileLocation("/repo/skills/bill-code-review"),
+          stagingDir = FileLocation("/home/.skill-bill/installed-skills/bill-code-review-hash"),
         ),
         links = links,
       ),
@@ -88,7 +88,7 @@ class SharedInstallSelectionModelTest {
     telemetryLevel = InstallTelemetryLevel.ANONYMOUS,
     mcpRegistrationIntent = McpRegistrationIntent(
       register = true,
-      runtimeMcpBin = Path.of("/runtime-mcp"),
+      runtimeMcpBin = FileLocation("/runtime-mcp"),
       agents = listOf(InstallAgent.CURSOR),
     ),
   )
@@ -96,9 +96,9 @@ class SharedInstallSelectionModelTest {
   private fun link(agent: InstallAgent, status: InstallAgentLinkStatus): InstallAgentSkillLinkOutcome =
     InstallAgentSkillLinkOutcome(
       agent = agent,
-      targetDir = Path.of("/home/.${agent.id}/skills"),
-      linkPath = Path.of("/home/.${agent.id}/skills/bill-code-review"),
-      linkTarget = Path.of("/home/.skill-bill/installed-skills/bill-code-review-hash"),
+      targetDir = FileLocation("/home/.${agent.id}/skills"),
+      linkPath = FileLocation("/home/.${agent.id}/skills/bill-code-review"),
+      linkTarget = FileLocation("/home/.skill-bill/installed-skills/bill-code-review-hash"),
       status = status,
     )
 }

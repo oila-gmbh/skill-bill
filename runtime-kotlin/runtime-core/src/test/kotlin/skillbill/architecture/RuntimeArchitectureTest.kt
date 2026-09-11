@@ -387,10 +387,6 @@ class RuntimeArchitectureTest {
       files = listOf(sourceFile(sourcePath("skillbill/model/RuntimeContext.kt"))),
       bannedImports = listOf("skillbill.infrastructure"),
     )
-    assertContains(
-      Files.readString(sourcePath("skillbill/ports/telemetry/RemoteTransportPort.kt")),
-      "object UnconfiguredRemoteTransportPort",
-    )
   }
 
   @Test

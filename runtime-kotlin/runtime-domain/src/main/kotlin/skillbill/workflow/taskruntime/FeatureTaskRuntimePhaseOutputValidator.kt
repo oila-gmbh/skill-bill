@@ -1,7 +1,7 @@
 package skillbill.workflow.taskruntime
 
 import skillbill.boundary.OpenBoundaryMap
-import skillbill.contracts.JsonSupport
+import skillbill.contracts.JsonCodec
 import skillbill.error.InvalidFeatureTaskRuntimePhaseOutputSchemaError
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutputFailureCode
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutputValidationResult
@@ -51,16 +51,16 @@ interface FeatureTaskRuntimePhaseOutputValidator {
   @OpenBoundaryMap("Feature-task-runtime phase-output schema gate returns the validated wire map for typed projection")
   fun validateAndReadPhaseOutput(phaseOutputText: String, sourceLabel: String): Map<String, Any?> {
     validatePhaseOutputText(phaseOutputText, sourceLabel)
-    return JsonSupport.parseObjectOrNull(phaseOutputText)
-      ?.let(JsonSupport::jsonElementToValue)
-      ?.let(JsonSupport::anyToStringAnyMap)
+    return JsonCodec.parseObjectOrNull(phaseOutputText)
+      ?.let(JsonCodec::jsonElementToValue)
+      ?.let(JsonCodec::anyToStringAnyMap)
       ?: emptyMap()
   }
 
   fun normalizePhaseOutput(phaseOutputText: String, sourceLabel: String): NormalizedFeatureTaskRuntimePhaseOutput {
     val envelope = validateAndReadPhaseOutput(phaseOutputText, sourceLabel)
     return NormalizedFeatureTaskRuntimePhaseOutput(
-      canonicalJson = JsonSupport.mapToJsonString(envelope),
+      canonicalJson = JsonCodec.mapToJsonString(envelope),
       envelope = envelope,
     )
   }

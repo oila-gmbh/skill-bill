@@ -1,10 +1,11 @@
 package skillbill.infrastructure.sqlite
 
-import skillbill.contracts.JsonSupport
-import skillbill.db.core.DatabaseRuntime
-import skillbill.db.telemetry.LifecycleTelemetryStore
-import skillbill.db.telemetry.TelemetryOutboxStore
-import skillbill.db.telemetry.recordGoalIssueSegmentEndimport skillbill.ports.telemetry.model.TelemetryOutboxRecord
+import skillbill.contracts.JsonCodec
+import skillbill.infrastructure.sqlite.core.DatabaseRuntime
+import skillbill.infrastructure.sqlite.telemetry.LifecycleTelemetryStore
+import skillbill.infrastructure.sqlite.telemetry.TelemetryOutboxStore
+import skillbill.infrastructure.sqlite.telemetry.recordGoalIssueSegmentEnd
+import skillbill.ports.telemetry.model.TelemetryOutboxRecord
 import skillbill.telemetry.model.GoalFinishedRecord
 import skillbill.telemetry.model.GoalIssueFinishedRecord
 import skillbill.telemetry.model.GoalStartedRecord
@@ -231,8 +232,8 @@ class GoalIssueProgressStoreTest {
 
   private fun terminalPayload(connection: Connection): Map<String, Any?> {
     val payloadJson = pendingOutbox(connection).single { it.eventName == "skillbill_goal_issue_finished" }.payloadJson
-    val element = requireNotNull(JsonSupport.parseObjectOrNull(payloadJson))
-    return requireNotNull(JsonSupport.anyToStringAnyMap(JsonSupport.jsonElementToValue(element)))
+    val element = requireNotNull(JsonCodec.parseObjectOrNull(payloadJson))
+    return requireNotNull(JsonCodec.anyToStringAnyMap(JsonCodec.jsonElementToValue(element)))
   }
 
   private fun pendingOutbox(connection: Connection): List<TelemetryOutboxRecord> =

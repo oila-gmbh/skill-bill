@@ -58,7 +58,8 @@ class SharedReviewEvidenceAssembler(private val diffResolver: DiffResolverPort) 
       scope == ParallelReviewScope.STAGED ||
         scope == ParallelReviewScope.UNSTAGED ||
         scope == ParallelReviewScope.UNCOMMITTED ||
-        scope == ParallelReviewScope.WORKTREE_FROM_BASE ->        ReviewCommitSource.SYNTHETIC_WORKING_TREE
+        scope == ParallelReviewScope.WORKTREE_FROM_BASE ->
+        ReviewCommitSource.SYNTHETIC_WORKING_TREE
       else -> null
     }
     if (declaredSynthetic != null) {

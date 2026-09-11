@@ -7,6 +7,7 @@ Areas: application/review, runtime-cli/codereview
 Feature flag: N/A
 Acceptance criteria: n/a
 
+
 ## [2026-08-28] SKILL-218 subtask 1 — Cursor delegated parent fan-out
 Areas: application/review, runtime-ports/review, infra-fs, runtime-core/di, orchestration/review-delegation
 - Cursor delegated parent prompt now names every selected native specialist with one `/name` line in a single parallel-launch instruction.

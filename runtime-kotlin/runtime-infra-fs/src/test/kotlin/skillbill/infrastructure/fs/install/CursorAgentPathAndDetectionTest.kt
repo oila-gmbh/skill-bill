@@ -3,7 +3,8 @@ package skillbill.infrastructure.fs.install
 import skillbill.infrastructure.fs.install.runtime.InstallOperations
 import skillbill.infrastructure.fs.launcher.mcp.McpRegistrationOperations
 import skillbill.install.model.InstallAgent
-import skillbill.model.toPathimport java.nio.file.Files
+import skillbill.model.toPath
+import java.nio.file.Files
 import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertEquals
@@ -40,7 +41,7 @@ class CursorAgentPathAndDetectionTest {
     val targets = InstallOperations.detectAgentTargets(home, environment = emptyMap())
     val cursor = targets.single { target -> target.name == "cursor" }
 
-    assertEquals(home.resolve(".cursor/skills"), cursor.path)
+    assertEquals(home.resolve(".cursor/skills"), cursor.path.toPath())
     assertFalse(Files.exists(home.resolve(".cursor/skills")))
   }
 

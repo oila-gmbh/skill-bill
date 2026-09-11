@@ -11,7 +11,8 @@ import skillbill.infrastructure.fs.scaffold.rendering.renderCeremonySection
 import skillbill.infrastructure.fs.scaffold.runtime.SHELL_CONTRACT_VERSION
 import skillbill.infrastructure.fs.scaffold.runtime.requiredSupportingFilesForSkill
 import skillbill.infrastructure.fs.scaffold.runtime.scaffold
-import skillbill.ports.repository.toFileLocationimport skillbill.scaffold.model.SkillClassManifest
+import skillbill.ports.repository.toFileLocation
+import skillbill.scaffold.model.SkillClassManifest
 import skillbill.scaffold.model.SkillClassMatcher
 import java.nio.file.Files
 import java.nio.file.Path
@@ -315,7 +316,7 @@ class SkillClassLoaderTest {
   ): SkillClassManifest {
     return SkillClassManifest(
       classId = classId,
-      classFile = Path.of("/tmp/$classId.yaml"),
+      classFile = Path.of("/tmp/$classId.yaml").toFileLocation(),
       contractVersion = SHELL_CONTRACT_VERSION,
       matchers = matchers.map { (kind, value) ->
         when (kind) {

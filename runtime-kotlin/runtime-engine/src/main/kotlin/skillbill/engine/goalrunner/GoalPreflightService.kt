@@ -12,17 +12,21 @@ import skillbill.ports.goalrunner.runner.GoalRunnerManifestStore
 import skillbill.ports.repository.RepositoryEnclosingRootPort
 import skillbill.ports.workflow.decomposition.DecompositionManifestStore
 import skillbill.workflow.decomposition.DecompositionManifestValidator
+
 @Inject
-class GoalPreflightService(deps: GoalPreflightServiceDeps) {
-  private val continuationLookup = deps.continuationLookup
-  private val manifestStore = deps.manifestStore
-  private val manifestFileStore = deps.manifestFileStore
-  private val manifestValidator = deps.manifestValidator
-  private val repositoryEnclosingRootPort = deps.repositoryEnclosingRootPort
+class GoalPreflightService(
+  private val continuationLookup: FeatureTaskContinuationLookupService,
+  private val manifestStore: GoalRunnerManifestStore,
+  agentAddonSelectionPort: AgentAddonSelectionPort,
+  externalAgentAddonSourceConfigPort: ExternalAgentAddonSourceConfigPort,
+  private val manifestFileStore: DecompositionManifestStore,
+  private val manifestValidator: DecompositionManifestValidator,
+  private val repositoryEnclosingRootPort: RepositoryEnclosingRootPort,
+) {
   private val gateBlockBuilder = GoalPreflightGateBlockBuilder(
     manifestStore,
-    deps.agentAddonSelectionPort,
-    deps.externalAgentAddonSourceConfigPort,
+    agentAddonSelectionPort,
+    externalAgentAddonSourceConfigPort,
     manifestFileStore,
   )
   private val lookupResolver = GoalPreflightLookupResolver(gateBlockBuilder)

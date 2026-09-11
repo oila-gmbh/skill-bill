@@ -5,6 +5,7 @@ import skillbill.application.workflow.model.WorkflowFamily
 import skillbill.error.InvalidGoalSubtaskReviewStateSchemaError
 import skillbill.ports.workflow.WorkflowStateRepository
 import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewBaseline
+import skillbill.ports.workflow.save
 import skillbill.workflow.engine.WorkflowEngine
 import skillbill.workflow.engine.model.WorkflowStateSnapshot
 import skillbill.workflow.engine.model.WorkflowUpdateInput
@@ -48,6 +49,7 @@ fun GoalSubtaskReviewState.matches(
   baseline: GoalSubtaskReviewBaseline,
   continuation: FeatureTaskRuntimeGoalContinuationArtifact,
 ): Boolean = reviewBaseSha == baseline.reviewBaseSha &&
+  baselineUntrackedPaths == baseline.baselineUntrackedPaths.distinct().sorted() &&
   codeReviewMode == continuation.codeReviewMode
 
 fun rawReviewResultsFromArtifacts(artifacts: Map<String, Any?>, state: GoalSubtaskReviewState): Map<String, String> {
@@ -140,6 +142,7 @@ internal fun reviewStatePatch(
   return mapOf(
     GOAL_SUBTASK_REVIEW_STATE_ARTIFACT_KEY to GoalSubtaskReviewState.initial(
       reviewBaseSha = baseline.reviewBaseSha,
+      baselineUntrackedPaths = baseline.baselineUntrackedPaths,
       codeReviewMode = continuation.codeReviewMode,
     ).toArtifactMap(),
   )

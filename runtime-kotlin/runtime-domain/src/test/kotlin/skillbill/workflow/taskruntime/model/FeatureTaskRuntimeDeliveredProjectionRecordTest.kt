@@ -1,6 +1,6 @@
 package skillbill.workflow.taskruntime.model
 
-import skillbill.contracts.JsonSupport
+import skillbill.contracts.JsonCodec
 import skillbill.error.InvalidWorkflowStateSchemaError
 import kotlin.test.Test
 import kotlin.test.assertContains
@@ -28,7 +28,7 @@ class FeatureTaskRuntimeDeliveredProjectionRecordTest {
     val restored = FeatureTaskRuntimeDeliveredProjectionRecord.fromArtifactMap(record.toArtifactMap())
 
     assertEquals(record, restored)
-    val serialized = JsonSupport.mapToJsonString(record.toArtifactMap())
+    val serialized = JsonCodec.mapToJsonString(record.toArtifactMap())
     assertFalse(
       serialized.contains("private-evidence-body"),
       "the delivered-projection record absorbed the private phase output body",

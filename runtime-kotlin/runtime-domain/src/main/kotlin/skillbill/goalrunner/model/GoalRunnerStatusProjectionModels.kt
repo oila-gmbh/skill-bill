@@ -4,6 +4,8 @@ import skillbill.boundary.OpenBoundaryMap
 import skillbill.workflow.decomposition.model.DecompositionManifest
 import skillbill.workflow.goal.model.GoalObservabilityDiffStat
 import skillbill.workflow.goal.model.GoalObservabilitySelectedDiffHunks
+import skillbill.workflow.model.DecompositionStatus
+import skillbill.workflow.model.WorkflowStatus
 
 enum class GoalPlanningStatusState(val wireValue: String) {
   NOT_STARTED("not_started"),
@@ -71,7 +73,7 @@ data class GoalRunnerStatusProjection(
   val currentSubtaskId: Int?,
   /** Launched child workflow id for [currentSubtaskId], when the subtask has one. */
   val currentChildWorkflowId: String? = null,
-  val currentSubtaskStatus: String? = null,
+  val currentSubtaskStatus: DecompositionStatus? = null,
   val currentSubtaskBlockedReason: String? = null,
   val currentStep: String?,
   val activeAgent: String?,
@@ -112,7 +114,7 @@ data class GoalRunnerAcceptedSubtask(
   val acceptedAt: String,
 )
 
-data class GoalRunnerStatusProjectionExtras(
+data class GoalRunnerStatusProjectionRuntimeInputs(
   val executionLiveness: ExecutionLiveness = ExecutionLiveness.UNKNOWN,
   val planning: GoalPlanningStatusSnapshot? = null,
   val currentStepOverride: String? = null,
@@ -121,7 +123,7 @@ data class GoalRunnerStatusProjectionExtras(
    * reconciliation points, so a subtask relaunched from a durable block still reads `blocked` there for
    * the whole run; this reports what the child is actually doing.
    */
-  val currentWorkflowStatus: String? = null,
+  val currentWorkflowStatus: WorkflowStatus? = null,
   val latestLivenessSignal: String? = null,
   @OpenBoundaryMap("Compact latest goal observability event passthrough for goal status rendering")
   val latestObservabilityEvent: Map<String, Any?>? = null,
@@ -150,7 +152,7 @@ object GoalRunnerStatusProjector {
   fun project(
     manifest: DecompositionManifest,
     activeAgent: String? = null,
-    extras: GoalRunnerStatusProjectionExtras = GoalRunnerStatusProjectionExtras(),
+    extras: GoalRunnerStatusProjectionRuntimeInputs = GoalRunnerStatusProjectionRuntimeInputs(),
   ): GoalRunnerStatusProjection {
     val context = buildGoalRunnerStatusProjectionContext(manifest, extras)
     return assembleGoalRunnerStatusProjection(manifest, activeAgent, extras, context)

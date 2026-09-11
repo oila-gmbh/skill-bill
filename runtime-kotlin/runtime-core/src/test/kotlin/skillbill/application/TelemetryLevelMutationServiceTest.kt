@@ -12,6 +12,8 @@ import skillbill.ports.goalrunner.EmptyGoalPlanningPreparationRepository
 import skillbill.ports.goalrunner.EmptyGoalRunnerControlRepository
 import skillbill.ports.learning.LearningRepository
 import skillbill.ports.persistence.UnitOfWork
+import skillbill.ports.persistence.UnitOfWorkDefaults
+import skillbill.ports.repository.toFileLocation
 import skillbill.ports.review.ReviewRepository
 import skillbill.ports.telemetry.LifecycleTelemetryRepository
 import skillbill.ports.telemetry.TelemetryConfigStore
@@ -285,7 +287,7 @@ private class FakeTelemetryDatabaseSessionFactory(
     return block(fakeUnitOfWork())
   }
 
-  private fun fakeUnitOfWork(): UnitOfWork = object : UnitOfWork {
+  private fun fakeUnitOfWork(): UnitOfWork = object : UnitOfWorkDefaults() {
     override val dbPath: Path = this@FakeTelemetryDatabaseSessionFactory.dbPath
     override val reviews: ReviewRepository
       get() = error("Unexpected reviews")
@@ -346,7 +348,7 @@ private class MutationTelemetryOutboxRepository(
 
 private class LeveledMutationTelemetrySettingsProvider(private val level: String) : TelemetrySettingsProvider {
   override fun load(materialize: Boolean): TelemetrySettings = TelemetrySettings(
-    configPath = Path.of("/fake/config.json"),
+    configPath = Path.of("/fake/config.json").toFileLocation(),
     level = level,
     enabled = level != "off",
     installId = "existing",
@@ -358,7 +360,7 @@ private class LeveledMutationTelemetrySettingsProvider(private val level: String
 
 private object DisabledMutationTelemetrySettingsProvider : TelemetrySettingsProvider {
   override fun load(materialize: Boolean): TelemetrySettings = TelemetrySettings(
-    configPath = Path.of("/fake/config.json"),
+    configPath = Path.of("/fake/config.json").toFileLocation(),
     level = "off",
     enabled = false,
     installId = "",

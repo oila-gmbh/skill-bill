@@ -1,6 +1,6 @@
 package skillbill.engine.featuretask
 
-import skillbill.contracts.JsonSupport
+import skillbill.contracts.JsonCodec
 import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_CONTRACT_VERSION
 import skillbill.engine.featuretask.validation.FeatureTaskRuntimeBuildGateCoordinator
 import skillbill.engine.featuretask.validation.model.ValidationGateAgentRepairLauncher
@@ -11,14 +11,15 @@ import skillbill.engine.featuretask.validation.model.ValidationGateCycleResult
 import skillbill.engine.featuretask.validation.model.ValidationGateCycleTerminalOutcome
 import skillbill.engine.featuretask.validation.model.ValidationGateResolution
 import skillbill.engine.featuretask.validation.model.ValidationGateTriageResult
-import skillbill.ports.workflow.gitops.repositoryFingerprintimport skillbill.workflow.goal.model.ValidationDepth
+import skillbill.ports.workflow.gitops.repositoryFingerprint
+import skillbill.workflow.goal.model.ValidationDepth
+import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import skillbill.workflow.taskruntime.model.AcceptedFeatureTaskRuntimePhaseOutput
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFailureDisposition
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutput
 import skillbill.workflow.taskruntime.model.requireAcceptedOutput
 
-@Inject
-class FeatureTaskRuntimeRunLoopValidationGate {
+object FeatureTaskRuntimeRunLoopValidationGate {
   internal fun runDeclaredBuildGateCycle(
     runLoop: FeatureTaskRuntimeRunLoop,
     run: PhaseRun,
@@ -26,18 +27,18 @@ class FeatureTaskRuntimeRunLoopValidationGate {
     observability: FeatureTaskRuntimeRunObservability,
     phaseTokenAccumulator: MutableMap<String, Pair<Int, Int>>?,
   ): PhaseOutcome {
-    val checkpoint = runLoop.collaborators.validationGateContinued4.resolveValidationGateCheckpoint(runLoop, run)
+    val checkpoint = FeatureTaskRuntimeRunLoopValidationGate.resolveValidationGateCheckpoint(runLoop, run)
       ?: return PhaseOutcome.blocked(
         "Build gate cycle could not resolve a repository checkpoint fingerprint.",
       )
     val iteration = state.nextIteration(run.phaseId)
     persistBuildGateRunningPhase(runLoop, run, state, iteration, observability)?.let { return it }
-    val context = phaseAttemptAccumulatorContext(run, state, iteration, observability, runLoop.phaseTokenAccumulator)
+    val context = phaseAttemptAccumulatorContext(run, state, iteration, observability, phaseTokenAccumulator)
     val cycle = runLoop.buildGateCoordinator.execute(
       cycle = buildGateCycleRequest(runLoop, ValidationGateCycleRequestArgs(context, checkpoint)),
       onGateRunCount = { observability.validationGateProgress() },
     )
-    return runLoop.collaborators.validationGateContinued1.settleBuildGateCycleResult(
+    return FeatureTaskRuntimeRunLoopValidationGate.settleBuildGateCycleResult(
       runLoop,
       SettleBuildGateCycleResultArgs(run, iteration, observability, checkpoint, cycle),
     )
@@ -51,7 +52,7 @@ class FeatureTaskRuntimeRunLoopValidationGate {
     observability: FeatureTaskRuntimeRunObservability,
   ): PhaseOutcome {
     val acceptedOutput = acceptRuntimeOwnedBuild(runLoop, run, outputText).getOrElse { error ->
-      return runLoop.collaborators.phaseAttemptsContinued2.blockAndPersistInPhase(
+      return FeatureTaskRuntimeRunLoopPhaseAttempts.blockAndPersistInPhase(
         runLoop,
         phaseBlockArgs(
           run,
@@ -67,21 +68,21 @@ class FeatureTaskRuntimeRunLoopValidationGate {
     )
   }
 
-  private fun FeatureTaskRuntimeRunLoopValidationGate.acceptRuntimeOwnedBuild(
+  private fun acceptRuntimeOwnedBuild(
     runLoop: FeatureTaskRuntimeRunLoop,
     run: PhaseRun,
     outputText: String,
   ): Result<AcceptedFeatureTaskRuntimePhaseOutput> = runCatching {
     val accepted = runLoop.outputValidator.validatePhaseOutput(outputText, sourceLabel = run.phaseId)
       .requireAcceptedOutput(run.phaseId)
-    val buildReceipt = JsonSupport.anyToStringAnyMap(
-      JsonSupport.anyToStringAnyMap(accepted.normalizedOutput.envelope["produced_outputs"])?.get("build_receipt"),
+    val buildReceipt = JsonCodec.anyToStringAnyMap(
+      JsonCodec.anyToStringAnyMap(accepted.normalizedOutput.envelope["produced_outputs"])?.get("build_receipt"),
     )
     runLoop.buildReceiptValidator.validateBuildReceipt(buildReceipt ?: emptyMap(), sourceLabel = run.phaseId)
     accepted
   }
 
-  private fun FeatureTaskRuntimeRunLoopValidationGate.persistRuntimeOwnedBuildCompletion(
+  private fun persistRuntimeOwnedBuildCompletion(
     runLoop: FeatureTaskRuntimeRunLoop,
     args: PersistRuntimeOwnedBuildCompletionArgs,
   ): PhaseOutcome {
@@ -92,7 +93,7 @@ class FeatureTaskRuntimeRunLoopValidationGate {
     val acceptedOutput = args.acceptedOutput
     val normalizedOutput = acceptedOutput.normalizedOutput
     val persisted = runLoop.recorder.recordCompletedPhase(
-      runLoop.collaborators.outputPersistence.phaseStateRequest(
+      FeatureTaskRuntimeRunLoopOutputPersistence.phaseStateRequest(
         runLoop,
         PhaseStateRequestArgs(
           write = PhaseStateWriteArgs(
@@ -102,7 +103,7 @@ class FeatureTaskRuntimeRunLoopValidationGate {
             finished = true,
             outputArtifact = outputText,
           ),
-          extras = PhaseStateRequestExtras(
+          extras = PhaseStateRequestAttachments(
             normalizedOutput = normalizedOutput,
             repairEvidence = acceptedOutput.repairEvidence,
           ),
@@ -110,7 +111,7 @@ class FeatureTaskRuntimeRunLoopValidationGate {
       ),
     )
     if (!persisted) {
-      return runLoop.collaborators.phaseAttempts.blockInPhase(
+      return FeatureTaskRuntimeRunLoopPhaseAttempts.blockInPhase(
         runLoop,
         PhaseBlockRequest(
           run = run,
@@ -144,20 +145,17 @@ class FeatureTaskRuntimeRunLoopValidationGate {
     val phaseTokenAccumulator = args.context.phaseTokenAccumulator
     val findings = args.findings
     val triageRun = run.copy(validationGateFindings = findings, validationGateTriage = true)
-    val attempt = runLoop.collaborators.recordRejection.attemptOnce(
+    val attempt = FeatureTaskRuntimeRunLoopRecordRejection.attemptOnce(
       runLoop,
       recordRejectionAttemptArgs(
-        PhaseAttemptContext(triageRun, runLoop.state, iteration, runLoop.observability),
-        phaseTokenAccumulator = runLoop.phaseTokenAccumulator,
+        PhaseAttemptContext(triageRun, state, iteration, observability),
+        phaseTokenAccumulator = phaseTokenAccumulator,
       ),
     )
     val settled = attempt.settledOutcome
     val completed = settled?.completedOutput
     return when {
-      completed != null -> runLoop.collaborators.validationGateContinued1.extractValidationGateTriagePlan(
-        runLoop,
-        completed,
-      )
+      completed != null -> FeatureTaskRuntimeRunLoopValidationGate.extractValidationGateTriagePlan(completed)
       settled != null -> ValidationGateTriageResult.Empty
       else -> ValidationGateTriageResult.Empty
     }
@@ -166,7 +164,7 @@ class FeatureTaskRuntimeRunLoopValidationGate {
   internal fun buildGateCycleRequest(
     runLoop: FeatureTaskRuntimeRunLoop,
     args: ValidationGateCycleRequestArgs,
-  ): ValidationGateCycleRequest = runLoop.collaborators.validationGateContinued4.validationGateCycleRequest(
+  ): ValidationGateCycleRequest = FeatureTaskRuntimeRunLoopValidationGate.validationGateCycleRequest(
     runLoop,
     args,
   ).copy(validationDepth = ValidationDepth.DEFAULT)
@@ -178,7 +176,7 @@ class FeatureTaskRuntimeRunLoopValidationGate {
     iteration: Int,
     observability: FeatureTaskRuntimeRunObservability,
   ): PhaseOutcome? {
-    val runningPhaseState = runLoop.collaborators.outputPersistence.phaseStateRequest(
+    val runningPhaseState = FeatureTaskRuntimeRunLoopOutputPersistence.phaseStateRequest(
       runLoop,
       PhaseStateRequestArgs(
         write = PhaseStateWriteArgs(
@@ -192,7 +190,8 @@ class FeatureTaskRuntimeRunLoopValidationGate {
     )
     state.reserveReviewPass(runningPhaseState.reviewPassNumber)
     if (!runLoop.recorder.recordPhaseState(runningPhaseState)) {
-      return FeatureTaskRuntimeRunLoopPhaseAttempts.blockInPhase(        runLoop,
+      return FeatureTaskRuntimeRunLoopPhaseAttempts.blockInPhase(
+        runLoop,
         PhaseBlockRequest(
           run = run,
           attemptCount = iteration,
@@ -262,19 +261,19 @@ class FeatureTaskRuntimeRunLoopValidationGate {
 
   fun looseOutputEnvelope(outputText: String): Map<String, Any?>? {
     val trimmed = outputText.trim()
-    JsonSupport.parseObjectOrNull(trimmed)?.let {
-      return JsonSupport.anyToStringAnyMap(JsonSupport.jsonElementToValue(it))
+    JsonCodec.parseObjectOrNull(trimmed)?.let {
+      return JsonCodec.anyToStringAnyMap(JsonCodec.jsonElementToValue(it))
     }
     val start = trimmed.indexOf('{')
     val end = trimmed.lastIndexOf('}')
     if (start !in 0..<end) return null
-    return JsonSupport.parseObjectOrNull(trimmed.substring(start, end + 1))
-      ?.let { JsonSupport.anyToStringAnyMap(JsonSupport.jsonElementToValue(it)) }
+    return JsonCodec.parseObjectOrNull(trimmed.substring(start, end + 1))
+      ?.let { JsonCodec.anyToStringAnyMap(JsonCodec.jsonElementToValue(it)) }
   }
 
   fun gateTriageCapturedProducedOutputs(outputText: String): Map<String, Any?> {
     val produced = looseOutputEnvelope(outputText)
-      ?.let { JsonSupport.anyToStringAnyMap(it["produced_outputs"]) }
+      ?.let { JsonCodec.anyToStringAnyMap(it["produced_outputs"]) }
       ?: return emptyMap()
     return buildMap {
       produced["value"]?.let { put("value", it) }
@@ -307,14 +306,14 @@ class FeatureTaskRuntimeRunLoopValidationGate {
     return FeatureTaskRuntimePhaseOutput(
       phaseId = run.phaseId,
       iteration = iteration,
-      payload = JsonSupport.mapToJsonString(payload),
+      payload = JsonCodec.mapToJsonString(payload),
     )
   }
 
   fun extractValidationGateTriagePlan(output: FeatureTaskRuntimePhaseOutput): ValidationGateTriageResult {
     val envelope = FeatureTaskRuntimeRunLoopLaunch.outputEnvelopeOf(output)
       ?: return ValidationGateTriageResult.Empty
-    val produced = JsonSupport.anyToStringAnyMap(envelope["produced_outputs"])
+    val produced = JsonCodec.anyToStringAnyMap(envelope["produced_outputs"])
       ?: return ValidationGateTriageResult.Empty
     FeatureTaskRuntimeRunLoopValidationGate.planFromProducedValue(produced["value"])?.let { return it }
     val directPlan = FeatureTaskRuntimeRunLoopValidationGate
@@ -329,9 +328,9 @@ class FeatureTaskRuntimeRunLoopValidationGate {
   internal fun planFromProducedValue(value: Any?): ValidationGateTriageResult? {
     val valueText = value as? String ?: return null
     if (valueText.isBlank()) return null
-    val inner = JsonSupport.parseObjectOrNull(valueText)
-      ?.let(JsonSupport::jsonElementToValue)
-      ?.let(JsonSupport::anyToStringAnyMap)
+    val inner = JsonCodec.parseObjectOrNull(valueText)
+      ?.let(JsonCodec::jsonElementToValue)
+      ?.let(JsonCodec::anyToStringAnyMap)
     val planFromValue = inner?.let { extractTriagePlanProse(it["validation_repair_plan"]) }
     if (!planFromValue.isNullOrBlank()) {
       return ValidationGateTriageResult.Captured(planFromValue)
@@ -342,8 +341,8 @@ class FeatureTaskRuntimeRunLoopValidationGate {
   internal fun extractTriagePlanProse(raw: Any?): String? = when (raw) {
     is String -> raw.takeIf { it.isNotBlank() }
     null -> null
-    else -> JsonSupport.mapToJsonString(
-      JsonSupport.anyToStringAnyMap(raw) ?: mapOf("validation_repair_plan" to raw),
+    else -> JsonCodec.mapToJsonString(
+      JsonCodec.anyToStringAnyMap(raw) ?: mapOf("validation_repair_plan" to raw),
     ).takeIf { it.isNotBlank() && it != "{}" && it != "[]" }
   }
 
@@ -746,4 +745,14 @@ class FeatureTaskRuntimeRunLoopValidationGate {
         }
       }
     }
-  }}
+  }
+}
+
+private data class RuntimeOwnedValidationFinishArgs(
+  val runLoop: FeatureTaskRuntimeRunLoop,
+  val run: PhaseRun,
+  val iteration: Int,
+  val outputText: String,
+  val acceptedOutput: AcceptedFeatureTaskRuntimePhaseOutput,
+  val observability: FeatureTaskRuntimeRunObservability,
+)

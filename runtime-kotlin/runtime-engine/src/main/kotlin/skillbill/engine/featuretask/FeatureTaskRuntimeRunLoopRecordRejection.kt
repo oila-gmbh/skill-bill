@@ -3,10 +3,11 @@ package skillbill.engine.featuretask
 import skillbill.engine.featuretask.model.FeatureTaskRuntimeProducerOutputRead
 import skillbill.engine.featuretask.model.ProducerOutputQueryArgs
 import skillbill.ports.diagnostics.model.ProducerOutputEvidence
-import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinitionimport skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFailureDisposition
+import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFailureDisposition
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutput
 
-@Inject
-class FeatureTaskRuntimeRunLoopRecordRejection {
+object FeatureTaskRuntimeRunLoopRecordRejection {
   internal fun blockUnattributableRecordRejection(
     runLoop: FeatureTaskRuntimeRunLoop,
     args: UnattributableRecordRejectionArgs,
@@ -22,7 +23,7 @@ class FeatureTaskRuntimeRunLoopRecordRejection {
       rejectionPath(rejection.rejectionDetail),
     )
     recordUnattributableRejectedEvidence(runLoop, run, runLoop.state, rejection)
-    return runLoop.collaborators.phaseAttemptsContinued2.blockAndPersistInPhase(
+    return FeatureTaskRuntimeRunLoopPhaseAttempts.blockAndPersistInPhase(
       runLoop,
       phaseBlockArgs(
         run = run,
@@ -49,16 +50,6 @@ class FeatureTaskRuntimeRunLoopRecordRejection {
   fun payloadFreeRejectionReason(rule: String, path: String): String =
     "Rejected output violated '$rule' at '$path'. Inspect the private diagnostic for the exact response."
 
-  /**
-   * The retry-facing counterpart of [payloadFreeRejectionReason]. A producer cannot repair an output from a
-   * rule name and a path alone, so the validator's constraint text — the violated rule, the expected shape
-   * and the offending field, all authored from the schema and never from the response — is appended for the
-   * next prompt and for the private diagnostic row. The payload-free sentence stays the prefix so both
-   * readers still learn where the raw response is kept.
-   *
-   * A null or blank [validationReason] means the producing seam had no value-free restatement to offer, so
-   * the payload-free sentence stands alone; the value-bearing variant is never substituted in its place.
-   */
   fun retryRejectionReason(payloadFreeReason: String, validationReason: String?): String =
     if (validationReason.isNullOrBlank()) {
       payloadFreeReason
@@ -66,16 +57,6 @@ class FeatureTaskRuntimeRunLoopRecordRejection {
       "$payloadFreeReason Violated constraint: ${boundedSchemaGateDetail(validationReason)}"
     }
 
-  /**
-   * Semantic-gate detail that is safe to place outside the authorized repair section.
-   *
-   * Mutating-reconciliation is a fixed template. Producer/consumer projection and output-verification
-   * may carry schema-structure text the producer needs, but only after response-derived dumps
-   * (quoted wire verdicts, offending-value appendices, expected=/actual= receipt lists) are scrubbed.
-   * Audit ledger/repair gates stay null except for scrubbed bounded artifact_ref/check_ref
-   * constraints — those must reach the retry reason so compound or oversized refs get actionable
-   * guidance instead of a generic audit sentence alone.
-   */
   fun payloadFreeSemanticGateConstraint(
     runLoop: FeatureTaskRuntimeRunLoop,
     rule: String,
@@ -91,11 +72,6 @@ class FeatureTaskRuntimeRunLoopRecordRejection {
     else -> scrubBoundedReferenceGateConstraint(detail)
   }
 
-  /**
-   * Extracts a payload-free bounded-reference constraint from semantic-gate detail. Returns null when
-   * the detail does not name artifact_ref or check_ref, so audit identifiers and expected=/actual=
-   * receipt lists never reach the retry reason by themselves.
-   */
   fun scrubBoundedReferenceGateConstraint(detail: String): String? {
     if (detail.isBlank()) return null
     val namesArtifactRef = detail.contains("artifact_ref")
@@ -114,15 +90,6 @@ class FeatureTaskRuntimeRunLoopRecordRejection {
     }
   }
 
-  /**
-   * Strips known response-value dumps from semantic-gate detail before it can enter a retry prompt
-   * outside the authorized repair section. Schema-structure fragments (property names, found/expected
-   * types, maxLength caps) remain so length and shape corrections still fire.
-   *
-   * Caps at [SCHEMA_GATE_DETAIL_MAX_CHARS] before pattern work so an oversized wire verdict cannot
-   * amplify retry CPU; when the cap cuts inside a quoted verdict, [scrubOffVocabularyVerdictQuote]
-   * strips the open marker through end rather than leaving a partial response-derived quote.
-   */
   fun scrubResponseDerivedGateDetail(
     runLoop: FeatureTaskRuntimeRunLoop,
     detail: String,
@@ -361,4 +328,37 @@ class FeatureTaskRuntimeRunLoopRecordRejection {
     } else {
       text.substring(0, start) + "off-vocabulary verdict"
     }
-  }}
+  }
+}
+
+const val OFF_VOCABULARY_VERDICT_OPEN = "off-vocabulary verdict '"
+
+const val OFF_VOCABULARY_VERDICT_CLOSE_BOUNDARY = "' and no"
+
+val OFFENDING_VALUE_APPENDIX_PATTERN =
+  Regex("""(?:\s*[—-]\s*)?offending value:.*$""", setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL))
+
+val EXPECTED_ACTUAL_LIST_PATTERN =
+  Regex("""\bexpected=\[[^\]]*]\s*actual=\[[^\]]*]\.?""", RegexOption.IGNORE_CASE)
+
+val BOUNDED_REF_LENGTH_CAP_PATTERN =
+  Regex("""(?:allows|must be) at most ([0-9][0-9,]*) characters""", RegexOption.IGNORE_CASE)
+
+val SCHEMA_DETAIL_TYPE_WORDS = setOf(
+  "array",
+  "boolean",
+  "integer",
+  "null",
+  "number",
+  "object",
+  "string",
+)
+
+const val MIN_RESPONSE_STRING_VALUE_LENGTH = 4
+
+val INVENTORY_EXTENDING_PHASES: Set<String> = setOf(
+  FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT,
+  FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT_FIX,
+  FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VALIDATE,
+  FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_WRITE_HISTORY,
+)

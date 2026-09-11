@@ -15,7 +15,8 @@ data class FeatureTaskRuntimeAuditRepairSnapshot(
 
 fun detectAuditRepairNonProgress(
   previous: FeatureTaskRuntimeAuditRepairSnapshot,
-  current: FeatureTaskRuntimeAuditRepairSnapshot,): FeatureTaskRuntimeAuditRepairProgressDecision {
+  current: FeatureTaskRuntimeAuditRepairSnapshot,
+): FeatureTaskRuntimeAuditRepairProgressDecision {
   if (!current.hasGaps) {
     return FeatureTaskRuntimeAuditRepairProgressDecision(blocked = false, reason = null)
   }
@@ -36,7 +37,8 @@ fun detectAuditRepairNonProgress(
         "Audit made no progress: the envelope verdict is still gaps_found, the unresolved criterion " +
           "set is unchanged, and the repository fingerprint is unchanged."
       } else {
-        "Audit made no progress: the envelope verdict is still gaps_found and the repository fingerprint " +          "is unchanged."
+        "Audit made no progress: the envelope verdict is still gaps_found and the repository fingerprint " +
+          "is unchanged."
       }
     } else {
       null

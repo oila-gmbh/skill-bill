@@ -15,7 +15,8 @@ import skillbill.install.model.InstallAgent
 import skillbill.install.model.InstallPlanSkill
 import skillbill.install.model.InstallTransaction
 import skillbill.model.toPath
-import skillbill.ports.repository.toFileLocationimport skillbill.scaffold.model.PlatformManifest
+import skillbill.ports.repository.toFileLocation
+import skillbill.scaffold.model.PlatformManifest
 import java.io.FileNotFoundException
 import java.nio.file.Files
 import java.nio.file.Path
@@ -47,20 +48,20 @@ internal fun detectAgents(home: Path? = null, environment: Map<String, String> =
   return SUPPORTED_AGENTS.flatMap { agent ->
     if (agent == "claude") {
       if (agentIsPresent(resolvedHome, agent, agentPaths(resolvedHome, environment).getValue(agent), environment)) {
-        claudeSkillTargets(resolvedHome, environment).map { path -> AgentTarget("claude", path) }
+        claudeSkillTargets(resolvedHome, environment).map { path -> AgentTarget("claude", path.toFileLocation()) }
       } else {
         emptyList()
       }
     } else if (agent == "codex") {
       if (agentIsPresent(resolvedHome, agent, agentPaths(resolvedHome, environment).getValue(agent), environment)) {
-        codexSkillTargets(resolvedHome, environment).map { path -> AgentTarget("codex", path) }
+        codexSkillTargets(resolvedHome, environment).map { path -> AgentTarget("codex", path.toFileLocation()) }
       } else {
         emptyList()
       }
     } else {
       val path = agentPaths(resolvedHome, environment).getValue(agent)
       if (agentIsPresent(resolvedHome, agent, path, environment)) {
-        listOf(AgentTarget(agent, path))
+        listOf(AgentTarget(agent, path.toFileLocation()))
       } else {
         emptyList()
       }
@@ -77,7 +78,7 @@ internal fun detectCodexAgentsTargets(
     return emptyList()
   }
   return nativeDetectCodexAgentsTargets(resolvedHome, environment)
-    .map { target -> AgentTarget(target.name, target.path) }
+    .map { target -> AgentTarget(target.name, target.path.toFileLocation()) }
 }
 
 /**
@@ -133,8 +134,8 @@ private fun installSkillSymlink(
   target: AgentTarget,
   transaction: InstallTransaction?,
 ): Path? {
-  Files.createDirectories(target.path)
-  val linkPath = target.path.resolve(resolvedSkill.fileName)
+  Files.createDirectories(target.path.toPath())
+  val linkPath = target.path.toPath().resolve(resolvedSkill.fileName)
   if (Files.isSymbolicLink(linkPath)) {
     val existingTarget = runCatching { Files.readSymbolicLink(linkPath).toAbsolutePath().normalize() }.getOrNull()
     if (existingTarget == symlinkTarget) {
@@ -145,7 +146,7 @@ private fun installSkillSymlink(
     Files.delete(linkPath)
   }
   Files.createSymbolicLink(linkPath, symlinkTarget)
-  transaction?.createdSymlinks?.add(linkPath)
+  transaction?.createdSymlinks?.add(linkPath.toFileLocation())
   return linkPath
 }
 

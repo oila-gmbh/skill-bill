@@ -4,6 +4,7 @@ package skillbill.ports.agentrun.model
 import skillbill.agentaddon.model.AgentAddonSelection
 import skillbill.config.model.PhaseCompactionDirective
 import skillbill.goalrunner.model.GoalRunnerLivenessState
+import skillbill.goalrunner.model.GoalRunnerProcessState
 import skillbill.install.model.InstallAgent
 import skillbill.ports.review.GovernedReviewEvidenceEndpointHandle
 import skillbill.ports.review.NativeReviewOperationProtocol
@@ -207,7 +208,7 @@ sealed interface AgentRunLaunchOutcome {
 data class AgentRunLivenessSnapshot(
   val phase: String,
   val reason: String,
-  val processState: String,
+  val processState: GoalRunnerProcessState,
   val workflowId: String? = null,
   val workflowStep: String? = null,
   val lastDurableProgressAt: String? = null,

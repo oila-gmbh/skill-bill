@@ -1,7 +1,7 @@
 package skillbill.scaffold.model
 
 import skillbill.boundary.OpenBoundaryMap
-import java.nio.file.Path
+import skillbill.model.FileLocation
 
 data class RoutingSignals(
   val strong: List<String>,
@@ -23,8 +23,16 @@ data class ReviewLaneCondition(
 }
 
 data class DeclaredFiles(
-  val baseline: Path?,
-  val areas: Map<String, Path>,
+  /**
+   * SKILL-47/SKILL-48 contract: `null` means the pack ships no code-review baseline — that is
+   * a meaningful, intentional absence at the manifest layer (e.g. quality-check-only packs).
+   * Consumers MUST NOT re-narrow this with `!!` or default to a synthesized path; the schema
+   * (`orchestration/contracts/platform-pack-schema.yaml`, `declared_files.baseline`) is the
+   * single source of truth for the optional/required boundary, and `areas-require-baseline`
+   * ensures areas without a baseline already loud-fail upstream.
+   */
+  val baseline: FileLocation?,
+  val areas: Map<String, FileLocation>,
 )
 
 data class PointerSpec(
@@ -207,7 +215,7 @@ data class ValidationGateFindingsLocator(
 
 data class PlatformManifest(
   val slug: String,
-  val packRoot: Path,
+  val packRoot: FileLocation,
   val contractVersion: String,
   val routingSignals: RoutingSignals,
   val declaredCodeReviewAreas: List<String>,
@@ -216,7 +224,7 @@ data class PlatformManifest(
   val laneConditions: Map<String, ReviewLaneCondition> = emptyMap(),
   val displayName: String? = null,
   val notes: String? = null,
-  val declaredQualityCheckFile: Path? = null,
+  val declaredQualityCheckFile: FileLocation? = null,
   val validationGate: ValidationGateDeclaration? = null,
   val codeReviewComposition: CodeReviewComposition? = null,
   val fallbackCapabilities: Set<String> = emptySet(),
@@ -267,20 +275,20 @@ data class BaselineReviewLayerSuggestion(
 
 data class GovernedAddonFile(
   val packSlug: String,
-  val addonPath: Path,
+  val addonPath: FileLocation,
 ) {
-  val addonSlug: String = addonPath.fileName.toString().removeSuffix(".md")
+  val addonSlug: String = addonPath.fileName.removeSuffix(".md")
 }
 
 data class ScaffoldResult(
   val kind: String,
   val skillName: String,
-  val skillPath: Path,
-  val createdFiles: List<Path> = emptyList(),
-  val manifestEdits: List<Path> = emptyList(),
-  val manifestPreviews: Map<Path, String> = emptyMap(),
-  val symlinks: List<Path> = emptyList(),
-  val installTargets: List<Path> = emptyList(),
+  val skillPath: FileLocation,
+  val createdFiles: List<FileLocation> = emptyList(),
+  val manifestEdits: List<FileLocation> = emptyList(),
+  val manifestPreviews: Map<FileLocation, String> = emptyMap(),
+  val symlinks: List<FileLocation> = emptyList(),
+  val installTargets: List<FileLocation> = emptyList(),
   val notes: List<String> = emptyList(),
 )
 
@@ -297,7 +305,7 @@ data class SkillClassSection(
 
 data class SkillClassManifest(
   val classId: String,
-  val classFile: Path,
+  val classFile: FileLocation,
   val contractVersion: String,
   val matchers: List<SkillClassMatcher>,
   val pointers: List<String>,

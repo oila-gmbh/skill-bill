@@ -7,10 +7,11 @@ import skillbill.cli.model.CliRuntimeContext
 import skillbill.cli.model.ExternalCommand
 import skillbill.cli.model.ExternalCommandResult
 import skillbill.cli.model.ExternalCommandRunner
-import skillbill.contracts.JsonSupport
-import skillbill.db.core.DatabaseRuntime
-import skillbill.db.telemetry.LifecycleTelemetryStore
-import skillbill.db.telemetry.TelemetryOutboxStoreimport skillbill.ports.telemetry.RemoteTransportPort
+import skillbill.contracts.JsonCodec
+import skillbill.infrastructure.sqlite.core.DatabaseRuntime
+import skillbill.infrastructure.sqlite.telemetry.LifecycleTelemetryStore
+import skillbill.infrastructure.sqlite.telemetry.TelemetryOutboxStore
+import skillbill.ports.telemetry.RemoteTransportPort
 import skillbill.ports.telemetry.model.RemoteTransportResponse
 import skillbill.telemetry.CONFIG_ENVIRONMENT_KEY
 import skillbill.telemetry.TELEMETRY_PROXY_STATS_TOKEN_ENVIRONMENT_KEY
@@ -37,9 +38,9 @@ internal fun runJson(arguments: List<String>, context: CliRuntimeContext = CliRu
 }
 
 internal fun decodeJsonObject(rawJson: String): Map<String, Any?> {
-  val parsed = JsonSupport.parseObjectOrNull(rawJson)
+  val parsed = JsonCodec.parseObjectOrNull(rawJson)
   require(parsed != null) { "Expected JSON object but got: $rawJson" }
-  val decoded = JsonSupport.anyToStringAnyMap(JsonSupport.jsonElementToValue(parsed))
+  val decoded = JsonCodec.anyToStringAnyMap(JsonCodec.jsonElementToValue(parsed))
   require(decoded != null) { "Expected decoded JSON object but got: $rawJson" }
   return decoded
 }

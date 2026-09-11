@@ -25,6 +25,7 @@ class FeatureTaskRuntimeCheckpointScopeTest {
     assertEquals(listOf("src/AlsoOwned.kt", "src/Owned.kt"), stage.ownedPaths)
   }
 
+  // AC-001: ownership is the durable inventory, never "whatever is dirty since the baseline".
   @Test
   fun `a dirty path outside the durable inventory is never staged by virtue of being dirty`() {
     val decision = decide(
@@ -39,6 +40,7 @@ class FeatureTaskRuntimeCheckpointScopeTest {
     assertEquals(listOf("src/Owned.kt"), stage.ownedPaths)
   }
 
+  // AC-002: an owned inventory with nothing left to stage skips rather than committing foreign dirt.
   @Test
   fun `an inventory with no working-tree delta produces no checkpoint`() {
     val decision = decide(
@@ -170,6 +172,7 @@ class FeatureTaskRuntimeCheckpointScopeTest {
     assertEquals(listOf("src/Contested.kt"), stage.adoptedPaths)
   }
 
+  // AC-005: the unstaged half — an owned file whose content changed after the phase wrote it.
   @Test
   fun `an owned path modified concurrently without staging is adopted rather than blocking`() {
     val decision = decide(
@@ -185,6 +188,7 @@ class FeatureTaskRuntimeCheckpointScopeTest {
     assertEquals(listOf("src/Contested.kt"), stage.adoptedPaths, "only the diverged path is reported")
   }
 
+  // A path that fell out of the delta is still staged when it diverged, so adoption is never a no-op.
   @Test
   fun `a diverged owned path outside the working-tree delta is still staged`() {
     val decision = decide(
@@ -257,6 +261,7 @@ class FeatureTaskRuntimeCheckpointScopeTest {
     assertIs<FeatureTaskRuntimeCheckpointDecision.Stage>(decision)
   }
 
+  // AC-002: the phase's own manifest, not the whole since-baseline listing, names its writes.
   @Test
   fun `phase-written paths are the delta the phase's own file manifest accounts for`() {
     val written = phaseWrittenPaths(
@@ -276,6 +281,26 @@ class FeatureTaskRuntimeCheckpointScopeTest {
         phaseManifestPaths = emptyList(),
       ),
     )
+  }
+
+  @Test
+  fun `review exclusions widen the baseline to every untracked path the run does not own`() {
+    val exclusions = reviewUntrackedExclusions(
+      baselineUntrackedPaths = listOf("pre/Existing.kt"),
+      currentUntrackedPaths = listOf(
+        "pre/Existing.kt",
+        "src/Owned.kt",
+        "unrelated/AppearedSince.kt",
+        ".feature-specs/OTHER-999-concurrent/spec.md",
+      ),
+      ownedPaths = listOf("src/Owned.kt"),
+    )
+
+    assertEquals(
+      listOf(".feature-specs/OTHER-999-concurrent/spec.md", "pre/Existing.kt", "unrelated/AppearedSince.kt"),
+      exclusions,
+    )
+    assertFalse("src/Owned.kt" in exclusions, "an owned path must stay inside the review scope")
   }
 
   @Test
@@ -316,6 +341,8 @@ class FeatureTaskRuntimeCheckpointScopeTest {
       named.lines().last { it.isNotBlank() },
       "the subtask trailer must terminate the message so git reads it as a trailer",
     )
+
+    // No manifest name is a degradation, not a blank subject.
     val unnamed = message(phaseId = "audit", loopId = null, generation = 0, intent = INTENT_INITIAL)
     assertEquals("$ISSUE: subtask 7", unnamed.lines().first())
   }
@@ -327,6 +354,7 @@ class FeatureTaskRuntimeCheckpointScopeTest {
 
     assertEquals(identity, FeatureTaskRuntimeSubtaskCommitIdentity.parse(rendered))
     assertTrue(identity.matches(rendered))
+    // The predecessor subtask's finished commit: amending it would destroy a completed deliverable.
     assertFalse(identity.matches("done\n\nSkill-Bill-Subtask: $ISSUE/6\n"))
     assertFalse(identity.matches("done\n\nSkill-Bill-Subtask: OTHER-1/7\n"))
     assertNull(FeatureTaskRuntimeSubtaskCommitIdentity.parse("done\n\nno trailer here\n"))

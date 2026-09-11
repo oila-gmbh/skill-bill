@@ -200,7 +200,7 @@ class ApplicationPersistencePortDecompositionWorkflowTest {
 
     val manifest = loadTestDecompositionManifest(parentSpec.parent.resolve("decomposition-manifest.yaml"))
     val subtask = manifest.subtasks.single()
-    assertEquals("reopened", continued.view.continueStatus)
+    assertEquals("reopened", continued.view.continueStatus.wireValue)
     assertEquals("in_progress", subtask.status)
     assertEquals(null, subtask.blockedReason)
     assertEquals("validate", subtask.lastResumableStep)
@@ -586,7 +586,7 @@ class ApplicationPersistencePortDecompositionWorkflowTest {
     val continued = service.continueWorkflow(WorkflowFamilyKind.TASK_RUNTIME, "SKILL-51")
       as WorkflowContinueResult.DecompositionStandard
 
-    assertEquals("already_running", continued.view.continueStatus)
+    assertEquals("already_running", continued.view.continueStatus.wireValue)
     assertEquals(subtaskWorkflowId, continued.view.resume.snapshot.workflowId)
     assertEquals("validate", continued.view.continueStepId)
     assertEquals(1, continued.decompositionSubtaskId)

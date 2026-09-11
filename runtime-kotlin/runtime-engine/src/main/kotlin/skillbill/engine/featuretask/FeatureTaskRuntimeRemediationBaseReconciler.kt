@@ -13,7 +13,9 @@ import skillbill.engine.featuretask.model.RemediationReconciliationBlocked
 import skillbill.engine.featuretask.model.RemediationReconciliationCoherent
 import skillbill.engine.featuretask.model.RemediationReconciliationHeal
 import skillbill.error.InvalidFeatureTaskRuntimeCheckpointIdentityVersionError
+import skillbill.error.InvalidGoalSubtaskReviewStateSchemaError
 import skillbill.ports.db.DatabaseSessionFactory
+import skillbill.ports.workflow.get
 import skillbill.ports.workflow.gitops.WorkflowGitOperations
 import skillbill.workflow.goal.model.GOAL_REVIEW_BASE_RECOVERIES_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
@@ -84,12 +86,14 @@ class FeatureTaskRuntimeRemediationBaseReconciler(
     val artifacts = decodeArtifacts(record.artifactsJson)
     runCatching {
       val state = reviewStateFromArtifacts(artifacts) ?: return@read null
-      val continuation = continuationFromArtifacts(artifacts) ?: return@read null      val checkpoints = featureTaskRuntimeCheckpointIdentitiesFromArtifact(
+      val continuation = continuationFromArtifacts(artifacts) ?: return@read null
+      val checkpoints = featureTaskRuntimeCheckpointIdentitiesFromArtifact(
         artifacts[FEATURE_TASK_RUNTIME_CHECKPOINT_IDENTITIES_ARTIFACT_KEY],
       )
       RemediationReconcileSnapshot(state, continuation, checkpoints)
     }.getOrElse { error ->
-      if (error is InvalidGoalSubtaskReviewStateSchemaError) return@read null else throw error    }
+      if (error is InvalidGoalSubtaskReviewStateSchemaError) return@read null else throw error
+    }
   }
 
   internal fun appendRemediationRollbackDegradationEvidence(workflowId: String, signal: RemediationDegradationSignal) {
@@ -179,6 +183,7 @@ internal fun FeatureTaskRuntimeRemediationBaseReconciler.applyRemediationReconci
     RemediationReconciliationBlocked -> {
       val recovered = recoveredRemediationBaseSha(
         stored = stored,
+        state = state,
         continuation = continuation,
         gitOperations = request.gitOperations,
         repoRoot = request.repoRoot,
@@ -348,7 +353,8 @@ internal fun FeatureTaskRuntimeRemediationBaseReconciler.appendRemediationBaseRe
   signal: RemediationDegradationSignal,
 ) {
   database.transaction { unitOfWork ->
-    val record = WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, workflowId) ?: return@transaction    val artifacts = decodeArtifacts(record.artifactsJson)
+    val record = WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, workflowId) ?: return@transaction
+    val artifacts = decodeArtifacts(record.artifactsJson)
     val evidenceEntry = remediationBaseRecoveryEvidenceEntry(recovery, signal)
     val priorEvidence = (artifacts[GOAL_REVIEW_BASE_RECOVERIES_ARTIFACT_KEY] as? List<*>).orEmpty()
     patcher.save(

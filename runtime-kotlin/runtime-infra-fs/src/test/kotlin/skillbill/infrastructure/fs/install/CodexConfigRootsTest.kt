@@ -4,7 +4,8 @@ import skillbill.infrastructure.fs.install.plan.detectAgents
 import skillbill.infrastructure.fs.install.runtime.InstallOperations
 import skillbill.infrastructure.fs.install.support.codexConfigRoots
 import skillbill.infrastructure.fs.install.support.codexSkillTargets
-import skillbill.model.toPathimport java.nio.file.Files
+import skillbill.model.toPath
+import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -118,7 +119,7 @@ class CodexConfigRootsTest {
         openRouter.resolve("skills"),
         home.resolve(".agents/skills"),
       ).map { it.toAbsolutePath().normalize() },
-      codexTargets.map { it.path.toAbsolutePath().normalize() },
+      codexTargets.map { it.path.toPath().toAbsolutePath().normalize() },
     )
   }
 

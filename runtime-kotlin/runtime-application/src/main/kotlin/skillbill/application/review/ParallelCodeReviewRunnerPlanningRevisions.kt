@@ -8,10 +8,7 @@ import java.nio.file.Path
 internal fun ParallelCodeReviewRunnerPlanning.resolveReviewRevisions(
   request: ParallelCodeReviewRequest,
 ): Pair<String, String> {
-  val (
-    base,
-    head,
-  ) = if (spansCommitRange(request) || hasSuppliedDiff(request)) canonicalRange(request) else declaredRange(request)
+  val (base, head) = if (spansCommitRange(request)) canonicalRange(request) else declaredRange(request)
   if (base.isBlank() || head.isBlank()) {
     throw DiffResolutionException("Review base and head revisions must resolve to non-blank immutable identities.")
   }
@@ -35,6 +32,7 @@ internal fun ParallelCodeReviewRunnerPlanning.canonicalRange(
     ParallelReviewScope.UNSTAGED,
     ParallelReviewScope.UNCOMMITTED,
     ParallelReviewScope.BRANCH,
+    ParallelReviewScope.WORKTREE_FROM_BASE,
     -> detectBranchBase(request.repoRoot)
   }
   return base to head
@@ -51,7 +49,7 @@ internal fun ParallelCodeReviewRunnerPlanning.declaredRange(request: ParallelCod
 }
 
 internal fun ParallelCodeReviewRunnerPlanning.canonicalRevision(revision: String, repoRoot: Path): String =
-  diffResolver.runProcess(listOf("git", "rev-parse", "--verify", "--end-of-options", "$revision^{commit}"), repoRoot)
+  diffResolver.runProcess(listOf("git", "rev-parse", "--verify", "$revision^{commit}"), repoRoot)
     ?.trim()
     ?.takeIf { it.isNotBlank() }
     ?: throw DiffResolutionException("Review revision '$revision' does not resolve to a commit here.")

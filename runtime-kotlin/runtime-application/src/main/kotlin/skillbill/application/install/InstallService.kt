@@ -15,6 +15,7 @@ import skillbill.install.model.PlatformPackSelectionMode
 import skillbill.install.model.ReconciliationPlan
 import skillbill.install.model.SharedInstallSelection
 import skillbill.install.policy.InstallPlanPolicy
+import skillbill.model.toPath
 import skillbill.ports.install.apply.InstallApplyExecutionPort
 import skillbill.ports.install.apply.model.InstallApplyExecutionRequest
 import skillbill.ports.install.baseline.model.ReadBaselineManifestRequest
@@ -178,7 +179,7 @@ class InstallService(
     }
     installSelectionPersistencePort.writeLatestSuccessfulSelection(
       WriteLatestSuccessfulInstallSelectionRequest(
-        installHome = plan.request.home,
+        installHome = plan.request.home.toPath(),
         selection = SharedInstallSelection(
           selectedAgents = result.resolvedInstalledAgents.agents.ifEmpty {
             plan.agents.mapTo(mutableSetOf()) { target -> target.agent }

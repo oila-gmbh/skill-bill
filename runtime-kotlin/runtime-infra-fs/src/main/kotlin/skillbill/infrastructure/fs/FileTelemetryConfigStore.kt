@@ -1,9 +1,10 @@
 package skillbill.infrastructure.fs
 
 import me.tatarka.inject.annotations.Inject
-import skillbill.contracts.JsonSupport
-import skillbill.install.support.resolveTelemetryConfigPath
-import skillbill.install.support.resolveTelemetryStateDirimport skillbill.model.EnvironmentContext
+import skillbill.contracts.JsonCodec
+import skillbill.infrastructure.fs.install.support.resolveTelemetryConfigPath
+import skillbill.infrastructure.fs.install.support.resolveTelemetryStateDir
+import skillbill.model.EnvironmentContext
 import skillbill.ports.telemetry.TelemetryConfigStore
 import skillbill.telemetry.INSTALL_ID_ENVIRONMENT_KEY
 import skillbill.telemetry.defaultLocalTelemetryConfig
@@ -34,9 +35,9 @@ internal fun readTelemetryConfigFile(path: Path): TelemetryConfigDocument? {
   if (!Files.exists(path)) {
     return null
   }
-  val rawPayload = JsonSupport.parseObjectOrNull(Files.readString(path))
+  val rawPayload = JsonCodec.parseObjectOrNull(Files.readString(path))
     ?: throw IllegalArgumentException("Telemetry config at '$path' is not valid JSON.")
-  val payload = JsonSupport.anyToStringAnyMap(JsonSupport.jsonElementToValue(rawPayload))
+  val payload = JsonCodec.anyToStringAnyMap(JsonCodec.jsonElementToValue(rawPayload))
     ?: throw IllegalArgumentException("Telemetry config at '$path' must contain a JSON object.")
   return TelemetryConfigDocument(payload)
 }
@@ -72,7 +73,7 @@ internal fun ensureTelemetryConfigFile(
 
 internal fun writeTelemetryConfigFile(path: Path, document: TelemetryConfigDocument) {
   path.parent?.let(Files::createDirectories)
-  Files.writeString(path, JsonSupport.mapToJsonString(document.payload) + "\n")
+  Files.writeString(path, JsonCodec.mapToJsonString(document.payload) + "\n")
 }
 
 private fun normalizedInstallId(payload: MutableMap<String, Any?>, defaults: Map<String, Any?>): String =

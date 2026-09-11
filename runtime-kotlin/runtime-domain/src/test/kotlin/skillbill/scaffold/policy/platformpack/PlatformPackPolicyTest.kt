@@ -1,7 +1,7 @@
 package skillbill.scaffold.policy.platformpack
 
+import skillbill.model.FileLocation
 import skillbill.scaffold.policy.scaffold.sharedContractNote
-import java.nio.file.Path
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
@@ -17,7 +17,7 @@ import kotlin.test.assertTrue
 class PlatformPackPolicyTest {
   @Test
   fun `buildPlatformPackInstallPaths includes baseline, quality-check, and selected specialists`() {
-    val packRoot = Path.of("/repo/platform-packs/java")
+    val packRoot = FileLocation("/repo/platform-packs/java")
     val specialistPaths = mapOf(
       "ui" to packRoot.resolve("code-review").resolve("bill-java-code-review-ui"),
     )

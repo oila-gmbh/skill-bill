@@ -179,7 +179,7 @@ class GoalWatchCommand(
       )
       val refresh = projection.toGoalStatusCliMap(issueKey).withWatchRefresh(refreshCount)
       latestRefresh = refresh
-      consecutiveIdleRefreshes = if (refresh["execution_liveness"] == ExecutionLiveness.IDLE.wireValue) {
+      consecutiveIdleRefreshes = if (projection?.executionLiveness == ExecutionLiveness.IDLE) {
         consecutiveIdleRefreshes + 1
       } else {
         0

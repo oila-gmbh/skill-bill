@@ -28,8 +28,8 @@ enum class FeatureTaskRuntimeValidationGateRepairWindowPhase(val wireValue: Stri
 
 data class FeatureTaskRuntimeValidationGateRunRecord(
   val durationMs: Long,
-  val outcome: String,
-  val cacheMode: String,
+  val outcome: ValidationGateRunOutcome,
+  val cacheMode: ValidationGateCacheMode,
   val executedWorkUnits: Int,
 ) {
   constructor(
@@ -47,11 +47,12 @@ data class FeatureTaskRuntimeValidationGateRunRecord(
     },
     executedWorkUnits = executedWorkUnits,
   )
+
   @OpenBoundaryMap("Runtime-owned validation gate run measurement at the durable workflow-artifact seam")
   fun toArtifactMap(): Map<String, Any?> = linkedMapOf(
     "duration_ms" to durationMs,
-    "outcome" to outcome,
-    "cache_mode" to cacheMode,
+    "outcome" to outcome.wireValue,
+    "cache_mode" to cacheMode.wireValue,
     "executed_work_units" to executedWorkUnits,
   )
 }
@@ -117,8 +118,12 @@ data class FeatureTaskRuntimeValidationGateProgress(
           )
         FeatureTaskRuntimeValidationGateRunRecord(
           durationMs = map.gateProgressLong("duration_ms"),
-          outcome = map.gateProgressString("outcome"),
-          cacheMode = map.gateProgressString("cache_mode"),
+          outcome = requireNotNull(ValidationGateRunOutcome.fromWire(map.gateProgressString("outcome"))) {
+            "Unknown validation gate outcome."
+          },
+          cacheMode = requireNotNull(ValidationGateCacheMode.fromWire(map.gateProgressString("cache_mode"))) {
+            "Unknown validation gate cache mode."
+          },
           executedWorkUnits = map.gateProgressInt("executed_work_units"),
         )
       }

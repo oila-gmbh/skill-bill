@@ -43,7 +43,7 @@ class GoalPlanningLogService(
 
     val attempts = assembleAttempts(events, rejections)
       .filter { attempt -> request.subtaskId == null || attempt.subtaskId == request.subtaskId }
-      .filter { attempt -> !request.failuresOnly || attempt.outcome == "failed" }
+      .filter { attempt -> !request.failuresOnly || attempt.outcome == GoalPlanningAttemptOutcome.FAILED }
 
     return GoalPlanningLog(
       issueKey = request.issueKey,
@@ -153,13 +153,13 @@ class GoalPlanningLogService(
   private class AttemptOccurrence(val operation: String, val startedAt: Instant?) {
     var finishedAt: Instant? = null
       private set
-    var outcome: String = OUTCOME_IN_FLIGHT
+    var outcome: GoalPlanningAttemptOutcome = GoalPlanningAttemptOutcome.IN_FLIGHT
       private set
 
     fun settle(finishedAt: Instant?, outcome: String?) {
       this.finishedAt = finishedAt
       // A completion that names no outcome is no more settled than an absent one.
-      this.outcome = outcome ?: OUTCOME_IN_FLIGHT
+      this.outcome = outcome?.let(GoalPlanningAttemptOutcome::fromWire) ?: GoalPlanningAttemptOutcome.IN_FLIGHT
     }
   }
 

@@ -5,6 +5,8 @@ import skillbill.goalrunner.model.GoalPlanningStatusReasons
 import skillbill.goalrunner.model.GoalPlanningStatusSnapshot
 import skillbill.goalrunner.model.GoalPlanningStatusState
 import skillbill.workflow.decomposition.model.DecompositionSubtask
+import skillbill.workflow.model.DecompositionStatus
+import skillbill.workflow.model.decompositionStatus
 
 /** Copy-pasteable operator remedy for incompatible shared-preplan provenance. */
 fun goalPlanningIncludeSharedPreplanRemedy(issueKey: String, subtaskId: Int): String =
@@ -19,6 +21,7 @@ fun goalPlanningIncludeSharedPreplanRemedy(issueKey: String, subtaskId: Int): St
 fun goalPlanningRemedySubtaskId(subtasks: List<DecompositionSubtask>): Int? = subtasks.firstOrNull {
   it.status.decompositionStatus() !in setOf(DecompositionStatus.COMPLETE, DecompositionStatus.SKIPPED)
 }?.id
+
 private fun recoverySuffix(issueKey: String, subtaskId: Int?, kind: GoalPlanningRecoveryKind): String = when (kind) {
   GoalPlanningRecoveryKind.HARD_RESET ->
     "Recover with: ${goalPlanningHardResetRemedy(issueKey)}"

@@ -2,7 +2,7 @@ package skillbill.infrastructure.fs
 
 import me.tatarka.inject.annotations.Inject
 import skillbill.error.MissingContentFileError
-import skillbill.nativeagent.platformpack.readRequiredRubricCompanions
+import skillbill.model.toPath
 import skillbill.ports.review.ReviewRubricResolver
 import skillbill.ports.review.model.ResolvedReviewRubric
 import skillbill.ports.review.model.ReviewOwnedFileEvidence
@@ -18,20 +18,19 @@ class FileSystemReviewRubricResolver : ReviewRubricResolver {
     if (manifest == null) return ResolvedReviewRubric(GENERIC_RUBRIC_ID, GENERIC_RUBRIC)
     val baseline = requireNotNull(manifest.declaredFiles.baseline) {
       "Platform pack '${manifest.slug}' does not declare a code-review baseline."
-    }.toRealPath()
-    val packRoot = manifest.packRoot.toRealPath()
+    }.toPath().toRealPath()
+    val packRoot = manifest.packRoot.toPath().toRealPath()
     require(baseline.startsWith(packRoot) && Files.isRegularFile(baseline) && !Files.isSymbolicLink(baseline)) {
       "Platform pack '${manifest.slug}' declares an unreadable code-review baseline."
     }
     val specialists = manifest.declaredCodeReviewAreas.map { area ->
       val file = requireNotNull(manifest.declaredFiles.areas[area]) {
         "Platform pack '${manifest.slug}' does not declare its '$area' specialist file."
-      }.toRealPath()
+      }.toPath().toRealPath()
       require(file.startsWith(packRoot) && Files.isRegularFile(file) && !Files.isSymbolicLink(file)) {
         "Platform pack '${manifest.slug}' declares an unreadable '$area' code-review rubric."
       }
-      val companions = readRequiredRubricCompanions(packRoot, file, manifest.requiredRubricCompanions[area].orEmpty())
-      val body = (listOf(Files.readString(file)) + companions.values).joinToString("\n\n")
+      val body = Files.readString(file)
       require(body.toByteArray().size <= MAX_RUBRIC_BYTES) {
         "Platform pack '${manifest.slug}' declares a '$area' rubric larger than $MAX_RUBRIC_BYTES bytes."
       }
@@ -95,7 +94,7 @@ class FileSystemReviewRubricResolver : ReviewRubricResolver {
       "pack '${manifest.slug}' add-on '${selection.slug}' slot '$slot': '$pointerName' is not declared in " +
         "platform.yaml pointers for '$skillRelativeDir'",
     )
-    val packRoot = manifest.packRoot.toAbsolutePath().normalize()
+    val packRoot = manifest.packRoot.toPath().toAbsolutePath().normalize()
     val repoRoot = packRoot.parent?.takeIf { parent -> parent.fileName.toString() == "platform-packs" }?.parent
       ?: packRoot
     val candidate = repoRoot.resolve(pointer.target).normalize()

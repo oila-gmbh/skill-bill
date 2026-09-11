@@ -5,7 +5,8 @@ import skillbill.infrastructure.fs.nativeagent.composition.NATIVE_AGENT_SOURCE_D
 import skillbill.infrastructure.fs.nativeagent.composition.parseNativeAgentBundle
 import skillbill.infrastructure.fs.nativeagent.composition.parseNativeAgentSource
 import skillbill.infrastructure.fs.nativeagent.composition.parseNativeAgentSourceFile
-import skillbill.ports.review.GovernedReviewEvidenceCodec.OPERATIONSimport skillbill.testing.repoRootFromTest
+import skillbill.ports.review.model.GovernedReviewEvidenceCodec.OPERATIONS
+import skillbill.testing.repoRootFromTest
 import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.io.path.extension

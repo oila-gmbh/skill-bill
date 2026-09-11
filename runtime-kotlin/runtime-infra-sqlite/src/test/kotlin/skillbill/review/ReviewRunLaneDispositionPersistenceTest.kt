@@ -5,7 +5,8 @@ import skillbill.infrastructure.sqlite.review.fetchReviewRunLanes
 import skillbill.infrastructure.sqlite.review.replaceReviewRunLanes
 import skillbill.review.context.model.ReviewLaneReviewDisposition
 import skillbill.review.context.model.ReviewLaneSegmentAccounting
-import skillbill.review.model.ReviewLaneResolutionStateimport skillbill.review.model.ReviewRunLane
+import skillbill.review.model.ReviewLaneResolutionState
+import skillbill.review.model.ReviewRunLane
 import skillbill.review.model.ReviewRunLaneSegmentAccountingJson
 import skillbill.tempDbConnection
 import java.nio.file.Files
@@ -31,8 +32,8 @@ class ReviewRunLaneDispositionPersistenceTest {
         required = false,
         orderIndex = 0,
         originLayerChain = listOf("kotlin"),
-        resolutionState = ReviewRunLaneResolver.RESOLVED,
-        reviewDisposition = ReviewLaneReviewDisposition.INCOMPLETE.wireValue,
+        resolutionState = ReviewLaneResolutionState.RESOLVED,
+        reviewDisposition = ReviewLaneReviewDisposition.INCOMPLETE,
         bundleCompositionDigest = "c".repeat(64),
         segmentAccountingJson = ReviewRunLaneSegmentAccountingJson.encode(segments),
         unreviewedSegmentIds = listOf("unreviewable"),
@@ -41,7 +42,7 @@ class ReviewRunLaneDispositionPersistenceTest {
       replaceReviewRunLanes(it, RUN_ID, listOf(lane))
 
       val persisted = fetchReviewRunLanes(it, RUN_ID).single()
-      assertEquals("incomplete", persisted.reviewDisposition)
+      assertEquals("incomplete", persisted.reviewDisposition.wireValue)
       assertEquals("c".repeat(64), persisted.bundleCompositionDigest)
       assertEquals(listOf("unreviewable"), persisted.unreviewedSegmentIds)
       assertEquals("lane_launch_bytes", persisted.budgetDimension)
@@ -110,7 +111,7 @@ class ReviewRunLaneDispositionPersistenceTest {
           ),
         ),
       )
-      assertEquals("incomplete", fetchReviewRunLanes(connection, RUN_ID).single().reviewDisposition)
+      assertEquals("incomplete", fetchReviewRunLanes(connection, RUN_ID).single().reviewDisposition.wireValue)
     }
   }
 
@@ -171,11 +172,11 @@ class ReviewRunLaneDispositionPersistenceTest {
     required = false,
     orderIndex = 0,
     originLayerChain = listOf("kotlin"),
-    resolutionState = ReviewRunLaneResolver.RESOLVED,
+    resolutionState = ReviewLaneResolutionState.RESOLVED,
     reviewDisposition = if (unreviewedSegmentIds.isEmpty()) {
-      ReviewRunLaneResolver.COMPLETE_DISPOSITION
+      ReviewLaneReviewDisposition.COMPLETE
     } else {
-      ReviewLaneReviewDisposition.INCOMPLETE.wireValue
+      ReviewLaneReviewDisposition.INCOMPLETE
     },
     bundleCompositionDigest = bundleCompositionDigest,
     segmentAccountingJson = segmentAccountingJson,

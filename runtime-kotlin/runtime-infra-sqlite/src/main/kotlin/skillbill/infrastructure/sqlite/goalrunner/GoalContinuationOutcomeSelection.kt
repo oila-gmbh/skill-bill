@@ -1,10 +1,8 @@
-<<<<<<<< HEAD:runtime-kotlin/runtime-ports/src/main/kotlin/skillbill/ports/goalrunner/persistence/GoalContinuationOutcomeSelection.kt
-package skillbill.ports.goalrunner.persistence
-========
 package skillbill.infrastructure.sqlite.goalrunner
->>>>>>>> 9d724a13f (SKILL-233: Engine module and package roots):runtime-kotlin/runtime-infra-sqlite/src/main/kotlin/skillbill/infrastructure/sqlite/goalrunner/GoalContinuationOutcomeSelection.kt
 import skillbill.boundary.OpenBoundaryMap
-import skillbill.contracts.JsonSupport
+import skillbill.contracts.JsonCodec
+import skillbill.goalrunner.asGoalRunnerIntOrNull
+import skillbill.goalrunner.goalContinuationTerminalStatus
 import skillbill.goalrunner.model.GoalRunnerStoredOutcome
 import skillbill.goalrunner.model.GoalRunnerTerminalStatus
 import skillbill.ports.goalrunner.persistence.model.GoalContinuationCandidate
@@ -40,7 +38,7 @@ fun staleRunningReason(
       "subtask $subtaskId because a terminal outcome was already durable."
   } else {
     "Goal status reconciliation closed stale running child '$staleWorkflowId' for issue '$issueKey' " +
-      "subtask $subtaskId in favor of authoritative ${outcome.status.name.lowercase()} workflow " +
+      "subtask $subtaskId in favor of authoritative ${outcome.status.wireValue} workflow " +
       "'${outcome.workflowId}'."
   }
 } ?: (
@@ -54,7 +52,7 @@ fun missingResultPrefixTerminalOutcomeArtifact(
   issueKey: String,
   subtaskId: Int,
   workflowId: String,
-): Map<String, Any?>? = (JsonSupport.anyToStringAnyMap(output["subtask_outcome"]) ?: output)
+): Map<String, Any?>? = (JsonCodec.anyToStringAnyMap(output["subtask_outcome"]) ?: output)
   .takeIf { candidate -> candidate.matchesGoalContinuation(issueKey, subtaskId) }
   ?.let { candidate ->
     candidate["status"]?.toString()?.let(::goalContinuationTerminalStatus)?.let { status ->
@@ -88,24 +86,7 @@ fun Map<String, Any?>.toMissingResultPrefixOutcomeArtifact(
     ?.let { put("blocked_reason", it) }
 }
 
-fun GoalRunnerTerminalStatus.toGoalContinuationWireStatus(): String = when (this) {
-  GoalRunnerTerminalStatus.COMPLETE -> "complete"
-  GoalRunnerTerminalStatus.FAILED -> "failed"
-  GoalRunnerTerminalStatus.BLOCKED -> "blocked"
-  GoalRunnerTerminalStatus.TIMEOUT -> "timeout"
-  GoalRunnerTerminalStatus.NO_TERMINAL_STORE_OUTCOME -> "no_terminal_store_outcome"
-  GoalRunnerTerminalStatus.RECONCILABLE -> "reconcilable"
-  GoalRunnerTerminalStatus.PAUSED -> "paused"
-}
-
-fun goalContinuationTerminalStatus(status: String?): GoalRunnerTerminalStatus? = when (status) {
-  "complete", "completed" -> GoalRunnerTerminalStatus.COMPLETE
-  "failed" -> GoalRunnerTerminalStatus.FAILED
-  "blocked" -> GoalRunnerTerminalStatus.BLOCKED
-  "timeout", "timed_out" -> GoalRunnerTerminalStatus.TIMEOUT
-  "paused" -> GoalRunnerTerminalStatus.PAUSED
-  else -> null
-}
+fun GoalRunnerTerminalStatus.toGoalContinuationWireStatus(): String = wireValue
 
 @OpenBoundaryMap("Bounded history sequence scan over durable workflow artifacts")
 fun maxHistorySequence(artifacts: Map<String, Any?>, historyKey: String, current: Int?): Int? {

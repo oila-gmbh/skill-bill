@@ -47,9 +47,9 @@ class FeatureTaskRuntimeBuildGateProgressStoreIsolationTest {
     val reloadedValidation = assertNotNull(recorder.loadValidationGateProgress(workflowId))
     val reloadedBuild = assertNotNull(recorder.loadBuildGateProgress(workflowId))
     assertEquals(2, reloadedValidation.gateRunCount)
-    assertEquals("failed", reloadedValidation.gateRuns.last().outcome)
+    assertEquals("failed", reloadedValidation.gateRuns.last().outcome.wireValue)
     assertEquals(1, reloadedBuild.gateRunCount)
-    assertEquals("passed", reloadedBuild.gateRuns.single().outcome)
+    assertEquals("passed", reloadedBuild.gateRuns.single().outcome.wireValue)
   }
 
   private fun gateRunRecord(outcome: String): FeatureTaskRuntimeValidationGateRunRecord =

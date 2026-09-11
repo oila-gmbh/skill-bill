@@ -2,7 +2,7 @@ package skillbill.engine.featuretask.validation
 
 import me.tatarka.inject.annotations.Inject
 import skillbill.config.model.applyValidationGateGradleWrapper
-import skillbill.contracts.JsonSupport
+import skillbill.contracts.JsonCodec
 import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_CONTRACT_VERSION
 import skillbill.engine.featuretask.FeatureTaskRuntimePhaseRecorder
 import skillbill.engine.featuretask.emitFeatureTaskRuntimeEventSafely
@@ -23,9 +23,9 @@ import skillbill.ports.config.model.ReadRepoLocalConfigRequest
 import skillbill.ports.diagnostics.RuntimeDiagnostics
 import skillbill.ports.validation.ValidationGateRunner
 import skillbill.ports.validation.model.ValidationGateFinding
-import skillbill.ports.validation.model.ValidationGateFindingParseModeimport skillbill.ports.validation.model.ValidationGateRunRequest
+import skillbill.ports.validation.model.ValidationGateFindingParseMode
+import skillbill.ports.validation.model.ValidationGateRunRequest
 import skillbill.ports.validation.model.ValidationGateRunResult
-import skillbill.ports.validation.model.unparseableGateFailureMessage
 import skillbill.scaffold.model.ValidationGateDeclaration
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFailureDisposition
@@ -37,6 +37,7 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeVerdict
 import skillbill.workflow.taskruntime.model.ValidationGateCacheMode
 import skillbill.workflow.taskruntime.model.ValidationGateRunOutcome
 import skillbill.workflow.taskruntime.unparseableGateFailureMessage
+
 private const val VALIDATE_PHASE_STATUS_COMPLETED = "completed"
 
 private data class ValidationGateCycleState(
@@ -182,8 +183,8 @@ class FeatureTaskRuntimeValidationGateCoordinator(
           ),
         )
         return terminalBlockedResult(
-          "Validation gate still reports ${currentFindings.size} finding(s) after the repair occupancy; " +
-            "remaining findings are recorded for the operator.",
+          "Validation gate still reports ${currentFindings.size} finding(s) after $MAX_REPAIR_TURNS repair " +
+            "turns; remaining findings are recorded for the operator.",
           remainingFindings = projection,
           measurements = measurements,
         )
@@ -278,8 +279,8 @@ class FeatureTaskRuntimeValidationGateCoordinator(
   ) {
     state.measurements += FeatureTaskRuntimeValidationGateRunRecord(
       durationMs = result.durationMs,
-      outcome = result.outcome.wireValue,
-      cacheMode = result.cacheMode.wireValue,
+      outcome = result.outcome,
+      cacheMode = result.cacheMode,
       executedWorkUnits = result.executedWorkUnits,
     )
     persistProgress(state = state, write = write)
@@ -312,7 +313,7 @@ class FeatureTaskRuntimeValidationGateCoordinator(
   }
 
   companion object {
-    const val MAX_REPAIR_TURNS: Int = 1
+    const val MAX_REPAIR_TURNS: Int = 3
 
     private fun operatorResumeRepairTurns(repairsUsed: Int): Int =
       if (repairsUsed >= MAX_REPAIR_TURNS) 0 else repairsUsed
@@ -341,7 +342,7 @@ class FeatureTaskRuntimeValidationGateCoordinator(
         "gate_run_count" to measurements.size,
         "gate_runs" to measurements.map { it.toArtifactMap() },
       )
-      val payload = JsonSupport.mapToJsonString(
+      val payload = JsonCodec.mapToJsonString(
         mapOf(
           "contract_version" to FEATURE_TASK_RUNTIME_CONTRACT_VERSION,
           "phase_id" to FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VALIDATE,

@@ -17,7 +17,8 @@ import skillbill.infrastructure.fs.nativeagent.testNativeAgentCompositionContext
 import skillbill.infrastructure.fs.scaffold.runtime.RepoValidationRuntime
 import skillbill.install.model.AgentTarget
 import skillbill.model.toPath
-import skillbill.ports.repository.toFileLocationimport java.io.IOException
+import skillbill.ports.repository.toFileLocation
+import java.io.IOException
 import java.nio.file.Files
 import java.nio.file.LinkOption
 import kotlin.test.Test
@@ -50,10 +51,10 @@ class InternalSkillStagingCollisionTest : InternalSkillStagingTestSupport() {
 
     val wrapper = rendered.stagingDir.resolve("${fixture.packChildName}.md")
     val companion = rendered.stagingDir.resolve("compose-guidelines.md")
-    assertTrue(Files.isRegularFile(wrapper, LinkOption.NOFOLLOW_LINKS))
-    assertEquals(Files.readString(companionSource), Files.readString(companion))
-    assertTrue(Files.readString(wrapper).contains("(compose-guidelines.md)"))
-    assertEquals(companion, wrapper.parent.resolve("compose-guidelines.md").normalize())
+    assertTrue(Files.isRegularFile(wrapper.toPath(), LinkOption.NOFOLLOW_LINKS))
+    assertEquals(Files.readString(companionSource), Files.readString(companion.toPath()))
+    assertTrue(Files.readString(wrapper.toPath()).contains("(compose-guidelines.md)"))
+    assertEquals(companion.toPath(), wrapper.toPath().parent.resolve("compose-guidelines.md").normalize())
   }
 
   @Test
@@ -86,7 +87,7 @@ class InternalSkillStagingCollisionTest : InternalSkillStagingTestSupport() {
     )
     assertNotEquals(first.contentHash, changed.contentHash)
 
-    Files.delete(changed.stagingDir.resolve("review-guidelines.md"))
+    Files.delete(changed.stagingDir.resolve("review-guidelines.md").toPath())
     val restored = stageInstalledSkill(
       StageInstalledSkillInput(
         repoRoot = fixture.repoRoot,
@@ -96,7 +97,7 @@ class InternalSkillStagingCollisionTest : InternalSkillStagingTestSupport() {
       ),
     )
     assertEquals(changed.contentHash, restored.contentHash)
-    assertEquals("second rubric\n", Files.readString(restored.stagingDir.resolve("review-guidelines.md")))
+    assertEquals("second rubric\n", Files.readString(restored.stagingDir.resolve("review-guidelines.md").toPath()))
   }
 
   @Test
@@ -110,7 +111,7 @@ class InternalSkillStagingCollisionTest : InternalSkillStagingTestSupport() {
     Files.writeString(fixture.packChildDir.resolve("compose-guidelines.md"), "rubric\n")
 
     val unselected = stageInstalledSkill(fixture.repoRoot, fixture.parentDir, fixture.home)
-    assertFalse(Files.exists(unselected.stagingDir.resolve("compose-guidelines.md")))
+    assertFalse(Files.exists(unselected.stagingDir.resolve("compose-guidelines.md").toPath()))
 
     Files.delete(fixture.packChildDir.resolve("compose-guidelines.md"))
     Files.writeString(
@@ -252,7 +253,7 @@ class InternalSkillStagingCollisionTest : InternalSkillStagingTestSupport() {
     // PD6 verify-only: native-agent source roots keep enumerating the internal pack skill.
     val sourceRoots = nativeAgentSourceRoots(skills, selectedPlatformSlugs = setOf("kotlin"))
     assertTrue(
-      packInternal.sourceDir in sourceRoots,
+      packInternal.sourceDir.toPath() in sourceRoots,
       "an internal pack skill's dir must remain a native-agent source root (PD6 parity)",
     )
   }
@@ -266,7 +267,7 @@ class InternalSkillStagingCollisionTest : InternalSkillStagingTestSupport() {
     val error = assertFailsWith<InvalidInternalSkillClassificationError> {
       installSkill(
         skillPath = fixture.packChildDir,
-        agentTargets = listOf(AgentTarget("test-agent", agentRoot)),
+        agentTargets = listOf(AgentTarget("test-agent", agentRoot.toFileLocation())),
         context = InstallContext(repoRoot = fixture.repoRoot, home = fixture.home),
       )
     }

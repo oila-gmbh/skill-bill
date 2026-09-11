@@ -6,7 +6,8 @@ import skillbill.goalrunner.model.GoalRunnerLaunchFacts
 import skillbill.goalrunner.model.GoalRunnerLivenessState.IDLE
 import skillbill.goalrunner.model.GoalRunnerLivenessState.PROGRESSING
 import skillbill.goalrunner.model.GoalRunnerLivenessState.WORKING
-import skillbill.goalrunner.model.GoalRunnerProcessState.CONFIRMED_ALIVEimport skillbill.goalrunner.model.GoalRunnerRunReport
+import skillbill.goalrunner.model.GoalRunnerProcessState.CONFIRMED_ALIVE
+import skillbill.goalrunner.model.GoalRunnerRunReport
 import skillbill.goalrunner.model.GoalRunnerStopReason
 import skillbill.goalrunner.model.GoalRunnerStoredOutcome
 import skillbill.goalrunner.model.GoalRunnerTerminalStatus
@@ -261,7 +262,7 @@ class GoalRunnerLedgerTest {
         liveness = AgentRunLivenessSnapshot(
           phase = "review",
           reason = "idle_timeout",
-          processState = "confirmed_alive",
+          processState = CONFIRMED_ALIVE,
           livenessState = WORKING,
         ),
       )
@@ -290,7 +291,7 @@ class GoalRunnerLedgerTest {
         liveness = AgentRunLivenessSnapshot(
           phase = "implement",
           reason = "idle_timeout",
-          processState = "progressing",
+          processState = PROCESS_PROGRESSING,
           livenessState = PROGRESSING,
         ),
       )
@@ -319,7 +320,7 @@ class GoalRunnerLedgerTest {
         liveness = AgentRunLivenessSnapshot(
           phase = "preplan",
           reason = "idle_timeout",
-          processState = "idle",
+          processState = PROCESS_IDLE,
           livenessState = IDLE,
         ),
       )

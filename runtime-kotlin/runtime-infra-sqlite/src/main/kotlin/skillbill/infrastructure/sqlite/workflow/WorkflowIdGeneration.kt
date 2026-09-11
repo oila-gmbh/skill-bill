@@ -1,8 +1,4 @@
-<<<<<<<< HEAD:runtime-kotlin/runtime-ports/src/main/kotlin/skillbill/ports/workflow/persistence/WorkflowIdGeneration.kt
-package skillbill.ports.workflow.persistence
-========
 package skillbill.infrastructure.sqlite.workflow
->>>>>>>> 9d724a13f (SKILL-233: Engine module and package roots):runtime-kotlin/runtime-infra-sqlite/src/main/kotlin/skillbill/infrastructure/sqlite/workflow/WorkflowIdGeneration.kt
 
 import java.time.OffsetDateTime
 import java.time.ZoneOffset

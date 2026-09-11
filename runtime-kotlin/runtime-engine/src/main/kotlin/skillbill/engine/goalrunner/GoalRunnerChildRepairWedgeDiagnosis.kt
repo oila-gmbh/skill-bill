@@ -1,13 +1,8 @@
 package skillbill.engine.goalrunner
 
 import skillbill.application.decomposition.decodeArtifacts
-import skillbill.engine.featuretask.diagnoseUnsettledCompletedUpstreamPhaseId
-import skillbill.engine.featuretask.featureSizeFromArtifacts
-import skillbill.engine.goalrunner.model.GoalRunnerChildWedgeDiagnosis
-import skillbill.engine.goalrunner.model.GoalRunnerWedgeClass
-import skillbill.engine.goalrunner.model.GoalRunnerWedgeFinding
-import skillbill.application.phaseartifacts.phaseRecordsFromimport skillbill.engine.workflow.model.WorkflowFamily
-import skillbill.contracts.JsonSupport
+import skillbill.application.workflow.model.WorkflowFamily
+import skillbill.contracts.JsonCodec
 import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_CONTRACT_VERSION
 import skillbill.engine.featuretask.diagnoseUnsettledCompletedUpstreamPhaseId
 import skillbill.engine.featuretask.featureSizeFromArtifacts
@@ -15,6 +10,7 @@ import skillbill.engine.goalrunner.model.GoalRunnerChildWedgeDiagnosis
 import skillbill.engine.goalrunner.model.GoalRunnerWedgeClass
 import skillbill.engine.goalrunner.model.GoalRunnerWedgeFinding
 import skillbill.ports.workflow.WorkflowStateRepository
+import skillbill.ports.workflow.get
 import skillbill.ports.workflow.gitops.WorkflowGitOperations
 import skillbill.ports.workflow.gitops.model.WorkflowGitOperationResult
 import skillbill.workflow.goal.model.GoalSubtaskReviewArtifactDecoder
@@ -22,6 +18,7 @@ import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_GOAL_CONTINUATI
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_GOAL_PLANNING_IMPORT_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeGoalContinuationArtifact
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeQualityGateSelection
+import skillbill.workflow.taskruntime.phaseartifacts.phaseRecordsFrom
 import java.nio.file.Path
 
 const val PASSED_VALIDATION_DEPTH: String = "validation_depth_present"
@@ -69,9 +66,9 @@ class GoalRunnerChildRepairWedgeDiagnosis(
 
   fun isUnreachable(repoRoot: Path, sha: String): Boolean {
     val head = gitOperations.headCommitSha(repoRoot)
-    if (!head.ok || head.value.isBlank()) return false
+    if (head !is WorkflowGitOperationResult.Ok || head.value.isBlank()) return false
     val ancestry = gitOperations.isCommitAncestor(repoRoot, sha, head.value.trim())
-    return ancestry.ok && ancestry.value != "true"
+    return ancestry is WorkflowGitOperationResult.Ok && ancestry.value != "true"
   }
 
   private fun healthyDiagnosis(subtaskId: Int, workflowId: String) = GoalRunnerChildWedgeDiagnosis(
@@ -198,7 +195,7 @@ class GoalRunnerChildRepairWedgeDiagnosis(
   }
 
   private fun continuationArtifact(artifacts: Map<String, Any?>): FeatureTaskRuntimeGoalContinuationArtifact? {
-    val raw = JsonSupport.anyToStringAnyMap(artifacts[FEATURE_TASK_RUNTIME_GOAL_CONTINUATION_ARTIFACT_KEY])
+    val raw = JsonCodec.anyToStringAnyMap(artifacts[FEATURE_TASK_RUNTIME_GOAL_CONTINUATION_ARTIFACT_KEY])
       ?: return null
     return FeatureTaskRuntimeGoalContinuationArtifact.fromArtifactMap(raw)
   }

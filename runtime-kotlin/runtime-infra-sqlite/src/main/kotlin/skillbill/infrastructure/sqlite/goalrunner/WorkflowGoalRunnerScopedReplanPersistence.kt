@@ -1,16 +1,17 @@
 package skillbill.infrastructure.sqlite.goalrunner
 
 import skillbill.goalrunner.planning.cascadeEligiblePlanSubtaskIds
-import skillbill.infrastructure.sqlite.decomposition.withParentStatusimport skillbill.ports.goalrunner.GoalPlanningPreparationRepository
-import skillbill.ports.goalrunner.persistence.planning.cascadeEligiblePlanSubtaskIds
+import skillbill.infrastructure.sqlite.decomposition.withParentStatus
+import skillbill.ports.goalrunner.GoalPlanningPreparationRepository
 import skillbill.ports.goalrunner.runner.model.GoalRunnerManifestState
 import skillbill.ports.goalrunner.runner.model.GoalRunnerScopedReplanOptions
 import skillbill.ports.goalrunner.runner.model.GoalRunnerScopedReplanWriteResult
 import skillbill.ports.persistence.UnitOfWork
-import skillbill.ports.workflow.decomposition.runtime.withParentStatus
 import skillbill.ports.workflow.model.GoalChildWorkflowDeletionScope
 import skillbill.workflow.decomposition.model.CurrentSubtaskIntent
 import skillbill.workflow.decomposition.model.DecompositionManifest
+import skillbill.workflow.model.DecompositionStatus
+import skillbill.workflow.model.decompositionStatus
 
 internal class WorkflowGoalRunnerScopedReplanPersistence(
   private val projectionPersistence: WorkflowGoalRunnerManifestProjectionPersistence,
@@ -119,7 +120,11 @@ internal fun deleteStaleReplanChildren(
 ): List<Int> = subtaskIds.distinct().sorted().filter { id ->
   val subtask = state.manifest.subtasks.singleOrNull { it.id == id }
   val childWorkflowId = subtask?.workflowId?.takeIf(String::isNotBlank)
-  if (subtask == null || childWorkflowId == null || subtask.status in setOf("complete", "skipped")) {
+  if (
+    subtask == null ||
+    childWorkflowId == null ||
+    subtask.status.decompositionStatus() in setOf(DecompositionStatus.COMPLETE, DecompositionStatus.SKIPPED)
+  ) {
     false
   } else {
     unitOfWork.workflowStates.deleteGoalChildWorkflow(

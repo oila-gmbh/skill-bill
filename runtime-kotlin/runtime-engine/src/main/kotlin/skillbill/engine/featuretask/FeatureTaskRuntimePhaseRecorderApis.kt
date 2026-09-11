@@ -139,4 +139,5 @@ interface FeatureTaskRuntimePhaseEvidenceApi {
   fun appendCheckpointIdentity(args: AppendCheckpointIdentityArgs): Boolean
   fun loadCheckpointIdentities(workflowId: String): List<FeatureTaskRuntimeCheckpointIdentity>?
   fun quarantineCheckpointIdentities(workflowId: String): Boolean
-  fun recordWorkflowOwnedPaths(workflowId: String, ownedPaths: List<String>): Boolean}
+  fun recordWorkflowOwnedPaths(workflowId: String, ownedPaths: List<String>): Boolean
+}

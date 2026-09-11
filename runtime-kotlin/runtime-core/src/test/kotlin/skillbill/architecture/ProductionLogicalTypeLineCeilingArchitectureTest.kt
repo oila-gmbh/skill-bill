@@ -19,16 +19,18 @@ class ProductionLogicalTypeLineCeilingArchitectureTest {
 
   @Test
   fun `logical type ceiling scanner fires on synthetic split-file fixture`() {
+    val partLineCount = PrincipleEnforcementInventory.PRODUCTION_LINE_CEILING / 2 + 10
     val partOne = """
       package skillbill.fixture.logicaltype
 
       class SplitLogicalTypeFixture
-    """.trimIndent() + "\n" + (1..260).joinToString("\n") { index -> "fun partOne$index() = $index" }
+    """.trimIndent() + "\n" + (1..partLineCount).joinToString("\n") { index -> "fun partOne$index() = $index" }
     val partTwo = """
       package skillbill.fixture.logicaltype
 
       fun SplitLogicalTypeFixture.partTwo() = Unit
-    """.trimIndent() + "\n" + (1..260).joinToString("\n") { index -> "fun partTwo$index() = $index" }
+    """.trimIndent() + "\n" + (1..partLineCount).joinToString("\n") { index -> "fun partTwo$index() = $index" }
+    val combinedLineCount = listOf(partOne, partTwo).sumOf { source -> source.lineSequence().count() }
     val counts = linkedMapOf<String, Int>()
     listOf(partOne, partTwo).forEach { source ->
       val packageName = ArchitectureScanSupport.declaredPackage(source).orEmpty()
@@ -52,7 +54,7 @@ class ProductionLogicalTypeLineCeilingArchitectureTest {
     }
     assertEquals(
       listOf(
-        "skillbill.fixture.logicaltype.SplitLogicalTypeFixture has 526 lines; exceeds the " +
+        "skillbill.fixture.logicaltype.SplitLogicalTypeFixture has $combinedLineCount lines; exceeds the " +
           "${PrincipleEnforcementInventory.PRODUCTION_LINE_CEILING}-line ceiling without a baseline entry.",
       ),
       violations,

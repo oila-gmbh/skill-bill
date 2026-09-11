@@ -32,7 +32,7 @@ class FeatureTaskRuntimeBranchSetupRunner(
     observability: FeatureTaskRuntimeRunObservability,
   ): FeatureTaskRuntimeBranchSetupOutcome {
     val current = gitOperations.currentBranch(request.repoRoot)
-    if (!current.ok) {
+    if (current !is WorkflowGitOperationResult.Ok) {
       return FeatureTaskRuntimeBranchSetupOutcome.blocked(branchSetupBlockedReason(current.error))
     }
     val persisted = recorder.loadResolvedBranch(request.workflowId)
@@ -115,7 +115,8 @@ class FeatureTaskRuntimeBranchSetupRunner(
     val exists = gitOperations.branchExists(request.repoRoot, persistedBranch)
     return when {
       exists !is WorkflowGitOperationResult.Ok ->
-        branchSetupReattachExistenceUnreadableReason(persistedBranch, currentBranch, exists.error)      exists.value.trim() != "true" -> branchSetupReattachMissingReason(persistedBranch, currentBranch)
+        branchSetupReattachExistenceUnreadableReason(persistedBranch, currentBranch, exists.error)
+      exists.value.trim() != "true" -> branchSetupReattachMissingReason(persistedBranch, currentBranch)
       else -> null
     }
   }
@@ -128,7 +129,7 @@ class FeatureTaskRuntimeBranchSetupRunner(
     currentBranch: String,
   ): String? {
     val checkout = gitOperations.checkoutBranch(request.repoRoot, persistedBranch, baseBranch = null)
-    return if (!checkout.ok) {
+    return if (checkout !is WorkflowGitOperationResult.Ok) {
       branchSetupReattachBlockedReason(persistedBranch, currentBranch, checkout.error)
     } else {
       landedBranchBlockedReason(request, persistedBranch)
@@ -164,7 +165,7 @@ class FeatureTaskRuntimeBranchSetupRunner(
     baseBranch: String,
   ): FeatureTaskRuntimeBranchSetupOutcome {
     val checkout = gitOperations.checkoutBranch(request.repoRoot, branch, baseBranch)
-    if (!checkout.ok) {
+    if (checkout !is WorkflowGitOperationResult.Ok) {
       return FeatureTaskRuntimeBranchSetupOutcome.blocked(
         branchSetupCreateBlockedReason(branch, baseBranch, checkout.error),
       )
@@ -177,7 +178,7 @@ class FeatureTaskRuntimeBranchSetupRunner(
   // and blocks loudly when HEAD did not land on [expectedBranch] or landed on a protected branch.
   private fun landedBranchBlockedReason(request: FeatureTaskRuntimeRunRequest, expectedBranch: String): String? {
     val landed = gitOperations.currentBranch(request.repoRoot)
-    if (!landed.ok) {
+    if (landed !is WorkflowGitOperationResult.Ok) {
       return branchSetupBlockedReason(landed.error)
     }
     val landedBranch = landed.value.trim()
@@ -200,14 +201,14 @@ class FeatureTaskRuntimeBranchSetupRunner(
     created: Boolean,
   ): FeatureTaskRuntimeBranchSetupOutcome {
     val baseline = gitOperations.captureGoalSubtaskReviewBaseline(request.repoRoot, branch)
-    if (!baseline.ok) {
+    if (baseline.status != WorkflowGitOperationStatus.OK || baseline.baseline == null) {
       return FeatureTaskRuntimeBranchSetupOutcome.blocked(
         "Feature-task-runtime could not capture its immutable review base before implementation: ${baseline.error}",
       )
     }
     val immutableBase = requireNotNull(baseline.baseline)
     val baselineOwnedPaths = gitOperations.repositoryOwnedPaths(request.repoRoot)
-    if (!baselineOwnedPaths.ok) {
+    if (baselineOwnedPaths !is WorkflowGitOperationResult.Ok) {
       return FeatureTaskRuntimeBranchSetupOutcome.blocked(
         "Feature-task-runtime could not capture its workflow ownership baseline: ${baselineOwnedPaths.error}",
       )
@@ -219,19 +220,13 @@ class FeatureTaskRuntimeBranchSetupRunner(
         baseBranch = baseBranch,
         created = created,
         reviewBaseSha = immutableBase.reviewBaseSha,
-        baselineUntrackedPaths = emptyList(),
+        baselineUntrackedPaths = immutableBase.baselineUntrackedPaths,
         baselineOwnedPaths = baselineOwnedPaths.value.orEmpty()
           .split('\u0000')
           .map(String::trim)
           .filter(String::isNotBlank)
           .distinct()
           .sorted(),
-        boundaryHistoryRoots = configuredBoundaryHistoryRoots(
-          baselineOwnedPaths.value.orEmpty()
-            .split('\u0000')
-            .map(String::trim)
-            .filter(String::isNotBlank),
-        ),
       ),
     )
     if (!recorded) {

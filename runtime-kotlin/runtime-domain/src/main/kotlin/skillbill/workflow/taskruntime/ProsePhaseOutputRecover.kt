@@ -1,6 +1,6 @@
 package skillbill.workflow.taskruntime
 
-import skillbill.contracts.JsonSupport
+import skillbill.contracts.JsonCodec
 
 internal object ProsePhaseOutputRecover {
   private val LEGACY_VALUE_KEYS: List<String> = listOf(
@@ -14,12 +14,12 @@ internal object ProsePhaseOutputRecover {
   private const val SUMMARY_ELLIPSIS_PREFIX: Int = 237
 
   fun directValue(parsed: Map<String, Any?>): String? {
-    val produced = JsonSupport.anyToStringAnyMap(parsed["produced_outputs"]) ?: return null
+    val produced = JsonCodec.anyToStringAnyMap(parsed["produced_outputs"]) ?: return null
     return produced["value"]?.toString()?.takeIf { it.any { ch -> !ch.isWhitespace() } }
   }
 
   fun recoverLegacyValue(parsed: Map<String, Any?>): String? {
-    val produced = JsonSupport.anyToStringAnyMap(parsed["produced_outputs"])
+    val produced = JsonCodec.anyToStringAnyMap(parsed["produced_outputs"])
     if (produced != null) {
       for (key in LEGACY_VALUE_KEYS) {
         val stuffed = stuffSibling(produced[key])
@@ -33,7 +33,7 @@ internal object ProsePhaseOutputRecover {
   private fun listValue(producedOutputs: Any?): String? {
     val entries = (producedOutputs as? List<*>)?.takeIf { it.isNotEmpty() } ?: return null
     val singleValue = entries.singleOrNull()
-      ?.let(JsonSupport::anyToStringAnyMap)
+      ?.let(JsonCodec::anyToStringAnyMap)
       ?.get("value")
       ?.toString()
       ?.takeIf { it.any { ch -> !ch.isWhitespace() } }
@@ -41,7 +41,7 @@ internal object ProsePhaseOutputRecover {
   }
 
   fun recoverPrompt(parsed: Map<String, Any?>?): String? {
-    val produced = JsonSupport.anyToStringAnyMap(parsed?.get("produced_outputs"))
+    val produced = JsonCodec.anyToStringAnyMap(parsed?.get("produced_outputs"))
     return produced?.get("prompt")?.toString()?.takeIf { it.any { ch -> !ch.isWhitespace() } }
       ?: parsed?.get("prompt")?.toString()?.takeIf { it.any { ch -> !ch.isWhitespace() } }
   }
@@ -59,7 +59,7 @@ internal object ProsePhaseOutputRecover {
   fun recoverAuditVerdict(parsed: Map<String, Any?>?, rawText: String): String? {
     val fromField = parsed?.get("verdict")?.toString()?.trim()?.lowercase()
     if (fromField in AUDIT_VERDICTS) return fromField
-    val produced = JsonSupport.anyToStringAnyMap(parsed?.get("produced_outputs"))
+    val produced = JsonCodec.anyToStringAnyMap(parsed?.get("produced_outputs"))
     val fromProduced = produced?.get("verdict")?.toString()?.trim()?.lowercase()
     if (fromProduced in AUDIT_VERDICTS) return fromProduced
     val lower = rawText.lowercase()
@@ -79,7 +79,7 @@ internal object ProsePhaseOutputRecover {
 private fun stuffSibling(sibling: Any?): String? = when (sibling) {
   null -> null
   is String -> sibling.takeIf { it.any { ch -> !ch.isWhitespace() } }
-  is Map<*, *> -> JsonSupport.anyToStringAnyMap(sibling)?.let(JsonSupport::mapToJsonString)
-  is List<*> -> JsonSupport.mapToJsonString(linkedMapOf("entries" to sibling))
+  is Map<*, *> -> JsonCodec.anyToStringAnyMap(sibling)?.let(JsonCodec::mapToJsonString)
+  is List<*> -> JsonCodec.mapToJsonString(linkedMapOf("entries" to sibling))
   else -> sibling.toString().takeIf { it.any { ch -> !ch.isWhitespace() } }
 }

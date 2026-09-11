@@ -1,12 +1,12 @@
 package skillbill.mcp.workflow
 
+import skillbill.application.workflow.WorkflowWireProjections
 import skillbill.application.workflow.model.WorkflowGetResult
 import skillbill.application.workflow.model.WorkflowLatestResult
 import skillbill.application.workflow.model.WorkflowListResult
 import skillbill.application.workflow.model.WorkflowOpenResult
 import skillbill.application.workflow.model.WorkflowResumeResult
 import skillbill.application.workflow.model.WorkflowUpdateResult
-import skillbill.workflow.engine.WorkflowEngine
 import skillbill.workflow.goal.GoalObservabilityEventValidator
 
 /**
@@ -27,7 +27,7 @@ internal fun WorkflowOpenResult.toMcpMap(
   goalObservabilityEventValidator: GoalObservabilityEventValidator,
 ): Map<String, Any?> = when (this) {
   is WorkflowOpenResult.Ok -> workflowSnapshotMcpMap(snapshot, goalObservabilityEventValidator).apply {
-    launchProjection?.let { put("launch_projection", WorkflowEngine.inputProjectionMap(it)) }
+    launchProjection?.let { put("launch_projection", WorkflowWireProjections.inputProjectionMap(it)) }
     put("status", "ok")
     put("db_path", dbPath)
   }
@@ -39,8 +39,8 @@ internal fun WorkflowOpenResult.toMcpMap(
 }
 
 internal fun WorkflowUpdateResult.toMcpMap(): Map<String, Any?> = when (this) {
-  is WorkflowUpdateResult.Ok -> LinkedHashMap(WorkflowEngine.updateAcknowledgementMap(acknowledgement)).apply {
-    launchProjection?.let { put("launch_projection", WorkflowEngine.inputProjectionMap(it)) }
+  is WorkflowUpdateResult.Ok -> LinkedHashMap(WorkflowWireProjections.updateAcknowledgementMap(acknowledgement)).apply {
+    launchProjection?.let { put("launch_projection", WorkflowWireProjections.inputProjectionMap(it)) }
     val workflowCommand = if (acknowledgement.workflowName == "bill-feature-verify") "verify-workflow" else "workflow"
     val quotedDbPath = "'${dbPath.replace("'", "'\"'\"'")}'"
     val quotedWorkflowId = "'${acknowledgement.workflowId.replace("'", "'\"'\"'")}'"
@@ -76,11 +76,11 @@ internal fun WorkflowListResult.toMcpMap(): Map<String, Any?> = linkedMapOf(
   "status" to "ok",
   "db_path" to dbPath,
   "workflow_count" to workflowCount,
-  "workflows" to workflows.map(WorkflowEngine::summaryMap),
+  "workflows" to workflows.map(WorkflowWireProjections::summaryMap),
 )
 
 internal fun WorkflowLatestResult.toMcpMap(): Map<String, Any?> = when (this) {
-  is WorkflowLatestResult.Ok -> LinkedHashMap(WorkflowEngine.summaryMap(summary)).apply {
+  is WorkflowLatestResult.Ok -> LinkedHashMap(WorkflowWireProjections.summaryMap(summary)).apply {
     put("status", "ok")
     put("db_path", dbPath)
   }
@@ -92,7 +92,7 @@ internal fun WorkflowLatestResult.toMcpMap(): Map<String, Any?> = when (this) {
 }
 
 internal fun WorkflowResumeResult.toMcpMap(): Map<String, Any?> = when (this) {
-  is WorkflowResumeResult.Ok -> LinkedHashMap(WorkflowEngine.resumeMap(resume)).apply {
+  is WorkflowResumeResult.Ok -> LinkedHashMap(WorkflowWireProjections.resumeMap(resume)).apply {
     put("status", "ok")
     put("db_path", dbPath)
   }

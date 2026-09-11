@@ -12,6 +12,7 @@ dependencies {
   api(project(":runtime-domain"))
   api(project(":runtime-ports"))
   implementation(libs.kotlin.inject.runtime)
+  implementation(libs.kotlinx.serialization.json)
   // The harness must enforce budgets through the real FileSystemReviewEvidenceBroker; main source
   // still depends on the port only.
   testFixturesImplementation(project(":runtime-infra-fs"))
@@ -23,7 +24,8 @@ dependencies {
   testImplementation(testFixtures(project(":runtime-application")))
   testImplementation(testFixtures(project(":runtime-engine")))
   testImplementation(testFixtures(project(":runtime-ports")))
-  testImplementation(testFixtures(project(":runtime-domain")))  testImplementation(project(":runtime-infra-fs"))
+  testImplementation(testFixtures(project(":runtime-domain")))
+  testImplementation(project(":runtime-infra-fs"))
   testImplementation(project(":runtime-infra-sqlite"))
   testImplementation(project(":runtime-engine"))
   testImplementation(libs.junit.jupiter)

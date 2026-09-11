@@ -1,12 +1,14 @@
 package skillbill.engine.featuretask
 
 import skillbill.application.decomposition.decodeArtifacts
-import skillbill.engine.workflow.model.WorkflowFamily
+import skillbill.application.workflow.model.WorkflowFamily
 import skillbill.engine.featuretask.model.PersistHealedRemediationBaseRequest
 import skillbill.engine.featuretask.model.ResolvedReviewFixCheckpoint
-import skillbill.ports.workflow.getimport skillbill.ports.workflow.gitops.WorkflowGitOperations
+import skillbill.ports.workflow.get
+import skillbill.ports.workflow.gitops.WorkflowGitOperations
 import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewBaselineRecoveryRequest
 import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewInputFailureReason
+import skillbill.ports.workflow.gitops.model.WorkflowGitOperationStatus
 import skillbill.ports.workflow.gitops.recoverGoalSubtaskReviewBaseline
 import skillbill.workflow.goal.model.GOAL_REVIEW_BASE_RECOVERIES_ARTIFACT_KEY
 import skillbill.workflow.goal.model.GOAL_SUBTASK_REVIEW_STATE_ARTIFACT_KEY
@@ -28,10 +30,9 @@ internal fun FeatureTaskRuntimeRemediationBaseReconciler.persistHealedRemediatio
   request: PersistHealedRemediationBaseRequest,
 ): GoalSubtaskReviewState? {
   val headSha = request.gitOperations.headCommitSha(request.repoRoot).value.orEmpty().trim()
-  return database.transaction { unitOfWork ->    val record = WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, request.workflowId)
-      ?: throw remediationGitFailure(
-        "workflow row '${request.workflowId}' could not be read while persisting remediation state",
-      )
+  return database.transaction { unitOfWork ->
+    val record = WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, request.workflowId)
+      ?: return@transaction null
     val artifacts = decodeArtifacts(record.artifactsJson)
     val latest = reviewStateFromArtifacts(artifacts) ?: return@transaction null
     if (latest.remediationBaseSha == request.target) return@transaction latest
@@ -60,17 +61,20 @@ internal fun FeatureTaskRuntimeRemediationBaseReconciler.persistHealedRemediatio
 
 internal fun recoveredRemediationBaseSha(
   stored: String?,
+  state: GoalSubtaskReviewState,
   continuation: FeatureTaskRuntimeGoalContinuationArtifact,
   gitOperations: WorkflowGitOperations,
   repoRoot: Path,
 ): String? {
   if (stored == null) return null
-  val request = GoalSubtaskReviewBaselineRecoveryRequest(
-    unreachableSha = stored,
-    failureReason = GoalSubtaskReviewInputFailureReason.BASE_NOT_ANCESTOR,
-  )
+  val request = runCatching {
+    GoalSubtaskReviewBaselineRecoveryRequest(
+      unreachableSha = stored,
+      failureReason = GoalSubtaskReviewInputFailureReason.BASE_NOT_ANCESTOR,
+      baselineUntrackedPaths = state.baselineUntrackedPaths,
+    )
+  }.getOrNull() ?: return null
   val recovered = gitOperations.recoverGoalSubtaskReviewBaseline(repoRoot, request, continuation.goalBranch)
-  if (!recovered.ok) throw remediationGitFailure("baseline recovery failed (${recovered.error})")
+  if (recovered.status != WorkflowGitOperationStatus.OK) return null
   return recovered.baseline?.reviewBaseSha
-    ?: throw remediationGitFailure("baseline recovery returned no reachable review base")
 }

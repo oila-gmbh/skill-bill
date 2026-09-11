@@ -6,26 +6,22 @@ import skillbill.infrastructure.sqlite.workflow.decompositionRuntime
 import skillbill.infrastructure.sqlite.workflow.findDecomposedParentOrCorruptFallback
 import skillbill.infrastructure.sqlite.workflow.findDecomposedParentWorkflow
 import skillbill.infrastructure.sqlite.workflow.generateWorkflowId
-import skillbill.infrastructure.sqlite.workflow.requireRuntimeModeForEngineWriteimport skillbill.ports.db.DatabaseSessionFactory
-import skillbill.ports.goalrunner.persistence.GoalParentProjectionWriter
-import skillbill.ports.goalrunner.persistence.migrateLegacyGoalRunnerControls
+import skillbill.infrastructure.sqlite.workflow.requireRuntimeModeForEngineWrite
+import skillbill.ports.db.DatabaseSessionFactory
 import skillbill.ports.goalrunner.runner.model.GoalRunnerManifestState
 import skillbill.ports.persistence.UnitOfWork
 import skillbill.ports.workflow.decomposition.DecompositionManifestStore
-import skillbill.ports.workflow.decomposition.runtime.resolveDecompositionManifest
-import skillbill.ports.workflow.decomposition.runtime.withParentStatus
-import skillbill.ports.workflow.persistence.decompositionRuntime
-import skillbill.ports.workflow.persistence.findDecomposedParentOrCorruptFallback
-import skillbill.ports.workflow.persistence.findDecomposedParentWorkflow
-import skillbill.ports.workflow.persistence.generateWorkflowId
-import skillbill.ports.workflow.persistence.model.WorkflowFamily
-import skillbill.ports.workflow.persistence.requireRuntimeModeForEngineWrite
-import skillbill.ports.workflow.persistence.toRecord
-import skillbill.ports.workflow.persistence.toSnapshot
+import skillbill.ports.workflow.get
+import skillbill.ports.workflow.model.WorkflowFamily
+import skillbill.ports.workflow.model.toSnapshot
+import skillbill.ports.workflow.saveRecord
+import skillbill.ports.workflow.toRecord
 import skillbill.workflow.decomposition.DecompositionManifestValidator
 import skillbill.workflow.decomposition.model.DecompositionManifest
 import skillbill.workflow.engine.WorkflowEngine
 import skillbill.workflow.engine.model.WorkflowUpdateInput
+import skillbill.workflow.model.DecompositionStatus
+import skillbill.workflow.model.decompositionStatus
 import java.nio.file.Path
 
 internal class WorkflowGoalRunnerManifestLoader(
@@ -168,11 +164,13 @@ internal fun mergeConcurrentGoalProgress(
       current ?: candidate
     } else {
       candidate
-    }  }
+    }
+  }
   val merged = incoming.copy(subtasks = mergedSubtasks)
   return if (
     persisted.currentSubtaskIntent.subtaskId > 0 &&
-    merged.subtasks.firstOrNull { it.id == persisted.currentSubtaskIntent.subtaskId }?.status == "complete" &&
+    merged.subtasks.firstOrNull { it.id == persisted.currentSubtaskIntent.subtaskId }
+      ?.status.decompositionStatus() == DecompositionStatus.COMPLETE &&
     merged.currentSubtaskIntent.subtaskId == persisted.currentSubtaskIntent.subtaskId
   ) {
     merged.copy(currentSubtaskIntent = persisted.currentSubtaskIntent).withParentStatus()

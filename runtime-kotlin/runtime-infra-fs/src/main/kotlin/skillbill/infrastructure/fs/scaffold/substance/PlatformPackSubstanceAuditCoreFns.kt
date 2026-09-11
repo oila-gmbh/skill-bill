@@ -1,7 +1,8 @@
 package skillbill.infrastructure.fs.scaffold.substance
 
 import skillbill.infrastructure.fs.scaffold.platformpack.loadPlatformManifest
-import skillbill.model.toPathimport skillbill.scaffold.model.PlatformManifest
+import skillbill.model.toPath
+import skillbill.scaffold.model.PlatformManifest
 import java.nio.file.Files
 import java.nio.file.Path
 import java.text.Normalizer
@@ -79,9 +80,9 @@ internal fun retainManifestsWithReadableDeclaredContent(
 }
 
 internal fun declaredContentPaths(pack: PlatformManifest): List<Path> = buildList {
-  pack.declaredFiles.baseline?.let(::add)
-  addAll(pack.declaredFiles.areas.values)
-  pack.declaredQualityCheckFile?.let(::add)
+  pack.declaredFiles.baseline?.let { baseline -> add(baseline.toPath()) }
+  addAll(pack.declaredFiles.areas.values.map { area -> area.toPath() })
+  pack.declaredQualityCheckFile?.let { qualityCheck -> add(qualityCheck.toPath()) }
 }.distinct().sortedBy(Path::toString)
 
 internal fun authoredFiles(pack: PlatformManifest): List<AuthoredFile> {
@@ -91,17 +92,17 @@ internal fun authoredFiles(pack: PlatformManifest): List<AuthoredFile> {
     pack.declaredQualityCheckFile?.let { add(Triple(AuthoredFileRole.QUALITY_CHECK, null, it)) }
   }
   return declared.flatMap { (role, area, path) ->
-    val names = listOf(pack.slug, pack.displayName.orEmpty(), path.parent.name)
+    val names = listOf(pack.slug, pack.displayName.orEmpty(), path.toPath().parent.name)
     val primary = AuthoredFile(
       pack.slug,
       role,
       area,
-      path,
-      authoredShingles(normalizeAuthoredText(Files.readString(path), names)),
+      path.toPath(),
+      authoredShingles(normalizeAuthoredText(Files.readString(path.toPath()), names)),
     )
     val sidecars = if (role == AuthoredFileRole.SPECIALIST) {
       linkedSidecars(
-        path,
+        path.toPath(),
       ).map { sidecar ->
         AuthoredFile(
           pack.slug,

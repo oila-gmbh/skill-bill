@@ -6,7 +6,8 @@ import skillbill.infrastructure.fs.agentaddon.AgentAddonDeliveryResolver
 import skillbill.infrastructure.fs.scaffold.platformpack.loadPlatformManifest
 import skillbill.infrastructure.fs.scaffold.pointer.renderPointer
 import skillbill.infrastructure.fs.scaffold.runtime.SHELL_CONTRACT_VERSION
-import skillbill.model.toPathimport skillbill.scaffold.model.PlatformManifest
+import skillbill.model.toPath
+import skillbill.scaffold.model.PlatformManifest
 import skillbill.scaffold.model.PointerSpec
 import java.nio.charset.StandardCharsets
 import java.nio.file.Path
@@ -102,11 +103,11 @@ private fun renderAgentAddonPointerBlocks(repoRoot: Path, target: AuthoringTarge
 }
 
 private fun renderPointerBlock(repoRoot: Path, pack: PlatformManifest, spec: PointerSpec): AuthoringRenderBlock {
-  val pointerFile = pack.packRoot.resolve(spec.skillRelativeDir).resolve(spec.name).normalize()
+  val pointerFile = pack.packRoot.resolve(spec.skillRelativeDir).resolve(spec.name).toPath().normalize()
   val relativePointerFile = normalizedRelativePath(repoRoot, pointerFile)
   return AuthoringRenderBlock(
     header = "===== pointer: $relativePointerFile =====",
-    content = renderPointer(repoRoot, pack.packRoot, spec),
+    content = renderPointer(repoRoot, pack.packRoot.toPath(), spec),
   )
 }
 

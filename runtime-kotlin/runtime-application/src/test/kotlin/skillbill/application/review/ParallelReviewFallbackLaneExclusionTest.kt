@@ -92,8 +92,8 @@ class ParallelReviewFallbackLaneExclusionTest {
       withFallback.durableLanes.map { it.area }.toSet(),
     )
     assertEquals(
-      withoutGeneric.durableLanes.associate { it.area to it.reviewDisposition },
-      withFallback.durableLanes.associate { it.area to it.reviewDisposition },
+      withoutGeneric.durableLanes.associate { it.area to it.reviewDisposition.wireValue },
+      withFallback.durableLanes.associate { it.area to it.reviewDisposition.wireValue },
     )
     assertTrue(withFallback.durableLanes.all { it.unreviewedSegmentIds.isEmpty() })
     assertEquals(

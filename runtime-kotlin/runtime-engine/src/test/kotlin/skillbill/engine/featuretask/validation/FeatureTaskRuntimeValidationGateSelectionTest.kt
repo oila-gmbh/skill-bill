@@ -10,7 +10,7 @@ import skillbill.engine.featuretask.validation.model.ValidationGateCycleTerminal
 import skillbill.engine.featuretask.validation.model.ValidationGateResolution
 import skillbill.ports.validation.ValidationGateRunner
 import skillbill.ports.validation.model.ValidationGateFinding
-import skillbill.ports.validation.model.ValidationGateRunOutcomeimport skillbill.ports.validation.model.ValidationGateRunRequest
+import skillbill.ports.validation.model.ValidationGateRunRequest
 import skillbill.ports.validation.model.ValidationGateRunResult
 import skillbill.scaffold.model.RoutingSignals
 import skillbill.workflow.goal.model.ValidationDepth

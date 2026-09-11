@@ -4,7 +4,7 @@ import kotlinx.serialization.SerializationException
 import kotlinx.serialization.json.JsonElement
 import skillbill.agentaddon.model.AgentAddonSelection
 import skillbill.agentaddon.model.PersistedAgentAddonSelectionEntry
-import skillbill.contracts.JsonSupport
+import skillbill.contracts.JsonCodec
 import skillbill.error.InvalidWorkflowStateSchemaError
 import skillbill.ports.goalrunner.runner.model.GoalRunnerOutOfBandAcceptance
 import skillbill.ports.goalrunner.runner.model.GoalRunnerReviewPolicy
@@ -12,9 +12,9 @@ import skillbill.review.context.model.CodeReviewExecutionMode
 import kotlin.coroutines.cancellation.CancellationException
 
 internal fun decodeReviewPolicy(raw: String): GoalRunnerReviewPolicy {
-  val policy = JsonSupport.parseObjectOrNull(raw)
-    ?.let(JsonSupport::jsonElementToValue)
-    ?.let(JsonSupport::anyToStringAnyMap)
+  val policy = JsonCodec.parseObjectOrNull(raw)
+    ?.let(JsonCodec::jsonElementToValue)
+    ?.let(JsonCodec::anyToStringAnyMap)
     ?: goalRunnerControlSchemaError("review policy durable record must be an object.")
   val mode = policy["code_review_mode"] as? String
     ?: goalRunnerControlSchemaError("review policy durable record is missing code_review_mode.")
@@ -29,7 +29,7 @@ internal fun decodeAcceptances(raw: String): Map<Int, GoalRunnerOutOfBandAccepta
   parseAcceptanceList(raw).associate(::decodeAcceptanceEntry)
 
 private fun decodeReviewPolicyAddonEntry(index: Int, value: Any?): PersistedAgentAddonSelectionEntry {
-  val entry = JsonSupport.anyToStringAnyMap(value)
+  val entry = JsonCodec.anyToStringAnyMap(value)
     ?: goalRunnerControlSchemaError("review policy durable add-on entry $index must be a map.")
   return PersistedAgentAddonSelectionEntry(
     slug = requireReviewPolicyAddonField(entry, index, "slug"),
@@ -43,12 +43,12 @@ private fun requireReviewPolicyAddonField(entry: Map<String, Any?>, index: Int, 
     ?: goalRunnerControlSchemaError("review policy durable add-on entry $index is missing $key.")
 
 private fun parseAcceptanceList(raw: String): List<*> {
-  val values = JsonSupport.jsonElementToValue(parseAcceptanceJsonElement(raw)) as? List<*>
+  val values = JsonCodec.jsonElementToValue(parseAcceptanceJsonElement(raw)) as? List<*>
   return values ?: goalRunnerControlSchemaError("acceptance durable record must be a list.")
 }
 
 private fun parseAcceptanceJsonElement(raw: String): JsonElement = try {
-  JsonSupport.json.parseToJsonElement(raw)
+  JsonCodec.json.parseToJsonElement(raw)
 } catch (error: CancellationException) {
   throw error
 } catch (error: SerializationException) {
@@ -63,7 +63,7 @@ private fun invalidAcceptanceJson(cause: Throwable): Nothing = throw InvalidWork
 )
 
 private fun decodeAcceptanceEntry(value: Any?): Pair<Int, GoalRunnerOutOfBandAcceptance> {
-  val entry = JsonSupport.anyToStringAnyMap(value)
+  val entry = JsonCodec.anyToStringAnyMap(value)
     ?: goalRunnerControlSchemaError("acceptance durable record entries must be maps.")
   val acceptance = GoalRunnerOutOfBandAcceptance(
     subtaskId = requireAcceptanceInt(entry, "subtask_id"),

@@ -2,7 +2,7 @@ package skillbill.cli
 
 import kotlinx.serialization.json.JsonElement
 import skillbill.cli.model.CliRuntimeContext
-import skillbill.contracts.JsonSupport
+import skillbill.contracts.JsonCodec
 import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_CONTRACT_VERSION
 import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_WORKER_OWNERSHIP_CONTRACT_VERSION
 import skillbill.infrastructure.sqlite.core.DatabaseRuntime
@@ -14,22 +14,17 @@ import skillbill.ports.agentrun.model.AgentRunLaunchOutcome
 import skillbill.ports.agentrun.model.AgentRunLaunchRequest
 import skillbill.ports.agentrun.model.AgentRunOutputStream
 import skillbill.ports.agentrun.model.SkillRunRequest
-import skillbill.ports.diagnostics.NoopRuntimeDiagnostics
 import skillbill.ports.goalrunner.runner.GoalPullRequestPort
 import skillbill.ports.goalrunner.runner.model.GoalPullRequestRequest
 import skillbill.ports.goalrunner.runner.model.GoalPullRequestResult
 import skillbill.ports.telemetry.RemoteTransportPort
-import skillbill.ports.telemetry.UnconfiguredRemoteTransportPort
 import skillbill.ports.time.NoopRuntimeTimingPort
 import skillbill.ports.workflow.gitops.GoalSubtaskReviewGitOperations
-import skillbill.ports.workflow.gitops.GoalSubtaskReviewGitOperationsProvider
 import skillbill.ports.workflow.gitops.RepositoryFingerprintGitOperations
-import skillbill.ports.workflow.gitops.RepositoryFingerprintGitOperationsProvider
 import skillbill.ports.workflow.gitops.RepositoryOwnedPathsGitOperations
-import skillbill.ports.workflow.gitops.RepositoryOwnedPathsGitOperationsProvider
 import skillbill.ports.workflow.gitops.ScopedStagingGitOperations
-import skillbill.ports.workflow.gitops.ScopedStagingGitOperationsProvider
 import skillbill.ports.workflow.gitops.WorkflowGitOperations
+import skillbill.ports.workflow.gitops.WorkflowGitOperationsTestBase
 import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewBaseline
 import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewBaselineRecoveryRequest
 import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewBaselineResult
@@ -67,25 +62,23 @@ internal fun startRunningRuntimeGoalChild(fixture: GoalCliFixture): String {
 }
 
 internal fun seedLiveWorkerLease(fixture: GoalCliFixture, workflowId: String) {
-  val process = JdkFeatureTaskRuntimeWorkerSupervisor(NoopRuntimeDiagnostics).currentProcess()
   DatabaseRuntime.ensureDatabase(fixture.dbPath).use { connection ->
     connection.prepareStatement(
       """
       INSERT OR REPLACE INTO feature_task_runtime_worker_leases (
         workflow_id, contract_version, generation, owner_token, host_identity, boot_identity,
         pid, process_birth_token, lease_state, heartbeat_at, expires_at, phase_id, phase_attempt
-      ) VALUES (?, ?, 1, ?, ?, ?, ?, ?, 'active', ?, ?, 'implement', 1)
+      ) VALUES (?, ?, 1, ?, ?, ?, 1234, ?, 'active', ?, ?, 'implement', 1)
       """.trimIndent(),
     ).use { statement ->
       statement.setString(1, workflowId)
       statement.setString(2, FEATURE_TASK_RUNTIME_WORKER_OWNERSHIP_CONTRACT_VERSION)
       statement.setString(3, "owner-token-cli-watch")
-      statement.setString(4, process.hostIdentity)
-      statement.setString(5, process.bootIdentity)
-      statement.setLong(6, process.pid)
-      statement.setString(7, process.processBirthToken)
-      statement.setString(8, "2999-01-01T00:00:00Z")
-      statement.setString(9, "2999-01-01T00:01:00Z")
+      statement.setString(4, "test-host")
+      statement.setString(5, "test-boot")
+      statement.setString(6, "birth-1234")
+      statement.setString(7, "2999-01-01T00:00:00Z")
+      statement.setString(8, "2999-01-01T00:01:00Z")
       statement.executeUpdate()
     }
   }
@@ -225,7 +218,7 @@ internal data class GoalCliFixture(
     liveStdout: (String) -> Unit = {},
     liveStderr: (String) -> Unit = {},
     workflowGitOperations: WorkflowGitOperations = GoalTestWorkflowGitOperations,
-    requester: RemoteTransportPort = UnconfiguredRemoteTransportPort,
+    requester: RemoteTransportPort? = null,
   ): CliRuntimeContext = CliRuntimeContext(
     userHome = tempDir.also { installFakeRuntimeMcpBin(it) },
     environment = isolatedCliEnvironment(tempDir),
@@ -416,8 +409,8 @@ internal fun forcePendingPauseRequest(dbPath: Path) {
       }
     }
     rows.forEach { (parentWorkflowId, json) ->
-      val state = JsonSupport.anyToStringAnyMap(
-        JsonSupport.jsonElementToValue(requireNotNull(JsonSupport.parseObjectOrNull(json))),
+      val state = JsonCodec.anyToStringAnyMap(
+        JsonCodec.jsonElementToValue(requireNotNull(JsonCodec.parseObjectOrNull(json))),
       ).orEmpty().toMutableMap()
       state["paused"] = false
       state["pause_requested"] = true
@@ -426,7 +419,7 @@ internal fun forcePendingPauseRequest(dbPath: Path) {
       connection.prepareStatement(
         "UPDATE goal_runner_controls SET control_state_json = ? WHERE parent_workflow_id = ?",
       ).use { statement ->
-        statement.setString(1, JsonSupport.mapToJsonString(state))
+        statement.setString(1, JsonCodec.mapToJsonString(state))
         statement.setString(2, parentWorkflowId)
         statement.executeUpdate()
       }
@@ -527,9 +520,9 @@ internal fun runtimeWorkflowUpdate(
   ),
 )
 
-internal fun jsonString(value: Any?): String = JsonSupport.json.encodeToString(
+internal fun jsonString(value: Any?): String = JsonCodec.json.encodeToString(
   JsonElement.serializer(),
-  JsonSupport.valueToJsonElement(value),
+  JsonCodec.valueToJsonElement(value),
 )
 
 internal fun phasePlanningPayload(phaseId: String): String =
@@ -552,50 +545,43 @@ internal object NoopGoalTestAgentRunLauncher : AgentRunLauncher {
   override fun launch(request: AgentRunLaunchRequest): AgentRunLaunchOutcome = error("Unexpected launch")
 }
 
-internal object GoalTestWorkflowGitOperations :
-  WorkflowGitOperations,
-  GoalSubtaskReviewGitOperationsProvider,
-  RepositoryFingerprintGitOperationsProvider,
-  RepositoryOwnedPathsGitOperationsProvider,
-  ScopedStagingGitOperationsProvider {
+internal object GoalTestWorkflowGitOperations : WorkflowGitOperationsTestBase() {
   override val repositoryOwnedPathsOperations: RepositoryOwnedPathsGitOperations = TestRepositoryOwnedPathsOperations
 
   override val repositoryFingerprintOperations: RepositoryFingerprintGitOperations = TestRepositoryFingerprintOperations
 
   override val scopedStagingOperations: ScopedStagingGitOperations = object : ScopedStagingGitOperations {
     override fun stagePaths(repoRoot: Path, paths: List<String>): WorkflowGitOperationResult =
-      WorkflowGitOperationResult(status = "ok", value = "")
-
-    override fun unstagePaths(repoRoot: Path, paths: List<String>): WorkflowGitOperationResult =
-      WorkflowGitOperationResult(status = "ok", value = "")
+      WorkflowGitOperationResult.Ok(value = "")
 
     override fun captureIndexState(repoRoot: Path, paths: List<String>): WorkflowGitOperationResult =
-      WorkflowGitOperationResult(status = "ok", value = "")
+      WorkflowGitOperationResult.Ok(value = "")
 
     override fun restoreIndexState(repoRoot: Path, paths: List<String>, snapshot: String): WorkflowGitOperationResult =
-      WorkflowGitOperationResult(status = "ok", value = "")
+      WorkflowGitOperationResult.Ok(value = "")
 
     override fun stagedPaths(repoRoot: Path): WorkflowGitOperationResult = WorkflowGitOperationResult.Ok(value = "")
+
     override fun pathContentIdentities(repoRoot: Path, paths: List<String>): WorkflowGitOperationResult =
-      WorkflowGitOperationResult(
-        status = "ok",
+      WorkflowGitOperationResult.Ok(
         value = paths.joinToString(separator = "\u0000") { path -> "identity\t$path" },
       )
   }
 
   override fun checkoutBranch(repoRoot: Path, branch: String, baseBranch: String?): WorkflowGitOperationResult =
-    WorkflowGitOperationResult(status = "ok", value = branch)
+    WorkflowGitOperationResult.Ok(value = branch)
 
   override fun branchExists(repoRoot: Path, branch: String): WorkflowGitOperationResult =
-    WorkflowGitOperationResult(status = "ok", value = "true")
+    WorkflowGitOperationResult.Ok(value = "true")
 
   override fun currentBranch(repoRoot: Path): WorkflowGitOperationResult = WorkflowGitOperationResult.Ok(value = "")
+
   override val goalSubtaskReviewOperations: GoalSubtaskReviewGitOperations =
     object : GoalSubtaskReviewGitOperations {
       override fun captureBaseline(repoRoot: Path, expectedBranch: String): GoalSubtaskReviewBaselineResult =
         GoalSubtaskReviewBaselineResult(
-          status = "ok",
-          baseline = GoalSubtaskReviewBaseline("0".repeat(40)),
+          status = WorkflowGitOperationStatus.OK,
+          baseline = GoalSubtaskReviewBaseline("0".repeat(40), emptyList()),
         )
 
       override fun buildInput(repoRoot: Path, baseline: GoalSubtaskReviewBaseline, expectedBranch: String): Nothing =
@@ -606,32 +592,33 @@ internal object GoalTestWorkflowGitOperations :
         request: GoalSubtaskReviewBaselineRecoveryRequest,
         expectedBranch: String,
       ): GoalSubtaskReviewBaselineResult = GoalSubtaskReviewBaselineResult(
-        status = "error",
+        status = WorkflowGitOperationStatus.ERROR,
         error = "Goal review baseline recovery is not used by this goal CLI fixture.",
       )
     }
 
   override fun createCommit(repoRoot: Path, message: String): WorkflowGitOperationResult =
-    WorkflowGitOperationResult(status = "ok", value = "test-commit")
+    WorkflowGitOperationResult.Ok(value = "test-commit")
 
   override fun headCommitSha(repoRoot: Path): WorkflowGitOperationResult =
-    WorkflowGitOperationResult(status = "ok", value = "test-commit")
+    WorkflowGitOperationResult.Ok(value = "test-commit")
 
   override fun isCommitAncestor(
     repoRoot: Path,
     ancestorSha: String,
     descendantSha: String,
-  ): WorkflowGitOperationResult = WorkflowGitOperationResult(status = "ok", value = "true")
+  ): WorkflowGitOperationResult = WorkflowGitOperationResult.Ok(value = "true")
 
   override fun validateBranchBase(
     repoRoot: Path,
     branch: String,
     expectedBaseBranch: String,
-  ): WorkflowGitOperationResult = WorkflowGitOperationResult(status = "ok", value = expectedBaseBranch)
+  ): WorkflowGitOperationResult = WorkflowGitOperationResult.Ok(value = expectedBaseBranch)
 
   override fun worktreeStatus(repoRoot: Path): WorkflowGitOperationResult = WorkflowGitOperationResult.Ok(value = "")
+
   override fun worktreeActivity(repoRoot: Path): WorkflowWorktreeActivityResult = WorkflowWorktreeActivityResult(
-    status = "ok",
+    status = WorkflowGitOperationStatus.OK,
     diffStat = GoalObservabilityDiffStat(filesChanged = 1, insertions = 2, deletions = 1),
   )
 
@@ -639,7 +626,7 @@ internal object GoalTestWorkflowGitOperations :
     repoRoot: Path,
     request: WorkflowSelectedDiffHunksRequest,
   ): WorkflowSelectedDiffHunksResult = WorkflowSelectedDiffHunksResult(
-    status = "ok",
+    status = WorkflowGitOperationStatus.OK,
     selectedDiffHunks = GoalObservabilitySelectedDiffHunks(
       hunks = listOf(
         GoalObservabilitySelectedDiffHunk(

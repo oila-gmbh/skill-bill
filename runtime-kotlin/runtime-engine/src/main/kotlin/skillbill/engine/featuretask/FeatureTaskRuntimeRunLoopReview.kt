@@ -1,6 +1,7 @@
 package skillbill.engine.featuretask
 
-import skillbill.application.diagnostics.RejectedOutputDiagnosticServiceimport skillbill.application.review.RuntimeOwnedReviewMode
+import skillbill.application.diagnostics.RejectedOutputDiagnosticService
+import skillbill.application.review.RuntimeOwnedReviewMode
 import skillbill.application.review.model.ParallelCodeReviewRequest
 import skillbill.application.review.model.ParallelCodeReviewResult
 import skillbill.application.review.model.StackDetectionException
@@ -11,15 +12,18 @@ import skillbill.error.UnreadableSpecIntentProjectionError
 import skillbill.goalrunner.subtaskreview.GoalSubtaskReviewSummaryReducer
 import skillbill.goalrunner.subtaskreview.model.UnaddressedFindingLedgerScope
 import skillbill.ports.diagnostics.model.ProducerOutputEvidence
-import skillbill.ports.workflow.gitops.model.WorkflowGitOperationResultimport skillbill.ports.workflow.gitops.repositoryFingerprint
+import skillbill.ports.workflow.gitops.model.WorkflowGitOperationResult
+import skillbill.ports.workflow.gitops.repositoryFingerprint
 import skillbill.review.context.model.ReviewContextBudgetExceededException
+import skillbill.workflow.goal.model.GoalSubtaskBlockerDisposition
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFailureDisposition
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutput
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseRecord
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeReviewPassSequence
+import skillbill.workflow.taskruntime.model.requireAcceptedOutput
 import kotlin.coroutines.cancellation.CancellationException
 
-@Inject
-class FeatureTaskRuntimeRunLoopReview {
+object FeatureTaskRuntimeRunLoopReview {
   internal fun prepareRuntimeOwnedReview(
     runLoop: FeatureTaskRuntimeRunLoop,
     run: PhaseRun,
@@ -30,11 +34,11 @@ class FeatureTaskRuntimeRunLoopReview {
         PhaseOutcome.blocked("Runtime-owned review is missing the child-owned review input."),
       )
     val iteration = state.nextIteration(run.phaseId)
-    val passNumber = runLoop.collaborators.outputPersistence.reviewPassNumber(runLoop, run, state) ?: 1
+    val passNumber = FeatureTaskRuntimeRunLoopOutputPersistence.reviewPassNumber(runLoop, run, state) ?: 1
     val pinnedMode = run.request.runInvariants.codeReviewMode
     val resolution = FeatureTaskRuntimeReviewPassSequence.resolveForPass(pinnedMode, passNumber)
     val reviewRunId = resolveReviewRunId(runLoop, state.recordFor(run.phaseId), passNumber)
-    runLoop.collaborators.outputPersistence.persistPhase(
+    FeatureTaskRuntimeRunLoopOutputPersistence.persistPhase(
       runLoop,
       PersistPhaseArgs(
         write = PhaseStateWriteArgs(
@@ -64,12 +68,13 @@ class FeatureTaskRuntimeRunLoopReview {
         checkpoint = checkpoint,
       ),
       driverRequest = runtimeOwnedReviewDriverRequest(
+        runLoop,
         RuntimeOwnedReviewDriverRequestArgs(run, input, passNumber, pinnedMode, reviewRunId),
       ),
     )
   }
 
-  private fun FeatureTaskRuntimeRunLoopReview.resolveReviewRunId(
+  private fun resolveReviewRunId(
     runLoop: FeatureTaskRuntimeRunLoop,
     durableRecord: FeatureTaskRuntimePhaseRecord?,
     passNumber: Int,
@@ -79,7 +84,8 @@ class FeatureTaskRuntimeRunLoopReview {
     ?.takeIf(String::isNotBlank)
     ?: FeatureTaskRuntimeReviewEnvelope.mintReviewRunId(runLoop.clock)
 
-  private fun FeatureTaskRuntimeRunLoopReview.runtimeOwnedReviewDriverRequest(
+  private fun runtimeOwnedReviewDriverRequest(
+    runLoop: FeatureTaskRuntimeRunLoop,
     args: RuntimeOwnedReviewDriverRequestArgs,
   ) = FeatureTaskRuntimeReviewDriverMapper.request(
     input = args.input,
@@ -96,6 +102,7 @@ class FeatureTaskRuntimeRunLoopReview {
       repoRoot = args.run.request.repoRoot,
       timeout = args.run.request.timeout,
       agentAddonSelection = args.run.request.agentAddonSelection,
+      baselineUntrackedPaths = reviewBaselineUntrackedPaths(runLoop, args.run),
     ),
   ).copy(
     activityWorkflowId = args.run.request.workflowId,
@@ -116,8 +123,8 @@ class FeatureTaskRuntimeRunLoopReview {
       FeatureTaskRuntimePhaseStartReentry.FIRST_VISIT,
     )
     val before = runLoop.gitOperations.worktreeStatus(run.request.repoRoot)
-    if (!before.ok) {
-      return runLoop.collaborators.phaseAttempts.blockInPhase(
+    if (before !is WorkflowGitOperationResult.Ok) {
+      return FeatureTaskRuntimeRunLoopPhaseAttempts.blockInPhase(
         runLoop,
         PhaseBlockRequest(
           run = run,
@@ -128,7 +135,7 @@ class FeatureTaskRuntimeRunLoopReview {
       )
     }
     return when (val attempt = invokeReviewDriver(runLoop, prepared.driverRequest)) {
-      is ReviewDriverFailed -> runLoop.collaborators.phaseAttempts.blockInPhase(
+      is ReviewDriverFailed -> FeatureTaskRuntimeRunLoopPhaseAttempts.blockInPhase(
         runLoop,
         PhaseBlockRequest(
           run = run,
@@ -140,8 +147,8 @@ class FeatureTaskRuntimeRunLoopReview {
       )
       is ReviewDriverReady -> {
         val after = runLoop.gitOperations.worktreeStatus(run.request.repoRoot)
-        if (!after.ok) {
-          return runLoop.collaborators.phaseAttempts.blockInPhase(
+        if (after !is WorkflowGitOperationResult.Ok) {
+          return FeatureTaskRuntimeRunLoopPhaseAttempts.blockInPhase(
             runLoop,
             PhaseBlockRequest(
               run = run,
@@ -151,7 +158,7 @@ class FeatureTaskRuntimeRunLoopReview {
             ),
           )
         }
-        runLoop.collaborators.launch.capturePhaseContentIdentities(runLoop, run.phaseId)
+        FeatureTaskRuntimeRunLoopLaunch.capturePhaseContentIdentities(runLoop, run.phaseId)
         settleReviewDriverResult(
           runLoop,
           prepared,
@@ -219,7 +226,7 @@ class FeatureTaskRuntimeRunLoopReview {
   ): PhaseOutcome {
     val run = prepared.run
     failedReviewLaneReason(result)?.let { reason ->
-      return runLoop.collaborators.phaseAttempts.blockInPhase(
+      return FeatureTaskRuntimeRunLoopPhaseAttempts.blockInPhase(
         runLoop,
         PhaseBlockRequest(
           run = run,
@@ -422,4 +429,5 @@ object FeatureTaskRuntimeRunLoopReviewDriverSettlement {
         acceptedOutput.repairEvidence,
       ),
     )
-  }}
+  }
+}

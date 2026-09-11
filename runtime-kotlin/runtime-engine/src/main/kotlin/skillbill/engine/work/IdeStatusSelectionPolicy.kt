@@ -132,5 +132,6 @@ internal enum class IdeStatusDurableWorkflowState(val wireValue: String) {
   ;
 
   companion object {
-    fun fromWire(value: String): IdeStatusDurableWorkflowState? = entries.firstOrNull { it.wireValue == value }  }
+    fun fromWire(value: String): IdeStatusDurableWorkflowState? = entries.firstOrNull { it.wireValue == value }
+  }
 }

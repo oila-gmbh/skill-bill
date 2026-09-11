@@ -1,7 +1,8 @@
 package skillbill.mcp
 
-import skillbill.contracts.JsonSupport
-import skillbill.db.core.DatabaseRuntimeimport skillbill.mcp.core.McpToolDispatcher
+import skillbill.contracts.JsonCodec
+import skillbill.infrastructure.sqlite.core.DatabaseRuntime
+import skillbill.mcp.core.McpToolDispatcher
 import skillbill.mcp.shared.McpRuntimeContext
 import skillbill.telemetry.CONFIG_ENVIRONMENT_KEY
 import skillbill.telemetry.TELEMETRY_PROXY_URL_ENVIRONMENT_KEY
@@ -102,7 +103,7 @@ class PrDescriptionTelemetryEditDetectionTest {
     }
 
   private fun decodeJsonObject(rawJson: String): Map<String, Any?> {
-    val parsed = requireNotNull(JsonSupport.parseObjectOrNull(rawJson)) { "Expected JSON object: $rawJson" }
-    return parsed.entries.associate { (key, value) -> key to JsonSupport.jsonElementToValue(value) }
+    val parsed = requireNotNull(JsonCodec.parseObjectOrNull(rawJson)) { "Expected JSON object: $rawJson" }
+    return parsed.entries.associate { (key, value) -> key to JsonCodec.jsonElementToValue(value) }
   }
 }

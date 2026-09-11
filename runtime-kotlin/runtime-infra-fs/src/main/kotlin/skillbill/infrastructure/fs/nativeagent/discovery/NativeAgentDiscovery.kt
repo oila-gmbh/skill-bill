@@ -61,42 +61,26 @@ internal fun discoverNativeAgentSourceFilesInRoots(roots: List<Path>): List<Path
   discoverNativeAgentFilesByDirInRoots(
     roots = roots,
     directoryName = NATIVE_AGENT_SOURCE_DIR,
-    recursive = false,
   )
 
 private fun discoverNativeAgentFilesByDirInRoots(
   roots: List<Path>,
   directoryName: String,
   extension: String? = null,
-  recursive: Boolean = true,
 ): List<Path> {
   val discovered = linkedSetOf<Path>()
   roots.map { root -> root.toAbsolutePath().normalize() }.forEach { root ->
-    if (recursive) {
-      if (Files.isDirectory(root)) {
-        val allowedRoot = root.toRealPath()
-        Files.walk(root).use { stream ->
-          stream
-            .filter { file -> Files.isRegularFile(file, LinkOption.NOFOLLOW_LINKS) }
-            .filter { file -> file.parent?.name == directoryName }
-            .filter { file -> isNativeAgentSourceFile(file, extension) }
-            .map { file -> file.toRealPath() }
-            .filter { file -> file.startsWith(allowedRoot) }
-            .forEach(discovered::add)
-        }
-      }
-    } else {
-      val sourceDir = root.resolve(directoryName)
-      if (Files.isDirectory(sourceDir)) {
-        val allowedRoot = sourceDir.toRealPath()
-        Files.list(sourceDir).use { stream ->
-          stream
-            .filter { file -> Files.isRegularFile(file, LinkOption.NOFOLLOW_LINKS) }
-            .filter { file -> isNativeAgentSourceFile(file, extension) }
-            .map { file -> file.toRealPath() }
-            .filter { file -> file.startsWith(allowedRoot) }
-            .forEach(discovered::add)
-        }
+    if (Files.isDirectory(root)) {
+      val allowedRoot = root.toRealPath()
+      Files.walk(root).use { stream ->
+        stream
+          .filter { file -> Files.isRegularFile(file, LinkOption.NOFOLLOW_LINKS) }
+          .filter { file ->
+            file.parent?.name == directoryName && isNativeAgentSourceFile(file, extension)
+          }
+          .map { file -> file.toRealPath() }
+          .filter { file -> file.startsWith(allowedRoot) }
+          .forEach(discovered::add)
       }
     }
   }

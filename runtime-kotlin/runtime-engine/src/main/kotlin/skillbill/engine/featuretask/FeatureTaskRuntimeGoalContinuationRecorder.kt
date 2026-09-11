@@ -5,7 +5,8 @@ import skillbill.engine.featuretask.model.GoalSubtaskReviewInputPreparation
 import skillbill.engine.featuretask.model.GoalSubtaskReviewPassReservation
 import skillbill.engine.featuretask.model.RemediationBaseCoherenceResult
 import skillbill.goalrunner.model.FeatureTaskRuntimeGoalContinuationOutcome
-import skillbill.ports.db.DatabaseSessionFactoryimport skillbill.ports.diagnostics.RuntimeDiagnostics
+import skillbill.ports.db.DatabaseSessionFactory
+import skillbill.ports.diagnostics.RuntimeDiagnostics
 import skillbill.ports.workflow.gitops.WorkflowGitOperations
 import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewBaseline
 import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewInput
@@ -20,13 +21,12 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeGoalContinuationFi
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeVerdict
 import java.nio.file.Path
 import java.time.Clock
-import kotlin.coroutines.cancellation.CancellationException
 
 @Inject
 class FeatureTaskRuntimeGoalContinuationRecorder(
   private val database: DatabaseSessionFactory,
   workflowSnapshotValidator: WorkflowSnapshotValidator,
-  internal val diagnostics: RuntimeDiagnostics,
+  private val diagnostics: RuntimeDiagnostics,
   private val clock: Clock,
 ) {
   private val engine: WorkflowEngine = WorkflowEngine(workflowSnapshotValidator)
@@ -62,27 +62,13 @@ class FeatureTaskRuntimeGoalContinuationRecorder(
     val scopedUntrackedExclusions: List<String>? = null,
     val ownedPathspec: List<String> = emptyList(),
   )
+
   fun buildGoalReviewInput(
     workflowId: String,
     gitOperations: WorkflowGitOperations,
     repoRoot: Path,
     scope: GoalReviewInputScope = GoalReviewInputScope(),
-  ): GoalSubtaskReviewInputPreparation = runCatching {
-    inputBuilder.buildGoalReviewInput(workflowId, gitOperations, repoRoot, scope)
-  }.getOrElse { error ->
-    if (error is CancellationException) throw error
-    val refusal = error as? FeatureTaskRuntimeSubtaskCommitReconciliationError
-      ?: FeatureTaskRuntimeSubtaskCommitReconciliationError(
-        workflowId = workflowId,
-        issueKey = "unknown",
-        subtaskId = "unknown",
-        reason = "review input could not be reconciled (${error.message}); " +
-          "repair Git or workflow-store access before retrying",
-        cause = error,
-      )
-    diagnostics.warning("record_kind=refusal seam=buildGoalReviewInput cause=${refusal.reason}", refusal)
-    throw refusal
-  }
+  ): GoalSubtaskReviewInputPreparation = inputBuilder.buildGoalReviewInput(workflowId, gitOperations, repoRoot, scope)
 }
 
 internal data class GoalContinuationStateRecordRequest(

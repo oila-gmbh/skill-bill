@@ -1,5 +1,7 @@
-package skillbill.engine.featuretaskimport skillbill.workflow.goal.model.GoalSubtaskOperatorDecision
+package skillbill.engine.featuretask
+import skillbill.workflow.goal.model.GoalSubtaskOperatorDecision
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseRecord
+import skillbill.workflow.taskruntime.phaseartifacts.asPendingForOperatorResume
 import kotlin.test.Test
 import kotlin.test.assertEquals
 

@@ -1,6 +1,8 @@
 package skillbill.application.review
 
-import skillbill.contracts.JsonSupportimport skillbill.review.context.model.SpecIntentProjection
+import skillbill.boundary.OpenBoundaryMap
+import skillbill.contracts.JsonCodec
+import skillbill.review.context.model.SpecIntentProjection
 
 @OpenBoundaryMap("Schema-bounded review spec intent projection")
 fun SpecIntentProjection.toProjectionPayload(): Map<String, Any?> = linkedMapOf(
@@ -17,5 +19,4 @@ fun SpecIntentProjection.toProjectionPayload(): Map<String, Any?> = linkedMapOf(
 )
 
 internal fun specIntentProjectionUtf8Bytes(projection: SpecIntentProjection): Int =
-  JsonSupport.mapToJsonString(projection.toProjectionPayload()).toByteArray(Charsets.UTF_8).size
-
+  JsonCodec.mapToJsonString(projection.toProjectionPayload()).toByteArray(Charsets.UTF_8).size

@@ -1,9 +1,12 @@
 package skillbill.telemetry
 
-import skillbill.contracts.JsonSupport
-import skillbill.db.core.DatabaseRuntime
-import skillbill.db.telemetry.TelemetryOutboxStore
-import skillbill.infrastructure.http.HttpTelemetryClientimport skillbill.ports.telemetry.RemoteTransportPort
+import skillbill.application.telemetry.sync.TelemetrySyncRuntime
+import skillbill.contracts.JsonCodec
+import skillbill.infrastructure.http.HttpTelemetryClient
+import skillbill.infrastructure.sqlite.core.DatabaseRuntime
+import skillbill.infrastructure.sqlite.telemetry.TelemetryOutboxStore
+import skillbill.ports.repository.toFileLocation
+import skillbill.ports.telemetry.RemoteTransportPort
 import skillbill.ports.telemetry.TelemetryClient
 import skillbill.ports.telemetry.model.RemoteTransportResponse
 import skillbill.ports.telemetry.model.TelemetryOutboxRecord
@@ -100,8 +103,8 @@ class TelemetryRuntimeTest {
 
     DatabaseRuntime.ensureDatabase(dbPath).use { connection ->
       val outboxStore = TelemetryOutboxStore(connection)
-      outboxStore.enqueue("skillbill_feature_implement_started", JsonSupport.mapToJsonString(mapOf("name" to "ok")))
-      outboxStore.enqueue("skillbill_feature_implement_finished", JsonSupport.mapToJsonString(mapOf("name" to "fail")))
+      outboxStore.enqueue("skillbill_feature_implement_started", JsonCodec.mapToJsonString(mapOf("name" to "ok")))
+      outboxStore.enqueue("skillbill_feature_implement_finished", JsonCodec.mapToJsonString(mapOf("name" to "fail")))
 
       val successClient = RecordingTelemetryClient()
       val successResult = TelemetrySyncRuntime.syncTelemetry(settings, outboxStore, successClient)
@@ -112,7 +115,7 @@ class TelemetryRuntimeTest {
 
     DatabaseRuntime.ensureDatabase(dbPath).use { connection ->
       val outboxStore = TelemetryOutboxStore(connection)
-      outboxStore.enqueue("skillbill_feature_verify_started", JsonSupport.mapToJsonString(mapOf("name" to "retry")))
+      outboxStore.enqueue("skillbill_feature_verify_started", JsonCodec.mapToJsonString(mapOf("name" to "retry")))
 
       val failingClient = RecordingTelemetryClient(failure = IOException("blocked by network isolation sentinel"))
       val failedResult = TelemetrySyncRuntime.syncTelemetry(settings, outboxStore, failingClient)
@@ -127,7 +130,7 @@ class TelemetryRuntimeTest {
     val dbPath = Files.createTempFile("telemetry-invalid", ".db")
     val disabledSettings =
       TelemetrySettings(
-        configPath = Files.createTempFile("telemetry-invalid-config", ".json"),
+        configPath = Files.createTempFile("telemetry-invalid-config", ".json").toFileLocation(),
         level = "off",
         enabled = false,
         installId = "",
@@ -167,7 +170,7 @@ class TelemetryRuntimeTest {
 
     DatabaseRuntime.ensureDatabase(dbPath).use { connection ->
       val outboxStore = TelemetryOutboxStore(connection)
-      outboxStore.enqueue("skillbill_feature_verify_started", JsonSupport.mapToJsonString(mapOf("name" to "pending")))
+      outboxStore.enqueue("skillbill_feature_verify_started", JsonCodec.mapToJsonString(mapOf("name" to "pending")))
       val unconfiguredResult =
         TelemetrySyncRuntime.syncTelemetry(
           telemetrySettings(
@@ -259,7 +262,7 @@ private fun telemetrySettings(
   proxyUrl: String = "https://telemetry.example.dev/ingest",
   customProxyUrl: String? = proxyUrl,
 ): TelemetrySettings = TelemetrySettings(
-  configPath = configPath,
+  configPath = configPath.toFileLocation(),
   level = "anonymous",
   enabled = true,
   installId = "test-install-id",

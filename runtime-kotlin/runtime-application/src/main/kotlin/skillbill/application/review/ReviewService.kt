@@ -57,7 +57,7 @@ class ReviewService(
           routedSkillPlatformSlugs = reviewAttributionPort.routedSkillPlatformSlugs(),
         )
       }
-      unitOfWork.reviews.ensureTerminalReviewState(review.reviewRunId, review.executionMode)
+      unitOfWork.reviews.ensureTerminalReviewState(review.reviewRunId, review.executionMode?.wireValue)
       review.toImportedReviewResult(dbPath = unitOfWork.dbPath.toString())
     }
   }

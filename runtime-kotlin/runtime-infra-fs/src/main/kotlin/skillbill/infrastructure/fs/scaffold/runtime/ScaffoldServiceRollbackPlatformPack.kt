@@ -2,7 +2,8 @@
 package skillbill.infrastructure.fs.scaffold.runtime
 
 import skillbill.infrastructure.fs.scaffold.rendering.renderContentBody
-import skillbill.ports.repository.toFileLocationimport skillbill.scaffold.policy.platformpack.model.PlatformPackManifestContentRenderRequest
+import skillbill.ports.repository.toFileLocation
+import skillbill.scaffold.policy.platformpack.model.PlatformPackManifestContentRenderRequest
 import skillbill.scaffold.policy.scaffold.SKILL_KIND_ADD_ON
 import skillbill.scaffold.policy.scaffold.SKILL_KIND_PLATFORM_PACK
 import java.nio.file.Path
@@ -24,10 +25,10 @@ internal fun renderPlatformPackManifestContent(
       specialistAreas = plan.specialistAreas,
       specialistAreaMetadata = plan.specialistAreaMetadata,
       baselineLayers = plan.baselineLayers,
-      packRoot = packRoot,
-      baselineSkillPath = baselineSkillPath,
-      qualityCheckSkillPath = qualityCheckSkillPath,
-      specialistSkillPaths = plan.specialistSkillPaths,
+      packRoot = packRoot.toFileLocation(),
+      baselineSkillPath = baselineSkillPath.toFileLocation(),
+      qualityCheckSkillPath = qualityCheckSkillPath.toFileLocation(),
+      specialistSkillPaths = plan.specialistSkillPaths.mapValues { (_, entry) -> entry.toFileLocation() },
     ),
   )
 }

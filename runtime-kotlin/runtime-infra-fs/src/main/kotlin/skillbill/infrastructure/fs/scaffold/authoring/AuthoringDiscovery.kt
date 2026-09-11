@@ -4,7 +4,8 @@ import skillbill.error.SkillBillRuntimeException
 import skillbill.infrastructure.fs.scaffold.platformpack.addonUsageFor
 import skillbill.infrastructure.fs.scaffold.platformpack.discoverPlatformPackManifests
 import skillbill.infrastructure.fs.scaffold.runtime.displayNameFromSlug
-import skillbill.model.toPathimport skillbill.scaffold.model.PlatformManifest
+import skillbill.model.toPath
+import skillbill.scaffold.model.PlatformManifest
 import java.io.IOException
 import java.nio.file.Files
 import java.nio.file.Path
@@ -86,7 +87,7 @@ private fun restoreFiles(originalBytes: Map<Path, ByteArray>) {
 private fun recordPackTargets(discovered: MutableMap<String, AuthoringTarget>, pack: PlatformManifest) {
   val displayName = pack.displayName ?: displayNameFromSlug(pack.slug)
   pack.declaredFiles.baseline?.let { baseline ->
-    val baselineContent = declaredContentFile(baseline)
+    val baselineContent = declaredContentFile(baseline.toPath())
     discovered[baselineContent.parent.name] =
       AuthoringTarget(
         baselineContent.parent.name,
@@ -103,7 +104,7 @@ private fun recordPackTargets(discovered: MutableMap<String, AuthoringTarget>, p
       )
   }
   pack.declaredFiles.areas.forEach { (area, declaredFile) ->
-    val contentFile = declaredContentFile(declaredFile)
+    val contentFile = declaredContentFile(declaredFile.toPath())
     discovered[contentFile.parent.name] =
       AuthoringTarget(
         contentFile.parent.name,
@@ -119,7 +120,7 @@ private fun recordPackTargets(discovered: MutableMap<String, AuthoringTarget>, p
       )
   }
   pack.declaredQualityCheckFile?.let { declaredFile ->
-    val contentFile = declaredContentFile(declaredFile)
+    val contentFile = declaredContentFile(declaredFile.toPath())
     discovered[contentFile.parent.name] =
       AuthoringTarget(
         contentFile.parent.name,

@@ -3,7 +3,8 @@ package skillbill.infrastructure.fs.install
 import skillbill.infrastructure.fs.install.plan.detectAgents
 import skillbill.infrastructure.fs.install.runtime.InstallOperations
 import skillbill.infrastructure.fs.install.support.claudeConfigRoots
-import skillbill.model.toPathimport java.nio.file.Files
+import skillbill.model.toPath
+import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -141,7 +142,7 @@ class ClaudeConfigRootsTest {
 
     assertEquals(
       listOf(home.resolve(".claude/skills"), work.resolve("skills")).map { it.toAbsolutePath().normalize() },
-      claudeTargets.map { it.path.toAbsolutePath().normalize() },
+      claudeTargets.map { it.path.toPath().toAbsolutePath().normalize() },
     )
   }
 
@@ -153,7 +154,7 @@ class ClaudeConfigRootsTest {
     val claudeTargets = detectAgents(home, environment = emptyMap()).filter { it.name == "claude" }
 
     assertEquals(1, claudeTargets.size)
-    assertEquals(home.resolve(".claude/skills").toAbsolutePath().normalize(), claudeTargets.single().path)
+    assertEquals(home.resolve(".claude/skills").toAbsolutePath().normalize(), claudeTargets.single().path.toPath())
   }
 
   @Test

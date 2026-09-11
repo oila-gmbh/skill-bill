@@ -7,25 +7,24 @@ import skillbill.application.testDecompositionManifestValidator
 import skillbill.application.testDecompositionManifestWriter
 import skillbill.application.testRepositoryRoot
 import skillbill.application.testWorkflowSnapshotValidator
-import skillbill.engine.workflow.WorkflowService
-import skillbill.engine.workflow.model.WorkflowFamilyKind
-import skillbill.engine.workflow.model.WorkflowOpenResult
-import skillbill.engine.workflow.model.WorkflowServiceDeps
-import skillbill.engine.workflow.model.WorkflowServiceOpenArgs
-import skillbill.engine.workflow.model.WorkflowServiceOpenFeatureTaskArgs
-import skillbill.engine.workflow.model.WorkflowUpdateRequest
-import skillbill.engine.workflow.openFeatureTask
-import skillbill.contracts.JsonSupport
+import skillbill.application.workflow.WorkflowService
+import skillbill.application.workflow.model.WorkflowFamilyKind
+import skillbill.application.workflow.model.WorkflowOpenResult
+import skillbill.application.workflow.model.WorkflowServiceOpenArgs
+import skillbill.application.workflow.model.WorkflowServiceOpenFeatureTaskArgs
+import skillbill.application.workflow.model.WorkflowUpdateRequest
+import skillbill.application.workflow.openFeatureTask
+import skillbill.contracts.JsonCodec
 import skillbill.engine.featuretask.FeatureTaskContinuationLookupService
-import skillbill.engine.featuretask.model.FeatureTaskContinuationLookupResultimport skillbill.error.InvalidFeatureTaskExecutionIdentitySchemaError
-import skillbill.error.InvalidWorkflowStateSchemaError
+import skillbill.engine.featuretask.model.FeatureTaskContinuationLookupResult
+import skillbill.error.InvalidFeatureTaskExecutionIdentitySchemaError
 import skillbill.error.LegacyProseWorkflowError
-import skillbill.ports.diagnostics.NoopRuntimeDiagnostics
 import skillbill.ports.workflow.decomposition.UnavailableDecompositionManifestStore
 import skillbill.ports.workflow.gitops.NoopWorkflowGitOperations
 import skillbill.ports.workflow.model.FeatureTaskRouteScope
 import skillbill.ports.workflow.model.FeatureTaskWorkflowMode
 import skillbill.ports.workflow.model.WorkflowStateRecord
+import skillbill.ports.workflow.toRecord
 import skillbill.workflow.decomposition.model.CurrentSubtaskIntent
 import skillbill.workflow.decomposition.model.DecompositionManifest
 import skillbill.workflow.decomposition.model.DecompositionSubtask
@@ -179,36 +178,6 @@ class FeatureTaskContinuationLookupServiceTest {
   }
 
   @Test
-  fun `malformed requested workflow raises the typed workflow schema error`() {
-    val fixture = fixture()
-    val opened = fixture.open(REPOSITORY_A)
-    val row = requireNotNull(fixture.states.getFeatureTaskRuntimeWorkflow(opened.workflowId))
-    fixture.states.saveFeatureTaskRuntimeWorkflow(row.copy(stepsJson = "not-json"))
-
-    assertFailsWith<InvalidWorkflowStateSchemaError> {
-      fixture.lookup.lookup("SKILL-120", REPOSITORY_A)
-    }
-  }
-
-  @Test
-  fun `goal-child lookup raises the typed schema error for an ownerless malformed child`() {
-    val fixture = fixture()
-    val opened = fixture.open(REPOSITORY_A)
-    val ownerless = requireNotNull(fixture.states.getFeatureTaskRuntimeWorkflow(opened.workflowId)).copy(
-      workflowId = "wftr-ownerless-child",
-      sessionId = "ftr-ownerless-child",
-      issueKey = null,
-      stepsJson = "not-json",
-      artifactsJson = """{"decomposition_runtime":{"issue_key":"SKILL-901"}}""",
-    )
-    fixture.states.saveFeatureTaskRuntimeWorkflow(ownerless)
-
-    assertFailsWith<InvalidWorkflowStateSchemaError> {
-      fixture.lookup.lookupGoalChild("SKILL-120", REPOSITORY_A, ownerless.workflowId)
-    }
-  }
-
-  @Test
   fun `legacy prose-mode candidate loud-fails on continuation with the runtime re-run error`() {
     // SKILL-175 subtask 6 AC-002: a candidate whose immutable identity decodes to PROSE is
     // quarantined in FeatureTaskContinuationLookupService.project, raising LegacyProseWorkflowError
@@ -353,16 +322,14 @@ class FeatureTaskContinuationLookupServiceTest {
     val states = InMemoryWorkflowStates()
     val database = FakeDatabaseSessionFactory(states)
     val service = WorkflowService(
-      WorkflowServiceDeps(
-        database = database,
-        gitOperations = NoopWorkflowGitOperations,
-        decompositionManifestStore = UnavailableDecompositionManifestStore,
-        workflowSnapshotValidator = testWorkflowSnapshotValidator,
-        decompositionManifestValidator = testDecompositionManifestValidator,
-        decompositionManifestWriter = testDecompositionManifestWriter,
-        repositoryRoot = testRepositoryRoot,
-        goalObservabilityEventValidator = NoopGoalObservabilityEventValidator,
-      ),
+      database = database,
+      gitOperations = NoopWorkflowGitOperations,
+      decompositionManifestStore = UnavailableDecompositionManifestStore,
+      workflowSnapshotValidator = testWorkflowSnapshotValidator,
+      decompositionManifestValidator = testDecompositionManifestValidator,
+      decompositionManifestWriter = testDecompositionManifestWriter,
+      repositoryRoot = testRepositoryRoot,
+      goalObservabilityEventValidator = NoopGoalObservabilityEventValidator,
     )
     return Fixture(
       states = states,
@@ -371,7 +338,6 @@ class FeatureTaskContinuationLookupServiceTest {
         database,
         testWorkflowSnapshotValidator,
         testDecompositionManifestValidator,
-        diagnostics = NoopRuntimeDiagnostics,
       ),
     )
   }
@@ -456,7 +422,7 @@ class FeatureTaskContinuationLookupServiceTest {
           currentStepId = "assess",
           stepsJson =
           """[{"step_id":"assess","status":"completed"},{"step_id":"create_branch","status":"pending"}]""",
-          artifactsJson = JsonSupport.mapToJsonString(artifacts),
+          artifactsJson = JsonCodec.mapToJsonString(artifacts),
           startedAt = null,
           updatedAt = null,
           finishedAt = null,

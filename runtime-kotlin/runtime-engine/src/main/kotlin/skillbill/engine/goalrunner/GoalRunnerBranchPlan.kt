@@ -3,6 +3,8 @@ package skillbill.engine.goalrunner
 import skillbill.goalrunner.model.GoalRunnerReconciledOutcome
 import skillbill.workflow.decomposition.model.CurrentSubtaskIntent
 import skillbill.workflow.decomposition.model.DecompositionManifest
+import skillbill.workflow.model.DecompositionStatus
+import skillbill.workflow.model.decompositionStatus
 
 internal data class GoalRunnerBranchPlan(
   val branch: String,
@@ -18,7 +20,8 @@ fun DecompositionManifest.withAttemptedSubtask(subtaskId: Int): DecompositionMan
         DecompositionStatus.BLOCKED,
         DecompositionStatus.PENDING,
       )
-    ) {      subtask.copy(status = "in_progress", blockedReason = null)
+    ) {
+      subtask.copy(status = "in_progress", blockedReason = null)
     } else {
       subtask
     }
@@ -43,7 +46,7 @@ fun DecompositionManifest.withCompletedSubtask(
     subtasks = subtasks.map { subtask ->
       if (subtask.id == subtaskId) {
         subtask.copy(
-          status = "complete",
+          status = DecompositionStatus.COMPLETE.wireValue,
           workflowId = outcome.workflowId,
           commitSha = outcome.commitSha,
           blockedReason = null,
@@ -58,8 +61,9 @@ fun DecompositionManifest.withCompletedSubtask(
       it.status.decompositionStatus() in setOf(DecompositionStatus.COMPLETE, DecompositionStatus.SKIPPED)
     }
   ) {
-    updated.copy(status = DecompositionStatus.COMPLETE.wireValue)  } else {
-    updated.copy(status = "in_progress")
+    updated.copy(status = DecompositionStatus.COMPLETE.wireValue)
+  } else {
+    updated.copy(status = DecompositionStatus.IN_PROGRESS.wireValue)
   }
 }
 

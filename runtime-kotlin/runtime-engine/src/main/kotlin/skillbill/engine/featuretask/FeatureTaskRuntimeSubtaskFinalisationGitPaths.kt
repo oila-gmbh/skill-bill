@@ -2,7 +2,8 @@ package skillbill.engine.featuretask
 
 import skillbill.engine.featuretask.model.FeatureTaskRuntimeSubtaskCommitIdentity
 import skillbill.ports.workflow.gitops.WorkflowGitOperations
-import skillbill.ports.workflow.gitops.model.WorkflowGitOperationResultimport java.nio.file.Path
+import skillbill.ports.workflow.gitops.model.WorkflowGitOperationResult
+import java.nio.file.Path
 
 private const val GOVERNED_SPEC_ROOT = ".feature-specs/"
 const val GIT_PORCELAIN_MIN_LENGTH = 4
@@ -21,7 +22,7 @@ internal data class StageablePathsOutcome(
 
 internal fun WorkflowGitOperations.dirtyImplementationPaths(repoRoot: Path): DirtyPathsResult {
   val status = worktreeStatus(repoRoot)
-  if (!status.ok) {
+  if (status !is WorkflowGitOperationResult.Ok) {
     return DirtyPathsError("the worktree status could not be read before staging (${status.error})")
   }
   val paths = parseGitPorcelainPaths(status.value.orEmpty())
@@ -33,58 +34,26 @@ internal fun WorkflowGitOperations.dirtyImplementationPaths(repoRoot: Path): Dir
 }
 
 internal fun stageablePathsFrom(dirtyPaths: List<String>): StageablePathsOutcome {
-  val excluded = dirtyPaths.filter(::isRuntimePrivatePath).distinct().sorted()
-  val stageable = dirtyPaths.filterNot(::isRuntimePrivatePath).distinct().sorted()
+  val excluded = dirtyPaths.filter(::isGovernedSpecPath).distinct().sorted()
+  val stageable = dirtyPaths.filterNot(::isGovernedSpecPath).distinct().sorted()
   return StageablePathsOutcome(stageable = stageable, excluded = excluded)
 }
 
-internal fun isGovernedSpecPath(path: String): Boolean = normalizeRepoPath(path).let {
-  it == GOVERNED_SPEC_ROOT.removeSuffix("/") || it.startsWith(GOVERNED_SPEC_ROOT)
-}
-
-internal data class DeclaredBoundaryHistoryProjection(
-  val paths: List<String>,
-  val roots: List<String>,
-)
-
-internal fun finalisationOwnedPaths(
-  resolved: FeatureTaskRuntimeResolvedBranch?,
-  records: Map<String, FeatureTaskRuntimePhaseRecord>?,
-): List<String> {
-  val writingPhases = listOf(
-    FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT,
-    FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT_FIX,
-  )
-  val fromWriting = writingPhases.flatMap { phaseId ->
-    val record = records?.get(phaseId) ?: return@flatMap emptyList()
-    record.fileManifestIntroduced + record.fileManifestAfter
+fun emptyStageableReason(excluded: List<String>): String {
+  val cause = if (excluded.isEmpty()) {
+    "the worktree has no dirty non-ignored paths"
+  } else {
+    "the only dirty paths are governed `$GOVERNED_SPEC_ROOT` inputs " +
+      "(${excluded.joinToString(", ")}), which finalisation never stages"
   }
-  return (resolved?.workflowOwnedPaths.orEmpty() + fromWriting)
-    .map(::normalizeRepoPath)
-    .filter { it.isNotBlank() }
-    .filterNot(::isGovernedSpecPath)
-    .filterNot(::isRuntimePrivatePath)
-    .distinct()
-    .sorted()
+  return "$cause, so there is nothing to stage. Finalisation would otherwise publish the " +
+    "already-committed checkpoint tree with no deliverable content"
 }
 
-internal fun isOwnedOrBoundaryHistoryPath(
-  path: String,
-  ownedPaths: Collection<String>,
-  boundaryHistory: DeclaredBoundaryHistoryProjection,
-): Boolean {
-  val normalized = normalizeRepoPath(path)
-  return normalized in ownedPaths.map(::normalizeRepoPath).toSet() ||
-    isBoundaryHistoryPath(normalized, boundaryHistory.paths, boundaryHistory.roots)
-}
+fun specExclusionRecord(identity: FeatureTaskRuntimeSubtaskCommitIdentity, paths: List<String>) =
+  "seam=FeatureTaskRuntimeSubtaskFinalisation.finalise value_used='staged path set without " +
+    "${paths.joinToString(", ")}' value_expected=the agent's enumerated path set for " +
+    "'${identity.issueKey}/${identity.subtaskId}' cause=governed feature specs are workflow input, " +
+    "never subtask deliverable output, so they are dropped from the staged set and left dirty locally"
 
-internal fun isExemptFinalisationDirtyPath(
-  path: String,
-  ownedPaths: Collection<String>,
-  boundaryHistory: DeclaredBoundaryHistoryProjection,
-): Boolean {
-  val normalized = normalizeRepoPath(path)
-  return isGovernedSpecPath(normalized) ||
-    isRuntimePrivatePath(normalized) ||
-    isOwnedOrBoundaryHistoryPath(normalized, ownedPaths, boundaryHistory)
-}
+internal fun isGovernedSpecPath(path: String): Boolean = normalizeRepoPath(path).startsWith(GOVERNED_SPEC_ROOT)

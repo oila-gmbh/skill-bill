@@ -29,7 +29,8 @@ import skillbill.install.model.InstallPlanSkill
 import skillbill.install.model.InstallPlanSkillKind
 import skillbill.install.model.InstallStagingPathIntent
 import skillbill.install.model.RenderedSkill
-import skillbill.model.toPathimport skillbill.scaffold.model.PlatformManifest
+import skillbill.model.toPath
+import skillbill.scaffold.model.PlatformManifest
 import skillbill.scaffold.model.PointerSpec
 import java.nio.file.Files
 import java.nio.file.LinkOption.NOFOLLOW_LINKS
@@ -40,7 +41,7 @@ private val plannedContentHashRegex = Regex("[0-9a-f]{16}")
 internal fun plannedStagingIntent(plan: InstallPlan, skill: InstallPlanSkill): InstallStagingPathIntent =
   plan.staging.skillPaths.singleOrNull { intent ->
     intent.skillName == skill.name &&
-      intent.sourceDir.toAbsolutePath().normalize() == skill.sourceDir.toAbsolutePath().normalize()
+      intent.sourceDir.toPath().toAbsolutePath().normalize() == skill.sourceDir.toPath().toAbsolutePath().normalize()
   } ?: error("Install plan is missing planned staging intent for skill '${skill.name}' at '${skill.sourceDir}'.")
 
 internal fun validatedPlannedStaging(
@@ -49,20 +50,20 @@ internal fun validatedPlannedStaging(
   intent: InstallStagingPathIntent,
   platformManifests: List<PlatformManifest>,
 ): RenderedSkill {
-  val expectedRoot = installedSkillsCacheRoot(plan.request.home)
-  val resolvedSource = skill.sourceDir.toAbsolutePath().normalize()
-  val resolvedIntentSource = intent.sourceDir.toAbsolutePath().normalize()
+  val expectedRoot = installedSkillsCacheRoot(plan.request.home.toPath())
+  val resolvedSource = skill.sourceDir.toPath().toAbsolutePath().normalize()
+  val resolvedIntentSource = intent.sourceDir.toPath().toAbsolutePath().normalize()
   require(resolvedIntentSource == resolvedSource) {
     "Install plan staging source '${intent.sourceDir}' does not match skill source '${skill.sourceDir}'."
   }
-  require(intent.stagingRoot.toAbsolutePath().normalize() == expectedRoot) {
+  require(intent.stagingRoot.toPath().toAbsolutePath().normalize() == expectedRoot) {
     "Install plan staging root '${intent.stagingRoot}' does not match expected installed-skills root '$expectedRoot'."
   }
   require(intent.contentHash.matches(plannedContentHashRegex)) {
     "Install plan staging hash '${intent.contentHash}' for '${skill.name}' is not a valid content hash."
   }
-  val expectedStagingDir = installedSkillStagingDir(plan.request.home, resolvedSource, intent.contentHash)
-  require(intent.stagingDir.toAbsolutePath().normalize() == expectedStagingDir) {
+  val expectedStagingDir = installedSkillStagingDir(plan.request.home.toPath(), resolvedSource, intent.contentHash)
+  require(intent.stagingDir.toPath().toAbsolutePath().normalize() == expectedStagingDir) {
     "Install plan staging dir '${intent.stagingDir}' does not match expected dir '$expectedStagingDir'."
   }
   return materializeValidatedPlannedStaging(
@@ -81,12 +82,12 @@ private fun materializeValidatedPlannedStaging(inputs: PlannedStagingMaterializa
   val plan = inputs.plan
   val skill = inputs.skill
   val intent = inputs.intent
-  val pointers = applicablePointers(plan.request.repoRoot, inputs.resolvedSource, inputs.platformManifests)
+  val pointers = applicablePointers(plan.request.repoRoot.toPath(), inputs.resolvedSource, inputs.platformManifests)
   val supportPointers = plannedSupportPointers(inputs)
   val selectedPackSkills = selectedInternalPackSkills(plan)
   val internal = plannedInternalStaging(inputs, pointers, supportPointers, selectedPackSkills)
   val authored = authoredFilesFor(inputs.resolvedSource, pointers, internal.supportPointers, internal.sidecarNames)
-  val agentAddonPointers = agentAddonPointersForSkill(plan.request.repoRoot, skill.name)
+  val agentAddonPointers = agentAddonPointersForSkill(plan.request.repoRoot.toPath(), skill.name)
   validateAgentAddonPointerNamespace(
     skill.name,
     authoredStagingNames(inputs.resolvedSource, authored) + internal.sidecarNames + pointers.map { it.second.name } +
@@ -136,16 +137,16 @@ private fun reuseOrFreshPlannedStaging(
   }
   val staged = stageInstalledSkill(
     StageInstalledSkillInput(
-      repoRoot = plan.request.repoRoot,
+      repoRoot = plan.request.repoRoot.toPath(),
       sourceSkillDir = inputs.resolvedSource,
-      home = plan.request.home,
+      home = plan.request.home.toPath(),
       manifests = inputs.platformManifests,
-      skillsRoot = plan.request.targetPaths.skillsRoot,
+      skillsRoot = plan.request.targetPaths.skillsRoot.toPath(),
       selectedPackSkills = selectedPackSkills,
       selectedPlatformSlugs = selectedPlatformSlugs(plan, inputs.platformManifests),
     ),
   )
-  val stagedDir = staged.stagingDir.toAbsolutePath().normalize()
+  val stagedDir = staged.stagingDir.toPath().toAbsolutePath().normalize()
   require(staged.contentHash == intent.contentHash && stagedDir == inputs.expectedStagingDir) {
     "Staged '${skill.name}' at '${staged.stagingDir}' with hash '${staged.contentHash}', but plan expected " +
       "'${inputs.expectedStagingDir}' with hash '${intent.contentHash}'."
@@ -168,10 +169,10 @@ private fun validatePlannedStagingSource(inputs: PlannedStagingMaterialization, 
 }
 
 private fun plannedSupportPointers(inputs: PlannedStagingMaterialization) = generatedSupportPointersFor(
-  repoRoot = inputs.plan.request.repoRoot,
+  repoRoot = inputs.plan.request.repoRoot.toPath(),
   sourceSkillDir = inputs.resolvedSource,
   skillName = inputs.skill.name,
-  skillsRoot = inputs.plan.request.targetPaths.skillsRoot,
+  skillsRoot = inputs.plan.request.targetPaths.skillsRoot.toPath(),
   selectedPlatformManifests = selectedPlatformManifests(inputs.plan, inputs.platformManifests),
 )
 
@@ -182,10 +183,10 @@ private fun plannedInternalStaging(
   selectedPackSkills: List<InstallPlanSkill>,
 ) = prepareInternalStaging(
   InternalStagingPreparation(
-    repoRoot = inputs.plan.request.repoRoot,
+    repoRoot = inputs.plan.request.repoRoot.toPath(),
     parentSourceDir = inputs.resolvedSource,
     parentSkillName = inputs.skill.name,
-    skillsRoot = inputs.plan.request.targetPaths.skillsRoot,
+    skillsRoot = inputs.plan.request.targetPaths.skillsRoot.toPath(),
     selectedPackSkills = selectedPackSkills,
     platformManifests = inputs.platformManifests,
     selectedPlatformManifests = selectedPlatformManifests(inputs.plan, inputs.platformManifests),

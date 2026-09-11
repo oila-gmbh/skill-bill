@@ -1,41 +1,38 @@
 package skillbill.infrastructure.sqlite.goalrunner
-import skillbill.contracts.JsonSupportimport skillbill.goalrunner.model.GOAL_ATTEMPT_LEDGER_ARTIFACT_KEY
+
+import skillbill.contracts.JsonCodec
+import skillbill.goalrunner.AttemptLedgerAccumulator
+import skillbill.goalrunner.GoalObservabilityArtifacts
+import skillbill.goalrunner.WORKER_SUBTASK_REQUEST_OUTCOMES_ARTIFACT_KEY
+import skillbill.goalrunner.WORKER_SUBTASK_REQUEST_OUTCOME_LIMIT
+import skillbill.goalrunner.backwardEdgeCountsFromLedger
+import skillbill.goalrunner.declaredProgressEventFrom
+import skillbill.goalrunner.model.GOAL_ATTEMPT_LEDGER_ARTIFACT_KEY
 import skillbill.goalrunner.model.GOAL_ATTEMPT_LEDGER_LIMIT
+import skillbill.goalrunner.model.GoalObservabilityRuntimeEventInput
+import skillbill.goalrunner.model.GoalRunnerAttemptLedgerSummary
+import skillbill.goalrunner.model.GoalRunnerObservabilityRecordRequest
 import skillbill.goalrunner.model.GoalRunnerWorkerSubtaskRequestOutcome
 import skillbill.goalrunner.progressEventFrom
 import skillbill.goalrunner.summary
 import skillbill.goalrunner.toArtifactMap
 import skillbill.goalrunner.toProgressEvent
-import skillbill.infrastructure.sqlite.decomposition.decodeArtifactsimport skillbill.ports.db.DatabaseSessionFactory
-import skillbill.ports.goalrunner.persistence.AttemptLedgerAccumulator
-import skillbill.ports.goalrunner.persistence.WORKER_SUBTASK_REQUEST_OUTCOMES_ARTIFACT_KEY
-import skillbill.ports.goalrunner.persistence.WORKER_SUBTASK_REQUEST_OUTCOME_LIMIT
-import skillbill.ports.goalrunner.persistence.backwardEdgeCountsFromLedger
-import skillbill.ports.goalrunner.persistence.declaredProgressEventFrom
-import skillbill.ports.goalrunner.persistence.decodeWorkflowSteps
-import skillbill.ports.goalrunner.persistence.goalContinuation
-import skillbill.ports.goalrunner.persistence.maxHistorySequence
+import skillbill.infrastructure.sqlite.decomposition.decodeArtifacts
+import skillbill.ports.db.DatabaseSessionFactory
 import skillbill.ports.goalrunner.persistence.model.HistoryArtifactAppend
-import skillbill.ports.goalrunner.persistence.progressEventFrom
-import skillbill.ports.goalrunner.persistence.progressToken
-import skillbill.ports.goalrunner.persistence.summary
-import skillbill.ports.goalrunner.persistence.toArtifactMap
-import skillbill.ports.goalrunner.persistence.toProgressEvent
-import skillbill.ports.goalrunner.persistence.workflowFamilyFor
-import skillbill.ports.goalrunner.runner.GoalObservabilityArtifacts
-import skillbill.ports.goalrunner.runner.model.GoalObservabilityRuntimeEventInput
 import skillbill.ports.goalrunner.runner.model.GoalRunnerAttemptLedgerRecordRequest
-import skillbill.ports.goalrunner.runner.model.GoalRunnerAttemptLedgerSummary
 import skillbill.ports.goalrunner.runner.model.GoalRunnerLedgerSequenceWatermarks
-import skillbill.ports.goalrunner.runner.model.GoalRunnerObservabilityRecordRequest
 import skillbill.ports.goalrunner.runner.model.GoalRunnerProgressEventRecordRequest
 import skillbill.ports.goalrunner.runner.model.GoalRunnerWorkflowProgress
-import skillbill.ports.phaseartifacts.phaseRecordsFrom
-import skillbill.ports.workflow.decomposition.runtime.decodeArtifactKeys
-import skillbill.ports.workflow.decomposition.runtime.decodeArtifacts
-import skillbill.ports.workflow.persistence.model.WorkflowFamily
+import skillbill.ports.workflow.get
+import skillbill.ports.workflow.list
+import skillbill.ports.workflow.model.WorkflowFamily
+import skillbill.ports.workflow.save
+import skillbill.workflow.decomposition.runtime.decodeArtifactKeys
 import skillbill.workflow.engine.WorkflowEngine
+import skillbill.workflow.engine.decodeWorkflowSteps
 import skillbill.workflow.engine.model.WorkflowUpdateInput
+import skillbill.workflow.engine.progressToken
 import skillbill.workflow.goal.GoalObservabilityEventValidator
 import skillbill.workflow.goal.GoalProgressEventValidator
 import skillbill.workflow.goal.model.GOAL_OBSERVABILITY_LATEST_EVENT_ARTIFACT_KEY
@@ -49,6 +46,7 @@ import skillbill.workflow.model.WorkflowStepStatus
 import skillbill.workflow.model.workflowStatus
 import skillbill.workflow.model.workflowStepStatus
 import skillbill.workflow.taskruntime.phaseartifacts.phaseRecordsFrom
+
 private val PROGRESS_POLL_ARTIFACT_KEYS = setOf(
   "progress_event",
   GOAL_PROGRESS_LATEST_EVENT_ARTIFACT_KEY,
@@ -69,7 +67,8 @@ internal class WorkflowGoalRunnerProgressRecording(
     val artifacts = decodeArtifactKeys(record.artifactsJson, PROGRESS_POLL_ARTIFACT_KEYS)
     val finishCompleted = steps.any {
         step ->
-      step.stepId == "pr" && step.status.workflowStepStatus() == WorkflowStepStatus.COMPLETED    }
+      step.stepId == "pr" && step.status.workflowStepStatus() == WorkflowStepStatus.COMPLETED
+    }
     val currentStep = if (record.workflowStatus.workflowStatus() == WorkflowStatus.COMPLETED || finishCompleted) {
       "pr"
     } else {
@@ -158,8 +157,9 @@ internal class WorkflowGoalRunnerProgressRecording(
     (decodeArtifacts(record.artifactsJson)[GOAL_PROGRESS_RUN_HISTORY_ARTIFACT_KEY] as? List<*>)
       .orEmpty()
       .mapNotNull { item -> item as? Map<*, *> }
-      .mapNotNull { item -> JsonSupport.anyToStringAnyMap(item) }
+      .mapNotNull { item -> JsonCodec.anyToStringAnyMap(item) }
   }
+
   fun recordWorkerSubtaskRequestOutcomes(
     workflowId: String,
     outcomes: List<GoalRunnerWorkerSubtaskRequestOutcome>,
@@ -172,7 +172,7 @@ internal class WorkflowGoalRunnerProgressRecording(
     val existing = (artifacts[WORKER_SUBTASK_REQUEST_OUTCOMES_ARTIFACT_KEY] as? List<*>)
       .orEmpty()
       .mapNotNull { item -> item as? Map<*, *> }
-      .map { item -> JsonSupport.anyToStringAnyMap(item) }
+      .map { item -> JsonCodec.anyToStringAnyMap(item) }
     val updatedOutcomes = (existing + outcomes.map(GoalRunnerWorkerSubtaskRequestOutcome::toArtifactMap))
       .takeLast(WORKER_SUBTASK_REQUEST_OUTCOME_LIMIT)
     val updated = engine.updateRecord(
@@ -252,11 +252,12 @@ internal class WorkflowGoalRunnerProgressRecording(
     val existing = (artifacts[append.historyKey] as? List<*>)
       .orEmpty()
       .mapNotNull { item -> item as? Map<*, *> }
-      .mapNotNull { item -> JsonSupport.anyToStringAnyMap(item) }
+      .mapNotNull { item -> JsonCodec.anyToStringAnyMap(item) }
     val updatedHistory = appendBoundedHistoryBySequence(existing, append.entryMap, append.retentionLimit)
     val patch = buildMap<String, Any?> {
       put(append.historyKey, updatedHistory)
-      append.latestKey?.let { put(it, append.entryMap) }    }
+      append.latestKey?.let { put(it, append.entryMap) }
+    }
     val updated = engine.updateRecord(
       family.definition,
       record,

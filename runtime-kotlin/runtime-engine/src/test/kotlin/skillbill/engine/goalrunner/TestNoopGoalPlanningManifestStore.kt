@@ -1,12 +1,13 @@
 package skillbill.engine.goalrunner
 
 import skillbill.goalrunner.model.GoalRunnerExecutionLease
-import skillbill.ports.goalrunner.runner.GoalRunnerManifestStore
+import skillbill.ports.goalrunner.runner.GoalRunnerManifestStoreDefaults
 import skillbill.ports.goalrunner.runner.model.GoalRunnerManifestState
 import java.nio.file.Path
 
 internal object TestNoopGoalPlanningManifestStore : GoalRunnerManifestStoreDefaults() {
   override fun loadByIssueKey(issueKey: String, repoRoot: Path?): GoalRunnerManifestState? = null
+
   override fun save(state: GoalRunnerManifestState): GoalRunnerManifestState = state
 
   override fun acquireExecutionLease(

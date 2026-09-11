@@ -16,7 +16,7 @@ internal object NativeAgentLinkInventoryLimits {
   val PROVIDERS = setOf("claude", "codex", "junie", "cursor")
 }
 
-internal object NativeAgentLinkInventorySupport {
+internal object NativeAgentLinkInventoryPaths {
   fun sha256(bytes: ByteArray): String = MessageDigest.getInstance("SHA-256")
     .digest(bytes).joinToString("") { byte -> "%02x".format(byte) }
 

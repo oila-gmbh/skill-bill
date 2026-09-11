@@ -14,7 +14,8 @@ class InMemoryFeatureTaskPhaseSettlementRepository : FeatureTaskPhaseSettlementR
   override fun find(workflowId: String, phaseId: String, attempt: Int): FeatureTaskPhaseSettlement? =
     rows[key(workflowId, phaseId, attempt)]
 
-  override fun delete(workflowId: String, phaseId: String, attempt: Int): Boolean =    rows.remove(key(workflowId, phaseId, attempt)) != null
+  override fun delete(workflowId: String, phaseId: String, attempt: Int): Boolean =
+    rows.remove(key(workflowId, phaseId, attempt)) != null
 
   private fun key(workflowId: String, phaseId: String, attempt: Int): String = "$workflowId::$phaseId::$attempt"
 }

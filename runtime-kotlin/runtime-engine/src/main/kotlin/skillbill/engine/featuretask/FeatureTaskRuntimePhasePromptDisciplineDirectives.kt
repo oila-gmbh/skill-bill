@@ -37,14 +37,6 @@ fun priorGapMemoryRemediationDirective(phaseId: String, memory: FeatureTaskRunti
     value string, your remediation must explicitly address why the prior fix did not close it. Still
     close every gap named in the current audit value in this one invocation; never narrow scope to
     only recurring items.
-
-    When a gap genuinely cannot close inside this phase — the remaining work has no intermediate state
-    that passes the gate, or it exceeds this subtask's boundary — do not settle the phase as blocked.
-    Complete with that gap in unresolved_items, carrying the evidence for why it cannot close here and
-    what would unblock it. The runtime adjudicates across rounds: a remediation round that makes no
-    progress pauses the subtask for an operator decision. Blocking bypasses that adjudication. This is
-    the narrow exit for work that is genuinely larger than a phase, not a way to defer a gap you could
-    close in this invocation.
   """.trimIndent()
 }
 

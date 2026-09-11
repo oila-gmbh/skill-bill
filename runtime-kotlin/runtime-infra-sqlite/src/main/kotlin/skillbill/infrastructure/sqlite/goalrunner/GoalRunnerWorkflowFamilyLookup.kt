@@ -1,18 +1,14 @@
-<<<<<<<< HEAD:runtime-kotlin/runtime-ports/src/main/kotlin/skillbill/ports/goalrunner/persistence/GoalRunnerWorkflowFamilyLookup.kt
-package skillbill.ports.goalrunner.persistence
-========
 package skillbill.infrastructure.sqlite.goalrunner
->>>>>>>> 9d724a13f (SKILL-233: Engine module and package roots):runtime-kotlin/runtime-infra-sqlite/src/main/kotlin/skillbill/infrastructure/sqlite/goalrunner/GoalRunnerWorkflowFamilyLookup.kt
 import skillbill.agentaddon.model.AgentAddonSelection
 import skillbill.agentaddon.model.PersistedAgentAddonSelectionEntry
-import skillbill.contracts.JsonSupport
+import skillbill.contracts.JsonCodec
 import skillbill.error.LegacyProseWorkflowError
 import skillbill.goalrunner.model.GOAL_PAUSE_REASON_OPERATOR_REQUEST
 import skillbill.goalrunner.model.GOAL_PAUSE_REASON_STOP_AFTER_SUBTASK
 import skillbill.goalrunner.model.GoalRunnerControlState
 import skillbill.ports.workflow.WorkflowStateRepository
 import skillbill.ports.workflow.model.FeatureTaskWorkflowMode
-import skillbill.ports.workflow.persistence.model.WorkflowFamily
+import skillbill.ports.workflow.model.WorkflowFamily
 
 fun workflowFamilyFor(workflowStates: WorkflowStateRepository, workflowId: String): WorkflowFamily? {
   val featureTaskRow = workflowStates.getFeatureTaskWorkflow(workflowId)
@@ -56,7 +52,7 @@ fun decodeGoalAgentAddonSelection(raw: Any?): AgentAddonSelection {
   val entries = values as? List<*> ?: error("Goal review policy agent_addon_selection must be a list.")
   return AgentAddonSelection(
     entries.mapIndexed { index, value ->
-      val entry = JsonSupport.anyToStringAnyMap(value)
+      val entry = JsonCodec.anyToStringAnyMap(value)
         ?: error("Goal review policy agent_addon_selection entry $index must be a map.")
       check(entry.keys == setOf("slug", "source_identity", "content_sha256")) {
         "Goal review policy agent_addon_selection entry $index has invalid fields."

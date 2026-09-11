@@ -6,6 +6,7 @@ import skillbill.engine.RuntimeFakeDatabaseSessionFactory
 import skillbill.engine.featuretask.model.FeatureTaskRuntimePhaseLaunchBriefing
 import skillbill.ports.diagnostics.NoopRuntimeDiagnostics
 import skillbill.workflow.engine.WorkflowSnapshotValidator
+import skillbill.workflow.engine.model.WorkflowStateSnapshot
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeHandoffEnvelope
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeSharedEvidenceMeasurement
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeSharedEvidenceOutcome
@@ -112,6 +113,6 @@ class FeatureTaskRuntimeSharedEvidenceRecorderTest {
     )
 
   private object NoopWorkflowSnapshotValidator : WorkflowSnapshotValidator {
-    override fun validate(snapshot: Map<String, Any?>, slug: String) = Unit
+    override fun validate(snapshot: WorkflowStateSnapshot, slug: String) = Unit
   }
 }

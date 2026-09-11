@@ -2,7 +2,7 @@ package skillbill.application.workflow
 
 import skillbill.application.workflow.model.BuildFeatureTaskExecutionIdentityArgs
 import skillbill.application.workflow.model.WorkflowFamilyKind
-import skillbill.ports.continuation.FeatureTaskExecutionIdentityPolicy
+import skillbill.ports.workflow.FeatureTaskExecutionIdentityPolicy
 import skillbill.ports.workflow.model.FeatureTaskExecutionIdentity
 import skillbill.ports.workflow.model.FeatureTaskWorkflowMode
 

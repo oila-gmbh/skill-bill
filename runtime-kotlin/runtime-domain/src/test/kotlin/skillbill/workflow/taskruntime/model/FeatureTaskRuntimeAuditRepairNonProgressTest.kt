@@ -87,7 +87,7 @@ class FeatureTaskRuntimeAuditRepairNonProgressTest {
   }
 
   @Test
-  fun `same unresolved criteria continue when repository fingerprint changes`() {
+  fun `changed unresolved criterion set proves progress even when fingerprint is unchanged`() {
     val decision = detectAuditRepairNonProgress(
       previous = FeatureTaskRuntimeAuditRepairSnapshot(
         hasGaps = true,
@@ -98,7 +98,8 @@ class FeatureTaskRuntimeAuditRepairNonProgressTest {
         hasGaps = true,
         repositoryFingerprint = "same",
         criterionRefs = setOf("AC-002"),
-      ),    )
+      ),
+    )
     assertFalse(decision.blocked)
   }
 
@@ -132,7 +133,8 @@ class FeatureTaskRuntimeAuditRepairNonProgressTest {
         hasGaps = true,
         repositoryFingerprint = "same",
         criterionRefs = setOf("AC-001"),
-      ),    )
+      ),
+    )
     assertTrue(decision.blocked)
   }
 }

@@ -188,10 +188,9 @@ class CliFeatureTaskRuntimeWorkflowTest {
     }
 
     launcher.requests.clear()
-    val disabledFixture = runtimeFixture()
     val disabled = CliRuntime.run(
-      disabledFixture.runCommand(extra = listOf("--agent", "codex", "--max-wall-clock-minutes", "0")),
-      disabledFixture.context(launcher),
+      fixture.runCommand(extra = listOf("--agent", "codex", "--max-wall-clock-minutes", "0")),
+      fixture.context(launcher),
     )
     assertEquals(0, disabled.exitCode, disabled.stdout)
     assertTrue(launcher.requests.isNotEmpty(), disabled.stdout)

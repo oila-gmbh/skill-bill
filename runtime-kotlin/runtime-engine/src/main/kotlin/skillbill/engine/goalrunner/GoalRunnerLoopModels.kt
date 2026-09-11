@@ -1,44 +1,19 @@
 package skillbill.engine.goalrunner
 
 import skillbill.engine.goalrunner.model.GoalRunnerRunEvent
-import skillbill.engine.goalrunner.model.GoalRunnerRunRequestimport skillbill.goalrunner.model.GoalAttemptLedgerAction
+import skillbill.engine.goalrunner.model.GoalRunnerRunRequest
+import skillbill.goalrunner.model.GoalAttemptLedgerAction
 import skillbill.goalrunner.model.GoalRunnerReconciledOutcome
 import skillbill.goalrunner.model.GoalRunnerRunReport
 import skillbill.goalrunner.model.GoalRunnerSelection
 import skillbill.goalrunner.model.GoalRunnerSubtaskAction
 import skillbill.ports.agentrun.model.AgentRunLaunchFacts
-import skillbill.ports.goalrunner.runner.GoalRunnerManifestStore
-import skillbill.ports.goalrunner.runner.GoalRunnerSubtaskLauncher
-import skillbill.ports.goalrunner.runner.GoalRunnerWorkflowOutcomeStore
 import skillbill.ports.goalrunner.runner.model.GoalRunnerManifestState
 import skillbill.ports.goalrunner.runner.model.GoalRunnerWorkflowProgress
 import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewBaseline
-import java.time.Clock
-
-internal data class GoalRunnerIterationOutcomeDeps(
-  val manifestStore: GoalRunnerManifestStore,
-  val outcomeStore: GoalRunnerWorkflowOutcomeStore,
-  val finalization: GoalRunnerFinalization,
-  val unaddressedFindingsLedgerService: UnaddressedFindingsLedgerService?,
-  val progressReader: GoalRunnerProgressReader,
-  val clock: Clock,
-  val phaseRecorder: FeatureTaskRuntimePhaseRecorder? = null,
-)
 
 internal data class GoalRunnerIterationPendingState(
   val validationQualityState: GoalRunnerValidationQualityPendingState,
-)
-
-internal data class GoalRunnerSelectedSubtaskLoopDeps(
-  val manifestStore: GoalRunnerManifestStore,
-  val subtaskLauncher: GoalRunnerSubtaskLauncher,
-  val reconciler: GoalRunnerLaunchReconciler,
-  val workerRequestHandler: GoalRunnerWorkerRequestHandler,
-  val iterationOutcome: GoalRunnerIterationOutcome,
-  val pauseBoundary: GoalRunnerPauseBoundary,
-  val launchPrepare: GoalRunnerSubtaskLaunchPrepare,
-  val clock: Clock,
-  val pendingState: GoalRunnerIterationPendingState,
 )
 
 internal data class GoalRunnerIterationSession(

@@ -1,5 +1,4 @@
 package skillbill.workflow.goal.model
-
 import skillbill.contracts.workflow.GOAL_SUBTASK_REVIEW_STATE_CONTRACT_VERSION
 import skillbill.error.InvalidGoalSubtaskReviewStateSchemaError
 import skillbill.review.context.model.CodeReviewExecutionMode

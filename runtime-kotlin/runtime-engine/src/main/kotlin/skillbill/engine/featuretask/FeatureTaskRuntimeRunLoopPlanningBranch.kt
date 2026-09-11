@@ -1,20 +1,24 @@
 package skillbill.engine.featuretask
 
-import me.tatarka.inject.annotations.Inject
-import skillbill.engine.featuretask.model.FeatureTaskRuntimePhaseStateRequest
-import skillbill.engine.featuretask.model.FeatureTaskRuntimeRunReportimport skillbill.application.review.RuntimeOwnedReviewMode
+import skillbill.application.review.RuntimeOwnedReviewMode
 import skillbill.engine.featuretask.model.FeatureTaskRuntimePhaseStateRequest
 import skillbill.engine.featuretask.model.FeatureTaskRuntimeRunReport
 import skillbill.workflow.goal.model.GOAL_SUBTASK_REVIEW_BLOCKER_SEVERITY
+import skillbill.workflow.goal.model.GoalSubtaskOperatorDecision
 import skillbill.workflow.goal.model.GoalSubtaskReviewState
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
+import skillbill.workflow.taskruntime.model.AUDIT_GAP_PAUSE_DECISION_ABANDON_SUBTASK
+import skillbill.workflow.taskruntime.model.AUDIT_GAP_PAUSE_DECISION_RETRY_FIX
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditGapPause
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeBackwardEdge
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFailureDisposition
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeNextPhase
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseDeclaration
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeReviewFinding
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeVerdict
 import skillbill.workflow.taskruntime.model.ReviewPassResolution
 
-@Inject
-class FeatureTaskRuntimeRunLoopPlanningBranch {
+object FeatureTaskRuntimeRunLoopPlanningBranch {
   fun clearRecoveredBranchSetupBlock(runLoop: FeatureTaskRuntimeRunLoop, phaseId: String) {
     if (!runLoop.state.hasBranchSetupBlock(phaseId)) {
       return
@@ -77,7 +81,7 @@ class FeatureTaskRuntimeRunLoopPlanningBranch {
       declaration = phaseDeclaration(
         phaseId,
         runLoop.request.runInvariants.featureSize,
-        runLoop.collaborators.transitions.qualityGateSelection(runLoop),
+        FeatureTaskRuntimeRunLoopTransitions.qualityGateSelection(runLoop),
       ),
       resolvedAgent = resolvedAgent,
       modelDirective = FeatureTaskRuntimeModelResolver.resolve(
@@ -89,7 +93,7 @@ class FeatureTaskRuntimeRunLoopPlanningBranch {
       request = runLoop.request,
       specSource = runLoop.specSource,
     )
-    runLoop.collaborators.phaseAttemptsContinued2.blockAndPersist(
+    FeatureTaskRuntimeRunLoopPhaseAttempts.blockAndPersist(
       runLoop,
       BlockAndPersistArgs(
         run = run,
@@ -128,19 +132,10 @@ class FeatureTaskRuntimeRunLoopPlanningBranch {
     }
   }
 
-  /**
-   * Every remediation pass must key one disposition per Blocker its immediately preceding completed
-   * pass emitted — including a Blocker that pass introduced itself — so the ids are minted here from
-   * that durable pass result rather than invented by the agent. Empty for pass one, which has no
-   * prior pass to dispose.
-   */
   fun priorBlockerFindingIds(runLoop: FeatureTaskRuntimeRunLoop): List<String> {
     val priorPass = goalReviewStateOrNull(runLoop)?.passResults?.lastOrNull() ?: return emptyList()
     return priorPass.findings
       .filter { it.severity == GOAL_SUBTASK_REVIEW_BLOCKER_SEVERITY }
-      // Prefer the id the prior pass's output actually carried, so the ids the prompt asks the agent
-      // to disposition against are the ids it saw. The positional id is only a fallback for records
-      // written before the review output's own id was captured.
       .mapIndexed { index, finding -> finding.findingId ?: "pass${priorPass.passNumber}-blocker-${index + 1}" }
   }
 
@@ -399,4 +394,5 @@ class FeatureTaskRuntimeRunLoopPlanningBranch {
     return "Backward-edge loop '$loopId' exhausted its per-edge cap after $edgeIteration iteration(s) with the " +
       "verdict '${verdict.wireValue}' still unresolved; the run blocks rather than re-entering past the cap." +
       findingsSuffix
-  }}
+  }
+}

@@ -1,9 +1,10 @@
 package skillbill.infrastructure.sqlite.goalrunner
 
-import skillbill.infrastructure.sqlite.decomposition.decodeArtifactsimport skillbill.ports.goalrunner.runner.model.GoalRunnerOutOfBandAcceptance
+import skillbill.infrastructure.sqlite.decomposition.decodeArtifacts
+import skillbill.ports.goalrunner.runner.model.GoalRunnerOutOfBandAcceptance
 import skillbill.ports.goalrunner.runner.model.GoalRunnerReviewPolicy
-import skillbill.ports.workflow.decomposition.runtime.decodeArtifacts
-import skillbill.ports.workflow.persistence.model.WorkflowFamily
+import skillbill.ports.workflow.get
+import skillbill.ports.workflow.model.WorkflowFamily
 import skillbill.review.context.model.CodeReviewExecutionMode
 
 internal class WorkflowGoalRunnerManifestReviewOpsImpl(
@@ -12,7 +13,8 @@ internal class WorkflowGoalRunnerManifestReviewOpsImpl(
   override fun reviewMode(parentWorkflowId: String): CodeReviewExecutionMode? = ctx.database.read { unitOfWork ->
     unitOfWork.goalRunnerControls.reviewPolicy(parentWorkflowId)?.codeReviewMode
       ?: featureTaskRecordForLegacyControls(unitOfWork.workflowStates, parentWorkflowId)
-        ?.let { record -> reviewPolicyFromLegacyArtifacts(decodeArtifacts(record.artifactsJson))?.codeReviewMode }  }
+        ?.let { record -> reviewPolicyFromLegacyArtifacts(decodeArtifacts(record.artifactsJson))?.codeReviewMode }
+  }
   override fun persistReviewMode(parentWorkflowId: String, mode: CodeReviewExecutionMode): CodeReviewExecutionMode =
     ctx.database.transaction { unitOfWork ->
       val record = WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, parentWorkflowId)

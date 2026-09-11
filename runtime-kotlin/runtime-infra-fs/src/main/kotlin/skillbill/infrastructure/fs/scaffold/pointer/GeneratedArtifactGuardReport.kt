@@ -5,7 +5,8 @@ import skillbill.infrastructure.fs.nativeagent.validation.discoverNativeAgentGen
 import skillbill.infrastructure.fs.scaffold.platformpack.loadPlatformManifest
 import skillbill.infrastructure.fs.scaffold.runtime.requiredSupportingFilesForSkill
 import skillbill.infrastructure.fs.scaffold.runtime.supportingFileTargets
-import skillbill.model.toPathimport java.nio.file.Files
+import skillbill.model.toPath
+import java.nio.file.Files
 import java.nio.file.LinkOption
 import java.nio.file.Path
 import kotlin.io.path.isDirectory
@@ -165,7 +166,7 @@ private fun discoverDeclaredPointerFiles(root: Path): List<Path> {
           return@flatMap emptyList<Path>().stream()
         }
         pack.pointers
-          .map { spec -> pack.packRoot.resolve(spec.skillRelativeDir).resolve(spec.name).normalize() }
+          .map { spec -> pack.packRoot.resolve(spec.skillRelativeDir).resolve(spec.name).toPath().normalize() }
           .filter { pointerFile ->
             Files.isSymbolicLink(pointerFile) ||
               Files.isRegularFile(pointerFile, LinkOption.NOFOLLOW_LINKS)

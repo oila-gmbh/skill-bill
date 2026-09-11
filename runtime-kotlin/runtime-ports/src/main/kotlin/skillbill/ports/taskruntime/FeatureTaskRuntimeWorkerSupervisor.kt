@@ -1,6 +1,5 @@
 package skillbill.ports.taskruntime
 
-import skillbill.contracts.diagnostics.RecordingNullObjectDiagnostics
 import skillbill.ports.featuretask.model.FeatureTaskRuntimeWorkerOwnership
 import skillbill.ports.taskruntime.model.FeatureTaskRuntimeHeartbeatPlan
 import skillbill.ports.taskruntime.model.FeatureTaskRuntimeHeartbeatTick
@@ -46,63 +45,8 @@ interface FeatureTaskRuntimeHeartbeat {
   fun fencingLostReason(): String?
 }
 
-object NoopFeatureTaskRuntimeHeartbeat : FeatureTaskRuntimeHeartbeat {
-  private const val NAME = "NoopFeatureTaskRuntimeHeartbeat"
-
-  override fun stop() {
-    RecordingNullObjectDiagnostics.recordSwallow(NAME, "stop()")
-  }
-
-  override fun fencingLostReason(): String? {
-    RecordingNullObjectDiagnostics.recordSwallow(NAME, "fencingLostReason()")
-    return null
-  }
-}
-
 /**
  * Default supervisor for seams that do not perform process liveness (tests, artifact-only stores).
  * Every inspection is [FeatureTaskRuntimeProcessInspection.Unsupported] — ambiguous evidence that is
  * never confirmed dead — so a seam wired with this default never reconciles.
  */
-object NoopFeatureTaskRuntimeWorkerSupervisor : FeatureTaskRuntimeWorkerSupervisor {
-  private const val NAME = "NoopFeatureTaskRuntimeWorkerSupervisor"
-
-  override fun currentProcess(): FeatureTaskRuntimeProcessIdentity {
-    RecordingNullObjectDiagnostics.recordSwallow(NAME, "currentProcess()")
-    return FeatureTaskRuntimeProcessIdentity("noop-host", "noop-boot", 1, "noop-birth")
-  }
-
-  override fun inspect(ownership: FeatureTaskRuntimeWorkerOwnership): FeatureTaskRuntimeProcessInspection {
-    RecordingNullObjectDiagnostics.recordSwallow(NAME, "inspect(workflowId=${ownership.workflowId})")
-    return FeatureTaskRuntimeProcessInspection.Unsupported("no-op supervisor performs no liveness inspection")
-  }
-
-  override fun awaitExit(ownership: FeatureTaskRuntimeWorkerOwnership, timeout: Duration) {
-    RecordingNullObjectDiagnostics.recordSwallow(
-      NAME,
-      "awaitExit(workflowId=${ownership.workflowId}, timeout=$timeout)",
-    )
-  }
-
-  override fun terminateGracefully(ownership: FeatureTaskRuntimeWorkerOwnership): Boolean {
-    RecordingNullObjectDiagnostics.recordSwallow(NAME, "terminateGracefully(workflowId=${ownership.workflowId})")
-    return false
-  }
-
-  override fun terminateForcibly(ownership: FeatureTaskRuntimeWorkerOwnership): Boolean {
-    RecordingNullObjectDiagnostics.recordSwallow(NAME, "terminateForcibly(workflowId=${ownership.workflowId})")
-    return false
-  }
-
-  override fun startHeartbeat(
-    plan: FeatureTaskRuntimeHeartbeatPlan,
-    heartbeat: () -> FeatureTaskRuntimeHeartbeatTick,
-  ): FeatureTaskRuntimeHeartbeat {
-    RecordingNullObjectDiagnostics.recordSwallow(NAME, "startHeartbeat(label=${plan.label})")
-    return NoopFeatureTaskRuntimeHeartbeat
-  }
-
-  override fun pause(durationMillis: Long) {
-    RecordingNullObjectDiagnostics.recordSwallow(NAME, "pause(durationMillis=$durationMillis)")
-  }
-}

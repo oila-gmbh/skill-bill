@@ -1,8 +1,11 @@
 package skillbill.engine.featuretask
 
 import skillbill.application.decomposition.decodeArtifacts
-import skillbill.engine.workflow.model.WorkflowFamily
-import skillbill.contracts.JsonSupportimport skillbill.ports.db.DatabaseSessionFactory
+import skillbill.application.workflow.model.WorkflowFamily
+import skillbill.contracts.JsonCodec
+import skillbill.engine.featuretask.model.FeatureTaskRuntimePhaseStateRequest
+import skillbill.ports.db.DatabaseSessionFactory
+import skillbill.ports.workflow.get
 import skillbill.workflow.goal.model.appendBoundedHistoryBySequence
 import skillbill.workflow.model.WorkflowStepStatus
 import skillbill.workflow.model.workflowStepStatus
@@ -15,7 +18,6 @@ import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_IMPLEMENTATION_
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_LEDGER_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_LEDGER_LIMIT
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_RECORDS_ARTIFACT_KEY
-import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_RESOLVED_BRANCH_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeImplementationAttempt
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeImplementationAttemptStatus
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeOperatorBlockRetry
@@ -65,7 +67,8 @@ class FeatureTaskRuntimePhaseStateRecorder(
 
   override fun recordCompletedPhase(request: FeatureTaskRuntimePhaseStateRequest): Boolean {
     require(request.status.workflowStepStatus() == WorkflowStepStatus.COMPLETED && request.finished)
-    return recordCompletedPhaseWrite(request)  }
+    return recordCompletedPhaseWrite(request)
+  }
 
   override fun recordIncompleteImplementationAttempt(request: FeatureTaskRuntimePhaseStateRequest): Boolean =
     database.transaction { unitOfWork ->
@@ -152,7 +155,11 @@ fun featureTaskRuntimePhaseRecordFor(
   now: String,
 ): FeatureTaskRuntimePhaseRecord {
   val firstStartedAt = previous?.firstStartedAt ?: now
-  val startedAt = if (request.status == PHASE_RECORDER_STATUS_RUNNING || previous == null) now else previous.startedAt
+  val startedAt = if (request.status.workflowStepStatus() == WorkflowStepStatus.RUNNING || previous == null) {
+    now
+  } else {
+    previous.startedAt
+  }
   val carryForward = previous != null &&
     previous.attemptCount == request.attemptCount &&
     previous.resolvedAgentId == request.resolvedAgentId
@@ -163,14 +170,16 @@ fun featureTaskRuntimePhaseRecordFor(
   }
   return FeatureTaskRuntimePhaseRecord(
     phaseId = request.phaseId,
-    status = request.status,
+    status = requireNotNull(request.status.workflowStepStatus()) {
+      "Unknown feature-task-runtime phase status '${request.status}'."
+    },
     attemptCount = request.attemptCount,
     startedAt = startedAt,
     firstStartedAt = firstStartedAt,
     finishedAt = if (request.finished) now else null,
     durationMillis = if (request.finished) durationMillis(startedAt, now) else null,
     resolvedAgentId = request.resolvedAgentId,
-    outputArtifact = request.outputArtifact ?: previous?.outputArtifact,
+    outputArtifact = request.outputArtifact,
     rejectedOutput = request.rejectedOutput,
     blockedReason = request.blockedReason,
     failureDisposition = request.failureDisposition,
@@ -202,7 +211,7 @@ fun FeatureTaskRuntimePhaseStateRecorder.implementationAttemptPatch(
 ): Map<String, Any?> {
   if (!FeatureTaskRuntimePhaseWorkflowDefinition.isMutatingPhase(request.phaseId)) return emptyMap()
   val produced = request.normalizedOutput?.envelope
-    ?.let { JsonSupport.anyToStringAnyMap(it["produced_outputs"]) }
+    ?.let { JsonCodec.anyToStringAnyMap(it["produced_outputs"]) }
   val value = produced?.get("value")?.toString()?.trim().orEmpty()
   if (produced == null || value.isBlank()) return emptyMap()
   val prompt = produced["prompt"]?.toString()?.trim()?.takeIf(String::isNotBlank)
@@ -235,7 +244,7 @@ fun FeatureTaskRuntimePhaseStateRecorder.findingVerificationCheckpointPatch(
   request: FeatureTaskRuntimePhaseStateRequest,
 ): Map<String, Any?> {
   if (request.phaseId != FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VERIFY_FINDINGS) return emptyMap()
-  if (request.finished && request.status == "completed") {
+  if (request.finished && request.status.workflowStepStatus() == WorkflowStepStatus.COMPLETED) {
     val dispositions = request.normalizedOutput?.envelope
       ?.let(FeatureTaskRuntimeOutputVerification::dispositionsFrom)
       .orEmpty()
@@ -266,9 +275,8 @@ fun FeatureTaskRuntimePhaseStateRecorder.recordCompletedPhaseWrite(
     ?: return@requiredWrite false
   val artifacts = decodeArtifacts(record.artifactsJson)
   val existingRecords = phaseRecordsFrom(artifacts)
-  val updatedPhaseRecord = phaseRecordFor(request, existingRecords[request.phaseId], clock.instant().toString())
   val updatedRecords = LinkedHashMap(existingRecords).apply {
-    put(request.phaseId, updatedPhaseRecord)
+    put(request.phaseId, phaseRecordFor(request, existingRecords[request.phaseId], clock.instant().toString()))
   }
   val ledger = phaseLedgerFrom(artifacts)
   val completion = FeatureTaskRuntimePhaseLedgerEntry(
@@ -294,27 +302,10 @@ fun FeatureTaskRuntimePhaseStateRecorder.recordCompletedPhaseWrite(
         updatedRecords.mapValues { (_, value) -> value.toArtifactMap() },
       FEATURE_TASK_RUNTIME_PHASE_LEDGER_ARTIFACT_KEY to updatedLedger,
     ) + implementationAttemptPatch(artifacts, request, FeatureTaskRuntimeImplementationAttemptStatus.COMPLETED) +
-      findingVerificationCheckpointPatch(request) +
-      boundaryHistoryProjectionPatch(artifacts, request, updatedPhaseRecord),
+      findingVerificationCheckpointPatch(request),
     WorkflowRowAdvance(request.phaseId, workflowStatusFor(request), stepUpdatesFrom(updatedRecords)),
   )
   true
-}
-
-private fun boundaryHistoryProjectionPatch(
-  artifacts: Map<String, Any?>,
-  request: FeatureTaskRuntimePhaseStateRequest,
-  phaseRecord: FeatureTaskRuntimePhaseRecord,
-): Map<String, Any?> {
-  if (request.phaseId != FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_WRITE_HISTORY) return emptyMap()
-  val resolved = resolvedBranchFrom(artifacts) ?: return emptyMap()
-  val projection = declaredBoundaryHistoryProjection(phaseRecord, resolved.boundaryHistoryRoots)
-  return mapOf(
-    FEATURE_TASK_RUNTIME_RESOLVED_BRANCH_ARTIFACT_KEY to resolved.copy(
-      boundaryHistoryPaths = projection.paths,
-      boundaryHistoryRoots = resolved.boundaryHistoryRoots,
-    ).toArtifactMap(),
-  )
 }
 
 fun FeatureTaskRuntimePhaseStateRecorder.phaseRecordFor(

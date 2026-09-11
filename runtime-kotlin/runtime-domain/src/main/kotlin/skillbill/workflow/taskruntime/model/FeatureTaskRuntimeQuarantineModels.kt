@@ -1,7 +1,7 @@
 package skillbill.workflow.taskruntime.model
 
 import skillbill.boundary.OpenBoundaryMap
-import skillbill.contracts.JsonSupport
+import skillbill.contracts.JsonCodec
 import skillbill.error.InvalidWorkflowStateSchemaError
 
 /**
@@ -169,7 +169,7 @@ private fun quarantineSchemaError(detail: String): Nothing = throw InvalidWorkfl
 /** Strict decode of the durable quarantine record; loud-fails on a malformed artifact. */
 @OpenBoundaryMap("Feature-task-runtime quarantine record decode from the durable workflow-artifact map")
 fun featureTaskRuntimeQuarantineEntriesFromWire(raw: Any?): List<FeatureTaskRuntimeQuarantineEntry> {
-  val map = JsonSupport.anyToStringAnyMap(raw)
+  val map = JsonCodec.anyToStringAnyMap(raw)
     ?: quarantineSchemaError("Feature-task-runtime quarantine record must be an object.")
   val unexpected = map.keys - QUARANTINE_ENVELOPE_FIELDS
   if (unexpected.isNotEmpty()) {
@@ -189,7 +189,7 @@ fun featureTaskRuntimeQuarantineEntriesFromWire(raw: Any?): List<FeatureTaskRunt
     ?: quarantineSchemaError("Feature-task-runtime quarantine record must carry an 'entries' array.")
   return entries.map { entry ->
     FeatureTaskRuntimeQuarantineEntry.fromArtifactMap(
-      JsonSupport.anyToStringAnyMap(entry)
+      JsonCodec.anyToStringAnyMap(entry)
         ?: quarantineSchemaError("Feature-task-runtime quarantine entry must be an object."),
     )
   }

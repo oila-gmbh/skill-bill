@@ -1,6 +1,6 @@
 package skillbill.infrastructure.sqlite.telemetry
 
-import skillbill.contracts.JsonSupport
+import skillbill.contracts.JsonCodec
 import skillbill.telemetry.model.FeatureTaskRuntimeFinishedRecord
 import skillbill.telemetry.model.FeatureTaskRuntimeStartedRecord
 import java.sql.Connection
@@ -53,7 +53,7 @@ fun saveFeatureTaskRuntimeFinished(
   record: FeatureTaskRuntimeFinishedRecord,
 ): TerminalSaveOutcome {
   val completedPhaseIdsJson = listJson(record.completedPhaseIds)
-  val phaseOutcomesJson = JsonSupport.mapToJsonString(record.phaseOutcomes)
+  val phaseOutcomesJson = JsonCodec.mapToJsonString(record.phaseOutcomes)
   if (rowExists(connection, "feature_task_runtime_sessions", record.sessionId)) {
     if (lifecycleAlreadyFinished(connection, "feature_task_runtime_sessions", record.sessionId)) {
       incrementDuplicateTerminalFinishedEvents(connection, "feature_task_runtime_sessions", record.sessionId)
@@ -143,10 +143,10 @@ private fun bindFeatureTaskRuntimeFinishedUpdate(
 }
 
 private fun regenerationOutcomeCountsJson(record: FeatureTaskRuntimeFinishedRecord): String? =
-  record.regenerationOutcomeCounts.takeIf { it.isNotEmpty() }?.let { JsonSupport.mapToJsonString(it) }
+  record.regenerationOutcomeCounts.takeIf { it.isNotEmpty() }?.let { JsonCodec.mapToJsonString(it) }
 
 private fun crashReconciliationReasonCountsJson(record: FeatureTaskRuntimeFinishedRecord): String? =
-  record.crashReconciliationReasonCounts.takeIf { it.isNotEmpty() }?.let { JsonSupport.mapToJsonString(it) }
+  record.crashReconciliationReasonCounts.takeIf { it.isNotEmpty() }?.let { JsonCodec.mapToJsonString(it) }
 
 private fun insertFeatureTaskRuntimeFinished(
   connection: Connection,

@@ -2,10 +2,12 @@ package skillbill.engine.featuretask
 import skillbill.application.decomposition.decodeArtifacts
 import skillbill.application.testHarnessClock
 import skillbill.application.testWorkflowSnapshotValidator
-import skillbill.engine.workflow.model.WorkflowFamily
+import skillbill.application.workflow.model.WorkflowFamily
 import skillbill.engine.InMemoryRuntimeWorkflowRepository
-import skillbill.engine.RuntimeFakeDatabaseSessionFactoryimport skillbill.error.InvalidFeatureTaskRuntimeFindingVerificationRecordError
+import skillbill.engine.RuntimeFakeDatabaseSessionFactory
+import skillbill.error.InvalidFeatureTaskRuntimeFindingVerificationRecordError
 import skillbill.ports.diagnostics.NoopRuntimeDiagnostics
+import skillbill.ports.workflow.toRecord
 import skillbill.workflow.engine.WorkflowEngine
 import skillbill.workflow.engine.model.WorkflowUpdateInput
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_FINDING_VERIFICATION_CHECKPOINT_ARTIFACT_KEY

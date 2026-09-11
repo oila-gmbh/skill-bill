@@ -2,6 +2,9 @@ package skillbill.infrastructure.fs.agentaddon
 
 import skillbill.agentaddon.model.AgentAddonCatalogueEntry
 import skillbill.agentaddon.model.InvalidAgentAddonCatalogueEntry
+import skillbill.model.FileLocation
+import skillbill.model.toPath
+import skillbill.ports.repository.toFileLocation
 import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.io.path.name
@@ -28,8 +31,8 @@ internal fun collectAgentAddonCatalogueEntries(
             invalidEntries += InvalidAgentAddonCatalogueEntry(
               identity = "agent-addon:${sourceRoot.name}",
               slug = sourceRoot.name,
-              manifestPath = manifest,
-              contentPath = content,
+              manifestPath = manifest.toFileLocation(),
+              contentPath = content.toFileLocation(),
               diagnostics = listOf(error.message ?: "Agent add-on declaration is invalid."),
             )
           }
@@ -43,17 +46,19 @@ internal fun reconcileAgentAddonCatalogueIncoherence(
   entries: MutableList<AgentAddonCatalogueEntry>,
   invalidEntries: MutableList<InvalidAgentAddonCatalogueEntry>,
 ) {
-  val incoherent = mutableMapOf<Path, MutableList<String>>()
-  entries.filter { it.manifestPath.parent.name != it.slug }.forEach { entry ->
+  val incoherent = mutableMapOf<FileLocation, MutableList<String>>()
+  entries.filter { it.manifestPath.toPath().parent.name != it.slug }.forEach { entry ->
     incoherent.getOrPut(entry.manifestPath) { mutableListOf() } +=
-      "source directory '${entry.manifestPath.parent.name}' must match slug '${entry.slug}'"
+      "source directory '${entry.manifestPath.toPath().parent.name}' must match slug '${entry.slug}'"
   }
   entries.groupBy { it.slug }.filterValues { it.size > 1 }.forEach { (slug, duplicates) ->
     duplicates.forEach { entry ->
       incoherent.getOrPut(entry.manifestPath) { mutableListOf() } += "duplicate slug '$slug'"
     }
   }
-  entries.groupBy { it.manifestPath.toRealPath() }.filterValues { it.size > 1 }.forEach { (identity, duplicates) ->
+  entries.groupBy {
+    it.manifestPath.toPath().toRealPath()
+  }.filterValues { it.size > 1 }.forEach { (identity, duplicates) ->
     duplicates.forEach { entry ->
       incoherent.getOrPut(entry.manifestPath) { mutableListOf() } +=
         "duplicate canonical source identity '$identity'"
@@ -62,8 +67,8 @@ internal fun reconcileAgentAddonCatalogueIncoherence(
   entries.removeAll { entry ->
     incoherent[entry.manifestPath]?.let { diagnostics ->
       invalidEntries += InvalidAgentAddonCatalogueEntry(
-        identity = "agent-addon:${entry.manifestPath.parent.name}",
-        slug = entry.manifestPath.parent.name,
+        identity = "agent-addon:${entry.manifestPath.toPath().parent.name}",
+        slug = entry.manifestPath.toPath().parent.name,
         manifestPath = entry.manifestPath,
         contentPath = entry.contentPath,
         diagnostics = diagnostics,

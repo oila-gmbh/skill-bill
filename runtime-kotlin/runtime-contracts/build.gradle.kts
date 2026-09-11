@@ -6,7 +6,7 @@ plugins {
 }
 
 dependencies {
-  api(libs.kotlinx.serialization.json)
+  implementation(libs.kotlinx.serialization.json)
   implementation(libs.snakeyaml)
   testImplementation(libs.junit.jupiter)
   testImplementation(libs.kotlin.test)
@@ -90,6 +90,10 @@ sourceSets.named("main") {
 // source set too and fails on a clean build without it.
 listOf("processResources", "processTestResources", "sourcesJar").forEach { consumer ->
   tasks.matching { task -> task.name == consumer }.configureEach {
-    dependsOn(copyGoalPlanningDiscoveryExclusions, copyGoalVerificationBoundaryCaps, copyIssueKeySchema)
+    dependsOn(
+      copyGoalPlanningDiscoveryExclusions,
+      copyGoalVerificationBoundaryCaps,
+      copyIssueKeySchema,
+    )
   }
 }

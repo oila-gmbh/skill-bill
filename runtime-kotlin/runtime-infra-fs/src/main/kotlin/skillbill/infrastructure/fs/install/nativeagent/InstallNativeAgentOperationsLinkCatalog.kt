@@ -1,7 +1,8 @@
 package skillbill.infrastructure.fs.install.nativeagent
 
 import skillbill.infrastructure.fs.scaffold.platformpack.loadPlatformManifest
-import skillbill.model.toPathimport java.nio.file.Files
+import skillbill.model.toPath
+import java.nio.file.Files
 import java.nio.file.LinkOption
 import java.nio.file.Path
 import java.nio.file.StandardCopyOption.ATOMIC_MOVE
@@ -22,12 +23,8 @@ private fun stageReviewCatalogPack(source: Path, staging: Path) {
   val manifest = loadPlatformManifest(source)
   val runtimeFiles = buildList {
     add(source.resolve("platform.yaml"))
-    manifest.declaredFiles.baseline?.let(::add)
-    addAll(manifest.declaredFiles.areas.values)
-    manifest.requiredRubricCompanions.forEach { (area, companions) ->
-      val areaContent = manifest.declaredFiles.areas[area] ?: return@forEach
-      companions.forEach { companion -> areaContent.parent?.resolve(companion)?.let(::add) }
-    }
+    manifest.declaredFiles.baseline?.let { baseline -> add(baseline.toPath()) }
+    addAll(manifest.declaredFiles.areas.values.map { area -> area.toPath() })
     val declaredAddons = manifest.addonUsage.flatMap { it.addons } +
       manifest.featureAddonUsage.flatMap { it.addons }
     declaredAddons.forEach { addon ->

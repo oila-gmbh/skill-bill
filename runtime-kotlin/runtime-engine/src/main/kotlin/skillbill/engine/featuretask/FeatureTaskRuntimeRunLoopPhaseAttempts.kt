@@ -4,11 +4,15 @@ import skillbill.application.diagnostics.model.FeatureTaskRuntimeRejectedOutputW
 import skillbill.engine.featuretask.model.FeatureTaskRuntimePhaseStateRequest
 import skillbill.engine.featuretask.model.FeatureTaskRuntimeProducerOutputRead
 import skillbill.engine.featuretask.model.ProducerOutputQueryArgs
-import skillbill.ports.diagnostics.model.ProducerOutputEvidenceimport skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
+import skillbill.ports.diagnostics.model.ProducerOutputEvidence
+import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeBackwardEdge
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFailureDisposition
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeImplementationAttemptStatus
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeQuarantineEntry
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeVerdict
 
-@Inject
-class FeatureTaskRuntimeRunLoopPhaseAttempts {
+object FeatureTaskRuntimeRunLoopPhaseAttempts {
   internal fun settleIncompleteWork(runLoop: FeatureTaskRuntimeRunLoop, context: FixLoopBranchContext): PhaseOutcome? {
     val run = context.run
     val attempt = context.attempt
@@ -16,7 +20,7 @@ class FeatureTaskRuntimeRunLoopPhaseAttempts {
     val observability = context.observability
     val agentId = context.agentId
     loop.continuationSegmentCount += 1
-    if (!runLoop.collaborators.phaseAttemptsContinued2.recordIncompleteAttempt(runLoop, run, loop.iteration, attempt)) {
+    if (!FeatureTaskRuntimeRunLoopPhaseAttempts.recordIncompleteAttempt(runLoop, run, loop.iteration, attempt)) {
       return blockInPhase(
         runLoop,
         PhaseBlockRequest(
@@ -33,10 +37,6 @@ class FeatureTaskRuntimeRunLoopPhaseAttempts {
       )
     }
     loop.iteration += 1
-    // This attempt was schema-VALID and merely incomplete, so any correction carried from an
-    // earlier malformed attempt is now stale. Leaving it set would hand the next segment both the
-    // continuation directive and a schema-rejection directive naming a reason from two attempts
-    // ago, telling the agent its valid output was rejected by the schema gate.
     loop.priorCorrection = null
     runLoop.observability.continuation(
       run.phaseId,
@@ -48,14 +48,6 @@ class FeatureTaskRuntimeRunLoopPhaseAttempts {
     return null
   }
 
-  /**
-   * Continues verify_findings after a schema-valid heading-selection pass.
-   *
-   * The output-gate budget is for agent schema/repair failures (including audit-repair receipts), not
-   * for this internal handshake. Charging it here blocked the required body-delivery turn under
-   * cap=1. Resolved bodies ride the durable selection into the next briefing; no schema-correction
-   * directive is appropriate.
-   */
   internal fun settleBoundaryBodyDelivery(
     runLoop: FeatureTaskRuntimeRunLoop,
     context: FixLoopBranchContext,
@@ -77,14 +69,6 @@ class FeatureTaskRuntimeRunLoopPhaseAttempts {
     return null
   }
 
-  /**
-   * Sends the round back for the findings it still owes, or blocks when the owed set stopped moving.
-   *
-   * Both budgets are counted in finding references rather than attempts, which is what keeps a round
-   * from being blocked while it still has real repair work left. An omitted finding must be accounted
-   * for on the next attempt; a finding reported unresolved gets one more fix attempt and then belongs
-   * to an operator.
-   */
   internal fun settleFindingsOwed(runLoop: FeatureTaskRuntimeRunLoop, context: FixLoopBranchContext): PhaseOutcome? {
     val run = context.run
     val attempt = context.attempt
@@ -175,15 +159,6 @@ class FeatureTaskRuntimeRunLoopPhaseAttempts {
     )
   }
 
-  /**
-   * A retryable `blocked` or `failed` envelope re-entering the loop as itself.
-   *
-   * It shares the semantic budget with schema-invalid retries but nothing else: the prompt gets the
-   * terminal-retry directive rather than the schema-correction one, the block reason is not wrapped in
-   * the schema-gate preamble, the block carries the envelope's own disposition instead of
-   * INVALID_OUTPUT, and the re-entry is stamped PROCESS_RETRY so the AC-009 status and telemetry
-   * surfaces do not report a schema correction that never happened.
-   */
   internal fun settleRetryableTerminal(
     runLoop: FeatureTaskRuntimeRunLoop,
     context: FixLoopBranchContext,
@@ -222,7 +197,7 @@ class FeatureTaskRuntimeRunLoopPhaseAttempts {
     return null
   }
   internal fun blockInPhase(runLoop: FeatureTaskRuntimeRunLoop, request: PhaseBlockRequest): PhaseOutcome =
-    runLoop.collaborators.phaseAttemptsContinued2.blockAndPersistInPhase(
+    FeatureTaskRuntimeRunLoopPhaseAttempts.blockAndPersistInPhase(
       runLoop,
       phaseBlockArgs(
         request.run,
@@ -730,4 +705,5 @@ class FeatureTaskRuntimeRunLoopPhaseAttempts {
         diagnosticDegraded = args.diagnosticWrite is FeatureTaskRuntimeRejectedOutputWrite.Degraded,
       ),
     )
-  }}
+  }
+}

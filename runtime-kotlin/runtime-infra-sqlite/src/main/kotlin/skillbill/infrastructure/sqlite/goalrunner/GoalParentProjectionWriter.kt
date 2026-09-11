@@ -1,8 +1,3 @@
-<<<<<<<< HEAD:runtime-kotlin/runtime-ports/src/main/kotlin/skillbill/ports/goalrunner/persistence/GoalParentProjectionWriter.kt
-package skillbill.ports.goalrunner.persistence
-import skillbill.boundary.OpenBoundaryMap
-import skillbill.contracts.issuekey.normalizeRequiredIssueKey
-========
 package skillbill.infrastructure.sqlite.goalrunner
 import skillbill.boundary.OpenBoundaryMap
 import skillbill.contracts.issuekey.normalizeRequiredIssueKey
@@ -11,16 +6,13 @@ import skillbill.goalrunner.GOAL_REVIEW_POLICY_ARTIFACT_KEY
 import skillbill.infrastructure.sqlite.decomposition.decodeArtifacts
 import skillbill.infrastructure.sqlite.decomposition.encodeDecompositionManifestMap
 import skillbill.infrastructure.sqlite.workflow.decompositionRuntime
->>>>>>>> 9d724a13f (SKILL-233: Engine module and package roots):runtime-kotlin/runtime-infra-sqlite/src/main/kotlin/skillbill/infrastructure/sqlite/goalrunner/GoalParentProjectionWriter.kt
 import skillbill.ports.goalrunner.GoalRunnerPersistenceSession
-import skillbill.ports.workflow.decomposition.runtime.DECOMPOSITION_RUNTIME_ARTIFACT_KEY
-import skillbill.ports.workflow.decomposition.runtime.decodeArtifacts
-import skillbill.ports.workflow.decomposition.runtime.encodeDecompositionManifestMap
-import skillbill.ports.workflow.persistence.decompositionRuntime
-import skillbill.ports.workflow.persistence.model.WorkflowFamily
-import skillbill.ports.workflow.persistence.toRecord
+import skillbill.ports.workflow.model.WorkflowFamily
+import skillbill.ports.workflow.saveRecord
+import skillbill.ports.workflow.toRecord
 import skillbill.workflow.decomposition.DecompositionManifestValidator
 import skillbill.workflow.decomposition.model.DecompositionManifest
+import skillbill.workflow.decomposition.runtime.DECOMPOSITION_RUNTIME_ARTIFACT_KEY
 import skillbill.workflow.engine.WorkflowEngine
 import skillbill.workflow.engine.model.WorkflowStateSnapshot
 import skillbill.workflow.engine.model.WorkflowUpdateInput

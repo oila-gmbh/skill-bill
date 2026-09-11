@@ -1,8 +1,9 @@
 package skillbill.infrastructure.sqlite.telemetry
 
-import skillbill.contracts.JsonSupport
-import skillbill.db.core.DatabaseRuntime
-import skillbill.db.core.reconcileStaleTelemetrySessionsimport skillbill.telemetry.model.FeatureTaskRuntimeStartedRecord
+import skillbill.contracts.JsonCodec
+import skillbill.infrastructure.sqlite.core.DatabaseRuntime
+import skillbill.infrastructure.sqlite.core.reconcileStaleTelemetrySessions
+import skillbill.telemetry.model.FeatureTaskRuntimeStartedRecord
 import skillbill.telemetry.model.GoalFinishedRecord
 import skillbill.telemetry.model.GoalIssueFinishedRecord
 import skillbill.telemetry.model.GoalStartedRecord
@@ -268,9 +269,9 @@ class TelemetryAnonymousRedactionTest {
       }
     }
 
-  private fun property(payloadJson: String, name: String): String? = JsonSupport.parseObjectOrNull(payloadJson)
+  private fun property(payloadJson: String, name: String): String? = JsonCodec.parseObjectOrNull(payloadJson)
     ?.get(name)
-    ?.let(JsonSupport::jsonElementToValue)
+    ?.let(JsonCodec::jsonElementToValue)
     ?.toString()
 
   private fun withConnection(block: (Connection) -> Unit) {

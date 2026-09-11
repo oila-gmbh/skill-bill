@@ -1,5 +1,7 @@
 package skillbill.engine.featuretask
 
+import skillbill.workflow.model.WorkflowStepStatus
+import skillbill.workflow.model.workflowStepStatus
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFailureDisposition
 
 internal data class FeatureTaskRuntimePhaseFileManifest(
@@ -45,7 +47,7 @@ object FeatureTaskRuntimePhaseSafetyPolicy {
       ?.let(FeatureTaskRuntimeFailureDisposition::fromWireValue)
     if (explicit != null) return explicit
     return if (
-      output["status"] == "failed" ||
+      (output["status"] as? String).workflowStepStatus() == WorkflowStepStatus.FAILED ||
       phaseId == "validate"
     ) {
       FeatureTaskRuntimeFailureDisposition.RETRYABLE

@@ -13,7 +13,8 @@ import skillbill.application.testDecompositionManifestValidator
 import skillbill.application.testWorkflowSnapshotValidator
 import skillbill.engine.featuretask.FeatureTaskContinuationLookupService
 import skillbill.engine.goalrunner.GoalPreflightService
-import skillbill.engine.goalrunner.model.GoalPreflightRequestimport skillbill.error.InvalidAgentAddonSelectionError
+import skillbill.engine.goalrunner.model.GoalPreflightRequest
+import skillbill.error.InvalidAgentAddonSelectionError
 import skillbill.error.InvalidDecompositionManifestSchemaError
 import skillbill.error.InvalidFeatureTaskExecutionIdentitySchemaError
 import skillbill.goalrunner.model.GoalRunnerExecutionLease
@@ -22,10 +23,10 @@ import skillbill.ports.agentaddon.AgentAddonSelectionPort
 import skillbill.ports.agentaddon.ExternalAgentAddonSourceConfigPort
 import skillbill.ports.agentaddon.model.ExternalAgentAddonSourceConfigRequest
 import skillbill.ports.agentaddon.model.ExternalAgentAddonSourceConfigResult
-import skillbill.ports.diagnostics.NoopRuntimeDiagnostics
-import skillbill.ports.goalrunner.runner.GoalRunnerManifestStore
+import skillbill.ports.goalrunner.runner.GoalRunnerManifestStoreDefaults
 import skillbill.ports.goalrunner.runner.model.GoalRunnerManifestState
 import skillbill.ports.goalrunner.runner.model.GoalRunnerReviewPolicy
+import skillbill.ports.repository.toFileLocation
 import skillbill.ports.workflow.decomposition.DecompositionManifestStore
 import skillbill.review.context.model.CodeReviewExecutionMode
 import skillbill.workflow.decomposition.model.CurrentSubtaskIntent
@@ -215,7 +216,7 @@ class GoalPreflightServiceTest {
       override fun readExternalAgentAddonSources(
         request: ExternalAgentAddonSourceConfigRequest,
       ): ExternalAgentAddonSourceConfigResult = ExternalAgentAddonSourceConfigResult(
-        listOf(ExternalAgentAddonSource(externalRoot)),
+        listOf(ExternalAgentAddonSource(externalRoot.toFileLocation())),
       )
     }
     val service = service(
@@ -267,20 +268,17 @@ class GoalPreflightServiceTest {
   ): GoalPreflightService {
     val fileStore: DecompositionManifestStore = TestDecompositionManifestStore
     return GoalPreflightService(
-      GoalPreflightServiceDeps(
-        continuationLookup = FeatureTaskContinuationLookupService(
-          database,
-          testWorkflowSnapshotValidator,
-          testDecompositionManifestValidator,
-          diagnostics = NoopRuntimeDiagnostics,
-        ),
-        manifestStore = TestManifestStore(manifestState, persistedReviewPolicy),
-        agentAddonSelectionPort = TestAgentAddonSelectionPort,
-        externalAgentAddonSourceConfigPort = externalAgentAddonSourceConfigPort,
-        manifestFileStore = fileStore,
-        manifestValidator = testDecompositionManifestValidator,
-        repositoryEnclosingRootPort = TestRepositoryEnclosingRoot,
+      continuationLookup = FeatureTaskContinuationLookupService(
+        database,
+        testWorkflowSnapshotValidator,
+        testDecompositionManifestValidator,
       ),
+      manifestStore = TestManifestStore(manifestState, persistedReviewPolicy),
+      agentAddonSelectionPort = TestAgentAddonSelectionPort,
+      externalAgentAddonSourceConfigPort = externalAgentAddonSourceConfigPort,
+      manifestFileStore = fileStore,
+      manifestValidator = testDecompositionManifestValidator,
+      repositoryEnclosingRootPort = TestRepositoryEnclosingRoot,
     )
   }
 
@@ -332,6 +330,7 @@ private class TestManifestStore(
   private val persistedReviewPolicy: GoalRunnerReviewPolicy? = null,
 ) : GoalRunnerManifestStoreDefaults() {
   override fun loadByIssueKey(issueKey: String, repoRoot: Path?): GoalRunnerManifestState? = state
+
   override fun readByIssueKey(issueKey: String, repoRoot: Path?): GoalRunnerManifestState? = state
 
   override fun reviewPolicy(parentWorkflowId: String): GoalRunnerReviewPolicy? = persistedReviewPolicy

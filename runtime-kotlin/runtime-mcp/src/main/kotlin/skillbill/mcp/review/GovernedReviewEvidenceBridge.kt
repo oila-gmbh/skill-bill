@@ -1,17 +1,26 @@
 package skillbill.mcp.review
 
 import kotlinx.serialization.json.JsonObject
-import skillbill.contracts.JsonSupport
+import skillbill.SkillBillVersion
+import skillbill.contracts.JsonCodec
 import skillbill.error.GovernedReviewEvidenceTransportError
 import skillbill.ports.review.model.GovernedReviewEvidenceCodec
-import skillbill.ports.review.model.readReviewEvidenceFrame
-import skillbill.ports.review.model.validReviewEvidenceRequestId
+import java.io.BufferedReader
+import java.io.BufferedWriter
+import java.io.IOException
+import java.net.UnixDomainSocketAddress
+import java.nio.channels.Channels
+import java.nio.channels.SocketChannel
 import java.nio.file.Path
 
-private const val ERROR_MESSAGE_CHARACTERS = 512
 private const val JSON_RPC_METHOD_NOT_FOUND = -32601
 private const val JSON_RPC_INTERNAL_ERROR = -32603
 
+/**
+ * Pipe between a governed review worker's stdio MCP client and its parent evidence endpoint. It
+ * holds no broker reference, reads no file, and makes no policy decision: the only frames it
+ * forwards are calls to the two governed operations.
+ */
 object GovernedReviewEvidenceBridge {
   fun enabled(environment: Map<String, String>): Boolean =
     !environment[GovernedReviewEvidenceCodec.SOCKET_ENV].isNullOrBlank()
@@ -20,93 +29,23 @@ object GovernedReviewEvidenceBridge {
     val socketPath = environment[GovernedReviewEvidenceCodec.SOCKET_ENV].orEmpty()
     val token = environment[GovernedReviewEvidenceCodec.TOKEN_ENV].orEmpty()
     connect(Path.of(socketPath), token).use { connection ->
-      val input = System.`in`.bufferedReader()
-      generateSequence {
-        try {
-          input.readReviewEvidenceFrame()
-        } catch (error: GovernedReviewEvidenceTransportError) {
-          recordRefusal(connection::forward)
-          throw error
-        }
-      }.forEach { line ->
-        exchange(line, connection::forward) { response ->
-          System.out.println(response)
-          System.out.flush()
-          if (System.out.checkError()) throw GovernedReviewEvidenceTransportError("Worker response write failed.")
-        }
+      generateSequence(::readlnOrNull).forEach { line ->
+        handleLine(line) { frame -> connection.forward(frame) }?.let(::println)
       }
     }
-  }
-
-  internal fun exchange(line: String, forward: (String) -> String?, write: (String) -> Unit) {
-    val response = handleLine(line, forward) ?: return
-    write(response)
-    deliveryReceipt(response)?.let { receipt ->
-      val confirmation = forward(
-        JsonSupport.mapToJsonString(
-          linkedMapOf(
-            "jsonrpc" to "2.0",
-            "id" to "delivery",
-            "method" to "evidence/delivered",
-            "params" to mapOf("receipt" to receipt),
-          ),
-        ),
-      ) ?: throw GovernedReviewEvidenceTransportError("Delivery confirmation disconnected.")
-      if (JsonSupport.parseObjectOrNull(confirmation)?.containsKey("error") != false) {
-        throw GovernedReviewEvidenceTransportError("Delivery confirmation was refused.")
-      }
-    }
-  }
-
-  internal fun deliveryReceipt(response: String): String? {
-    val frame = JsonSupport.parseObjectOrNull(response) ?: return null
-    val result = JsonSupport.anyToStringAnyMap(frame["result"]?.let(JsonSupport::jsonElementToValue)).orEmpty()
-    val content = result["content"] as? List<*> ?: return null
-    val text = content.firstOrNull()?.let(JsonSupport::anyToStringAnyMap)?.get("text") as? String ?: return null
-    return JsonSupport.parseObjectOrNull(text)?.get("delivery_receipt")
-      ?.let(JsonSupport::jsonElementToValue) as? String
   }
 
   fun handleLine(line: String, forward: (String) -> String?): String? {
-    if (line.toByteArray(Charsets.UTF_8).size > GovernedReviewEvidenceCodec.REQUEST_BYTES) {
-      recordRefusal(forward)
-      return errorResponse(null, JSON_RPC_INTERNAL_ERROR, "Governed evidence frame exceeds its byte limit.")
-    }
-    val message = JsonSupport.parseObjectOrNull(line)
-    if (message == null) {
-      recordRefusal(forward)
-      return errorResponse(null, JSON_RPC_INTERNAL_ERROR, "Parse error")
-    }
-    val id = message["id"]?.let(JsonSupport::jsonElementToValue)
-    if (!validReviewEvidenceRequestId(id)) {
-      recordRefusal(forward)
-      return errorResponse(null, JSON_RPC_INTERNAL_ERROR, "Invalid request id.")
-    }
-    val method = message["method"]?.let(JsonSupport::jsonElementToValue)?.toString().orEmpty()
+    val message = JsonCodec.parseObjectOrNull(line)
+    val id = message?.get("id")?.let(JsonCodec::jsonElementToValue)
+    val method = message?.get("method")?.let(JsonCodec::jsonElementToValue)?.toString().orEmpty()
     return when {
+      message == null -> errorResponse(null, JSON_RPC_INTERNAL_ERROR, "Parse error")
       id == null -> null
       method == "initialize" -> successResponse(id, initializeResult())
       method == "tools/list" -> successResponse(id, mapOf("tools" to GovernedReviewEvidenceCodec.TOOL_SPECS))
       method == "tools/call" -> forwardToolCall(id, message.toolName(), line, forward)
-      else -> {
-        recordRefusal(forward)
-        errorResponse(id, JSON_RPC_METHOD_NOT_FOUND, "Method not found: $method")
-      }
-    }
-  }
-
-  private fun recordRefusal(forward: (String) -> String?) {
-    val response = forward(
-      JsonSupport.mapToJsonString(
-        mapOf(
-          "jsonrpc" to "2.0",
-          "id" to "refusal",
-          "method" to "evidence/refused",
-        ),
-      ),
-    ) ?: throw GovernedReviewEvidenceTransportError("Refusal accounting disconnected.")
-    if (JsonSupport.parseObjectOrNull(response)?.containsKey("error") != false) {
-      throw GovernedReviewEvidenceTransportError("Refusal accounting failed.")
+      else -> errorResponse(id, JSON_RPC_METHOD_NOT_FOUND, "Method not found: $method")
     }
   }
 
@@ -114,27 +53,72 @@ object GovernedReviewEvidenceBridge {
     if (name in GovernedReviewEvidenceCodec.OPERATIONS) {
       forward(line) ?: errorResponse(id, JSON_RPC_INTERNAL_ERROR, "Governed review evidence endpoint closed.")
     } else {
-      recordRefusal(forward)
       errorResponse(id, JSON_RPC_METHOD_NOT_FOUND, "Unknown governed operation: $name")
     }
 
   private fun JsonObject.toolName(): String =
-    JsonSupport.anyToStringAnyMap(this["params"]?.let(JsonSupport::jsonElementToValue))
+    JsonCodec.anyToStringAnyMap(this["params"]?.let(JsonCodec::jsonElementToValue))
       .orEmpty()["name"]?.toString().orEmpty()
 
-  private fun successResponse(id: Any?, result: Map<String, Any?>): String = JsonSupport.mapToJsonString(
+  private class Connection(
+    private val channel: SocketChannel,
+    val reader: BufferedReader,
+    val writer: BufferedWriter,
+  ) : AutoCloseable {
+    fun forward(frame: String): String? {
+      writer.appendLine(frame)
+      writer.flush()
+      return reader.readLine()
+    }
+
+    override fun close() {
+      channel.close()
+    }
+  }
+
+  private fun connect(socketPath: Path, token: String): Connection {
+    val connection = openSocketChannel(socketPath)
+    val writer = Channels.newOutputStream(connection).bufferedWriter()
+    val reader = Channels.newInputStream(connection).bufferedReader()
+    writer.appendLine(
+      JsonCodec.mapToJsonString(
+        linkedMapOf("jsonrpc" to "2.0", "method" to "handshake", "params" to mapOf("token" to token)),
+      ),
+    )
+    writer.flush()
+    reader.readLine()
+      ?: throw GovernedReviewEvidenceTransportError("Governed review evidence endpoint refused this launch's token.")
+    return Connection(connection, reader, writer)
+  }
+
+  private fun openSocketChannel(socketPath: Path): SocketChannel = try {
+    SocketChannel.open(UnixDomainSocketAddress.of(socketPath))
+  } catch (error: IOException) {
+    throw GovernedReviewEvidenceTransportError(
+      "Governed review evidence endpoint at '$socketPath' is unreachable.",
+      error,
+    )
+  } catch (error: UnsupportedOperationException) {
+    throw GovernedReviewEvidenceTransportError(
+      "This platform cannot reach the governed review evidence endpoint at '$socketPath'.",
+      error,
+    )
+  }
+
+  private fun initializeResult(): Map<String, Any?> = linkedMapOf(
+    "protocolVersion" to "2025-11-25",
+    "capabilities" to mapOf("tools" to mapOf("listChanged" to false)),
+    "serverInfo" to mapOf(
+      "name" to GovernedReviewEvidenceCodec.SERVER_NAME,
+      "version" to SkillBillVersion.VALUE,
+    ),
+  )
+
+  private fun successResponse(id: Any?, result: Map<String, Any?>): String = JsonCodec.mapToJsonString(
     linkedMapOf("jsonrpc" to "2.0", "id" to id, "result" to result),
   )
 
-  private fun errorResponse(id: Any?, code: Int, message: String): String = JsonSupport.mapToJsonString(
-    linkedMapOf(
-      "jsonrpc" to "2.0",
-      "id" to id,
-      "error" to linkedMapOf(
-        "code" to code,
-        "message" to message.take(ERROR_MESSAGE_CHARACTERS),
-      ),
-    ),
-
+  private fun errorResponse(id: Any?, code: Int, message: String): String = JsonCodec.mapToJsonString(
+    linkedMapOf("jsonrpc" to "2.0", "id" to id, "error" to linkedMapOf("code" to code, "message" to message)),
   )
 }

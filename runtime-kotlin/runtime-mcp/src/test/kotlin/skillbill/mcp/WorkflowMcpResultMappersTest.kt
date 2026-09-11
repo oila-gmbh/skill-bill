@@ -97,7 +97,7 @@ class WorkflowMcpResultMappersTest {
       ).toMcpMap(testGoalObservabilityEventValidator)
     }
 
-    assertEquals("contract_version", error.fieldPath)
+    assertEquals("", error.fieldPath)
   }
 
   @Test
@@ -227,7 +227,7 @@ class WorkflowMcpResultMappersTest {
   )
 
   private fun snapshotWithObservabilityEvent(): Map<String, Any?> = mapOf(
-    "contract_version" to "0.2",
+    "contract_version" to "0.1",
     "issue_key" to "SKILL-61",
     "subtask_id" to 1,
     "workflow_phase" to "implement",

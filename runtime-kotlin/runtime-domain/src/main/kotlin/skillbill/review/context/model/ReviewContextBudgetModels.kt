@@ -64,7 +64,7 @@ data class ReviewContextBudgetPolicy(
 }
 sealed interface ReviewBudgetOutcome {
   val lane: String
-  val budgetKind: String
+  val budgetKind: ReviewBudgetKind
   val configuredLimit: Long
   val observedValue: Long
   val packetDigest: String
@@ -108,7 +108,7 @@ class ReviewRegisterParseSeamException(
 
 data class ReviewContextBudgetExceeded(
   override val lane: String,
-  override val budgetKind: String,
+  override val budgetKind: ReviewBudgetKind,
   override val configuredLimit: Long,
   override val observedValue: Long,
   override val packetDigest: String,
@@ -117,7 +117,7 @@ data class ReviewContextBudgetExceeded(
 ) : ReviewBudgetOutcome {
   override val type: String = REVIEW_CONTEXT_BUDGET_EXCEEDED
   init {
-    require(lane.isNotBlank() && budgetKind.isNotBlank())
+    require(lane.isNotBlank())
     require(configuredLimit >= 0 && observedValue > configuredLimit)
   }
 }
@@ -153,14 +153,14 @@ object ReviewBudgetEvaluator {
     observedBytes: Long,
   ): ReviewContextBudgetExceeded? = exceededOrNull(
     identity,
-    "lane_result_bytes",
+    ReviewBudgetKind.LANE_RESULT_BYTES,
     budget.maxLaneResultBytes,
     observedBytes,
   )
 
   fun exceededOrNull(
     identity: ReviewLaneIdentity,
-    budgetKind: String,
+    budgetKind: ReviewBudgetKind,
     configuredLimit: Long,
     observedValue: Long,
   ): ReviewContextBudgetExceeded? = if (observedValue > configuredLimit) {

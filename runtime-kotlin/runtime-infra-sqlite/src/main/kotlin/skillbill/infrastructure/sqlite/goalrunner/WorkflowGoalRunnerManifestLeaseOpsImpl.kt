@@ -6,7 +6,8 @@ internal class WorkflowGoalRunnerManifestLeaseOpsImpl(
   private val ctx: WorkflowGoalRunnerManifestStoreContext,
 ) : GoalRunnerManifestExecutionLease {
   override fun executionLease(parentWorkflowId: String): GoalRunnerExecutionLease? =
-    ctx.controls.executionLease(parentWorkflowId)  override fun acquireExecutionLease(
+    ctx.controls.executionLease(parentWorkflowId)
+  override fun acquireExecutionLease(
     parentWorkflowId: String,
     lease: GoalRunnerExecutionLease,
     expectedOwnerToken: String?,

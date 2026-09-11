@@ -1,10 +1,6 @@
 package skillbill.infrastructure.fs
 
-import skillbill.error.InvalidManifestSchemaError
-import skillbill.install.nativeagent.toNativeAgentPlatformPack
-import skillbill.nativeagent.composition.NativeAgentCompositionTarget
-import skillbill.nativeagent.composition.NativeAgentCompositionTargetSource
-import skillbill.nativeagent.rendering.composeGovernedAgentBody
+import skillbill.ports.repository.toFileLocation
 import skillbill.ports.review.model.ReviewOwnedFileEvidence
 import skillbill.scaffold.model.DeclaredFiles
 import skillbill.scaffold.model.GovernedAddonActivation
@@ -13,8 +9,6 @@ import skillbill.scaffold.model.GovernedAddonUsage
 import skillbill.scaffold.model.PlatformManifest
 import skillbill.scaffold.model.PointerSpec
 import skillbill.scaffold.model.RoutingSignals
-import skillbill.scaffold.platformpack.loadPlatformManifest
-import skillbill.scaffold.runtime.SHELL_CONTRACT_VERSION
 import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.test.Test
@@ -22,73 +16,6 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 
 class FileSystemReviewRubricResolverTest {
-  @Test
-  fun `manifest loader rejects required companions outside declared specialist ownership`() {
-    val root = Files.createTempDirectory("custom-guidance")
-    val specialist = root.resolve("code-review/ui/content.md")
-    Files.createDirectories(specialist.parent)
-    Files.writeString(root.resolve("code-review/content.md"), "baseline rubric")
-    Files.writeString(specialist, "ui rubric")
-    Files.writeString(specialist.parent.resolve("guide.md"), "required guidance")
-    fun writeManifest(area: String, filename: String) {
-      Files.writeString(
-        root.resolve("platform.yaml"),
-        """
-        platform: ${root.fileName}
-        contract_version: "$SHELL_CONTRACT_VERSION"
-        routing_signals:
-          strong: ['*.kt']
-        declared_code_review_areas: [ui]
-        declared_files:
-          baseline: code-review/content.md
-          areas:
-            ui: code-review/ui/content.md
-        required_rubric_companions:
-          $area: ['$filename']
-        """.trimIndent(),
-      )
-    }
-    writeManifest("ui", "guide.md")
-    assertEquals(listOf("guide.md"), loadPlatformManifest(root).requiredRubricCompanions["ui"])
-    writeManifest("security", "guide.md")
-    assertFailsWith<InvalidManifestSchemaError> { loadPlatformManifest(root) }
-    writeManifest("ui", "../outside.md")
-    assertFailsWith<InvalidManifestSchemaError> { loadPlatformManifest(root) }
-  }
-
-  @Test
-  fun `custom pack required specialist guidance reaches inline and native bodies and missing guidance fails`() {
-    val repo = Files.createTempDirectory("required-rubric")
-    val root = repo.resolve("platform-packs/custom")
-    val baseline = root.resolve("code-review/content.md")
-    val specialist = root.resolve("code-review/ui/content.md")
-    Files.createDirectories(specialist.parent)
-    Files.writeString(baseline, "baseline")
-    Files.writeString(specialist, "ui rubric")
-    val guide = specialist.parent.resolve("guide.md")
-    Files.writeString(guide, "Required composition rule")
-    val pack = manifest(root, baseline, mapOf("ui" to specialist)).copy(
-      slug = "custom",
-      requiredRubricCompanions = mapOf("ui" to listOf("guide.md")),
-    )
-    val target = NativeAgentCompositionTarget(
-      specialist,
-      NativeAgentCompositionTargetSource.PlatformManifest,
-      pack.toNativeAgentPlatformPack(),
-    )
-    assertEquals(
-      "ui rubric\n\nRequired composition rule",
-      FileSystemReviewRubricResolver().resolve(pack).specialists.single().body,
-    )
-    assertEquals("ui rubric\n\nRequired composition rule", composeGovernedAgentBody(repo, target, "ui rubric").body)
-    Files.delete(guide)
-    assertFailsWith<InvalidManifestSchemaError> { FileSystemReviewRubricResolver().resolve(pack) }
-    assertFailsWith<InvalidManifestSchemaError> { composeGovernedAgentBody(repo, target, "ui rubric") }
-    val outside = Files.createTempFile("outside-guidance", ".md")
-    Files.createSymbolicLink(guide, outside)
-    assertFailsWith<InvalidManifestSchemaError> { FileSystemReviewRubricResolver().resolve(pack) }
-  }
-
   @Test
   fun `manifest baseline is the authoritative rubric source`() {
     val root = Files.createTempDirectory("review-rubric")
@@ -366,11 +293,11 @@ class FileSystemReviewRubricResolverTest {
 
   private fun manifest(root: Path, baseline: Path, areas: Map<String, Path> = emptyMap()) = PlatformManifest(
     slug = "kotlin",
-    packRoot = root,
+    packRoot = root.toFileLocation(),
     contractVersion = "1.3",
     routingSignals = RoutingSignals(listOf(".kt"), emptyList()),
     declaredCodeReviewAreas = areas.keys.toList(),
-    declaredFiles = DeclaredFiles(baseline, areas),
+    declaredFiles = DeclaredFiles(baseline.toFileLocation(), areas.mapValues { (_, path) -> path.toFileLocation() }),
     areaMetadata = emptyMap(),
   )
 }

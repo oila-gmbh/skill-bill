@@ -14,6 +14,7 @@ import skillbill.install.model.RuntimeDistributionInputs
 import skillbill.install.model.WindowsSymlinkDecision
 import skillbill.install.model.WindowsSymlinkPreflight
 import skillbill.install.model.WindowsSymlinkPreflightState
+import skillbill.ports.repository.toFileLocation
 import skillbill.testing.seedConformingPlatformPack
 import java.io.File
 import java.nio.file.Files
@@ -164,8 +165,8 @@ data class PlanFixture(
 
   fun targetPaths(agentTargets: List<InstallAgentTarget> = emptyList()): InstallationTargetPaths =
     InstallationTargetPaths(
-      skillsRoot = repoRoot.resolve("skills"),
-      platformPacksRoot = repoRoot.resolve("platform-packs"),
+      skillsRoot = repoRoot.resolve("skills").toFileLocation(),
+      platformPacksRoot = repoRoot.resolve("platform-packs").toFileLocation(),
       agentTargets = agentTargets,
     )
 
@@ -182,13 +183,13 @@ data class PlanFixture(
       decision = WindowsSymlinkDecision.NOT_REQUIRED,
     ),
   ): InstallPlanRequest = InstallPlanRequest(
-    repoRoot = repoRoot,
-    home = home,
+    repoRoot = repoRoot.toFileLocation(),
+    home = home.toFileLocation(),
     agentSelection = agentSelection,
     platformPackSelection = platformPackSelection,
     telemetryLevel = telemetryLevel,
-    mcpRegistrationChoice = McpRegistrationChoice(register = true, runtimeMcpBin = runtimeMcpBin),
-    runtimeDistributionInputs = RuntimeDistributionInputs(runtimeInstallRoot = runtimeInstallRoot),
+    mcpRegistrationChoice = McpRegistrationChoice(register = true, runtimeMcpBin = runtimeMcpBin.toFileLocation()),
+    runtimeDistributionInputs = RuntimeDistributionInputs(runtimeInstallRoot = runtimeInstallRoot.toFileLocation()),
     targetPaths = targetPaths,
     windowsSymlinkPreflight = windowsSymlinkPreflight,
     environment = installTestEnvironment(home),

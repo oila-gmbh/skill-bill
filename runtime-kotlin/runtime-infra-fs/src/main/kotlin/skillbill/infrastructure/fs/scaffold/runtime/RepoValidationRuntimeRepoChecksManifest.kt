@@ -169,10 +169,14 @@ internal fun validateSpecialistContractParity(root: Path, issues: MutableList<St
   val specialist = root.resolve("orchestration/review-orchestrator/specialist-contract.md")
   if (!canonical.isRegularFile() || !specialist.isRegularFile()) return
   val headings = listOf("Shared Contract For Every Specialist", "Shared Report Structure")
-  val expected =
-    headings.joinToString("\n\n") { RepoValidationRuntime.extractH2(Files.readString(canonical), it) }.trim()
-  val actual =
-    headings.joinToString("\n\n") { RepoValidationRuntime.extractH2(Files.readString(specialist), it) }.trim()
+  val canonicalText = Files.readString(canonical)
+  val specialistText = Files.readString(specialist)
+  val expected = headings
+    .joinToString("\n\n") { RepoValidationRuntime.extractSecondLevelHeading(canonicalText, it) }
+    .trim()
+  val actual = headings
+    .joinToString("\n\n") { RepoValidationRuntime.extractSecondLevelHeading(specialistText, it) }
+    .trim()
   if (expected != actual) {
     issues +=
       "orchestration/review-orchestrator/specialist-contract.md: " +

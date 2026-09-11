@@ -3,7 +3,8 @@ package skillbill.infrastructure.fs.scaffold.pointer
 import skillbill.error.ContractVersionMismatchError
 import skillbill.infrastructure.fs.scaffold.platformpack.discoverPlatformPackManifests
 import skillbill.infrastructure.fs.scaffold.runtime.SHELL_CONTRACT_VERSION
-import skillbill.model.toPathimport skillbill.scaffold.model.PlatformManifest
+import skillbill.model.toPath
+import skillbill.scaffold.model.PlatformManifest
 import skillbill.scaffold.model.PointerSpec
 import java.io.File
 import java.nio.file.AtomicMoveNotSupportedException
@@ -58,7 +59,7 @@ private fun regeneratePackPointers(context: PointerRegenerationContext, pack: Pl
     compareBy({ it.skillRelativeDir }, { it.name }),
   )
   sortedPointers.forEach { spec ->
-    writePointerIfChanged(context, pack.packRoot, spec)
+    writePointerIfChanged(context, pack.packRoot.toPath(), spec)
   }
 }
 

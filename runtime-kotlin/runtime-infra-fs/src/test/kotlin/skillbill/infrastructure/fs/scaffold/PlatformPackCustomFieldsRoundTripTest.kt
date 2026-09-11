@@ -1,8 +1,9 @@
 package skillbill.infrastructure.fs.scaffold
 
-import skillbill.contracts.JsonSupport
-import skillbill.scaffold.platformpack.anchoredTopLevelFieldNames
-import skillbill.scaffold.platformpack.loadPlatformManifestimport java.nio.file.Files
+import skillbill.contracts.JsonCodec
+import skillbill.infrastructure.fs.scaffold.platformpack.anchoredTopLevelFieldNames
+import skillbill.infrastructure.fs.scaffold.platformpack.loadPlatformManifest
+import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -55,7 +56,7 @@ class PlatformPackCustomFieldsRoundTripTest {
         "Keys present: ${pack.customFields.keys}",
     )
     assertEquals("hello", pack.customFields["another_custom"])
-    val nested = requireNotNull(JsonSupport.anyToStringAnyMap(pack.customFields["custom_thing"])) {
+    val nested = requireNotNull(JsonCodec.anyToStringAnyMap(pack.customFields["custom_thing"])) {
       "Expected 'custom_thing' to deserialize to a Map but got ${pack.customFields["custom_thing"]}"
     }
     assertEquals(1, nested["a"])

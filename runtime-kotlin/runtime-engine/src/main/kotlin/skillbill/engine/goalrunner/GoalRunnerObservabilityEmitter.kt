@@ -2,11 +2,11 @@ package skillbill.engine.goalrunner
 import skillbill.application.agentoutput.stderrExcerpt
 import skillbill.engine.goalrunner.model.GoalRunnerRunRequest
 import skillbill.goalrunner.model.GoalRunnerLaunchFacts
+import skillbill.goalrunner.model.GoalRunnerObservabilityRecordRequest
 import skillbill.ports.agentrun.model.AgentRunLaunchFacts
 import skillbill.ports.agentrun.model.AgentRunLaunchOutcome
 import skillbill.ports.diagnostics.RuntimeDiagnostics
 import skillbill.ports.goalrunner.runner.GoalRunnerWorkflowOutcomeStore
-import skillbill.ports.goalrunner.runner.model.GoalRunnerObservabilityRecordRequest
 import skillbill.ports.goalrunner.runner.model.GoalRunnerWorkflowProgress
 import java.time.Clock
 
@@ -105,7 +105,7 @@ class GoalRunnerObservabilityEmitter(
       signal = GoalRunnerObservabilitySignal(
         workflowPhase = phase,
         livenessClass = "heartbeat",
-        activitySummary = "process_state=${liveness.processState}; reason=${liveness.reason}",
+        activitySummary = "process_state=${liveness.processState.wireValue}; reason=${liveness.reason}",
       ),
     )
     liveness.lastFileActivityAt?.takeIf(String::isNotBlank)?.let { at ->

@@ -2,7 +2,7 @@ package skillbill.engine.goalrunner
 
 import skillbill.goalrunner.model.GoalRunnerControlState
 import skillbill.goalrunner.model.GoalRunnerExecutionLease
-import skillbill.ports.goalrunner.runner.GoalRunnerManifestStore
+import skillbill.ports.goalrunner.runner.GoalRunnerManifestStoreDefaults
 import skillbill.ports.goalrunner.runner.model.GoalRunnerManifestState
 import java.nio.file.Path
 import java.util.concurrent.ConcurrentHashMap
@@ -45,7 +45,7 @@ class GoalRunnerSessionIsolationTest {
   }
 }
 
-private class ConcurrentControlManifestStore : GoalRunnerManifestStore {
+private class ConcurrentControlManifestStore : GoalRunnerManifestStoreDefaults() {
   private val controls = ConcurrentHashMap<String, GoalRunnerControlState>()
 
   override fun controlState(parentWorkflowId: String): GoalRunnerControlState =

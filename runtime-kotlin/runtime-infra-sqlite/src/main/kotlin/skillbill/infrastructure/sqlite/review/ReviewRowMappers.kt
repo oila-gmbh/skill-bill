@@ -3,6 +3,7 @@ package skillbill.infrastructure.sqlite.review
 import skillbill.review.model.ImportedFinding
 import skillbill.review.model.NumberedFinding
 import skillbill.review.model.ReviewClaimVerdict
+import skillbill.review.model.ReviewExecutionMode
 import skillbill.review.model.ReviewFindingCitation
 import skillbill.review.model.ReviewScopeDisposition
 import skillbill.review.model.ReviewSeverityAdjustment
@@ -27,7 +28,7 @@ fun ResultSet.toReviewSummary(): ReviewSummary = ReviewSummary(
   routedSkill = getString("routed_skill"),
   detectedScope = getString("detected_scope"),
   detectedStack = getString("detected_stack"),
-  executionMode = getString("execution_mode"),
+  executionMode = getString("execution_mode")?.let(ReviewExecutionMode::fromWire),
   specialistReviewsRaw = getString("specialist_reviews"),
   reviewFinishedAt = getString("review_finished_at"),
   reviewFinishedEventEmittedAt = getString("review_finished_event_emitted_at"),

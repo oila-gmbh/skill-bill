@@ -5,8 +5,8 @@ import skillbill.engine.goalrunner.model.GoalRunnerRunRequest
 import skillbill.goalrunner.model.GoalRunnerStopReason
 import skillbill.ports.goalrunner.runner.GoalRunnerManifestStore
 import skillbill.ports.goalrunner.runner.model.GoalRunnerWorkflowProgress
-import skillbill.ports.workflow.gitops.ProtectedBranches
 import skillbill.workflow.decomposition.model.DecompositionSubtask
+import skillbill.workflow.gitops.ProtectedBranches
 
 val RUNTIME_WORKFLOW_ID_PREFIX: String = WorkflowFamily.TASK_RUNTIME.definition.workflowIdPrefix
 

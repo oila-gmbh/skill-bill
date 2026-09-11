@@ -1,9 +1,10 @@
 package skillbill.infrastructure.sqlite.review
-import skillbill.contracts.JsonSupport
-import skillbill.db.PARAM_ONE
-import skillbill.db.PARAM_TWO
-import skillbill.db.telemetry.enqueueTelemetry
-import skillbill.ports.telemetry.model.toReviewFinishedTelemetryPayloadimport skillbill.review.model.REVIEW_FINISHED_LEGACY_CONTRACT_VERSION
+import skillbill.contracts.JsonCodec
+import skillbill.infrastructure.sqlite.PARAM_ONE
+import skillbill.infrastructure.sqlite.PARAM_TWO
+import skillbill.infrastructure.sqlite.telemetry.enqueueTelemetry
+import skillbill.ports.telemetry.model.toReviewFinishedTelemetryPayload
+import skillbill.review.model.REVIEW_FINISHED_LEGACY_CONTRACT_VERSION
 import skillbill.review.model.REVIEW_FINISHED_LEGACY_REGENERATED_EVENT_NAME
 import skillbill.review.model.REVIEW_STAGE_DEGRADATION_CONTRACT_VERSION
 import java.sql.Connection
@@ -79,7 +80,7 @@ private fun rewriteOutboxPayload(connection: Connection, outboxId: Long, payload
   connection.prepareStatement(
     "UPDATE telemetry_outbox SET payload_json = ? WHERE id = ?",
   ).use { statement ->
-    statement.setString(PARAM_ONE, JsonSupport.mapToJsonString(payload))
+    statement.setString(PARAM_ONE, JsonCodec.mapToJsonString(payload))
     statement.setLong(PARAM_TWO, outboxId)
     statement.executeUpdate()
   }

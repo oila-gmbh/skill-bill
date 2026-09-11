@@ -64,7 +64,7 @@ class GoalRunnerLedgerRecorder(
       previousStep = context.progress?.currentStepId,
       blockedReason = context.blockedReason?.takeIf(String::isNotBlank),
       latestLiveness = context.progress?.latestLivenessSignal,
-      launchOutcome = facts?.let { launchFinalStatus(it) },
+      launchOutcome = facts?.let(::launchFinalStatus),
       timedOut = facts?.timedOut,
       interrupted = facts?.interrupted,
       // SKILL-64 Subtask 3 (AC11): carry the provider-neutral child session
@@ -123,12 +123,11 @@ class GoalRunnerLedgerRecorder(
     )
   }
 
-  private fun launchFinalStatus(facts: AgentRunLaunchFacts): String = when {
-    facts.spawnFailed -> "spawn_failed"
-    facts.timedOut -> "timed_out"
-    facts.interrupted -> "interrupted"
-    facts.exitStatus == 0 -> "exited_ok"
-    else -> "exited_${facts.exitStatus ?: "unknown"}"
+  private fun launchFinalStatus(facts: AgentRunLaunchFacts): GoalAttemptLaunchOutcome = when {
+    facts.spawnFailed -> GoalAttemptLaunchOutcome.SpawnFailed
+    facts.timedOut -> GoalAttemptLaunchOutcome.TimedOut
+    facts.interrupted -> GoalAttemptLaunchOutcome.Interrupted
+    else -> GoalAttemptLaunchOutcome.Exited(facts.exitStatus)
   }
 }
 

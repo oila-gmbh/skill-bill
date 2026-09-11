@@ -2,13 +2,14 @@ package skillbill.cli.goal
 
 import skillbill.engine.goalrunner.model.GoalRunnerStopStatus
 import skillbill.goalrunner.model.GoalRunnerTerminalStatus
+
 internal const val GOAL_EXIT_COMPLETE: Int = 0
 internal const val GOAL_EXIT_FAILED: Int = 1
 internal const val GOAL_EXIT_PAUSED: Int = 2
 internal const val GOAL_EXIT_BLOCKED: Int = 3
 
 internal fun goalRunExitCode(status: String?, reason: String?): Int {
-  if (status == "complete") return GOAL_EXIT_COMPLETE
+  if (status?.let(GoalRunnerTerminalStatus::fromWire) == GoalRunnerTerminalStatus.COMPLETE) return GOAL_EXIT_COMPLETE
   val normalized = reason?.lowercase().orEmpty()
   return when {
     normalized == "paused" -> GOAL_EXIT_PAUSED

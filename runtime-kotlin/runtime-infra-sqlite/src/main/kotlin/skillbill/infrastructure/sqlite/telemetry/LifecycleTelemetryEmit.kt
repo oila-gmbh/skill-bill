@@ -1,18 +1,10 @@
 package skillbill.infrastructure.sqlite.telemetry
 
-<<<<<<<< HEAD:runtime-kotlin/runtime-infra-sqlite/src/main/kotlin/skillbill/infrastructure/sqlite/telemetry/LifecycleTelemetryEmitSupport.kt
-import skillbill.contracts.JsonSupport
-import skillbill.db.PARAM_FOUR
-import skillbill.db.PARAM_ONE
-import skillbill.db.PARAM_THREE
-import skillbill.db.PARAM_TWO
-========
 import skillbill.contracts.JsonCodec
 import skillbill.infrastructure.sqlite.PARAM_FOUR
 import skillbill.infrastructure.sqlite.PARAM_ONE
 import skillbill.infrastructure.sqlite.PARAM_THREE
 import skillbill.infrastructure.sqlite.PARAM_TWO
->>>>>>>> 9d724a13f (SKILL-233: Engine module and package roots):runtime-kotlin/runtime-infra-sqlite/src/main/kotlin/skillbill/infrastructure/sqlite/telemetry/LifecycleTelemetryEmit.kt
 import skillbill.review.model.REVIEW_STAGE_DEGRADATION_EVENT_NAME
 import skillbill.review.model.ReviewStageDegradationMeasurement
 import java.sql.Connection
@@ -66,7 +58,7 @@ fun emitFeatureVerifyFinished(connection: Connection, sessionId: String, level: 
 }
 
 fun enqueueTelemetry(connection: Connection, eventName: String, payload: Map<String, Any?>) {
-  TelemetryOutboxStore(connection).enqueue(eventName, JsonSupport.mapToJsonString(payload))
+  TelemetryOutboxStore(connection).enqueue(eventName, JsonCodec.mapToJsonString(payload))
 }
 
 fun reviewStageDegradationExists(connection: Connection, record: ReviewStageDegradationMeasurement): Boolean =

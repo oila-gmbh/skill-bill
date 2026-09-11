@@ -129,7 +129,7 @@ class FeatureTaskRuntimeCurrentPhaseExecutionDeriver {
     ledger: List<FeatureTaskRuntimePhaseLedgerEntry>,
   ): Int? {
     val pass = record?.reviewPassNumber ?: return null
-    if (record.status != PHASE_STATUS_COMPLETED) return pass
+    if (record.status.workflowStepStatus() != WorkflowStepStatus.COMPLETED) return pass
     val latestReviewFixEdge = ledger
       .filter {
         it.action == FeatureTaskRuntimePhaseLedgerAction.LOOP_EDGE &&

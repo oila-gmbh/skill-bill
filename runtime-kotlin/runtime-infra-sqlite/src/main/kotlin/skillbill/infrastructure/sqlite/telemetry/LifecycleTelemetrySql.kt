@@ -1,14 +1,14 @@
 package skillbill.infrastructure.sqlite.telemetry
 
 import kotlinx.serialization.json.JsonElement
-import skillbill.contracts.JsonSupport
+import skillbill.contracts.JsonCodec
 import java.sql.Connection
 import java.sql.PreparedStatement
 import java.sql.ResultSet
 
 fun Boolean.toSqlInt(): Int = if (this) 1 else 0
 
-fun listJson(items: List<Any?>): String = JsonSupport.mapToJsonString(mapOf("items" to items)).itemsArrayJson()
+fun listJson(items: List<Any?>): String = JsonCodec.mapToJsonString(mapOf("items" to items)).itemsArrayJson()
 
 fun rowExists(connection: Connection, tableName: String, sessionId: String): Boolean =
   connection.prepareStatement("SELECT 1 FROM $tableName WHERE session_id = ?").use { statement ->
@@ -43,9 +43,9 @@ fun PreparedStatement.bind(values: List<Any?>) {
   values.forEachIndexed { index, value -> setObject(index + 1, value) }
 }
 
-private fun String.itemsArrayJson(): String = JsonSupport.parseObjectOrNull(this)
+private fun String.itemsArrayJson(): String = JsonCodec.parseObjectOrNull(this)
   ?.get("items")
-  ?.let { JsonSupport.json.encodeToString(JsonElement.serializer(), it) }
+  ?.let { JsonCodec.json.encodeToString(JsonElement.serializer(), it) }
   ?: "[]"
 
 private fun ResultSet.toMap(): Map<String, Any?> {

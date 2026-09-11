@@ -83,7 +83,7 @@ sealed interface GoalRunnerRunEvent {
     val completedCount: Int,
     val pendingCount: Int,
     val blockedCount: Int,
-    val pullRequestStatus: String,
+    val pullRequestStatus: GoalPullRequestStatus,
     val pullRequestUrl: String?,
   ) : GoalRunnerRunEvent
 }

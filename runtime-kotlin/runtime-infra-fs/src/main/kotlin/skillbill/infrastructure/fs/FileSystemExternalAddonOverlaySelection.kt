@@ -8,6 +8,7 @@ import skillbill.infrastructure.fs.scaffold.platformpack.declaredSkillRelativeDi
 import skillbill.infrastructure.fs.scaffold.platformpack.parseAddonUsage
 import skillbill.infrastructure.fs.scaffold.platformpack.parsePointers
 import skillbill.install.model.ExternalAddonSource
+import skillbill.model.toPath
 import skillbill.scaffold.model.GovernedAddonSelection
 import skillbill.scaffold.model.GovernedAddonUsage
 import skillbill.scaffold.model.PlatformManifest
@@ -21,7 +22,7 @@ internal fun validateAndPlan(
   collisionIndex: CollisionIndex,
 ): SourcePlan {
   val slug = source.platform
-  val fragment = readSourceManifest(source.path, slug)
+  val fragment = readSourceManifest(source.path.toPath(), slug)
   val rewritten = rewriteFragmentTargets(fragment, slug)
   validateFragmentFields(rewritten, slug)
   val fragmentPointers = wrapParserErrors(slug) { parsePointers(rewritten, slug) }
@@ -31,7 +32,7 @@ internal fun validateAndPlan(
       rewritten,
       AddonUsageManifestContext(
         slug = slug,
-        packRoot = installed.packRoot,
+        packRoot = installed.packRoot.toPath(),
         pointers = fragmentPointers,
         declaredSkillDirs = installed.declaredSkillRelativeDirs(),
         declaredAreas = installed.declaredCodeReviewAreas.toSet(),
@@ -43,8 +44,8 @@ internal fun validateAndPlan(
   val filesToCopy = linkedMapOf<String, Path>()
   fragmentPointers.forEach { pointer ->
     val filename = pointer.target.substringAfterLast('/')
-    verifySourceFile(source.path, slug, filename)
-    filesToCopy[filename] = source.path.resolve(filename)
+    verifySourceFile(source.path.toPath(), slug, filename)
+    filesToCopy[filename] = source.path.resolve(filename).toPath()
   }
 
   val pointersToAppend = collectPointersToAppend(slug, fragmentPointers, collisionIndex)
@@ -52,9 +53,9 @@ internal fun validateAndPlan(
 
   return SourcePlan(
     platform = slug,
-    sourcePath = source.path,
-    installedManifestPath = installed.packRoot.resolve(MANIFEST_FILE),
-    packRoot = installed.packRoot,
+    sourcePath = source.path.toPath(),
+    installedManifestPath = installed.packRoot.resolve(MANIFEST_FILE).toPath(),
+    packRoot = installed.packRoot.toPath(),
     pointersToAppend = pointersToAppend,
     addonsToAppend = addonsToAppend,
     copiedFiles = filesToCopy,

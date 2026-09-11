@@ -7,6 +7,7 @@ import skillbill.infrastructure.fs.FileSystemExternalAddonOverlay
 import skillbill.install.model.ExternalAddonSource
 import skillbill.ports.install.addon.ExternalAddonOverlayPort
 import skillbill.ports.install.addon.model.ExternalAddonOverlayRequest
+import skillbill.ports.repository.toFileLocation
 import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.test.Test
@@ -67,7 +68,7 @@ class ExternalAddonOverlayTest {
       """.trimIndent() + "\n",
     )
 
-    overlay.applyOverlay(request(listOf(ExternalAddonSource(sourceDir, "ios"))))
+    overlay.applyOverlay(request(listOf(ExternalAddonSource(sourceDir.toFileLocation(), "ios"))))
 
     val manifest = Files.readString(platformPacksRoot.resolve("ios/platform.yaml"))
     assertContains(manifest, "activation")
@@ -123,7 +124,7 @@ class ExternalAddonOverlayTest {
             target: acme-review.md
       """.trimIndent() + "\n",
     )
-    val source = ExternalAddonSource(sourceDir, "ios")
+    val source = ExternalAddonSource(sourceDir.toFileLocation(), "ios")
 
     val error = assertFailsWith<ExternalAddonOverlayError> {
       overlay.applyOverlay(request(listOf(source)))
@@ -151,7 +152,7 @@ class ExternalAddonOverlayTest {
             target: offline-review.md
       """.trimIndent() + "\n",
     )
-    val source = ExternalAddonSource(sourceDir, "ios")
+    val source = ExternalAddonSource(sourceDir.toFileLocation(), "ios")
 
     val error = assertFailsWith<ExternalAddonOverlayError> {
       overlay.applyOverlay(request(listOf(source)))
@@ -183,7 +184,7 @@ class ExternalAddonOverlayTest {
             target: acme-alt.md
       """.trimIndent() + "\n",
     )
-    val second = ExternalAddonSource(secondDir, "ios")
+    val second = ExternalAddonSource(secondDir.toFileLocation(), "ios")
 
     assertFailsWith<ExternalAddonOverlayError> {
       overlay.applyOverlay(request(listOf(first, second)))
@@ -224,7 +225,7 @@ class ExternalAddonOverlayTest {
     )
 
     assertFailsWith<ExternalAddonOverlayError> {
-      overlay.applyOverlay(request(listOf(ExternalAddonSource(sourceDir, "ios"))))
+      overlay.applyOverlay(request(listOf(ExternalAddonSource(sourceDir.toFileLocation(), "ios"))))
     }
   }
 
@@ -304,7 +305,7 @@ class ExternalAddonOverlayTest {
             target: broken.md
       """.trimIndent() + "\n",
     )
-    val bad = ExternalAddonSource(badDir, "ios")
+    val bad = ExternalAddonSource(badDir.toFileLocation(), "ios")
 
     assertFailsWith<ExternalAddonOverlayError> {
       overlay.applyOverlay(request(listOf(good, bad)))
@@ -346,7 +347,7 @@ class ExternalAddonOverlayTest {
     )
 
     val error = assertFailsWith<ExternalAddonOverlayError> {
-      overlay.applyOverlay(request(listOf(ExternalAddonSource(sourceDir, "ios"))))
+      overlay.applyOverlay(request(listOf(ExternalAddonSource(sourceDir.toFileLocation(), "ios"))))
     }
     assertTrue(
       error.message.orEmpty().contains("flat file"),
@@ -375,7 +376,7 @@ class ExternalAddonOverlayTest {
     )
 
     assertFailsWith<ExternalAddonOverlayError> {
-      overlay.applyOverlay(request(listOf(ExternalAddonSource(sourceDir, "ios"))))
+      overlay.applyOverlay(request(listOf(ExternalAddonSource(sourceDir.toFileLocation(), "ios"))))
     }
   }
 
@@ -399,7 +400,7 @@ class ExternalAddonOverlayTest {
     )
 
     assertFailsWith<ExternalAddonOverlayError> {
-      overlay.applyOverlay(request(listOf(ExternalAddonSource(sourceDir, "ios"))))
+      overlay.applyOverlay(request(listOf(ExternalAddonSource(sourceDir.toFileLocation(), "ios"))))
     }
   }
 
@@ -443,7 +444,7 @@ class ExternalAddonOverlayTest {
             target: $addonMd
       """.trimIndent() + "\n",
     )
-    return ExternalAddonSource(sourceDir, platform)
+    return ExternalAddonSource(sourceDir.toFileLocation(), platform)
   }
 
   private fun assertContains(actual: String, expected: String) {
@@ -558,6 +559,6 @@ class ExternalAddonOverlayTest {
             target: $targetValue
       """.trimIndent() + "\n",
     )
-    return ExternalAddonSource(sourceDir, platform)
+    return ExternalAddonSource(sourceDir.toFileLocation(), platform)
   }
 }

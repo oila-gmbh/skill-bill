@@ -9,15 +9,18 @@ import skillbill.goalrunner.subtaskreview.model.UnaddressedFindingLedgerScope
 import skillbill.install.model.InstallAgent
 import skillbill.ports.workflow.gitops.repositoryFingerprint
 import skillbill.workflow.goal.model.ValidationDepth
-import skillbill.workflow.taskruntime.FeatureTaskRuntimeHandoffContractimport skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
+import skillbill.workflow.taskruntime.FeatureTaskRuntimeHandoffContract
+import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import skillbill.workflow.taskruntime.model.AcceptedFeatureTaskRuntimePhaseOutput
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeCorrectiveRepairContext
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFailureDisposition
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeHandoffAssemblyRequest
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutputRepairEvidence
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepositoryCheckpoint
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeReviewPassSequence
 import skillbill.workflow.taskruntime.model.NormalizedFeatureTaskRuntimePhaseOutput
 
-@Inject
-class FeatureTaskRuntimeRunLoopOutputPersistence {
+object FeatureTaskRuntimeRunLoopOutputPersistence {
   internal fun persistRejectedVerificationFindings(
     runLoop: FeatureTaskRuntimeRunLoop,
     run: PhaseRun,
@@ -77,7 +80,7 @@ class FeatureTaskRuntimeRunLoopOutputPersistence {
               finished = true,
               outputArtifact = outputText,
             ),
-            extras = PhaseStateRequestExtras(
+            extras = PhaseStateRequestAttachments(
               fileManifest = fileManifest,
               normalizedOutput = acceptedOutput.normalizedOutput,
               repairEvidence = acceptedOutput.repairEvidence,
@@ -87,7 +90,7 @@ class FeatureTaskRuntimeRunLoopOutputPersistence {
         ),
       )
     } catch (error: RuntimeOwnedFactUnavailable) {
-      return runLoop.collaborators.phaseAttempts.blockInPhase(
+      return FeatureTaskRuntimeRunLoopPhaseAttempts.blockInPhase(
         runLoop,
         PhaseBlockRequest(
           run = run,
@@ -102,7 +105,7 @@ class FeatureTaskRuntimeRunLoopOutputPersistence {
     return if (persisted) {
       null
     } else {
-      runLoop.collaborators.phaseAttempts.blockInPhase(
+      FeatureTaskRuntimeRunLoopPhaseAttempts.blockInPhase(
         runLoop,
         PhaseBlockRequest(
           run = run,
@@ -131,7 +134,7 @@ class FeatureTaskRuntimeRunLoopOutputPersistence {
         completion = completion,
       )
     }.getOrElse { error ->
-      return runLoop.collaborators.phaseAttemptsContinued2.blockAndPersistInPhase(
+      return FeatureTaskRuntimeRunLoopPhaseAttempts.blockAndPersistInPhase(
         runLoop,
         phaseBlockArgs(
           run,
@@ -146,7 +149,7 @@ class FeatureTaskRuntimeRunLoopOutputPersistence {
     return if (completed) {
       null
     } else {
-      runLoop.collaborators.phaseAttempts.blockInPhase(
+      FeatureTaskRuntimeRunLoopPhaseAttempts.blockInPhase(
         runLoop,
         PhaseBlockRequest(
           run = run,
@@ -162,10 +165,6 @@ class FeatureTaskRuntimeRunLoopOutputPersistence {
   internal fun isGoalReviewRun(run: PhaseRun): Boolean =
     run.phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW && isGoalContinuationRun(run.request)
 
-  // A goal-subtask review reserves its pass once in prepareGoalReviewRun, outside runPhaseAttempts, so a
-  // bounded in-loop re-attempt reuses that same reserved pass instead of allocating another. Schema-invalid
-  // output therefore earns the same fix-loop retries as every other phase: the reserved pass has no completed
-  // output, which is the runLoop.state a resume is already contracted to re-enter rather than treat as terminal.
   internal fun schemaInvalidAttempt(
     operatorReason: String,
     fileManifest: FeatureTaskRuntimePhaseFileManifest,
@@ -425,4 +424,5 @@ private fun expectedCheckpointForLaunch(
 ) {
   repositoryCheckpoint?.fingerprint
 } else {
-  run.reentry?.expectedRepositoryCheckpoint ?: repositoryCheckpoint?.fingerprint}
+  run.reentry?.expectedRepositoryCheckpoint ?: repositoryCheckpoint?.fingerprint
+}

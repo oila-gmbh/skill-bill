@@ -1,14 +1,11 @@
 
 package skillbill.infrastructure.fs.scaffold.platformpack
 
-<<<<<<<< HEAD:runtime-kotlin/runtime-infra-fs/src/main/kotlin/skillbill/infrastructure/fs/scaffold/platformpack/ShellContentLoaderSupport.kt
-========
 import skillbill.infrastructure.fs.scaffold.runtime.CONTENT_BODY_FILENAME
 import skillbill.infrastructure.fs.scaffold.validation.parseSkillFrontmatter
 import skillbill.infrastructure.fs.scaffold.validation.validateAuthoredContent
 import skillbill.infrastructure.fs.scaffold.validation.validateSkillMdShape
 import skillbill.model.toPath
->>>>>>>> 9d724a13f (SKILL-233: Engine module and package roots):runtime-kotlin/runtime-infra-fs/src/main/kotlin/skillbill/infrastructure/fs/scaffold/platformpack/ShellContentLoaderFields.kt
 import skillbill.scaffold.model.PlatformManifest
 import java.nio.file.Files
 import java.nio.file.Path
@@ -81,7 +78,7 @@ internal fun ensureValidAuthoredContent(slug: String, skillPath: Path, text: Str
 }
 
 internal fun displayPackPath(pack: PlatformManifest, path: Path): String = runCatching {
-  pack.packRoot.toAbsolutePath().normalize().relativize(path.toAbsolutePath().normalize())
+  pack.packRoot.toPath().toAbsolutePath().normalize().relativize(path.toAbsolutePath().normalize())
     .toString()
     .replace('\\', '/')
 }.getOrDefault(path.toString())

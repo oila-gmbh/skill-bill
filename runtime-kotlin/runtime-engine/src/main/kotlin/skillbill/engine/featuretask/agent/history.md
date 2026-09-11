@@ -8,6 +8,7 @@ Areas: runtime-engine/featuretask, runtime-cli/codereview, application/review, s
 Feature flag: N/A
 Acceptance criteria: n/a
 
+
 ## [2026-09-01] SKILL-228 subtask 1 — Validate/build needs_user_action operator block
 Areas: runtime-application/featuretask, runtime-application/featuretask/validation, runtime-application/goalrunner
 - Validate and build `blocked` + `failure_disposition: needs_user_action` settle once as terminal operator blocks: phase record + ledger before any parent-PID hold; no repair-turn increment or gate relaunch.

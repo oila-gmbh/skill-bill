@@ -12,7 +12,8 @@ import skillbill.install.model.InstallApplyIssueKind
 import skillbill.install.model.InstallPlan
 import skillbill.install.model.InstallPlanSkill
 import skillbill.model.toPath
-import skillbill.ports.repository.toFileLocationimport java.nio.file.Files
+import skillbill.ports.repository.toFileLocation
+import java.nio.file.Files
 import java.nio.file.LinkOption
 import java.nio.file.Path
 
@@ -26,8 +27,7 @@ internal fun linkPlannedSkill(
     skillName = skill.name,
     stagingDir = stagingDir,
     agentTarget = agentTarget,
-    installedSkillsRoot = installedSkillsCacheRoot(plan.request.home),
-    allowExternalReplacement = plan.request.replaceExistingSkillBillLinks,
+    installedSkillsRoot = installedSkillsCacheRoot(plan.request.home.toPath()),
   ).also { outcome ->
     outcome.issue?.let(failures::add)
   }
@@ -38,9 +38,8 @@ private fun linkSkillToAgent(
   stagingDir: Path,
   agentTarget: InstallAgentTarget,
   installedSkillsRoot: Path,
-  allowExternalReplacement: Boolean,
 ): InstallAgentSkillLinkOutcome {
-  val targetDir = agentTarget.path.toAbsolutePath().normalize()
+  val targetDir = agentTarget.path.toPath().toAbsolutePath().normalize()
   val context = SkillLinkContext(
     skillName = skillName,
     agentTarget = agentTarget,
@@ -48,7 +47,6 @@ private fun linkSkillToAgent(
     linkPath = targetDir.resolve(skillName).normalize(),
     linkTarget = stagingDir.toAbsolutePath().normalize(),
     installedSkillsRoot = installedSkillsRoot.toAbsolutePath().normalize(),
-    allowExternalReplacement = allowExternalReplacement,
   )
   return runCatching { createOrSkipSkillLink(context) }
     .getOrElse { error -> failedSkillLinkOutcome(context, error) }
@@ -66,10 +64,7 @@ private fun createOrSkipSkillLink(context: SkillLinkContext): InstallAgentSkillL
         message = "already linked to ${context.linkTarget}",
       )
     }
-    require(
-      context.allowExternalReplacement ||
-        (existingTarget != null && existingTarget.startsWith(context.installedSkillsRoot)),
-    ) {
+    require(existingTarget != null && existingTarget.startsWith(context.installedSkillsRoot)) {
       "Existing symlink at ${context.linkPath} points outside Skill Bill installed-skills cache and was preserved."
     }
   } else if (Files.exists(context.linkPath, LinkOption.NOFOLLOW_LINKS)) {
@@ -108,9 +103,9 @@ private fun skillLinkOutcome(
   issue: InstallApplyIssue? = null,
 ): InstallAgentSkillLinkOutcome = InstallAgentSkillLinkOutcome(
   agent = context.agentTarget.agent,
-  targetDir = context.targetDir,
-  linkPath = context.linkPath,
-  linkTarget = context.linkTarget,
+  targetDir = context.targetDir.toFileLocation(),
+  linkPath = context.linkPath.toFileLocation(),
+  linkTarget = context.linkTarget.toFileLocation(),
   status = status,
   message = message,
   issue = issue,
@@ -123,7 +118,7 @@ private fun failedSkillLinkOutcome(context: SkillLinkContext, error: Throwable):
     message = error.message.orEmpty(),
     skillName = context.skillName,
     agent = context.agentTarget.agent,
-    path = context.linkPath,
+    path = context.linkPath.toFileLocation(),
     guidance = symlinkError?.guidance,
     causeClass = error::class.qualifiedName,
   )
@@ -148,5 +143,4 @@ private data class SkillLinkContext(
   val linkPath: Path,
   val linkTarget: Path,
   val installedSkillsRoot: Path,
-  val allowExternalReplacement: Boolean,
 )

@@ -7,7 +7,8 @@ import skillbill.infrastructure.fs.scaffold.rendering.baselineReviewContent
 import skillbill.infrastructure.fs.scaffold.rendering.qualityCheckContent
 import skillbill.infrastructure.fs.scaffold.rendering.renderFrontmatter
 import skillbill.install.model.InstallPlan
-import skillbill.model.toPathimport java.nio.file.Files
+import skillbill.model.toPath
+import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.test.assertEquals
 
@@ -18,7 +19,7 @@ internal fun assertConcreteAndManifestFallbackSelected(
 ) {
   val fallbackSlugs = plan.discoveredPlatformPacks
     .filter { pack ->
-      CODE_REVIEW_FALLBACK_CAPABILITY in loadPlatformPack(pack.packRoot).fallbackCapabilities
+      CODE_REVIEW_FALLBACK_CAPABILITY in loadPlatformPack(pack.packRoot.toPath()).fallbackCapabilities
     }
     .map { it.slug }
   assertEquals(1, fallbackSlugs.size)

@@ -2,25 +2,16 @@ package skillbill.engine.featuretask
 
 import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_CONTRACT_VERSION
 import skillbill.engine.featuretask.model.FeatureTaskRuntimePhaseLaunchBriefing
-import skillbill.goalrunner.subtaskreview.FeatureTaskRuntimeVerificationSignalKeysimport skillbill.review.model.ReviewIssueCategory
+import skillbill.goalrunner.subtaskreview.FeatureTaskRuntimeVerificationSignalKeys
+import skillbill.review.model.ReviewIssueCategory
 import skillbill.workflow.goal.model.GoalSubtaskCommitFocusedAccounting
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_AUDIT_NOTE_MAX_CHARS
 
-fun outputContract(
-  briefing: FeatureTaskRuntimePhaseLaunchBriefing,
-  agentRunValidateFallback: Boolean,
-  settlement: FeatureTaskRuntimePhaseSettlementTarget? = null,
-): String {
+fun outputContract(briefing: FeatureTaskRuntimePhaseLaunchBriefing, agentRunValidateFallback: Boolean): String {
   val phaseId = briefing.phaseId
-  val settlementSection = settlementDirective(phaseId, settlement)
-  val heading = if (settlementSection.isEmpty()) {
-    "## Required final output (validated schema gate)"
-  } else {
-    "## Fallback final output (validated schema gate; only when the settlement tools are unavailable)"
-  }
-  val envelopeSection = """
-    $heading
+  return """
+    ## Required final output (validated schema gate)
     End your response with exactly one JSON object as the last thing you emit. Prefer a raw
     object with nothing after it; a single ```json fenced block is also accepted. The runtime
     extracts that object and blocks the run if it does not validate against the phase-output
@@ -44,7 +35,6 @@ fun outputContract(
       advance-vs-remediation decision — see the verifying-phase signal above
     No top-level fields other than the ones listed above are allowed.
   """.trimIndent()
-  return if (settlementSection.isEmpty()) envelopeSection else settlementSection + "\n\n" + envelopeSection
 }
 
 private fun producedOutputsAddendum(

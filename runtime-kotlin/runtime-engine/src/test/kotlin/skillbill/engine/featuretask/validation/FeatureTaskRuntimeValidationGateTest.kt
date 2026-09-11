@@ -8,7 +8,8 @@ import skillbill.engine.featuretask.validation.model.ValidationGateCycleRequest
 import skillbill.engine.featuretask.validation.model.ValidationGateCycleResult
 import skillbill.engine.featuretask.validation.model.ValidationGateCycleTerminalOutcome
 import skillbill.engine.featuretask.validation.model.ValidationGateTriageResult
-import skillbill.engine.featuretask.validation.model.ValidationGateTriageResult.Capturedimport skillbill.ports.validation.model.ValidationGateFinding
+import skillbill.engine.featuretask.validation.model.ValidationGateTriageResult.Captured
+import skillbill.ports.validation.model.ValidationGateFinding
 import skillbill.workflow.goal.model.ValidationDepth
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeValidationGateProgress
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeValidationGateRepairWindowPhase

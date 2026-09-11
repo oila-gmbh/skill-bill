@@ -1,8 +1,8 @@
 package skillbill.ports.goalrunner.runner
 
 import skillbill.boundary.OpenBoundaryMap
-import skillbill.contracts.diagnostics.RecordingNullObjectDiagnostics
 import skillbill.goalrunner.model.GoalPlanningStatusSnapshot
+import skillbill.goalrunner.model.GoalRunnerAttemptLedgerSummary
 import skillbill.goalrunner.model.GoalRunnerControlState
 import skillbill.goalrunner.model.GoalRunnerExecutionLease
 import skillbill.goalrunner.model.GoalRunnerStoredOutcome
@@ -10,7 +10,6 @@ import skillbill.ports.agentrun.model.AgentRunLaunchOutcome
 import skillbill.ports.agentrun.model.AgentRunSpawnAuthorization
 import skillbill.ports.goalrunner.runner.model.GoalPullRequestRequest
 import skillbill.ports.goalrunner.runner.model.GoalPullRequestResult
-import skillbill.ports.goalrunner.runner.model.GoalRunnerAttemptLedgerSummary
 import skillbill.ports.goalrunner.runner.model.GoalRunnerChildWorkflowSetup
 import skillbill.ports.goalrunner.runner.model.GoalRunnerCompletionPersistenceResult
 import skillbill.ports.goalrunner.runner.model.GoalRunnerLaunchAuthorization
@@ -50,6 +49,7 @@ interface GoalRunnerManifestQueries {
 
 interface GoalRunnerManifestExecutionCommands {
   fun requestPause(parentWorkflowId: String): GoalRunnerControlState?
+
   fun pauseNow(
     parentWorkflowId: String,
     reason: String,
@@ -62,6 +62,7 @@ interface GoalRunnerManifestExecutionCommands {
   fun resume(parentWorkflowId: String): GoalRunnerManifestState?
 
   fun pauseAtBoundary(state: GoalRunnerManifestState): GoalRunnerManifestState
+
   fun acquireExecutionLease(
     parentWorkflowId: String,
     lease: GoalRunnerExecutionLease,
@@ -91,50 +92,51 @@ interface GoalRunnerManifestControlWrites {
   fun persistOutOfBandAcceptance(
     parentWorkflowId: String,
     acceptance: GoalRunnerOutOfBandAcceptance,
-  ): GoalRunnerOutOfBandAcceptance}
+  ): GoalRunnerOutOfBandAcceptance
+}
 
-interface GoalRunnerManifestPersistenceCommands {
+interface GoalRunnerManifestStateWrites {
   fun planningStatus(
     parentWorkflowId: String,
     orderedSubtaskIds: List<Int>,
     blockedSubtaskId: Int? = null,
     blockedReason: String? = null,
   ): GoalPlanningStatusSnapshot?
+
   fun save(state: GoalRunnerManifestState): GoalRunnerManifestState
 
   fun saveRuntimeState(state: GoalRunnerManifestState): GoalRunnerManifestState
+
   fun saveCompletedSubtaskAtBoundary(
     state: GoalRunnerManifestState,
     subtaskId: Int,
   ): GoalRunnerCompletionPersistenceResult
 
   fun saveHardReset(state: GoalRunnerManifestState, preservePlanning: Boolean = false): GoalRunnerManifestState
+
   fun deleteIncompatibleChildWorkflow(
     state: GoalRunnerManifestState,
     subtaskId: Int,
     workflowId: String,
   ): GoalRunnerManifestState
+
   fun saveScopedReplan(
     state: GoalRunnerManifestState,
     subtaskId: Int,
     options: GoalRunnerScopedReplanOptions = GoalRunnerScopedReplanOptions(),
-  ): GoalRunnerScopedReplanWriteResult =
-    error("Goal runner manifest store must atomically persist a scoped subtask replan.")
-
-  fun sharedPreplanPayloadSha256(parentWorkflowId: String, dbPathOverride: String? = null): String? = null
+  ): GoalRunnerScopedReplanWriteResult
 
   fun saveNewChildWorkflow(
     state: GoalRunnerManifestState,
     setup: GoalRunnerChildWorkflowSetup,
-  ): GoalRunnerManifestState}
+  ): GoalRunnerManifestState
+}
 
 interface GoalRunnerManifestStore :
-  GoalRunnerManifestLookup,
-  GoalRunnerManifestPauseOps,
-  GoalRunnerManifestExecutionLease,
-  GoalRunnerManifestControlCommands,
-  GoalRunnerManifestPersistenceCommands,
-  GoalRunnerManifestReviewCommands
+  GoalRunnerManifestQueries,
+  GoalRunnerManifestExecutionCommands,
+  GoalRunnerManifestControlWrites,
+  GoalRunnerManifestStateWrites
 
 interface GoalRunnerTerminalOutcomeStore {
   fun terminalOutcome(workflowId: String, issueKey: String, subtaskId: Int): GoalRunnerStoredOutcome?
@@ -172,16 +174,6 @@ interface GoalRunnerWorkflowOutcomeStore :
 
 interface GoalRunnerAttemptLedgerStore {
   fun readAttemptLedgerSummary(issueKey: String): GoalRunnerAttemptLedgerSummary
-}
-
-object NoopGoalRunnerAttemptLedgerStore : GoalRunnerAttemptLedgerStore {
-  override fun readAttemptLedgerSummary(issueKey: String, dbPathOverride: String?): GoalRunnerAttemptLedgerSummary {
-    RecordingNullObjectDiagnostics.recordSwallow(
-      "NoopGoalRunnerAttemptLedgerStore",
-      "readAttemptLedgerSummary(issueKey=$issueKey)",
-    )
-    return GoalRunnerAttemptLedgerSummary()
-  }
 }
 
 fun interface GoalRunnerSubtaskLauncher {

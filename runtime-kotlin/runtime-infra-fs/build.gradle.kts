@@ -9,6 +9,7 @@ plugins {
 }
 
 dependencies {
+  implementation(libs.kotlinx.serialization.json)
   implementation(project(":runtime-ports"))
   implementation(project(":runtime-domain"))
   implementation(project(":runtime-contracts"))
@@ -19,7 +20,8 @@ dependencies {
   implementation(libs.jackson.dataformat.yaml)
   testImplementation(project(":runtime-application"))
   testImplementation(project(":runtime-engine"))
-  testImplementation(testFixtures(project(":runtime-ports")))  testImplementation(libs.junit.jupiter)
+  testImplementation(testFixtures(project(":runtime-ports")))
+  testImplementation(libs.junit.jupiter)
   testImplementation(libs.kotlin.test)
 }
 

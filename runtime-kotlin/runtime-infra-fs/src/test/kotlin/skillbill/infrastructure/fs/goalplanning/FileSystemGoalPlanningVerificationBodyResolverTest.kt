@@ -1,10 +1,10 @@
 package skillbill.infrastructure.fs.goalplanning
 
+import skillbill.contracts.goalplanning.GoalVerificationBoundaryCaps
+import skillbill.contracts.time.JvmSystemClock
 import skillbill.error.GoalVerificationBoundaryCapExceededError
 import skillbill.ports.goalrunner.planning.model.GoalPlanningBoundaryBodyResolutionCaps
 import skillbill.ports.goalrunner.planning.model.GoalPlanningBoundaryHeading
-import skillbill.ports.goalrunner.verification.model.GoalVerificationContext
-import skillbill.ports.time.JvmSystemClock
 import java.nio.file.Files
 import java.nio.file.Path
 import java.time.LocalDate
@@ -18,7 +18,7 @@ class FileSystemGoalPlanningVerificationBodyResolverTest {
   fun `over budget verification resolution raises the named cap error`() {
     val repo = Files.createTempDirectory("goal-verification-body-cap")
     val agent = Files.createDirectories(repo.resolve("modules/a/agent"))
-    val headings = (0 until GoalVerificationContext.MAX_SELECTED_BODIES + 2).joinToString("\n\n") { index ->
+    val headings = (0 until GoalVerificationBoundaryCaps.maxSelectedBodies + 2).joinToString("\n\n") { index ->
       "## [${LocalDate.now(ZoneOffset.UTC).minusDays((index % 28).toLong())}] entry-$index\n\nbody $index"
     }
     Files.writeString(agent.resolve("history.md"), "# Boundary History\n\n$headings\n")
@@ -47,7 +47,7 @@ class FileSystemGoalPlanningVerificationBodyResolverTest {
   fun `per body byte cap loud fails instead of truncating under verification caps`() {
     val repo = Files.createTempDirectory("goal-verification-body-bytes")
     val agent = Files.createDirectories(repo.resolve("modules/a/agent"))
-    val bigBody = "x".repeat(GoalVerificationContext.MAX_BODY_BYTES + 64)
+    val bigBody = "x".repeat(GoalVerificationBoundaryCaps.maxBodyBytes + 64)
     Files.writeString(
       agent.resolve("history.md"),
       "# Boundary History\n\n## [${LocalDate.now(ZoneOffset.UTC)}] big-entry\n\n$bigBody\n",

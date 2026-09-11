@@ -4,9 +4,10 @@ import skillbill.application.assertDiagnosticNamesConstraint
 import skillbill.application.assertGateBlockNamesRule
 import skillbill.application.realFeatureTaskRuntimePhaseOutputValidator
 import skillbill.application.realPlanningProjectionValidator
-import skillbill.contracts.JsonSupport
+import skillbill.contracts.JsonCodec
 import skillbill.engine.featuretask.model.FeatureTaskRuntimeRunReport
-import skillbill.engine.planningprojection.producerProjectionGateReasonimport kotlin.test.Test
+import skillbill.engine.planningprojection.producerProjectionGateReason
+import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
@@ -40,8 +41,8 @@ class FeatureTaskRuntimeProducerProjectionGateTest {
 
   @Test
   fun `leftover digest keys plus value complete preplan without producer-projection re-entry`() {
-    val envelope = JsonSupport.anyToStringAnyMap(
-      JsonSupport.jsonElementToValue(JsonSupport.parseObjectOrNull(PREPLAN_LEFTOVER_DIGEST_KEYS)!!),
+    val envelope = JsonCodec.anyToStringAnyMap(
+      JsonCodec.jsonElementToValue(JsonCodec.parseObjectOrNull(PREPLAN_LEFTOVER_DIGEST_KEYS)!!),
     )!!
     assertNull(
       producerProjectionGateReason(
@@ -54,8 +55,8 @@ class FeatureTaskRuntimeProducerProjectionGateTest {
 
   @Test
   fun `leftover receipt keys plus value complete implement without producer-projection re-entry`() {
-    val envelope = JsonSupport.anyToStringAnyMap(
-      JsonSupport.jsonElementToValue(JsonSupport.parseObjectOrNull(IMPLEMENT_LEFTOVER_RECEIPT_KEYS)!!),
+    val envelope = JsonCodec.anyToStringAnyMap(
+      JsonCodec.jsonElementToValue(JsonCodec.parseObjectOrNull(IMPLEMENT_LEFTOVER_RECEIPT_KEYS)!!),
     )!!
     assertNull(
       producerProjectionGateReason(

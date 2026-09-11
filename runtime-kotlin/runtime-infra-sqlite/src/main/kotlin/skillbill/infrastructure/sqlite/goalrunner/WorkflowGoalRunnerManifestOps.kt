@@ -1,9 +1,20 @@
 package skillbill.infrastructure.sqlite.goalrunner
 
-import skillbill.ports.goalrunner.runner.GoalRunnerManifestControlCommands
-import skillbill.ports.goalrunner.runner.GoalRunnerManifestExecutionLease
-import skillbill.ports.goalrunner.runner.GoalRunnerManifestPersistenceCommands
-import skillbill.ports.goalrunner.runner.GoalRunnerManifestReviewCommands
+import skillbill.goalrunner.model.GoalPlanningStatusSnapshot
+import skillbill.goalrunner.model.GoalRunnerControlState
+import skillbill.goalrunner.model.GoalRunnerExecutionLease
+import skillbill.ports.agentrun.model.AgentRunSpawnAuthorization
+import skillbill.ports.goalrunner.runner.model.GoalRunnerChildWorkflowSetup
+import skillbill.ports.goalrunner.runner.model.GoalRunnerCompletionPersistenceResult
+import skillbill.ports.goalrunner.runner.model.GoalRunnerLaunchAuthorization
+import skillbill.ports.goalrunner.runner.model.GoalRunnerManifestState
+import skillbill.ports.goalrunner.runner.model.GoalRunnerOutOfBandAcceptance
+import skillbill.ports.goalrunner.runner.model.GoalRunnerPausePersistenceResult
+import skillbill.ports.goalrunner.runner.model.GoalRunnerReviewPolicy
+import skillbill.ports.goalrunner.runner.model.GoalRunnerScopedReplanOptions
+import skillbill.ports.goalrunner.runner.model.GoalRunnerScopedReplanWriteResult
+import skillbill.review.context.model.CodeReviewExecutionMode
+import java.nio.file.Path
 
 internal interface GoalRunnerManifestLookup {
   fun loadByIssueKey(issueKey: String, repoRoot: Path?): GoalRunnerManifestState?

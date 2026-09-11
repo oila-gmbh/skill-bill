@@ -3,12 +3,15 @@ package skillbill.engine.featuretask
 import skillbill.engine.featuretask.model.FeatureTaskRuntimePhaseStateRequest
 import skillbill.engine.featuretask.model.FeatureTaskRuntimePlanningStopDecision
 import skillbill.workflow.model.WorkflowStepStatus
-import skillbill.workflow.model.workflowStepStatusimport skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
+import skillbill.workflow.model.workflowStepStatus
+import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeBackwardEdge
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeCapExhaustionBehavior
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFailureDisposition
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutput
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseRecord
 
-@Inject
-class FeatureTaskRuntimeRunLoopBackwardEdge {
+object FeatureTaskRuntimeRunLoopBackwardEdge {
   fun resumeInFlightReviewFix(runLoop: FeatureTaskRuntimeRunLoop, edge: FeatureTaskRuntimeBackwardEdge): String? {
     if (
       edge.loopId != FeatureTaskRuntimePhaseWorkflowDefinition.REVIEW_FIX_LOOP_ID ||
@@ -28,7 +31,7 @@ class FeatureTaskRuntimeRunLoopBackwardEdge {
       loopId = edge.loopId,
       edgeIteration = edgeIteration,
       drivingVerdict = edge.triggeringVerdict,
-      expectedRepositoryCheckpoint = runLoop.collaborators.drive.reviewedCheckpointFingerprint(runLoop),
+      expectedRepositoryCheckpoint = FeatureTaskRuntimeRunLoopDrive.reviewedCheckpointFingerprint(runLoop),
     )
     runLoop.session.activeReentry = runLoop.session.pendingReentry
     return edge.destinationPhaseId
@@ -40,13 +43,9 @@ class FeatureTaskRuntimeRunLoopBackwardEdge {
     val loopId = args.loopId
     val edgeIteration = args.edgeIteration
     val verdict = args.verdict
-    val reopenedSpan = runLoop.collaborators.transitions.spanBetween(runLoop, destinationPhaseId, edge.fromPhaseId)
+    val reopenedSpan = FeatureTaskRuntimeRunLoopTransitions.spanBetween(runLoop, destinationPhaseId, edge.fromPhaseId)
     reopenedSpan.forEach(runLoop.state::reopenForReentry)
     if (FeatureTaskRuntimePhaseWorkflowDefinition.isRegenerationLoopId(loopId)) {
-      // Invalidate the quarantined producer's settled completion so its rejected record is no longer
-      // selected by the handoff contract; the regenerated higher-iteration output supersedes it. In
-      // memory the stale output is dropped from resolution; durably the record returns to running so a
-      // resume relaunches the producer rather than re-consuming the rejected record.
       runLoop.state.invalidateProducerOutput(destinationPhaseId)
       runLoop.recorder.invalidateQuarantinedProducerRecord(
         runLoop.request.workflowId,
@@ -61,11 +60,9 @@ class FeatureTaskRuntimeRunLoopBackwardEdge {
       loopId,
       edgeIteration,
       verdict,
-      runLoop.state.auditGapCriterionRefs().takeIf {
-        loopId == FeatureTaskRuntimePhaseWorkflowDefinition.AUDIT_GAP_LOOP_ID
-      }.orEmpty(),
+      emptyList(),
       if (loopId == FeatureTaskRuntimePhaseWorkflowDefinition.REVIEW_FIX_LOOP_ID) {
-        runLoop.collaborators.drive.reviewedCheckpointFingerprint(runLoop)
+        FeatureTaskRuntimeRunLoopDrive.reviewedCheckpointFingerprint(runLoop)
       } else {
         null
       },
@@ -75,16 +72,6 @@ class FeatureTaskRuntimeRunLoopBackwardEdge {
     warnOnThresholdCrossing(runLoop, edge, edgeIteration)
   }
 
-  /**
-   * Advisory crossing warning for a semantic remediation loop that just passed its declared warning
-   * threshold. It is emitted strictly after the durable re-entry ledger row for this iteration, so a
-   * crash before the row reruns this fresh path with no prior warning and a crash after it resumes
-   * through the non-emitting reuse path — at most one warning per loop and iteration either way. The
-   * exact-equality check keeps later iterations silent, and the guard reads only the edge's own
-   * declaration, so `review_fix` and `audit_gap` acknowledge independently with no phase-name
-   * branching. Emission failures are swallowed: the transition already happened and an advisory
-   * message must not be able to change it.
-   */
   fun warnOnThresholdCrossing(
     runLoop: FeatureTaskRuntimeRunLoop,
     edge: FeatureTaskRuntimeBackwardEdge,
@@ -115,10 +102,7 @@ class FeatureTaskRuntimeRunLoopBackwardEdge {
     "${runLoop.request.runInvariants.specReference}."
 
   fun capExhaustedOnResume(runLoop: FeatureTaskRuntimeRunLoop, phaseId: String): String? {
-    // An operator reopen releases the per-edge cap for this phase too: the reopened record still
-    // carries the loop metadata of the visit that exhausted the cap, so leaving this gate in place
-    // would re-block the phase at entry and never reach the relaunch the operator asked for.
-    if (runLoop.collaborators.phaseAttemptsContinued1.operatorReopenedPhase(runLoop, phaseId)) return null
+    if (FeatureTaskRuntimeRunLoopPhaseAttempts.operatorReopenedPhase(runLoop, phaseId)) return null
     val record = runLoop.state.recordFor(phaseId) ?: return null
     return capExhaustionForRecord(runLoop, phaseId, record)
   }
@@ -140,7 +124,7 @@ class FeatureTaskRuntimeRunLoopBackwardEdge {
     if (edge?.destinationPhaseId == phaseId) {
       val sourceRecord = runLoop.state.recordFor(edge.fromPhaseId)
       if (
-        sourceRecord?.status == STATUS_BLOCKED && sourceRecord.loopId == loopId &&
+        sourceRecord?.status?.workflowStepStatus() == WorkflowStepStatus.BLOCKED && sourceRecord.loopId == loopId &&
         sourceRecord.edgeIteration == iteration
       ) {
         return null
@@ -149,7 +133,7 @@ class FeatureTaskRuntimeRunLoopBackwardEdge {
     return edge
       ?.takeIf { candidate -> blocksWhenCapExhausted(candidate, iteration) }
       ?.let {
-        runLoop.collaborators.planningBranch.capExhaustionReason(
+        FeatureTaskRuntimeRunLoopPlanningBranch.capExhaustionReason(
           runLoop,
           it.loopId,
           iteration,
@@ -306,4 +290,5 @@ class FeatureTaskRuntimeRunLoopBackwardEdge {
       FeatureTaskRuntimeRunLoopPlanningBranch.clearRecoveredBranchSetupBlock(runLoop, phaseId)
       null
     }
-  }}
+  }
+}

@@ -10,7 +10,8 @@ import skillbill.infrastructure.fs.nativeagent.rendering.NativeAgentProvider
 import skillbill.install.model.AgentTarget
 import skillbill.install.model.InstallAgent
 import skillbill.install.model.InstallApplyStatus
-import skillbill.ports.repository.toFileLocationimport skillbill.testing.HARBOR_ARCHITECTURE_WORKER
+import skillbill.ports.repository.toFileLocation
+import skillbill.testing.HARBOR_ARCHITECTURE_WORKER
 import skillbill.testing.HARBOR_COMPANION_NAME
 import skillbill.testing.HARBOR_ENTRYPOINT_MARKER
 import skillbill.testing.HARBOR_ENTRYPOINT_NAME
@@ -96,7 +97,7 @@ class InstallNativeAgentLinkApplyCursorTest : InstallNativeAgentLinkApplyTestSup
 
     val result = installNativeAgentFile(
       source = newSource,
-      agentTarget = AgentTarget("codex", targetDir),
+      agentTarget = AgentTarget("codex", targetDir.toFileLocation()),
       managedSourceRoots = listOf(cacheRoot),
     )
 
@@ -290,48 +291,6 @@ class InstallNativeAgentLinkApplyCursorTest : InstallNativeAgentLinkApplyTestSup
   }
 
   @Test
-  fun `installed review catalog includes required rubric companions`() {
-    val fixture = setupApplyFixture()
-    Files.createDirectories(fixture.home.resolve(".codex"))
-    val sourcePack = fixture.repoRoot.resolve("platform-packs/kotlin")
-    val areaDir = sourcePack.resolve("code-review/bill-kotlin-code-review-architecture")
-    Files.writeString(
-      areaDir.resolve("rubric-companion.md"),
-      "# Boundary Rubric\n\n## Checks\n\nReviewers must reject undeclared boundary crossings.\n",
-    )
-    val areaContent = areaDir.resolve("content.md")
-    Files.writeString(
-      areaContent,
-      Files.readString(areaContent).replaceFirst(
-        "## Ignore",
-        "Read [rubric-companion.md](rubric-companion.md); an H2 section is insufficient for it.\n\n## Ignore",
-      ),
-    )
-    val manifest = sourcePack.resolve("platform.yaml")
-    Files.writeString(
-      manifest,
-      Files.readString(manifest).trimEnd() + "\n\nrequired_rubric_companions:\n" +
-        "  architecture:\n    - rubric-companion.md\n",
-    )
-    val plan = planInstallForTest(
-      fixture.request(selectedPlatforms = setOf("kotlin"), agents = setOf(InstallAgent.CODEX)),
-    )
-
-    assertEquals(InstallApplyStatus.SUCCESS, applyInstallForTest(plan).status)
-
-    val installedPack = currentNativeAgentApplyCacheRoot(
-      fixture.home,
-      fixture.repoRoot.resolve("platform-packs"),
-      fixture.repoRoot.resolve("skills"),
-    ).resolve("review-catalog/platform-packs/kotlin")
-    assertTrue(
-      Files.isRegularFile(
-        installedPack.resolve("code-review/bill-kotlin-code-review-architecture/rubric-companion.md"),
-      ),
-    )
-  }
-
-  @Test
   fun `native agent replacement preserves existing link when replacement symlink creation fails`() {
     val targetDir = Files.createTempDirectory("skillbill-native-readonly-target").also(tempDirs::add)
     val managedRoot = Files.createTempDirectory("skillbill-native-managed-root").also(tempDirs::add)
@@ -360,7 +319,7 @@ class InstallNativeAgentLinkApplyCursorTest : InstallNativeAgentLinkApplyTestSup
       val failure = runCatching {
         installNativeAgentFile(
           source = newSource,
-          agentTarget = AgentTarget("codex", targetDir),
+          agentTarget = AgentTarget("codex", targetDir.toFileLocation()),
           managedSourceRoots = listOf(managedRoot),
         )
       }.exceptionOrNull()

@@ -1,7 +1,10 @@
 package skillbill.engine.featuretask
 
-import skillbill.engine.featuretask.model.FeatureTaskRuntimePhaseStateRequestimport skillbill.error.FeatureTaskRuntimePhaseOrderViolationError
+import skillbill.engine.featuretask.model.FeatureTaskRuntimePhaseStateRequest
+import skillbill.error.FeatureTaskRuntimePhaseOrderViolationError
+import skillbill.goalrunner.subtaskreview.GoalSubtaskReviewSummaryReducer
 import skillbill.ports.workflow.gitops.repositoryCheckpointFingerprint
+import skillbill.workflow.goal.model.GoalSubtaskReviewState
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import skillbill.workflow.taskruntime.FeatureTaskRuntimeQualityGateRouting
 import skillbill.workflow.taskruntime.FeatureTaskRuntimeTransitionFunction
@@ -13,12 +16,12 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutput
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutputRepairEvidence
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeTransitionContext
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeVerdict
-import skillbill.workflow.taskruntime.model.NormalizedFeatureTaskRuntimePhaseOutputimport skillbill.workflow.taskruntime.model.requireAcceptedOutput
+import skillbill.workflow.taskruntime.model.NormalizedFeatureTaskRuntimePhaseOutput
+import skillbill.workflow.taskruntime.model.requireAcceptedOutput
 
-@Inject
-class FeatureTaskRuntimeRunLoopDrive {
+object FeatureTaskRuntimeRunLoopDrive {
   internal fun resumedReentry(runLoop: FeatureTaskRuntimeRunLoop): PendingReentry? {
-    val (loopId, reentry) = runLoop.state.latestInFlightReentry() ?: return null
+    val (loopId, reentry) = runLoop.state.latestInFlightReentry ?: return null
     if (
       runLoop.state.spanBlockedByEntryGate(reentry.span) ||
       (
@@ -36,11 +39,7 @@ class FeatureTaskRuntimeRunLoopDrive {
       loopId = loopId,
       edgeIteration = reentry.edgeIteration,
       drivingVerdict = reentry.drivingVerdict,
-      reentryGapCriteria = if (loopId == FeatureTaskRuntimePhaseWorkflowDefinition.AUDIT_GAP_LOOP_ID) {
-        runLoop.state.auditGapCriterionRefs()
-      } else {
-        emptyList()
-      },
+      reentryGapCriteria = emptyList(),
       expectedRepositoryCheckpoint = if (
         loopId == FeatureTaskRuntimePhaseWorkflowDefinition.REVIEW_FIX_LOOP_ID
       ) {
@@ -58,11 +57,11 @@ class FeatureTaskRuntimeRunLoopDrive {
 
   fun phaseEntryBlockReason(runLoop: FeatureTaskRuntimeRunLoop, phaseId: String): String? =
     entryGateBlockReason(runLoop, phaseId)
-      ?: runLoop.collaborators.backwardEdge.capExhaustedOnResume(runLoop, phaseId)
+      ?: FeatureTaskRuntimeRunLoopBackwardEdge.capExhaustedOnResume(runLoop, phaseId)
       ?: reconcileCompletedGoalReviewPass(runLoop, phaseId)
 
   fun entryGateBlockReason(runLoop: FeatureTaskRuntimeRunLoop, phaseId: String): String? {
-    val settledVerdicts = runLoop.state.settledVerdictsByPhaseId()
+    val settledVerdicts = runLoop.state.settledVerdictsByPhaseId
     return runLoop.transitions.entryGateViolation(phaseId, settledVerdicts)?.let { gate ->
       FeatureTaskRuntimePhaseOrderViolationError(
         phaseId = gate.phaseId,
@@ -112,7 +111,7 @@ class FeatureTaskRuntimeRunLoopDrive {
           .requireAcceptedOutput(phaseId)
       }.fold(
         onSuccess = { accepted ->
-          runLoop.collaborators.driveContinued1.completeReservedGoalReviewPass(
+          FeatureTaskRuntimeRunLoopDrive.completeReservedGoalReviewPass(
             runLoop,
             output,
             accepted.normalizedOutput.envelope,
@@ -609,4 +608,5 @@ class FeatureTaskRuntimeRunLoopDrive {
       PhaseSettlement.stop()
     }
     else -> PhaseSettlement.completed(phaseId, runLoop.state.verdictFor(phaseId))
-  }}
+  }
+}

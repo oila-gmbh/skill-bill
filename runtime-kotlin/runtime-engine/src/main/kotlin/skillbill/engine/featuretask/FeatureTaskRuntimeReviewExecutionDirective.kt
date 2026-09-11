@@ -8,7 +8,7 @@ internal fun reviewExecutionDirective(phaseId: String, inputs: ReviewExecutionDi
   }
   return buildString {
     append(resolvedTierInfo(inputs))
-    if (inputs.goalSubtaskReviewInput == null) append(baselineUntrackedPolicy(inputs))
+    append(baselineUntrackedPolicy(inputs))
     append(materializedScope(inputs))
   }.trim()
 }

@@ -1,6 +1,7 @@
 package skillbill.engine.goalrunner.planning
-import skillbill.contracts.JsonSupport
-import skillbill.text.sha256HexUtf8import skillbill.workflow.decomposition.model.DecompositionManifest
+import skillbill.contracts.JsonCodec
+import skillbill.text.sha256HexUtf8
+import skillbill.workflow.decomposition.model.DecompositionManifest
 
 fun goalPlanningImmutableDecompositionHash(manifest: DecompositionManifest): String {
   val immutable = linkedMapOf<String, Any?>(
@@ -31,5 +32,5 @@ fun goalPlanningImmutableDecompositionHash(manifest: DecompositionManifest): Str
       )
     },
   )
-  return sha256HexUtf8(JsonSupport.mapToJsonString(immutable))
+  return sha256HexUtf8(JsonCodec.mapToJsonString(immutable))
 }

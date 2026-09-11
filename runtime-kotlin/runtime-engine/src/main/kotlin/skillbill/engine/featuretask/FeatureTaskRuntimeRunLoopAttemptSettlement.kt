@@ -2,25 +2,28 @@ package skillbill.engine.featuretask
 
 import skillbill.application.diagnostics.model.FeatureTaskRuntimeRejectedOutputWrite
 import skillbill.application.diagnostics.model.RejectedOutputDiagnosticRequest
-import skillbill.contracts.JsonSupport
+import skillbill.contracts.JsonCodec
 import skillbill.engine.featuretask.model.FeatureTaskRuntimeCommitPushHandoffInvalid
 import skillbill.engine.featuretask.model.FeatureTaskRuntimeCommitPushHandoffValid
 import skillbill.engine.featuretask.model.FeatureTaskRuntimeSubtaskFinalisationBlocked
 import skillbill.engine.featuretask.model.FeatureTaskRuntimeSubtaskFinaliseRequest
 import skillbill.engine.featuretask.model.FeatureTaskRuntimeSubtaskFinalised
-import skillbill.error.FeatureTaskRuntimePhaseOutputFailureKindimport skillbill.error.InvalidFeatureTaskRuntimePhaseOutputSchemaError
+import skillbill.error.FeatureTaskRuntimePhaseOutputFailureKind
+import skillbill.error.InvalidFeatureTaskRuntimePhaseOutputSchemaError
 import skillbill.ports.diagnostics.model.ProducerOutputEvidence
 import skillbill.ports.workflow.gitops.model.WorkflowGitOperationResult
 import skillbill.ports.workflow.gitops.stagedPaths
 import skillbill.workflow.model.WorkflowStepStatus
 import skillbill.workflow.model.workflowStepStatus
-import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinitionimport skillbill.workflow.taskruntime.model.CorrectiveRepairCapturedResponse
+import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
+import skillbill.workflow.taskruntime.model.CorrectiveRepairCapturedResponse
 import skillbill.workflow.taskruntime.model.CorrectiveRepairDiagnosticLocator
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeCorrectiveRepairContext
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFailureDisposition
+import skillbill.workflow.taskruntime.model.NormalizedFeatureTaskRuntimePhaseOutput
 import skillbill.workflow.taskruntime.model.requireAcceptedOutput
 
-@Inject
-class FeatureTaskRuntimeRunLoopAttemptSettlement {
+object FeatureTaskRuntimeRunLoopAttemptSettlement {
   internal fun rejectedOutputTargeting(args: RejectedOutputTargetingArgs): RejectedOutputTargeting =
     RejectedOutputTargeting(
       phaseId = args.phaseId,
@@ -31,8 +34,8 @@ class FeatureTaskRuntimeRunLoopAttemptSettlement {
     )
 
   internal fun gateOutput(runLoop: FeatureTaskRuntimeRunLoop, args: GateOutputArgs): AttemptResult {
-    runLoop.collaborators.attemptSettlementContinued1.gateOutputEarlyExit(runLoop, args)?.let { return it }
-    runLoop.collaborators.attemptSettlementContinued1.settleFromPersistedEnvelope(runLoop, args)?.let { return it }
+    FeatureTaskRuntimeRunLoopAttemptSettlement.gateOutputEarlyExit(args)?.let { return it }
+    FeatureTaskRuntimeRunLoopAttemptSettlement.settleFromPersistedEnvelope(runLoop, args)?.let { return it }
     return try {
       val run = args.run
       val acceptedOutput = runLoop.outputValidator
@@ -53,7 +56,7 @@ class FeatureTaskRuntimeRunLoopAttemptSettlement {
         ),
       )
     } catch (error: InvalidFeatureTaskRuntimePhaseOutputSchemaError) {
-      runLoop.collaborators.attemptSettlementContinued1.gateOutputSchemaInvalid(runLoop, args, error)
+      FeatureTaskRuntimeRunLoopAttemptSettlement.gateOutputSchemaInvalid(runLoop, args, error)
     }
   }
 
@@ -167,7 +170,7 @@ class FeatureTaskRuntimeRunLoopAttemptSettlement {
     val observability = args.output.observability
     val fileManifest = args.output.fileManifest
     val captured = args.output.captured
-    val attested = runLoop.collaborators.outputVerification.attestAbsentGateValidationReceipt(
+    val attested = FeatureTaskRuntimeRunLoopOutputVerification.attestAbsentGateValidationReceipt(
       runLoop,
       run,
       normalizedOutput,
@@ -181,27 +184,27 @@ class FeatureTaskRuntimeRunLoopAttemptSettlement {
       fileManifest = fileManifest,
     )
     fun reject(rule: String, detail: String): AttemptResult =
-      runLoop.collaborators.attemptSettlementContinued3.rejectValidatedOutput(
+      FeatureTaskRuntimeRunLoopAttemptSettlement.rejectValidatedOutput(
         runLoop,
         capture,
         outputMap,
         rule,
         detail,
       )
-    runLoop.collaborators.attemptSettlementContinued2.settleValidatedOutputBoundary(
+    FeatureTaskRuntimeRunLoopAttemptSettlement.settleValidatedOutputBoundary(
       runLoop,
       capture,
       outputMap,
       ::reject,
     )?.let { return it }
-    runLoop.collaborators.outputVerification.firstValidatedOutputRejection(run.phaseId, outputMap)?.let { (
+    FeatureTaskRuntimeRunLoopOutputVerification.firstValidatedOutputRejection(run.phaseId, outputMap)?.let { (
       rule,
       reason,
     ),
       ->
       return reject(rule, reason)
     }
-    val fingerprintResolution = runLoop.collaborators.attemptSettlementContinued1.resolveRepositoryFingerprint(
+    val fingerprintResolution = FeatureTaskRuntimeRunLoopAttemptSettlement.resolveRepositoryFingerprint(
       runLoop,
       run,
       iteration,
@@ -209,7 +212,7 @@ class FeatureTaskRuntimeRunLoopAttemptSettlement {
       fileManifest,
     )
     fingerprintResolution.blocked?.let { return it }
-    return runLoop.collaborators.attemptSettlementContinued2.settleValidatedOutputAfterFingerprint(
+    return FeatureTaskRuntimeRunLoopAttemptSettlement.settleValidatedOutputAfterFingerprint(
       runLoop,
       SettleValidatedOutputAfterFingerprintArgs(
         capture = capture,
@@ -233,7 +236,7 @@ class FeatureTaskRuntimeRunLoopAttemptSettlement {
     return try {
       val acceptedOutput = runLoop.outputValidator
         .validatePhaseOutput(
-          JsonSupport.mapToJsonString(settlementEnvelope),
+          JsonCodec.mapToJsonString(settlementEnvelope),
           sourceLabel = run.phaseId,
         )
         .requireAcceptedOutput(run.phaseId)
@@ -706,4 +709,8 @@ class FeatureTaskRuntimeRunLoopAttemptSettlement {
         ),
       )
     }
-  }}
+  }
+}
+
+val FeatureTaskRuntimeRunLoop.goalContinuationManifestCommitSha: String?
+  get() = null

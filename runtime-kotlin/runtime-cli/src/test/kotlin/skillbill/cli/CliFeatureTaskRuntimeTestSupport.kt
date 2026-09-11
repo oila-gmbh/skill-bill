@@ -3,9 +3,8 @@ package skillbill.cli
 import skillbill.application.review.simulateGovernedEvidenceReads
 import skillbill.cli.core.CliRuntime
 import skillbill.cli.model.CliRuntimeContext
-import skillbill.contracts.JsonSupport
+import skillbill.contracts.JsonCodec
 import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_CONTRACT_VERSION
-import skillbill.infrastructure.fs.GitWorkflowGitOperations
 import skillbill.install.model.InstallAgent
 import skillbill.ports.agentrun.AgentRunLauncher
 import skillbill.ports.agentrun.ExecutableLookup
@@ -14,17 +13,17 @@ import skillbill.ports.agentrun.model.AgentRunLaunchOutcome
 import skillbill.ports.agentrun.model.AgentRunLaunchRequest
 import skillbill.ports.review.ReviewNativeAgentPreflightPort
 import skillbill.ports.telemetry.RemoteTransportPort
-import skillbill.ports.telemetry.UnconfiguredRemoteTransportPort
-import skillbill.ports.workflow.gitops.CheckpointHistoryGitOperationsProvider
 import skillbill.ports.workflow.gitops.GoalSubtaskReviewGitOperations
-import skillbill.ports.workflow.gitops.GoalSubtaskReviewGitOperationsProvider
 import skillbill.ports.workflow.gitops.RepositoryFingerprintGitOperations
-import skillbill.ports.workflow.gitops.RepositoryFingerprintGitOperationsProvider
 import skillbill.ports.workflow.gitops.RepositoryOwnedPathsGitOperations
-import skillbill.ports.workflow.gitops.RepositoryOwnedPathsGitOperationsProvider
 import skillbill.ports.workflow.gitops.ScopedStagingGitOperations
-import skillbill.ports.workflow.gitops.ScopedStagingGitOperationsProvider
 import skillbill.ports.workflow.gitops.WorkflowGitOperations
+import skillbill.ports.workflow.gitops.WorkflowGitOperationsTestBase
+import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewBaseline
+import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewBaselineRecoveryRequest
+import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewBaselineResult
+import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewInput
+import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewInputResult
 import skillbill.ports.workflow.gitops.model.WorkflowGitOperationResult
 import skillbill.ports.workflow.gitops.model.WorkflowGitOperationStatus
 import skillbill.ports.workflow.gitops.model.WorkflowSelectedDiffHunksRequest
@@ -32,7 +31,8 @@ import skillbill.ports.workflow.gitops.model.WorkflowSelectedDiffHunksResult
 import skillbill.ports.workflow.gitops.model.WorkflowWorktreeActivityResult
 import skillbill.workflow.goal.model.GoalObservabilityChangedFileSummary
 import skillbill.workflow.goal.model.GoalObservabilityDiffStat
-import skillbill.workflow.goal.model.GoalObservabilitySelectedDiffHunksimport java.nio.file.Files
+import skillbill.workflow.goal.model.GoalObservabilitySelectedDiffHunks
+import java.nio.file.Files
 import java.nio.file.Path
 import java.sql.DriverManager
 import java.util.concurrent.CopyOnWriteArrayList
@@ -43,7 +43,7 @@ internal data class FeatureTaskRuntimeCliContextOptions(
   var liveStdout: (String) -> Unit = {},
   var liveStderr: (String) -> Unit = {},
   var workflowGitOperations: WorkflowGitOperations = FakeRuntimeGitOperations(),
-  var requester: RemoteTransportPort = UnconfiguredRemoteTransportPort,
+  var requester: RemoteTransportPort? = null,
 )
 
 internal data class FeatureTaskRuntimeCliFixture(
@@ -51,19 +51,15 @@ internal data class FeatureTaskRuntimeCliFixture(
   val dbPath: Path,
   val specPath: Path,
 ) {
-  private var implementationWrites = 0
-  val reviewBaseSha: String get() = GitWorkflowGitOperations().headCommitSha(tempDir).value.trim()
-
   fun context(
     launcher: AgentRunLauncher,
     configure: FeatureTaskRuntimeCliContextOptions.() -> Unit = {},
   ): CliRuntimeContext = context(launcher, FeatureTaskRuntimeCliContextOptions().apply(configure))
 
-  fun context(launcher: AgentRunLauncher, options: FeatureTaskRuntimeCliContextOptions): CliRuntimeContext {
-    (options.workflowGitOperations as? FakeRuntimeGitOperations)?.prepareRepo(tempDir)
-    return CliRuntimeContext(
+  fun context(launcher: AgentRunLauncher, options: FeatureTaskRuntimeCliContextOptions): CliRuntimeContext =
+    CliRuntimeContext(
       userHome = tempDir.also { installFakeRuntimeMcpBin(it) },
-      agentRunLauncher = implementationWritingLauncher(launcher),
+      agentRunLauncher = launcher,
       environment = options.environment,
       requester = options.requester,
       liveStdout = options.liveStdout,
@@ -72,19 +68,6 @@ internal data class FeatureTaskRuntimeCliFixture(
       executableLookup = ExecutableLookup { true },
       reviewNativeAgentPreflight = ReviewNativeAgentPreflightPort.NONE,
     )
-  }
-
-  private fun implementationWritingLauncher(launcher: AgentRunLauncher): AgentRunLauncher =
-    object : AgentRunLauncher by launcher {
-      override fun launch(request: AgentRunLaunchRequest): AgentRunLaunchOutcome {
-        val phase = PHASE_LINE.find(request.skillRunRequest.promptOverride.orEmpty())?.groupValues?.get(1)
-        if (phase == "implement") {
-          implementationWrites += 1
-          Files.writeString(tempDir.resolve("src/Foo.kt"), "class Foo { val implementation = $implementationWrites }\n")
-        }
-        return launcher.launch(request)
-      }
-    }
 
   fun materializeDatabaseWithTelemetry(level: String, requester: RemoteTransportPort) = materializeTelemetryDatabase(
     tempDir,
@@ -146,7 +129,7 @@ internal fun goalContinuationValidationDepth(dbPath: Path, workflowId: String): 
   }
 internal fun goalContinuationArtifact(dbPath: Path, workflowId: String): Map<String, Any?>? {
   val artifacts = featureTaskWorkflowArtifacts(dbPath, workflowId)
-  return JsonSupport.anyToStringAnyMap(artifacts["goal_continuation"])
+  return JsonCodec.anyToStringAnyMap(artifacts["goal_continuation"])
 }
 internal fun runInvariantsCodeReviewMode(dbPath: Path, workflowId: String): String {
   val invariants = requireNotNull(
@@ -171,8 +154,8 @@ internal fun featureTaskWorkflowArtifacts(dbPath: Path, workflowId: String): Map
     }
   }
   return requireNotNull(
-    JsonSupport.anyToStringAnyMap(
-      JsonSupport.jsonElementToValue(requireNotNull(JsonSupport.parseObjectOrNull(artifactsJson))),
+    JsonCodec.anyToStringAnyMap(
+      JsonCodec.jsonElementToValue(requireNotNull(JsonCodec.parseObjectOrNull(artifactsJson))),
     ),
   ) { "artifacts_json for $workflowId is not an object map" }
 }
@@ -185,7 +168,6 @@ internal fun normalizeRuntimeStdout(stdout: String): String = stdout
 
 internal fun runtimeFixture(specFileName: String = "spec.md"): FeatureTaskRuntimeCliFixture {
   val tempDir = Files.createTempDirectory("skillbill-cli-feature-task-runtime")
-  FakeRuntimeGitOperations().prepareRepo(tempDir)
   val specPath = tempDir.resolve(".feature-specs/SKILL-650-runtime/$specFileName")
   Files.createDirectories(specPath.parent)
   Files.writeString(
@@ -489,14 +471,9 @@ internal class FakeRuntimeGitOperations(
   internal var currentBranchValue: String = "feat/pre-created-runtime-branch",
   internal val checkoutResult: WorkflowGitOperationResult? = null,
   internal val trackedDelta: String = "",
-  private val git: GitWorkflowGitOperations = GitWorkflowGitOperations(),
-) : WorkflowGitOperations by git,
-  GoalSubtaskReviewGitOperationsProvider,
-  CheckpointHistoryGitOperationsProvider,
-  RepositoryFingerprintGitOperationsProvider,
-  RepositoryOwnedPathsGitOperationsProvider,
-  ScopedStagingGitOperationsProvider {
-  override val repositoryOwnedPathsOperations: RepositoryOwnedPathsGitOperations = git.repositoryOwnedPathsOperations
+) : WorkflowGitOperationsTestBase() {
+  override val repositoryOwnedPathsOperations: RepositoryOwnedPathsGitOperations = TestRepositoryOwnedPathsOperations
+
   override val repositoryFingerprintOperations: RepositoryFingerprintGitOperations = TestRepositoryFingerprintOperations
 
   override val scopedStagingOperations: ScopedStagingGitOperations = object : ScopedStagingGitOperations {
@@ -516,46 +493,29 @@ internal class FakeRuntimeGitOperations(
         value = paths.joinToString(separator = "\u0000") { path -> "identity\t$path" },
       )
   }
-  val checkoutBranches: MutableList<String> = mutableListOf()
-  private var committed = false
 
-  fun prepareRepo(repoRoot: Path) {
-    if (!Files.exists(repoRoot.resolve(".git"))) {
-      runGit(repoRoot, "init", "-b", currentBranchValue)
-      runGit(repoRoot, "config", "user.email", "skill-bill@example.test")
-      runGit(repoRoot, "config", "user.name", "Skill Bill")
-      runGit(repoRoot, "config", "commit.gpgsign", "false")
-      Files.writeString(repoRoot.resolve(".gitignore"), "*\n!src/\n!src/**\n!.gitignore\n!root.txt\n")
-      Files.writeString(repoRoot.resolve("root.txt"), "baseline\n")
-      Files.createDirectories(repoRoot.resolve("src"))
-      Files.writeString(repoRoot.resolve("src/Foo.kt"), "class Foo\n")
-      runGit(repoRoot, "add", ".gitignore", "root.txt", "src/Foo.kt")
-      runGit(repoRoot, "commit", "-m", "baseline")
-    }
-    runGit(repoRoot, "checkout", "-B", currentBranchValue)
-  }
+  val checkoutBranches: MutableList<String> = mutableListOf()
 
   override fun checkoutBranch(repoRoot: Path, branch: String, baseBranch: String?): WorkflowGitOperationResult {
     checkoutBranches += branch
-    val result = checkoutResult ?: WorkflowGitOperationResult(status = "ok", value = branch)
-    if (result.ok) {
-      runGit(repoRoot, "checkout", "-B", branch)
+    val result = checkoutResult ?: WorkflowGitOperationResult.Ok(value = branch)
+    if (result is WorkflowGitOperationResult.Ok) {
       currentBranchValue = branch
     }
     return result
   }
 
   override fun branchExists(repoRoot: Path, branch: String): WorkflowGitOperationResult =
-    WorkflowGitOperationResult(status = "ok", value = "true")
+    WorkflowGitOperationResult.Ok(value = "true")
+
+  override fun currentBranch(repoRoot: Path): WorkflowGitOperationResult =
+    WorkflowGitOperationResult.Ok(value = currentBranchValue)
 
   override fun createCommit(repoRoot: Path, message: String): WorkflowGitOperationResult =
-    git.createCommit(repoRoot, message).also { if (it.ok) committed = true }
-
-  override fun localBranchHasUnpushedCommits(repoRoot: Path, branch: String): WorkflowGitOperationResult =
-    WorkflowGitOperationResult(status = "ok", value = committed.toString())
+    WorkflowGitOperationResult.Ok(value = "2".repeat(40))
 
   override fun pushBranch(repoRoot: Path, branch: String): WorkflowGitOperationResult =
-    WorkflowGitOperationResult(status = "ok", value = branch)
+    WorkflowGitOperationResult.Ok(value = branch)
 
   override fun pushBranchWithLease(repoRoot: Path, branch: String): WorkflowGitOperationResult =
     WorkflowGitOperationResult.Ok(value = branch)
@@ -566,16 +526,65 @@ internal class FakeRuntimeGitOperations(
     WorkflowGitOperationResult.Ok(
       value = revision.takeIf { it.matches(Regex("^[0-9a-fA-F]{40,64}$")) } ?: "1".repeat(40),
     )
+
   override fun validateBranchBase(
     repoRoot: Path,
     branch: String,
     expectedBaseBranch: String,
-  ): WorkflowGitOperationResult = WorkflowGitOperationResult(status = "ok", value = expectedBaseBranch)
+  ): WorkflowGitOperationResult = WorkflowGitOperationResult.Ok(value = expectedBaseBranch)
 
-  private fun runGit(repoRoot: Path, vararg args: String) {
-    val process = ProcessBuilder(listOf("git", "-C", repoRoot.toString()) + args)
-      .redirectErrorStream(true).start()
-    val output = process.inputStream.bufferedReader().readText()
-    check(process.waitFor() == 0) { output }
-  }
+  override fun worktreeStatus(repoRoot: Path): WorkflowGitOperationResult =
+    WorkflowGitOperationResult.Ok(value = " M src/Foo.kt")
+
+  override fun worktreeActivity(repoRoot: Path): WorkflowWorktreeActivityResult = WorkflowWorktreeActivityResult(
+    status = WorkflowGitOperationStatus.OK,
+    changedFileSummary = GoalObservabilityChangedFileSummary(
+      total = 0,
+      added = 0,
+      modified = 0,
+      deleted = 0,
+      renamed = 0,
+      untracked = 0,
+    ),
+    diffStat = GoalObservabilityDiffStat(filesChanged = 0, insertions = 0, deletions = 0),
+  )
+
+  override fun selectedDiffHunks(
+    repoRoot: Path,
+    request: WorkflowSelectedDiffHunksRequest,
+  ): WorkflowSelectedDiffHunksResult = WorkflowSelectedDiffHunksResult(
+    status = WorkflowGitOperationStatus.OK,
+    selectedDiffHunks = GoalObservabilitySelectedDiffHunks(),
+  )
+
+  override val goalSubtaskReviewOperations: GoalSubtaskReviewGitOperations =
+    object : GoalSubtaskReviewGitOperations {
+      override fun captureBaseline(repoRoot: Path, expectedBranch: String) = GoalSubtaskReviewBaselineResult(
+        status = WorkflowGitOperationStatus.OK,
+        baseline = GoalSubtaskReviewBaseline("0".repeat(40), emptyList()),
+      )
+
+      override fun buildInput(
+        repoRoot: Path,
+        baseline: GoalSubtaskReviewBaseline,
+        expectedBranch: String,
+      ): GoalSubtaskReviewInputResult = GoalSubtaskReviewInputResult(
+        status = WorkflowGitOperationStatus.OK,
+        input = GoalSubtaskReviewInput(
+          reviewBaseSha = baseline.reviewBaseSha,
+          currentHeadSha = baseline.reviewBaseSha,
+          trackedDelta = trackedDelta,
+          ownedUntrackedPatches = "",
+        ),
+      )
+
+      override fun recoverBaseline(
+        repoRoot: Path,
+        request: GoalSubtaskReviewBaselineRecoveryRequest,
+        expectedBranch: String,
+      ): GoalSubtaskReviewBaselineResult = GoalSubtaskReviewBaselineResult(
+        status = WorkflowGitOperationStatus.ERROR,
+        error = "Goal review baseline recovery is not used by this runtime CLI fixture.",
+      )
+    }
 }

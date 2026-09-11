@@ -1,9 +1,9 @@
 package skillbill.infrastructure.fs.goalplanning
 
+import skillbill.contracts.time.JvmSystemClock
 import skillbill.ports.goalrunner.planning.model.GoalPlanningBoundaryBody
 import skillbill.ports.goalrunner.planning.model.GoalPlanningBoundaryHeading
 import skillbill.ports.goalrunner.planning.model.GoalPlanningContext
-import skillbill.ports.time.JvmSystemClock
 import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.test.Test

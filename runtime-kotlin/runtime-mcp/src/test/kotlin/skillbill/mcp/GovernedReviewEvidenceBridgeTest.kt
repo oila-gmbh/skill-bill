@@ -1,6 +1,6 @@
 package skillbill.mcp
 
-import skillbill.contracts.JsonSupport
+import skillbill.contracts.JsonCodec
 import skillbill.mcp.review.GovernedReviewEvidenceBridge
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -11,23 +11,23 @@ class GovernedReviewEvidenceBridgeTest {
   fun `the bridge advertises exactly the two governed operations`() {
     val reply = requireNotNull(
       GovernedReviewEvidenceBridge.handleLine(
-        JsonSupport.mapToJsonString(linkedMapOf("jsonrpc" to "2.0", "id" to 1, "method" to "tools/list")),
+        JsonCodec.mapToJsonString(linkedMapOf("jsonrpc" to "2.0", "id" to 1, "method" to "tools/list")),
       ) { error("tools/list must not be forwarded") },
     )
 
-    val result = JsonSupport.anyToStringAnyMap(
-      JsonSupport.parseObjectOrNull(reply)?.get("result")?.let(JsonSupport::jsonElementToValue),
+    val result = JsonCodec.anyToStringAnyMap(
+      JsonCodec.parseObjectOrNull(reply)?.get("result")?.let(JsonCodec::jsonElementToValue),
     ).orEmpty()
-    val tools = requireNotNull(JsonSupport.anyToStringAnyMapList(result["tools"]))
+    val tools = requireNotNull(JsonCodec.anyToStringAnyMapList(result["tools"]))
     assertEquals(listOf("read_evidence", "request_expansion"), tools.map { it["name"] })
   }
 
   @Test
-  fun `a call to any other tool forwards only refusal accounting`() {
-    var forwarded: String? = null
+  fun `a call to any other tool is refused instead of forwarded`() {
+    var forwarded = false
     val reply = requireNotNull(
       GovernedReviewEvidenceBridge.handleLine(
-        JsonSupport.mapToJsonString(
+        JsonCodec.mapToJsonString(
           linkedMapOf(
             "jsonrpc" to "2.0",
             "id" to 2,
@@ -36,14 +36,12 @@ class GovernedReviewEvidenceBridgeTest {
           ),
         ),
       ) {
-        forwarded = it
+        forwarded = true
         "{}"
       },
     )
 
-    val accounting = requireNotNull(JsonSupport.parseObjectOrNull(requireNotNull(forwarded)))
-    assertEquals("evidence/refused", accounting["method"]?.let(JsonSupport::jsonElementToValue))
-    assertTrue(!accounting.containsKey("params"))
+    assertTrue(!forwarded)
     assertTrue(reply.contains("\"error\""))
   }
 }

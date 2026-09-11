@@ -3,7 +3,8 @@ package skillbill.telemetry
 import skillbill.infrastructure.http.telemetryProxyBatchPayload
 import skillbill.infrastructure.sqlite.core.DatabaseRuntime
 import skillbill.infrastructure.sqlite.telemetry.TelemetryOutboxStore
-import skillbill.ports.repository.toFileLocationimport skillbill.telemetry.model.TelemetrySettings
+import skillbill.ports.repository.toFileLocation
+import skillbill.telemetry.model.TelemetrySettings
 import java.nio.file.Files
 import java.sql.Connection
 import kotlin.test.Test
@@ -63,7 +64,7 @@ class TelemetryReleaseAttributionTest {
   }
 
   private fun settings(): TelemetrySettings = TelemetrySettings(
-    configPath = Files.createTempFile("telemetry-attribution", ".json"),
+    configPath = Files.createTempFile("telemetry-attribution", ".json").toFileLocation(),
     level = "anonymous",
     enabled = true,
     installId = "test-install-id",

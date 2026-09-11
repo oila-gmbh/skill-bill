@@ -2,13 +2,18 @@ package skillbill.engine.featuretask
 
 import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_REPAIR_RECEIPT_CONTRACT_VERSION
 import skillbill.engine.featuretask.model.FeatureTaskRuntimeImplementationContinuation
-import skillbill.goalrunner.subtaskreview.FeatureTaskRuntimeVerificationSignalKeysimport skillbill.ports.workflow.gitops.model.GoalSubtaskReviewInput
+import skillbill.goalrunner.subtaskreview.FeatureTaskRuntimeVerificationSignalKeys
+import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewInput
 import skillbill.review.context.model.CodeReviewExecutionMode
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeCorrectiveRepairContext
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePriorGapMemory
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePriorReviewContext
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairLedger
+
+// Phase-scoped prompt directives and the per-phase task directive table, split out of
+// FeatureTaskRuntimePhasePromptComposer so the composer object stays within its size budget.
+// Validate Task-line specialization lives in FeatureTaskRuntimePhasePromptValidateDirectives.
 
 fun implementationContinuationDirective(
   phaseId: String,
@@ -37,6 +42,18 @@ fun implementationContinuationDirective(
   """.trimIndent()
 }
 
+/**
+ * Why the previous attempt at a phase must be corrected, kept typed rather than as a bare string.
+ *
+ * A schema-gate rejection and a retryable `blocked`/`failed` envelope both re-enter the same bounded
+ * semantic budget, but they are different events and must not be prompted, reported or dispositioned
+ * alike: only the first is a rejection. Threading one nullable string made them indistinguishable at
+ * the composer seam, which is how a schema-valid terminal envelope came to be told it was rejected.
+ *
+ * [correctiveRepairContext] is schema-gate only: the authorized bounded repair projection of the
+ * rejected response. Retryable-terminal and incomplete-work paths must not carry it, so they never
+ * receive a raw-output repair section.
+ */
 class PriorAttemptCorrection private constructor(
   private val reason: String,
   private val kind: Kind,
@@ -70,6 +87,13 @@ class PriorAttemptCorrection private constructor(
   }
 }
 
+/**
+ * Emitted when the prior attempt's repair receipt left carried review findings out.
+ *
+ * Deliberately not the schema-correction directive: the receipt validated. Telling its author the
+ * output was rejected invites a re-serialization of the same two entries, which is exactly what has
+ * to stop happening — what is missing is repair work on the named findings, not a better document.
+ */
 fun findingCoverageDirective(priorFindingCoverage: String?): String {
   if (priorFindingCoverage.isNullOrBlank()) return ""
   return """
@@ -83,6 +107,13 @@ fun findingCoverageDirective(priorFindingCoverage: String?): String {
   """.trimIndent()
 }
 
+/**
+ * Emitted when the prior attempt ended in a retryable `blocked` or `failed` envelope.
+ *
+ * Deliberately not the schema-correction directive: that envelope validated. Telling its author the
+ * output was rejected and must be re-emitted describes an event that did not happen and invites a
+ * cosmetic re-serialization of the same blocked state instead of an attempt at the blocker itself.
+ */
 fun terminalRetryDirective(priorTerminalFailure: String?): String {
   if (priorTerminalFailure.isNullOrBlank()) return ""
   return """
@@ -96,6 +127,10 @@ fun terminalRetryDirective(priorTerminalFailure: String?): String {
   """.trimIndent()
 }
 
+/**
+ * Everything the review-execution directive needs to state the run's review depth and scope. These
+ * travel together from [FeatureTaskRuntimePhasePromptComposer.compose] and are only ever read as a set.
+ */
 internal data class ReviewExecutionDirectiveInputs(
   val codeReviewMode: CodeReviewExecutionMode,
   val goalSubtaskReviewInput: GoalSubtaskReviewInput?,
@@ -107,20 +142,21 @@ internal data class ReviewExecutionDirectiveInputs(
   val priorReviewContext: FeatureTaskRuntimePriorReviewContext? = null,
 )
 
+// Emits for every commit phase: the runtime and agent never stage feature specs. A human operator
+// may already have committed them; leave those HEAD files alone and leave remaining spec dirt local.
 fun commitExclusionDirective(phaseId: String, issueKey: String): String {
   if (phaseId != FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_COMMIT_PUSH) {
     return ""
   }
   return """
-    ## Feature-spec commit inclusion
-    Unignored `.feature-specs/` paths belong in the owned subtask commit. List them in
-    `commit_push_result.changed_paths` when they changed, including this feature's
-    `.feature-specs/$issueKey-*` (or `.feature-specs/$issueKey/`) tree, the parent spec, every
-    subtask spec, and `decomposition-manifest.yaml`. The runtime amends every dirty non-ignored
-    path, including `.feature-specs/`, into the owned subtask commit. Gitignored files stay
-    unstaged. If nothing remains to commit, finish commit_push and push the current HEAD.
-    Never amend, reset, or restage a commit this runtime does not own, including a commit a human
-    operator authored: leave those alone.
+    ## Feature-spec commit exclusion
+    Feature specs are workflow inputs, not implementation output. Never list any `.feature-specs/`
+    path in `commit_push_result.changed_paths` — especially this feature's
+    `.feature-specs/$issueKey-*` (or `.feature-specs/$issueKey/`) tree, including the parent spec,
+    every subtask spec, and `decomposition-manifest.yaml`. The runtime stages every dirty non-ignored
+    implementation path in the worktree and never stages `.feature-specs/`. Leave `.feature-specs/`
+    dirty locally if it changed. Never amend, reset, or restage a commit this runtime does not own, including a
+    commit a human operator authored: leave those alone.
   """.trimIndent()
 }
 
@@ -144,6 +180,9 @@ fun goalContinuationDirective(phaseId: String, suppressDecomposition: Boolean): 
   """.trimIndent()
 }
 
+// One imperative task directive per phase; the briefing carries the spec-specific scope.
+// Validate Task-line specialization lives in FeatureTaskRuntimePhasePromptValidateDirectives.
+
 private const val AUDIT_NO_EARLIER_AUDIT_SENTENCE: String =
   "A later audit re-checks every criterion from scratch, so you never need to account for what an " +
     "earlier audit said."
@@ -155,8 +194,8 @@ private const val AUDIT_STICKY_REJUSTIFICATION_SENTENCE: String =
     "claimed and why the tree still fails it."
 
 const val AUDIT_READONLY_EVIDENCE_SENTENCE: String =
-  "All evidence is read-only repository facts: use file reads and read-only Git inspection; " +
-    "never run builds or tests or modify repository state; validation owns test execution and failures."
+  "All evidence is read-only repository facts: never run a build, a test, or any " +
+    "other command as audit evidence; validation owns test execution and failures."
 
 private const val AUDIT_GATE_PROOF_EVIDENCE_SENTENCE: String =
   "Prefer read-only repository facts. When Validation ownership grants a gate-proof exception for " +
@@ -235,8 +274,8 @@ val phaseDirectives: Map<String, String> = mapOf(
     "not edit the worktree.",
   FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT to
     "Answer one question: is every acceptance criterion in the briefing implemented in the repository? " +
-    SCOPED_REPOSITORY_STATE_INSTRUCTION + " " +
-    "The upstream implement value is structured prose (former implementation_receipt " +
+    "Read the tree itself at the resolved checkpoint — the diff over its base_ref/head_ref plus its " +
+    "scoped_owned_paths. The upstream implement value is structured prose (former implementation_receipt " +
     "JSON stuffed inside value): read and interpret it as a producer CLAIM, not evidence. Never mark a " +
     "criterion satisfied because that string lists a completed task id, a changed path, or " +
     "reconciliation_evidence claiming reconciled. A claim the tree contradicts is itself unmet. " +
@@ -267,11 +306,11 @@ val phaseDirectives: Map<String, String> = mapOf(
     "Run no git command in this phase. The runtime stages, commits, and pushes the subtask on the " +
     "resolved feature branch from what you emit here. Emit commit_push_result with `message` (the " +
     "commit subject describing the implemented, reviewed, audited, validated, and history-updated " +
-    "outcome) and optional `changed_paths` (advisory). The runtime amends every dirty non-ignored " +
-    "worktree path, including `.feature-specs/`, into the owned subtask commit so an incomplete list " +
-    "cannot strand deliverable dirt. If nothing remains to commit, this phase finishes and pushes " +
-    "the current HEAD. A missing or blank `message` blocks the subtask rather than publishing a " +
-    "provisional subject. Do not emit commit_sha: the runtime captures it after the " +
+    "outcome) and optional `changed_paths` (advisory). The runtime stages every dirty non-ignored " +
+    "worktree path except `.feature-specs/` — including validate repairs and concurrent operator " +
+    "edits — so an incomplete list cannot strand deliverable dirt. A missing or blank `message` " +
+    "blocks the subtask rather than publishing a provisional subject. Do not emit commit_sha: the " +
+    "runtime captures it after the " +
     "commit. If goal-continuation suppresses PR, this successful phase is the terminal success " +
     "signal for the goal subtask.",
   FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PR to
@@ -280,6 +319,11 @@ val phaseDirectives: Map<String, String> = mapOf(
     "title, and whether a new PR was created.",
 )
 
+/**
+ * The audit phase task directive, memory- and gate-proof-aware. A first or forward audit without
+ * gate-proof ACs returns the shared static wording byte-for-byte; memory swaps the blank-slate
+ * sentence; gate-proof ACs swap the absolute no-command evidence sentence.
+ */
 fun auditPhaseTaskDirective(
   memory: FeatureTaskRuntimePriorGapMemory?,
   acceptanceCriteria: List<String> = emptyList(),

@@ -20,6 +20,7 @@ import skillbill.ports.review.ReviewRunLaneCompletenessRepository
 import skillbill.ports.review.ReviewRunStageCompletenessRepository
 import skillbill.ports.review.model.ReviewIntegrationPassRecord
 import skillbill.review.model.ParallelReviewMergedFinding
+import skillbill.review.model.ReviewExecutionMode
 import skillbill.review.model.ReviewFindingVerdict
 import skillbill.review.model.ReviewLaneEffectivenessRow
 import skillbill.review.model.ReviewPassClaimSnapshot
@@ -43,7 +44,7 @@ class SQLiteReviewRunLaneCompletenessRepository(
     queryReviewLaneEffectiveness(connection, runId)
 
   override fun ensureTerminalReviewState(runId: String, executionMode: String?) =
-    ensureTerminalReviewState(connection, runId, executionMode)
+    ensureTerminalReviewState(connection, runId, ReviewExecutionMode.fromWire(executionMode))
 
   override fun recordIntegrationPass(runId: String, record: ReviewIntegrationPassRecord) =
     recordIntegrationPass(connection, runId, record)

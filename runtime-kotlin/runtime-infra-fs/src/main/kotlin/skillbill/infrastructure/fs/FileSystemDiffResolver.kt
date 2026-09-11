@@ -17,10 +17,7 @@ class FileSystemDiffResolver : DiffResolverPort {
   override fun reviewWorktreeFileIdentities(
     root: Path,
     paths: List<String>,
-  ): Map<
-    String,
-    ReviewCheckpointFileIdentity,
-    > =
+  ): Map<String, ReviewCheckpointFileIdentity> =
     root.toRealPath().let { realRoot -> paths.associateWith { checkpointFileIdentity(realRoot, it) } }
 
   override fun readDiff(path: Path, maxBytes: Long): String? = path.takeIf(Files::isRegularFile)
@@ -28,6 +25,9 @@ class FileSystemDiffResolver : DiffResolverPort {
     ?.let(Files::readString)
     ?.takeIf(String::isNotBlank)
 
+  // Output is redirected to a temp file rather than drained from the pipe so a large diff cannot
+  // deadlock against the OS pipe buffer while we wait, and waitFor is bounded so a stalled git/gh
+  // process cannot block the review indefinitely — it is force-killed and reported as a failure.
   override fun runProcess(args: List<String>, workDir: Path): String? {
     val outputFile = Files.createTempFile("skillbill-diff", ".out")
     return try {
@@ -67,6 +67,6 @@ class FileSystemDiffResolver : DiffResolverPort {
 
   private companion object {
     const val PROCESS_TIMEOUT_SECONDS = 120L
-    const val MAX_DIFF_BYTES = 50L * 1024 * 1024
+    const val MAX_DIFF_BYTES = 50L * 1024 * 1024 // 50 MiB cap before reading into heap
   }
 }

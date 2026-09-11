@@ -1,28 +1,28 @@
 package skillbill.domain.skillremove
 
-import java.nio.file.Path
-import java.nio.file.Paths
+import skillbill.model.FileLocation
 
-internal fun validateAddOnRelativePath(relative: String, repoRoot: Path): String? = when {
+internal fun validateAddOnRelativePath(relative: String, repoRoot: FileLocation): String? = when {
   relative.isBlank() -> "Invalid add-on path: must not be blank."
   relative.contains('\\') -> "Invalid add-on path '$relative': backslashes are not allowed."
   else -> validateResolvedAddOnRelativePath(relative, repoRoot)
 }
 
-private fun validateResolvedAddOnRelativePath(relative: String, repoRoot: Path): String? {
-  val (parsed, parseProblem) = parseRelativePath(relative, "Invalid add-on path '$relative'")
+private fun validateResolvedAddOnRelativePath(relative: String, repoRoot: FileLocation): String? {
+  val parseProblem = malformedPathProblem(relative, "Invalid add-on path '$relative'")
   if (parseProblem != null) return parseProblem
-  val path = parsed!!
+  val path = FileLocation(relative)
   return when {
     path.isAbsolute -> "Invalid add-on path '$relative': absolute paths are not allowed."
-    path.any { it.toString() == ".." } -> "Invalid add-on path '$relative': '..' segments are not allowed."
+    path.segments.any { segment -> segment == PARENT_SEGMENT } ->
+      "Invalid add-on path '$relative': '..' segments are not allowed."
     else -> validateAddOnUnderPacksRoot(relative, repoRoot, path)
   }
 }
 
-private fun validateAddOnUnderPacksRoot(relative: String, repoRoot: Path, path: Path): String? {
-  val resolved = repoRoot.resolve(path).normalize()
-  val packsRoot = repoRoot.resolve("platform-packs").normalize()
+private fun validateAddOnUnderPacksRoot(relative: String, repoRoot: FileLocation, path: FileLocation): String? {
+  val resolved = repoRoot.resolve(path.value).normalized()
+  val packsRoot = repoRoot.resolve("platform-packs").normalized()
   return when {
     !resolved.startsWith(repoRoot) ->
       "Invalid add-on path '$relative': resolves outside the repository root."
@@ -38,9 +38,9 @@ internal fun validateExternalAddOnPaths(sourceRootAbsolutePath: String, fileName
 
 private fun validateExternalAddOnSourceRoot(sourceRootAbsolutePath: String): String? = when {
   sourceRootAbsolutePath.isBlank() -> "Invalid external add-on source path: must not be blank."
-  parseAbsolutePath(sourceRootAbsolutePath) == null ->
+  sourceRootAbsolutePath.contains(NUL_CHARACTER) ->
     "Invalid external add-on source path '$sourceRootAbsolutePath': malformed path."
-  !Paths.get(sourceRootAbsolutePath).isAbsolute ->
+  !FileLocation(sourceRootAbsolutePath).isAbsolute ->
     "Invalid external add-on source path '$sourceRootAbsolutePath': must be absolute."
   else -> null
 }
@@ -54,23 +54,22 @@ private fun validateExternalAddOnFileName(sourceRootAbsolutePath: String, fileNa
 }
 
 private fun validateExternalAddOnFileNameResolved(sourceRootAbsolutePath: String, fileName: String): String? {
-  val sourceRoot = parseAbsolutePath(sourceRootAbsolutePath)!!
-  val (parsedPath, parseProblem) = parseRelativePath(fileName, "Invalid external add-on filename '$fileName'")
+  val sourceRoot = FileLocation(sourceRootAbsolutePath).normalized()
+  val parseProblem = malformedPathProblem(fileName, "Invalid external add-on filename '$fileName'")
   if (parseProblem != null) return parseProblem
-  val filePath = parsedPath!!
+  val filePath = FileLocation(fileName)
   return when {
     filePath.isAbsolute -> "Invalid external add-on filename '$fileName': absolute paths are not allowed."
-    filePath.any { it.toString() == ".." } ->
+    filePath.segments.any { segment -> segment == PARENT_SEGMENT } ->
       "Invalid external add-on filename '$fileName': '..' segments are not allowed."
-    sourceRoot.resolve(filePath).normalize().parent != sourceRoot ->
+    sourceRoot.resolve(fileName).normalized().segments.dropLast(1) != sourceRoot.segments ->
       "Invalid external add-on filename '$fileName': must live directly in the source."
     else -> null
   }
 }
 
-private fun parseRelativePath(value: String, label: String): Pair<Path?, String?> =
-  runCatching { Paths.get(value) to null }
-    .getOrElse { error -> null to "$label: ${error.message.orEmpty()}" }
+private fun malformedPathProblem(value: String, label: String): String? =
+  if (value.contains(NUL_CHARACTER)) "$label: Nul character not allowed: $value" else null
 
-private fun parseAbsolutePath(value: String): Path? =
-  runCatching { Paths.get(value).toAbsolutePath().normalize() }.getOrNull()
+private const val PARENT_SEGMENT: String = ".."
+private const val NUL_CHARACTER: Char = '\u0000'

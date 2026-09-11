@@ -1,7 +1,7 @@
 package skillbill.infrastructure.fs.validation
 
 import org.w3c.dom.Element
-import skillbill.ports.time.JvmSystemClock
+import skillbill.contracts.time.JvmSystemClock
 import java.nio.file.Files
 import kotlin.test.Test
 import kotlin.test.assertContains

@@ -1,9 +1,11 @@
 package skillbill.engine.goalrunner.planning
 
-import skillbill.contracts.JsonSupport
+import skillbill.contracts.JsonCodec
 import skillbill.contracts.goalplanning.GoalPlanningDiscoveryExclusions
 import skillbill.ports.goalrunner.planning.model.GoalPlanningContext
 import skillbill.workflow.decomposition.model.DecompositionSubtask
+import skillbill.workflow.model.DecompositionStatus
+import skillbill.workflow.model.decompositionStatus
 
 object GoalPlanningSharedContextPacket {
   const val VERSION = "0.4"
@@ -29,12 +31,13 @@ object GoalPlanningSharedContextPacket {
 
   fun migrate(packet: Map<String, Any?>): Map<String, Any?> = when (val version = packet["packet_version"]) {
     VERSION -> withoutExcludedCatalogEntries(packet)
-    LEGACY_VERSION_0_3 -> GoalPlanningSharedContextPacketLegacy.migrateFromV03(packet)
-    LEGACY_VERSION_0_2 ->
-      GoalPlanningSharedContextPacketLegacy.migrateFromV03(GoalPlanningSharedContextPacketLegacy.migrateFromV02(packet))
-    LEGACY_VERSION_0_1 -> GoalPlanningSharedContextPacketLegacy.migrateFromV03(
-      GoalPlanningSharedContextPacketLegacy.migrateFromV02(
-        GoalPlanningSharedContextPacketLegacy.migrateFromV01(packet),
+    LEGACY_VERSION_0_3 -> GoalPlanningSharedContextPacketLegacy.migrateFromPacketVersion3(packet)
+    LEGACY_VERSION_0_2 -> GoalPlanningSharedContextPacketLegacy.migrateFromPacketVersion3(
+      GoalPlanningSharedContextPacketLegacy.migrateFromPacketVersion2(packet),
+    )
+    LEGACY_VERSION_0_1 -> GoalPlanningSharedContextPacketLegacy.migrateFromPacketVersion3(
+      GoalPlanningSharedContextPacketLegacy.migrateFromPacketVersion2(
+        GoalPlanningSharedContextPacketLegacy.migrateFromPacketVersion1(packet),
       ),
     )
     else -> error(
@@ -66,7 +69,7 @@ object GoalPlanningSharedContextPacket {
     val expectedTopology = GoalPlanningSharedContextPacketValidation.normalizedSubtasks(orderedSubtasks(subtasks))
       .map { it - "planning_disposition" }
     require(recoveredTopology == expectedTopology) { "shared context ordered subtasks are invalid" }
-    require(JsonSupport.mapToJsonString(packet).length <= MAX_PACKET_CHARS) {
+    require(JsonCodec.mapToJsonString(packet).length <= MAX_PACKET_CHARS) {
       "shared context packet exceeds the size limit"
     }
     require(packet["integrity_sha256"] == digest(packet - "integrity_sha256")) {
@@ -106,7 +109,7 @@ object GoalPlanningSharedContextPacket {
       linkedMapOf<String, Any?>(
         "heading_id" to heading.headingId,
         "source_path" to heading.sourcePath,
-        "kind" to heading.kind,
+        "kind" to heading.kind.wireValue,
         "heading" to heading.heading,
       )
     },
@@ -118,7 +121,11 @@ object GoalPlanningSharedContextPacket {
       "id" to subtask.id,
       "name" to subtask.name,
       "spec_path" to subtask.specPath,
-      "planning_disposition" to if (subtask.status == "skipped") "skipped" else "included",
+      "planning_disposition" to if (subtask.status.decompositionStatus() == DecompositionStatus.SKIPPED) {
+        DecompositionStatus.SKIPPED.wireValue
+      } else {
+        "included"
+      },
       "dependencies" to subtask.dependencies.map { dependency ->
         linkedMapOf(
           "subtask_id" to dependency.subtaskId,

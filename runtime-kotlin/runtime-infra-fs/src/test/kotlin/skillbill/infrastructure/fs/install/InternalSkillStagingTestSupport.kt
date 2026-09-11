@@ -3,7 +3,8 @@ package skillbill.infrastructure.fs.install
 import skillbill.infrastructure.fs.scaffold.runtime.supportingFileTargets
 import skillbill.install.model.InstallPlanSkill
 import skillbill.install.model.InstallPlanSkillKind
-import skillbill.ports.repository.toFileLocationimport skillbill.testsupport.SkillClassFixtures
+import skillbill.ports.repository.toFileLocation
+import skillbill.testsupport.SkillClassFixtures
 import java.nio.file.Files
 import java.nio.file.LinkOption
 import java.nio.file.Path
@@ -87,7 +88,7 @@ open class InternalSkillStagingTestSupport {
   protected fun planSkill(name: String, internalFor: String?, platformSlug: String? = null): InstallPlanSkill =
     InstallPlanSkill(
       name = name,
-      sourceDir = Path.of("/repo/skills/$name").toAbsolutePath().normalize(),
+      sourceDir = Path.of("/repo/skills/$name").toAbsolutePath().normalize().toFileLocation(),
       kind = if (platformSlug == null) InstallPlanSkillKind.BASE else InstallPlanSkillKind.PLATFORM_PACK,
       platformSlug = platformSlug,
       internalFor = internalFor,
@@ -178,7 +179,7 @@ open class InternalSkillStagingTestSupport {
 
     val packChildPlanSkill = InstallPlanSkill(
       name = packChildName,
-      sourceDir = packChildDir.toAbsolutePath().normalize(),
+      sourceDir = packChildDir.toAbsolutePath().normalize().toFileLocation(),
       kind = InstallPlanSkillKind.PLATFORM_PACK,
       platformSlug = slug,
       internalFor = parentName,

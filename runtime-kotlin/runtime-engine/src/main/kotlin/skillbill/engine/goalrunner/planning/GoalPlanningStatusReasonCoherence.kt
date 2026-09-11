@@ -1,9 +1,7 @@
 package skillbill.engine.goalrunner.planning
 import me.tatarka.inject.annotations.Inject
-import skillbill.application.goalplanning.GoalPlanningPreparationCheckpoint
-import skillbill.application.goalplanning.sha256HexUtf8
-import skillbill.engine.goalplanning.model.GoalPlanningStatusAlignRequest
-import skillbill.contracts.JsonSupportimport skillbill.contracts.workflow.GoalPlanningPreparationSchemaPaths
+import skillbill.contracts.JsonCodec
+import skillbill.contracts.workflow.GoalPlanningPreparationSchemaPaths
 import skillbill.engine.goalplanning.GoalPlanningPreparationCheckpoint
 import skillbill.engine.goalrunner.planning.model.GoalPlanningStatusAlignRequest
 import skillbill.goalrunner.model.GoalPlanningStatusSnapshot
@@ -86,13 +84,13 @@ class LaunchAlignedGoalPlanningStatusReasonCoherence(
   }
 
   private fun planningPacketParentSpec(existing: SharedGoalPreplanCheckpoint): String? {
-    val packet = JsonSupport.parseObjectOrNull(existing.preplanPayload)
-      ?.let(JsonSupport::jsonElementToValue)
-      ?.let(JsonSupport::anyToStringAnyMap)
+    val packet = JsonCodec.parseObjectOrNull(existing.preplanPayload)
+      ?.let(JsonCodec::jsonElementToValue)
+      ?.let(JsonCodec::anyToStringAnyMap)
       ?.get("produced_outputs")
-      ?.let(JsonSupport::anyToStringAnyMap)
+      ?.let(JsonCodec::anyToStringAnyMap)
       ?.get("_goal_planning_shared_context")
-      ?.let(JsonSupport::anyToStringAnyMap)
+      ?.let(JsonCodec::anyToStringAnyMap)
       ?: return null
     return packet["parent_spec"] as? String
   }

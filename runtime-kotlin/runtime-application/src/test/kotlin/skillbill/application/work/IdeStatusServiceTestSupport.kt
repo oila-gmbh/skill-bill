@@ -1,18 +1,10 @@
 package skillbill.application.work
 
 import skillbill.application.TestRepositoryEnclosingRoot
-import skillbill.application.featuretask.AcceptingFeatureTaskRuntimeHandoffEnvelopeValidator
-import skillbill.application.featuretask.AcceptingFeatureTaskRuntimeHandoffFoundationValidator
-import skillbill.application.featuretask.FeatureTaskRuntimeDecomposeTerminalRecorder
-import skillbill.application.featuretask.FeatureTaskRuntimeRunInvariantsStore
-import skillbill.application.featuretask.FeatureTaskRuntimeStatusService
-import skillbill.application.featuretask.featureTaskRuntimePhaseRecorder
-import skillbill.application.goalrunner.goalRepositoryIdentity
-import skillbill.application.goalrunner.goalRunnerStatusServiceDeps
-import skillbill.application.goalrunner.testGoalRunnerStatusServiceimport skillbill.application.idestatus.model.IdeStatusRequest
+import skillbill.application.idestatus.model.IdeStatusRequest
 import skillbill.application.idestatus.model.IdeStatusResult
 import skillbill.application.testHarnessClock
-import skillbill.contracts.JsonSupport
+import skillbill.contracts.JsonCodec
 import skillbill.contracts.workflow.IDE_STATUS_CONTRACT_VERSION
 import skillbill.engine.featuretask.AcceptingFeatureTaskRuntimeHandoffEnvelopeValidator
 import skillbill.engine.featuretask.AcceptingFeatureTaskRuntimeHandoffFoundationValidator
@@ -30,6 +22,7 @@ import skillbill.goalrunner.model.GoalPlanningStatusSnapshot
 import skillbill.goalrunner.model.GoalPlanningStatusState
 import skillbill.goalrunner.model.GoalRunnerControlState
 import skillbill.goalrunner.model.GoalRunnerExecutionLease
+import skillbill.goalrunner.model.GoalRunnerObservabilityRecordRequest
 import skillbill.goalrunner.model.GoalRunnerStoredOutcome
 import skillbill.goalrunner.model.GoalRunnerSupervisionEvent
 import skillbill.goalrunner.model.GoalRunnerWorkerSubtaskRequestOutcome
@@ -40,11 +33,11 @@ import skillbill.ports.goalrunner.EmptyGoalPlanningPreparationRepository
 import skillbill.ports.goalrunner.EmptyGoalRunnerControlRepository
 import skillbill.ports.goalrunner.GoalRunnerControlRepository
 import skillbill.ports.goalrunner.runner.GoalRunnerManifestStore
+import skillbill.ports.goalrunner.runner.GoalRunnerManifestStoreDefaults
 import skillbill.ports.goalrunner.runner.GoalRunnerWorkflowOutcomeStore
 import skillbill.ports.goalrunner.runner.model.GoalRunnerAttemptLedgerRecordRequest
 import skillbill.ports.goalrunner.runner.model.GoalRunnerLedgerSequenceWatermarks
 import skillbill.ports.goalrunner.runner.model.GoalRunnerManifestState
-import skillbill.ports.goalrunner.runner.model.GoalRunnerObservabilityRecordRequest
 import skillbill.ports.goalrunner.runner.model.GoalRunnerProgressEventRecordRequest
 import skillbill.ports.goalrunner.runner.model.GoalRunnerReconcileGate
 import skillbill.ports.goalrunner.runner.model.GoalRunnerWorkflowProgress
@@ -52,6 +45,7 @@ import skillbill.ports.idestatus.IdeStatusValidator
 import skillbill.ports.idestatus.NoopIdeStatusValidator
 import skillbill.ports.learning.LearningRepository
 import skillbill.ports.persistence.UnitOfWork
+import skillbill.ports.persistence.UnitOfWorkDefaults
 import skillbill.ports.review.ReviewRepository
 import skillbill.ports.system.CheckedOutBranchSource
 import skillbill.ports.telemetry.LifecycleTelemetryRepository
@@ -72,6 +66,7 @@ import skillbill.workflow.decomposition.model.CurrentSubtaskIntent
 import skillbill.workflow.decomposition.model.DecompositionManifest
 import skillbill.workflow.decomposition.model.DecompositionSubtask
 import skillbill.workflow.engine.WorkflowSnapshotValidator
+import skillbill.workflow.engine.model.WorkflowStateSnapshot
 import skillbill.workflow.goal.model.GoalSubtaskReviewPassResult
 import skillbill.workflow.goal.model.GoalSubtaskReviewState
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
@@ -208,7 +203,7 @@ internal fun ideStatusService(
   outcomeStore: GoalRunnerWorkflowOutcomeStore = EmptyOutcomeStore,
 ): IdeStatusService {
   val snapshotValidator = object : WorkflowSnapshotValidator {
-    override fun validate(snapshot: Map<String, Any?>, slug: String) = Unit
+    override fun validate(snapshot: WorkflowStateSnapshot, slug: String) = Unit
   }
   val phaseRecorder = featureTaskRuntimePhaseRecorder(
     database,
@@ -226,12 +221,11 @@ internal fun ideStatusService(
   val projector = IdeStatusProjector(
     workflowSnapshotValidator = snapshotValidator,
     goalRunnerStatusService = testGoalRunnerStatusService(
-      goalRunnerStatusServiceDeps(
-        manifestStore = manifestStore,
-        outcomeStore = outcomeStore,
-        phaseRecorder = phaseRecorder,
-      ).copy(
-        clock = ideStatusClock,
+      manifestStore = manifestStore,
+      outcomeStore = outcomeStore,
+      phaseRecorder = phaseRecorder,
+      clock = ideStatusClock,
+      ports = GoalRunnerStatusTestPorts(
         runtimeStatusService = runtimeStatusService,
       ),
     ),
@@ -343,7 +337,7 @@ internal fun blockedQualityGateChildArtifacts(
 }
 
 internal fun phaseRecordsArtifactsJson(vararg records: Pair<String, Map<String, Any?>>): String =
-  JsonSupport.mapToJsonString(
+  JsonCodec.mapToJsonString(
     mapOf(FEATURE_TASK_RUNTIME_PHASE_RECORDS_ARTIFACT_KEY to records.toMap()),
   )
 
@@ -430,7 +424,7 @@ internal class TrackingDatabase(
     return block(unitOfWork())
   }
 
-  internal fun unitOfWork(): UnitOfWork = object : UnitOfWork {
+  internal fun unitOfWork(): UnitOfWork = object : UnitOfWorkDefaults() {
     override val dbPath: Path = Path.of("/fake/ide-status.db")
     override val workflowStates = workflows
     override val workList: WorkListRepository = object : WorkListRepository {
@@ -535,6 +529,7 @@ internal class StubGoalManifestStore(
   internal val lease: GoalRunnerExecutionLease? = null,
 ) : GoalRunnerManifestStoreDefaults() {
   override fun executionLease(parentWorkflowId: String): GoalRunnerExecutionLease? = lease
+
   override fun loadByIssueKey(issueKey: String, repoRoot: Path?): GoalRunnerManifestState? =
     state.takeIf { it.manifest.issueKey.equals(issueKey, ignoreCase = true) }
 
@@ -560,6 +555,7 @@ internal class StubGoalManifestStore(
 
 internal object EmptyManifestStore : GoalRunnerManifestStoreDefaults() {
   override fun loadByIssueKey(issueKey: String, repoRoot: Path?): GoalRunnerManifestState? = null
+
   override fun save(state: GoalRunnerManifestState): GoalRunnerManifestState = state
 
   override fun acquireExecutionLease(

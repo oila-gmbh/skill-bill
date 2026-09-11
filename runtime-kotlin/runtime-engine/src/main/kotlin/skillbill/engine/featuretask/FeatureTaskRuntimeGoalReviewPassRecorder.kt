@@ -1,20 +1,18 @@
 package skillbill.engine.featuretask
 
 import skillbill.application.decomposition.decodeArtifacts
-import skillbill.engine.featuretask.model.GoalSubtaskReviewPassCarryForward
-import skillbill.engine.featuretask.model.GoalSubtaskReviewPassInFlight
-import skillbill.engine.featuretask.model.GoalSubtaskReviewPassReservation
-import skillbill.engine.featuretask.model.GoalSubtaskReviewPassReserved
-import skillbill.application.subtaskreview.GoalSubtaskReviewSummaryReducer
-import skillbill.application.subtaskreview.UnaddressedFindingLedgerScope
-import skillbill.application.subtaskreview.recordedVerdictsimport skillbill.engine.workflow.model.WorkflowFamily
+import skillbill.application.workflow.model.WorkflowFamily
 import skillbill.engine.featuretask.model.GoalSubtaskReviewPassCarryForward
 import skillbill.engine.featuretask.model.GoalSubtaskReviewPassInFlight
 import skillbill.engine.featuretask.model.GoalSubtaskReviewPassReservation
 import skillbill.engine.featuretask.model.GoalSubtaskReviewPassReserved
 import skillbill.goalrunner.model.UnaddressedFinding
+import skillbill.goalrunner.subtaskreview.GoalSubtaskReviewSummaryReducer
+import skillbill.goalrunner.subtaskreview.model.UnaddressedFindingLedgerScope
+import skillbill.goalrunner.subtaskreview.recordedVerdicts
 import skillbill.ports.db.DatabaseSessionFactory
 import skillbill.ports.persistence.UnitOfWork
+import skillbill.ports.workflow.get
 import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewInput
 import skillbill.workflow.engine.model.WorkflowStateSnapshot
 import skillbill.workflow.goal.model.GOAL_SUBTASK_REVIEW_INPUT_ARTIFACT_KEY
@@ -23,10 +21,6 @@ import skillbill.workflow.goal.model.GOAL_SUBTASK_REVIEW_STATE_ARTIFACT_KEY
 import skillbill.workflow.goal.model.GoalSubtaskBlockerDisposition
 import skillbill.workflow.goal.model.GoalSubtaskReviewRevision
 import skillbill.workflow.goal.model.GoalSubtaskReviewState
-import skillbill.workflow.goal.model.GoalSubtaskReviewedRevision
-import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_CHECKPOINT_IDENTITIES_ARTIFACT_KEY
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeCheckpointIdentity
-import skillbill.workflow.taskruntime.model.featureTaskRuntimeCheckpointIdentitiesFromArtifact
 
 class FeatureTaskRuntimeGoalReviewPassRecorder(
   private val database: DatabaseSessionFactory,
@@ -62,19 +56,16 @@ class FeatureTaskRuntimeGoalReviewPassRecorder(
       val artifacts = decodeArtifacts(record.artifactsJson)
       val state = reviewStateFromArtifacts(artifacts)
         ?: return@transaction null
-      val activeParentSha = activeCheckpointParentSha(artifacts)
-      check(
-        input.reviewBaseSha == state.reviewBaseSha ||
-          input.reviewBaseSha == state.remediationBaseSha ||
-          input.reviewBaseSha == activeParentSha,
-      ) {
-        "Goal-subtask review input does not match the durable review baseline, its recorded remediation base, " +
-          "or the active checkpoint parent."
+      check(input.reviewBaseSha == state.reviewBaseSha || input.reviewBaseSha == state.remediationBaseSha) {
+        "Goal-subtask review input does not match the durable review baseline or its recorded remediation base."
       }
-      val realigned = realignReviewBaseToActiveCheckpointParent(state, input.reviewBaseSha, activeParentSha)
-      val updated = realigned.copy(
+      val updated = state.copy(
         reviewInputArtifact = GOAL_SUBTASK_REVIEW_INPUT_ARTIFACT_KEY,
-        reviewedDeltaDigest = input.deltaDigest,
+        reviewedDeltaDigest = if (input.reviewBaseSha == state.reviewBaseSha) {
+          input.deltaDigest
+        } else {
+          state.reviewedDeltaDigest
+        },
       )
       patcher.save(
         record,
@@ -114,10 +105,7 @@ class FeatureTaskRuntimeGoalReviewPassRecorder(
         request.unresolvedFindingCount,
         request.findings,
         loaded.dispositions,
-        GoalSubtaskReviewRevision(
-          commitFocusedAccounting = request.commitFocusedAccounting,
-          reviewedRevision = loaded.reviewedRevision,
-        ),
+        GoalSubtaskReviewRevision(commitFocusedAccounting = request.commitFocusedAccounting),
       )
       persistGoalReviewPassWrite(unitOfWork, loaded, request, completed)
       completed
@@ -139,7 +127,6 @@ class FeatureTaskRuntimeGoalReviewPassRecorder(
     val ledgerFindings: List<UnaddressedFinding>,
     val supersededFindings: List<UnaddressedFinding>,
     val dispositions: List<GoalSubtaskBlockerDisposition>,
-    val reviewedRevision: GoalSubtaskReviewedRevision?,
   )
 
   private fun loadGoalReviewPassWrite(
@@ -154,7 +141,10 @@ class FeatureTaskRuntimeGoalReviewPassRecorder(
     val continuation = continuationFromArtifacts(artifacts)
       ?: error("Goal-subtask review continuation is missing during reserved-pass recovery.")
     val reservedPass = state.reservedPassNumber ?: 1
-    val recordedVerdicts = GoalSubtaskReviewSummaryReducer.recordedVerdicts(unitOfWork, request.normalizedOutput)
+    val recordedVerdicts = GoalSubtaskReviewSummaryReducer.recordedVerdicts(
+      unitOfWork.reviews::fetchFindingVerdicts,
+      request.normalizedOutput,
+    )
     val ledgerFindings = GoalSubtaskReviewSummaryReducer.unaddressedFindings(
       output = request.normalizedOutput,
       scope = UnaddressedFindingLedgerScope(
@@ -174,7 +164,6 @@ class FeatureTaskRuntimeGoalReviewPassRecorder(
       ledgerFindings = ledgerFindings,
       supersededFindings = supersededFindings,
       dispositions = dispositions,
-      reviewedRevision = reviewedRevisionFrom(artifacts),
     )
   }
 
@@ -202,48 +191,4 @@ class FeatureTaskRuntimeGoalReviewPassRecorder(
       ),
     )
   }
-}
-
-private fun reviewedRevisionFrom(artifacts: Map<String, Any?>): GoalSubtaskReviewedRevision? {
-  val input = artifacts[GOAL_SUBTASK_REVIEW_INPUT_ARTIFACT_KEY] as? Map<*, *> ?: return null
-  val target = input["current_head_sha"] as? String ?: return null
-  val tree = input["reviewed_tree_sha"] as? String ?: return null
-  return runCatching { GoalSubtaskReviewedRevision(target, tree) }.getOrNull()
-}
-
-private fun activeCheckpointParentSha(artifacts: Map<String, Any?>): String? {
-  val continuation = continuationFromArtifacts(artifacts) ?: return null
-  return featureTaskRuntimeCheckpointIdentitiesFromArtifact(
-    artifacts[FEATURE_TASK_RUNTIME_CHECKPOINT_IDENTITIES_ARTIFACT_KEY],
-  )
-    .filter {
-      it.issueKey == continuation.issueKey &&
-        it.subtaskId == continuation.subtaskId.toString() &&
-        it.loopId == null
-    }
-    .maxByOrNull(FeatureTaskRuntimeCheckpointIdentity::sequenceNumber)
-    ?.parentSha
-    ?.trim()
-    ?.takeIf(String::isNotBlank)
-}
-
-private fun realignReviewBaseToActiveCheckpointParent(
-  state: GoalSubtaskReviewState,
-  inputBaseSha: String,
-  activeParentSha: String?,
-): GoalSubtaskReviewState {
-  if (reviewBaseDoesNotNeedRealignment(state, inputBaseSha, activeParentSha)) {
-    return state
-  }
-  return state.copy(reviewBaseSha = inputBaseSha)
-}
-
-private fun reviewBaseDoesNotNeedRealignment(
-  state: GoalSubtaskReviewState,
-  inputBaseSha: String,
-  activeParentSha: String?,
-): Boolean {
-  if (state.remediationBaseSha != null || state.completedPassCount > 0) return true
-  if (activeParentSha == null || inputBaseSha != activeParentSha) return true
-  return inputBaseSha == state.reviewBaseSha
 }

@@ -36,7 +36,7 @@ internal object NativeAgentLinkInventoryBootstrap {
               link.toAbsolutePath().normalize(),
               resolved,
               contentDigest = if (Files.isRegularFile(resolved) && Files.isReadable(resolved)) {
-                runCatching { NativeAgentLinkInventorySupport.sha256(Files.readAllBytes(resolved)) }
+                runCatching { NativeAgentLinkInventoryPaths.sha256(Files.readAllBytes(resolved)) }
                   .getOrDefault(NativeAgentLinkInventoryLimits.EMPTY_DIGEST)
               } else {
                 NativeAgentLinkInventoryLimits.EMPTY_DIGEST
@@ -63,7 +63,7 @@ internal object NativeAgentLinkInventoryBootstrap {
     beforeMutation: (Path) -> Unit,
   ) {
     val link = entry.installedPath
-    val provider = NativeAgentLinkInventorySupport.provider(entry.provider)
+    val provider = NativeAgentLinkInventoryPaths.provider(entry.provider)
     if (link.fileName.toString() != provider.fileName(entry.logicalName)) return
     if (!Files.isSymbolicLink(link)) return
     val rawTarget = runCatching { Files.readSymbolicLink(link) }.getOrNull() ?: return

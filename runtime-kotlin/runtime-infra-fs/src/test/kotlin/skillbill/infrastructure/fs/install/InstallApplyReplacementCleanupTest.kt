@@ -4,6 +4,7 @@ import skillbill.install.model.InstallAgent
 import skillbill.install.model.InstallAgentLinkStatus
 import skillbill.install.model.InstallApplyIssueKind
 import skillbill.install.model.InstallApplyStatus
+import skillbill.model.toPath
 import java.nio.file.Files
 import java.nio.file.LinkOption
 import java.nio.file.Path
@@ -209,7 +210,7 @@ class InstallApplyReplacementCleanupTest : InstallApplyTestSupport() {
       result.failures.any { failure ->
         failure.kind == InstallApplyIssueKind.SKILL_LINK_FAILED &&
           failure.agent == InstallAgent.CODEX &&
-          failure.path == targetDir &&
+          failure.path?.toPath() == targetDir &&
           failure.message.contains("Nul character")
       },
     )

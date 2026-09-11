@@ -5,17 +5,17 @@ import skillbill.application.testDecompositionManifestValidator
 import skillbill.application.testDecompositionManifestWriter
 import skillbill.application.testRepositoryRoot
 import skillbill.application.testWorkflowSnapshotValidator
-import skillbill.engine.workflow.WorkflowService
-import skillbill.engine.workflow.model.WorkflowContinueResult
-import skillbill.engine.workflow.model.WorkflowFamilyKind
-import skillbill.engine.workflow.model.WorkflowOpenResult
-import skillbill.engine.workflow.model.WorkflowServiceDeps
-import skillbill.engine.workflow.model.WorkflowServiceOpenFeatureTaskArgs
-import skillbill.engine.workflow.model.WorkflowUpdateRequest
-import skillbill.engine.workflow.openFeatureTask
+import skillbill.application.workflow.WorkflowService
+import skillbill.application.workflow.model.WorkflowContinueResult
+import skillbill.application.workflow.model.WorkflowFamilyKind
+import skillbill.application.workflow.model.WorkflowOpenResult
+import skillbill.application.workflow.model.WorkflowServiceOpenFeatureTaskArgs
+import skillbill.application.workflow.model.WorkflowUpdateRequest
+import skillbill.application.workflow.openFeatureTask
 import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_PERSISTENCE_CONTRACT_VERSION
 import skillbill.engine.featuretask.FeatureTaskContinuationLookupService
-import skillbill.engine.featuretask.model.FeatureTaskContinuationLookupResultimport skillbill.ports.workflow.decomposition.UnavailableDecompositionManifestStore
+import skillbill.engine.featuretask.model.FeatureTaskContinuationLookupResult
+import skillbill.ports.workflow.decomposition.UnavailableDecompositionManifestStore
 import skillbill.ports.workflow.gitops.NoopWorkflowGitOperations
 import skillbill.workflow.goal.NoopGoalObservabilityEventValidator
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_RECORDS_ARTIFACT_KEY
@@ -35,22 +35,19 @@ class FeatureTaskRouterContinuationTest {
     val states = InMemoryWorkflowStates()
     val database = FakeDatabaseSessionFactory(states)
     val service = WorkflowService(
-      WorkflowServiceDeps(
-        database = database,
-        gitOperations = NoopWorkflowGitOperations,
-        decompositionManifestStore = UnavailableDecompositionManifestStore,
-        workflowSnapshotValidator = testWorkflowSnapshotValidator,
-        decompositionManifestValidator = testDecompositionManifestValidator,
-        decompositionManifestWriter = testDecompositionManifestWriter,
-        repositoryRoot = testRepositoryRoot,
-        goalObservabilityEventValidator = NoopGoalObservabilityEventValidator,
-      ),
+      database = database,
+      gitOperations = NoopWorkflowGitOperations,
+      decompositionManifestStore = UnavailableDecompositionManifestStore,
+      workflowSnapshotValidator = testWorkflowSnapshotValidator,
+      decompositionManifestValidator = testDecompositionManifestValidator,
+      decompositionManifestWriter = testDecompositionManifestWriter,
+      repositoryRoot = testRepositoryRoot,
+      goalObservabilityEventValidator = NoopGoalObservabilityEventValidator,
     )
     val lookup = FeatureTaskContinuationLookupService(
       database,
       testWorkflowSnapshotValidator,
       testDecompositionManifestValidator,
-      diagnostics = NoopRuntimeDiagnostics,
     )
     val opened = assertIs<WorkflowOpenResult.Ok>(
       service.openFeatureTask(

@@ -13,7 +13,8 @@ import skillbill.infrastructure.fs.scaffold.authoring.renderWrapper
 import skillbill.infrastructure.fs.scaffold.authoring.resolveTarget
 import skillbill.install.model.AgentTarget
 import skillbill.model.toPath
-import skillbill.ports.repository.toFileLocationimport java.nio.file.Files
+import skillbill.ports.repository.toFileLocation
+import java.nio.file.Files
 import java.nio.file.LinkOption
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -30,23 +31,23 @@ class InternalSkillStagingBaseTest : InternalSkillStagingTestSupport() {
     val rendered = stageInstalledSkill(fixture.repoRoot, fixture.parentDir, fixture.home)
 
     val sidecar = rendered.stagingDir.resolve("${fixture.childName}.md")
-    assertTrue(Files.isRegularFile(sidecar, LinkOption.NOFOLLOW_LINKS), "missing sidecar at $sidecar")
+    assertTrue(Files.isRegularFile(sidecar.toPath(), LinkOption.NOFOLLOW_LINKS), "missing sidecar at $sidecar")
     assertTrue(sidecar in rendered.renderedSidecarFiles, "sidecar not reported in renderedSidecarFiles")
     val childTarget = resolveTarget(fixture.repoRoot, fixture.childName)
     assertEquals(
       renderWrapper(childTarget),
-      Files.readString(sidecar),
+      Files.readString(sidecar.toPath()),
       "sidecar must carry the governed wrapper",
     )
     assertFalse(
-      Files.exists(rendered.stagingDir.resolve("content.md"), LinkOption.NOFOLLOW_LINKS),
+      Files.exists(rendered.stagingDir.resolve("content.md").toPath(), LinkOption.NOFOLLOW_LINKS),
       "parent staging must not carry a redundant verbatim content.md",
     )
     assertFalse(
-      Files.exists(rendered.stagingDir.resolve("${fixture.childName}/content.md"), LinkOption.NOFOLLOW_LINKS),
+      Files.exists(rendered.stagingDir.resolve("${fixture.childName}/content.md").toPath(), LinkOption.NOFOLLOW_LINKS),
       "internal child must not stage a nested content.md copy",
     )
-    val sidecarText = Files.readString(sidecar)
+    val sidecarText = Files.readString(sidecar.toPath())
     assertTrue(sidecarText.contains("## Execution"), "rendered sidecar must keep ## Execution")
     assertTrue(
       sidecarText.contains("Authored internal body."),
@@ -69,7 +70,7 @@ class InternalSkillStagingBaseTest : InternalSkillStagingTestSupport() {
     }
     assertTrue(childStagingDirs.isEmpty(), "internal skill must not have its own staging dir; found $childStagingDirs")
     assertFalse(
-      rendered.copiedAuthoredFiles.any { it.fileName.toString() == "${fixture.childName}.md" },
+      rendered.copiedAuthoredFiles.any { it.fileName == "${fixture.childName}.md" },
       "sidecar must not be classified as authored copy",
     )
   }
@@ -93,17 +94,17 @@ class InternalSkillStagingBaseTest : InternalSkillStagingTestSupport() {
 
     val first = stageInstalledSkill(fixture.repoRoot, fixture.parentDir, fixture.home)
     val firstSidecar = first.stagingDir.resolve("${fixture.childName}.md")
-    assertTrue(Files.isRegularFile(firstSidecar, LinkOption.NOFOLLOW_LINKS))
+    assertTrue(Files.isRegularFile(firstSidecar.toPath(), LinkOption.NOFOLLOW_LINKS))
 
     val second = stageInstalledSkill(fixture.repoRoot, fixture.parentDir, fixture.home)
     assertEquals(first.stagingDir, second.stagingDir)
     assertEquals(first.contentHash, second.contentHash)
     assertTrue(
-      Files.isRegularFile(firstSidecar, LinkOption.NOFOLLOW_LINKS),
+      Files.isRegularFile(firstSidecar.toPath(), LinkOption.NOFOLLOW_LINKS),
       "sidecar must survive reuse",
     )
     assertTrue(
-      second.renderedSidecarFiles.any { it.fileName.toString() == "${fixture.childName}.md" },
+      second.renderedSidecarFiles.any { it.fileName == "${fixture.childName}.md" },
       "reused staging must still report the sidecar",
     )
   }
@@ -114,12 +115,12 @@ class InternalSkillStagingBaseTest : InternalSkillStagingTestSupport() {
 
     val first = stageInstalledSkill(fixture.repoRoot, fixture.parentDir, fixture.home)
     val sidecar = first.stagingDir.resolve("${fixture.childName}.md")
-    Files.delete(sidecar)
+    Files.delete(sidecar.toPath())
 
     val second = stageInstalledSkill(fixture.repoRoot, fixture.parentDir, fixture.home)
     assertEquals(first.contentHash, second.contentHash)
     assertTrue(
-      Files.isRegularFile(second.stagingDir.resolve("${fixture.childName}.md"), LinkOption.NOFOLLOW_LINKS),
+      Files.isRegularFile(second.stagingDir.resolve("${fixture.childName}.md").toPath(), LinkOption.NOFOLLOW_LINKS),
       "a pruned sidecar must be re-rendered instead of reused broken",
     )
   }
@@ -180,7 +181,7 @@ class InternalSkillStagingBaseTest : InternalSkillStagingTestSupport() {
 
     val sidecar = rendered.stagingDir.resolve("${fixture.childName}.md")
     assertFalse(
-      Files.exists(sidecar, LinkOption.NOFOLLOW_LINKS),
+      Files.exists(sidecar.toPath(), LinkOption.NOFOLLOW_LINKS),
       "parent staging must not carry a sidecar when no child declares internal-for",
     )
     assertTrue(rendered.renderedSidecarFiles.isEmpty(), "no sidecars expected")
@@ -211,7 +212,7 @@ class InternalSkillStagingBaseTest : InternalSkillStagingTestSupport() {
     )
     assertTrue(
       Files.isRegularFile(
-        withInternalChild.stagingDir.resolve("bill-feature-helper.md"),
+        withInternalChild.stagingDir.resolve("bill-feature-helper.md").toPath(),
         LinkOption.NOFOLLOW_LINKS,
       ),
     )
@@ -294,10 +295,10 @@ class InternalSkillStagingBaseTest : InternalSkillStagingTestSupport() {
 
     val sourceRoots = nativeAgentSourceRoots(skills, selectedPlatformSlugs = setOf("kotlin"))
     assertTrue(
-      child.sourceDir in sourceRoots,
+      child.sourceDir.toPath() in sourceRoots,
       "an internal skill's dir must remain a native-agent source root (native-agent parity)",
     )
-    assertFalse(unselectedPackSkill.sourceDir in sourceRoots)
+    assertFalse(unselectedPackSkill.sourceDir.toPath() in sourceRoots)
   }
 
   @Test
@@ -305,7 +306,7 @@ class InternalSkillStagingBaseTest : InternalSkillStagingTestSupport() {
     val fixture = setupParentWithInternalChild()
     val agentRoot = fixture.home.resolve("agents")
     Files.createDirectories(agentRoot)
-    val agent = AgentTarget("test-agent", agentRoot)
+    val agent = AgentTarget("test-agent", agentRoot.toFileLocation())
 
     installSkill(
       skillPath = fixture.parentDir,

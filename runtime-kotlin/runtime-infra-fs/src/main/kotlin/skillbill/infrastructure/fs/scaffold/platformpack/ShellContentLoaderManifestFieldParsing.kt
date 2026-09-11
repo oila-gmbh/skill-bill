@@ -3,7 +3,8 @@ package skillbill.infrastructure.fs.scaffold.platformpack
 
 import skillbill.infrastructure.fs.scaffold.rendering.defaultAreaFocus
 import skillbill.infrastructure.fs.scaffold.runtime.APPROVED_CODE_REVIEW_AREAS
-import skillbill.ports.repository.toFileLocationimport skillbill.scaffold.model.CodeReviewBaselineLayer
+import skillbill.ports.repository.toFileLocation
+import skillbill.scaffold.model.CodeReviewBaselineLayer
 import skillbill.scaffold.model.CodeReviewComposition
 import skillbill.scaffold.model.CodeReviewCompositionMode
 import skillbill.scaffold.model.CodeReviewCompositionScope
@@ -103,8 +104,8 @@ internal fun parseDeclaredFiles(
     )
   }
   return DeclaredFiles(
-    baseline = baselinePath,
-    areas = areaFiles,
+    baseline = baselinePath?.toFileLocation(),
+    areas = areaFiles.mapValues { (_, entry) -> entry.toFileLocation() },
   )
 }
 

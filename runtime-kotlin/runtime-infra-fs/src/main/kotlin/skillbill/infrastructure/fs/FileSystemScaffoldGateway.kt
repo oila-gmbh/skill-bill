@@ -11,7 +11,8 @@ import skillbill.infrastructure.fs.scaffold.authoring.recommendedCommands
 import skillbill.infrastructure.fs.scaffold.authoring.renderAuthoringTarget
 import skillbill.infrastructure.fs.scaffold.catalog.ScaffoldCatalog
 import skillbill.infrastructure.fs.scaffold.runtime.scaffold
-import skillbill.model.toPathimport skillbill.ports.scaffold.ScaffoldCatalogGateway
+import skillbill.model.toPath
+import skillbill.ports.scaffold.ScaffoldCatalogGateway
 import skillbill.ports.scaffold.ScaffoldGateway
 import skillbill.ports.scaffold.UnsupportedScaffoldGateway
 import skillbill.ports.scaffold.catalog.model.ScaffoldExplainResult
@@ -201,7 +202,7 @@ private fun requireAgentAddonEntry(repoRoot: Path, identity: String): AgentAddon
     )
 
 private fun AgentAddonCatalogueEntry.toSkillStatus(repoRoot: Path, contentMode: String): ScaffoldSkillStatus {
-  val contentText = Files.readString(contentPath)
+  val contentText = Files.readString(contentPath.toPath())
   return ScaffoldSkillStatus(
     skillName = identity,
     packageName = "agent-addons",
@@ -210,7 +211,8 @@ private fun AgentAddonCatalogueEntry.toSkillStatus(repoRoot: Path, contentMode: 
     area = "",
     contentFile = contentPath.toString(),
     renderCommand = "skill-bill render bill-feature --repo-root ${repoRoot.toAbsolutePath().normalize()}",
-    completionStatus = ScaffoldCompletionStatus.AUTHORED,    sectionCount = 0,
+    completionStatus = ScaffoldCompletionStatus.AUTHORED,
+    sectionCount = 0,
     sections = emptyList(),
     recommendedCommands = listOf("skill-bill validate", "skill-bill render bill-feature"),
     contentPreview = if (contentMode == "preview") contentText.take(CONTENT_PREVIEW_MAX_CHARS) else null,

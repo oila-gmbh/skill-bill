@@ -1,27 +1,25 @@
 package skillbill.application.review
 
-import skillbill.application.review.model.ParallelCodeReviewRequest
-import skillbill.application.review.model.ReviewPrelaunchExpansion
-import skillbill.application.reviewevidence.model.DiffResolutionException
-import skillbill.application.reviewevidence.model.ParallelReviewScope
-import skillbill.ports.diff.DiffResolverPort
-import skillbill.ports.review.BrokerBackedNativeReviewOperationProtocol
+import skillbill.install.model.InstallAgent
+import skillbill.ports.agentrun.model.UnsupportedAgentRunLaunch
+import skillbill.ports.review.GovernedReviewEvidenceEndpointBinder
+import skillbill.ports.review.GovernedReviewEvidenceEndpointHandle
 import skillbill.ports.review.NativeReviewOperationProtocol
 import skillbill.ports.review.ReviewEvidenceBroker
-import skillbill.ports.review.model.REVIEW_EVIDENCE_MAX_REQUESTS
-import skillbill.ports.review.model.ReviewCheckpointFileIdentity
-import skillbill.ports.review.model.ReviewEvidenceBatchRequest
-import skillbill.ports.review.model.ReviewEvidenceDiscoveryRequest
-import skillbill.ports.review.model.ReviewEvidenceRequest
+import skillbill.ports.review.ReviewEvidenceBrokerFactory
+import skillbill.ports.review.model.GovernedReviewEvidenceEndpointDescriptor
+import skillbill.ports.review.model.ReviewEvidenceBrokerBinding
 import skillbill.review.context.model.CodeReviewExecutionMode
+import skillbill.review.context.model.LANE_EVIDENCE_BYTES_DIMENSION
 import skillbill.review.context.model.ReviewContextBudgetPolicy
 import skillbill.review.context.model.ReviewLaneReviewDisposition
+import skillbill.review.model.ReviewEvidenceBoundaryAccounting
+import skillbill.review.model.ReviewStageDegradationReason
 import skillbill.scaffold.model.ReviewLaneCondition
 import java.nio.file.Files
-import java.nio.file.Path
+import java.util.concurrent.atomic.AtomicInteger
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertNotEquals
 import kotlin.test.assertNotNull
@@ -29,420 +27,409 @@ import kotlin.test.assertTrue
 
 class ParallelCodeReviewEvidenceBoundaryTest {
   @Test
-  fun `preparation delivers a non-primary lane whole-file expansion through the final broker`() {
-    for (scope in listOf(ParallelReviewScope.BRANCH, ParallelReviewScope.STAGED, ParallelReviewScope.UNSTAGED)) {
-      val recorder = ReviewRecorder()
-      val initial = harnessRequest(
-        scope = scope,
-        reviewRunId = "rvw-236-prelaunch",
-        prelaunchExpansions = listOf(
-          ReviewPrelaunchExpansion("bill-kotlin-code-review-security", "src/secure/Auth.kt", "inspect direct caller"),
-        ),
-      )
-      val resolver = reviewFileSystemDiffResolver()
-      fun git(vararg args: String) = assertNotNull(
-        resolver.runProcess(
-          listOf("git", "-c", "commit.gpgsign=false", "-c", "tag.gpgsign=false") + args,
-          initial.repoRoot,
-        ),
-      )
-      val (base, head) = prepareExpansionRepository(initial, resolver)
-      val expected = if (scope == ParallelReviewScope.UNSTAGED) "worktree caller body" else "indexed caller body"
-      val request = initial.copy(baseRevision = base, headRevision = head)
-      val result = reviewHarness(
-        ReviewHarnessConfig(
-          manifests = listOf(
-            reviewPack(
-              "kotlin",
-              listOf("architecture", "security"),
-              routingSignals = listOf("*.kt"),
-            ).copy(
-              laneConditions = mapOf(
-                "architecture" to ReviewLaneCondition(path = listOf("src/core/")),
-                "security" to ReviewLaneCondition(path = listOf("src/secure/")),
-              ),
-            ),
-          ),
-          diff = when (scope) {
-            ParallelReviewScope.STAGED -> git("diff", "--cached")
-            ParallelReviewScope.UNSTAGED -> git("diff")
-            else -> git("diff", base, head)
-          },
-          simulateEvidenceReads = false,
-          diffResolver = resolver,
-          response = { launch ->
-            val protocol = launch.skillRunRequest.nativeReviewOperations
-              ?: return@ReviewHarnessConfig RecordedWorkerResponse(stdout = "NO_FINDINGS")
-            val broker = assertNotNull(launch.skillRunRequest.reviewEvidenceBroker)
-            assertExpandedEvidence(protocol, broker, expected)
-            RecordedWorkerResponse(stdout = "verdict: approved")
-          },
-        ),
-        recorder,
-      ).run(request)
-      assertTrue(result.lane1.success)
-      assertTrue(assertNotNull(result.lane1.accounting).remainingEvidence.isEmpty())
-    }
-  }
-
-  @Test
-  fun `inline prelaunch expansion authorizes on the single parent broker`() {
-    val fixture = prepareChunkedInlineRepository("review-chunked-expansion")
-    var expansionChunks = 0
-    val result = reviewHarness(
-      ReviewHarnessConfig(
-        manifests = chunkedInlineArchitectureSecurityManifests(),
-        diff = fixture.git("diff", "--cached"),
-        diffResolver = fixture.resolver,
-        simulateEvidenceReads = false,
-        response = { launch ->
-          if (launch.skillRunRequest.issueKey != "code-review") {
-            return@ReviewHarnessConfig RecordedWorkerResponse()
-          }
-          val broker = assertNotNull(launch.skillRunRequest.reviewEvidenceBroker)
-          assertTrue(discoveryHasAuthorizedExpansion(BrokerBackedNativeReviewOperationProtocol(broker)))
-          expansionChunks += 1
-          simulateGovernedEvidenceReads(launch.skillRunRequest)
-          RecordedWorkerResponse(stdout = "verdict: approved")
-        },
-      ),
-      fixture.recorder,
-    ).run(
-      harnessRequest(
-        repoRoot = fixture.repoRoot,
-        reviewRunId = "rvw-236-chunked-expansion",
-        codeReviewMode = CodeReviewExecutionMode.INLINE,
-        scope = ParallelReviewScope.STAGED,
-        prelaunchExpansions = listOf(
-          ReviewPrelaunchExpansion("bill-kotlin-code-review-security", fixture.expansionPath, "inspect caller"),
-        ),
-      ).copy(baseRevision = fixture.revision, headRevision = fixture.revision),
-    )
-    assertEquals(1, fixture.recorder.parentLaunches.count { it.skillRunRequest.issueKey == "code-review" })
-    assertEquals(1, expansionChunks)
-    assertTrue(result.lane1.success)
-    assertTrue(assertNotNull(result.coverage).isCleanCoverage)
-  }
-
-  @Test
-  fun `inline parent stays incomplete when required evidence remains undelivered`() {
-    val fixture = prepareChunkedInlineRepository("review-chunked-partial")
-    val result = reviewHarness(
-      ReviewHarnessConfig(
-        manifests = chunkedInlineArchitectureSecurityManifests(),
-        diff = fixture.git("diff", "--cached"),
-        diffResolver = fixture.resolver,
-        simulateEvidenceReads = false,
-        response = { _ ->
-          RecordedWorkerResponse(stdout = "verdict: approved")
-        },
-      ),
-      fixture.recorder,
-    ).run(
-      harnessRequest(
-        repoRoot = fixture.repoRoot,
-        reviewRunId = "rvw-236-inline-partial",
-        codeReviewMode = CodeReviewExecutionMode.INLINE,
-        scope = ParallelReviewScope.STAGED,
-        prelaunchExpansions = listOf(
-          ReviewPrelaunchExpansion("bill-kotlin-code-review-security", fixture.expansionPath, "inspect caller"),
-        ),
-      ).copy(baseRevision = fixture.revision, headRevision = fixture.revision),
-    )
-
-    assertEquals(1, fixture.recorder.parentLaunches.count { it.skillRunRequest.issueKey == "code-review" })
-    assertFalse(result.lane1.success)
-    val accounting = assertNotNull(result.lane1.accounting)
-    assertEquals(ReviewLaneReviewDisposition.INCOMPLETE, accounting.reviewDisposition)
-    assertEquals("incomplete", accounting.terminalStatus)
-    assertEquals(null, accounting.terminalOutcome)
-    assertTrue(accounting.requiredEvidenceUnits > accounting.deliveredEvidenceUnits)
-    assertFalse(assertNotNull(result.coverage).isCleanCoverage)
-  }
-
-  private fun discoveryHasAuthorizedExpansion(protocol: NativeReviewOperationProtocol): Boolean {
-    var cursor: String? = null
-    do {
-      val page = protocol.discover(ReviewEvidenceDiscoveryRequest(cursor))
-      if (page.entries.any { it.expansionId != null }) return true
-      cursor = page.nextCursor
-    } while (cursor != null)
-    return false
-  }
-
-  private fun prepareExpansionRepository(
-    initial: ParallelCodeReviewRequest,
-    resolver: DiffResolverPort,
-  ): Pair<String, String> {
-    val file = initial.repoRoot.resolve("src/secure/Auth.kt")
-    Files.createDirectories(file.parent)
-    fun git(vararg args: String) = assertNotNull(
-      resolver.runProcess(
-        listOf("git", "-c", "commit.gpgsign=false", "-c", "tag.gpgsign=false") + args,
-        initial.repoRoot,
-      ),
-    )
-    git("init", "--quiet")
-    val core = initial.repoRoot.resolve("src/core/Core.kt")
-    Files.createDirectories(core.parent)
-    Files.writeString(core, "committed core")
-    Files.writeString(file, "committed caller body")
-    Files.createSymbolicLink(initial.repoRoot.resolve("unrelated-link"), file)
-    val submodule = initial.repoRoot.resolve("unrelated-submodule")
-    Files.createDirectories(submodule)
-    git("-C", submodule.toString(), "init", "--quiet")
-    git(
-      "-C", submodule.toString(), "-c", "user.name=Test", "-c", "user.email=test@example.invalid",
-      "commit", "--allow-empty", "--quiet", "-m", "submodule",
-    )
-    git("add", ".")
-    git("-c", "user.name=Test", "-c", "user.email=test@example.invalid", "commit", "--quiet", "-m", "base")
-    val base = git("rev-parse", "HEAD").trim()
-    Files.writeString(core, "indexed core")
-    Files.writeString(file, "indexed caller body")
-    git("add", ".")
-    if (initial.scope == ParallelReviewScope.BRANCH) {
-      git("-c", "user.name=Test", "-c", "user.email=test@example.invalid", "commit", "--quiet", "-m", "change")
-    }
-    val head = git("rev-parse", "HEAD").trim()
-    Files.writeString(core, "worktree core")
-    Files.writeString(file, "worktree caller body")
-    return base to head
-  }
-
-  private fun assertExpandedEvidence(
-    protocol: NativeReviewOperationProtocol,
-    broker: ReviewEvidenceBroker,
-    expected: String,
-  ) {
-    val lane = broker.accounting().lane
-    val page = protocol.discover(ReviewEvidenceDiscoveryRequest())
-    val expansion = page.entries.single { it.expansionId != null }
-    assertTrue(expansion.owners.single().lane.endsWith("bill-kotlin-code-review-security"))
-    assertNotEquals(lane, expansion.owners.single().lane)
-    val authorization = assertNotNull(protocol.expansionById(assertNotNull(expansion.expansionId)))
-    assertEquals(page.assignmentDigest, authorization.assignmentDigest)
-    assertNotEquals(page.assignmentDigest, expansion.owners.single().assignmentDigest)
-    page.entries.forEach { entry ->
-      val response = protocol.read(
-        ReviewEvidenceBatchRequest.of(
-          ReviewEvidenceRequest(
-            lane,
-            entry.path,
-            selector = entry.selector,
-            authorizedExpansion = entry.expansionId?.let(protocol::expansionById),
-            reachabilityReason = entry.expansionId?.let(protocol::expansionById)?.reachabilityReason,
-          ),
-        ),
-      )
-      if (entry == expansion) assertEquals(expected, response.results.single().content)
-      protocol.confirmDelivery(assertNotNull(response.deliveryReceipt))
-    }
-  }
-
-  @Test
-  fun `preparation rejects a tracked unavailable entry replaced between checkpoint snapshots`() {
-    val request = harnessRequest(scope = ParallelReviewScope.UNSTAGED)
-    val resolver = reviewFileSystemDiffResolver()
-    fun git(vararg args: String) = assertNotNull(
-      resolver.runProcess(
-        listOf("git", "-c", "commit.gpgsign=false", "-c", "tag.gpgsign=false") + args,
-        request.repoRoot,
-      ),
-    )
-    git("init", "--quiet")
-    Files.writeString(request.repoRoot.resolve("A.kt"), "old")
-    val link = request.repoRoot.resolve("unrelated-link")
-    Files.createSymbolicLink(link, Path.of("missing-target"))
-    git("add", ".")
-    git("-c", "user.name=Test", "-c", "user.email=test@example.invalid", "commit", "--quiet", "-m", "base")
-    val head = git("rev-parse", "HEAD").trim()
-    Files.writeString(request.repoRoot.resolve("A.kt"), "changed")
-    var snapshots = 0
-    val changingResolver = object : DiffResolverPort by resolver {
-      override fun reviewWorktreeFileIdentities(
-        root: Path,
-        paths: List<String>,
-      ): Map<
-        String,
-        ReviewCheckpointFileIdentity,
-        > {
-        val identities = resolver.reviewWorktreeFileIdentities(root, paths)
-        if (snapshots++ == 0) {
-          Files.delete(link)
-          Files.writeString(link, "replacement")
-        }
-        return identities
-      }
-    }
-    val recorder = ReviewRecorder()
-    val runner = reviewHarness(
-      ReviewHarnessConfig(
-        manifests = listOf(reviewPack("kotlin", listOf("security"), routingSignals = listOf("*.kt"))),
-        diff = git("diff"),
-        diffResolver = changingResolver,
-      ),
-      recorder,
-    )
-    val failure = assertFailsWith<DiffResolutionException> {
-      runner.run(request.copy(baseRevision = head, headRevision = head))
-    }
-    assertTrue(failure.message.orEmpty().contains("checkpoint changed"))
-    assertTrue(recorder.parentLaunches.isEmpty())
-  }
-
-  @Test
-  fun `approved worker prose settles only after every shared and unique obligation is delivered`() {
-    for (scenario in listOf("none", "refused", "partial", "full", "recovered")) {
-      val recorder = ReviewRecorder()
-      val complete = scenario in setOf("full", "recovered")
-      val result = reviewHarness(
-        ReviewHarnessConfig(
-          manifests = listOf(
-            reviewPack(
-              "kotlin",
-              listOf("architecture", "security"),
-              routingSignals = listOf("*.kt"),
-            ).copy(
-              laneConditions = mapOf(
-                "architecture" to ReviewLaneCondition(path = listOf("src/shared/", "src/core/")),
-                "security" to ReviewLaneCondition(path = listOf("src/shared/", "src/secure/")),
-              ),
-            ),
-          ),
-          diff = diffForPaths("src/shared/Shared.kt", "src/core/Core.kt", "src/secure/Auth.kt"),
-          simulateEvidenceReads = false,
-          response = { request ->
-            val protocol = request.skillRunRequest.nativeReviewOperations
-              ?: return@ReviewHarnessConfig RecordedWorkerResponse(stdout = "NO_FINDINGS")
-            val lane = assertNotNull(request.skillRunRequest.reviewEvidenceBroker).accounting().lane
-            deliverScenarioEvidence(protocol, lane, scenario)
-            RecordedWorkerResponse(stdout = "verdict: approved")
-          },
-        ),
-        recorder,
-      ).run(
-        harnessRequest(reviewRunId = "rvw-236-$scenario", codeReviewMode = CodeReviewExecutionMode.INLINE),
-      )
-      assertEquals(complete, result.lane1.success, scenario)
-      assertEquals(complete, assertNotNull(result.coverage).isCleanCoverage, scenario)
-      assertTrue(recorder.durableLanes.isNotEmpty())
-      assertTrue(
-        recorder.durableLanes.all { it.reviewDisposition == if (complete) "complete" else "incomplete" },
-        scenario,
-      )
-      val accounting = assertNotNull(result.lane1.accounting)
-      assertEquals(4, accounting.requiredEvidenceUnits)
-      assertEquals(
-        if (complete) {
-          4
-        } else if (scenario == "partial") {
-          2
-        } else {
-          0
-        },
-        accounting.deliveredEvidenceUnits,
-      )
-      assertTrue(recorder.savedAccounting.isNotEmpty())
-      if (scenario == "recovered") assertTrue(accounting.refusedOperationCount > 0)
-    }
-  }
-
-  @Test
-  fun `terminal broker failure after full delivery keeps every lane resumable`() {
-    val recorder = ReviewRecorder()
-    var exhaustBudget = true
-    val config = ReviewHarnessConfig(
-      manifests = listOf(reviewPack("kotlin", listOf("architecture", "security"), routingSignals = listOf("*.kt"))),
-      diff = diffForPaths("src/shared/Shared.kt"),
-      simulateEvidenceReads = false,
-      response = { launch ->
-        val protocol = launch.skillRunRequest.nativeReviewOperations
-          ?: return@ReviewHarnessConfig RecordedWorkerResponse(stdout = "NO_FINDINGS")
-        val broker = assertNotNull(launch.skillRunRequest.reviewEvidenceBroker)
-        val lane = broker.accounting().lane
-        deliverScenarioEvidence(protocol, lane, "full")
-        if (exhaustBudget) {
-          repeat(REVIEW_EVIDENCE_MAX_REQUESTS + 1) {
-            protocol.read(ReviewEvidenceBatchRequest.of(ReviewEvidenceRequest(lane, "Outside.kt")))
-          }
-        }
-        RecordedWorkerResponse(stdout = "verdict: approved")
-      },
-    )
-    val request = harnessRequest(
-      reviewRunId = "rvw-236-terminal-resume",
-      codeReviewMode = CodeReviewExecutionMode.INLINE,
-    )
-    val failed = reviewHarness(config, recorder).run(request)
-    val accounting = assertNotNull(failed.lane1.accounting)
-    assertEquals("evidence_requests", assertNotNull(accounting.terminalOutcome).budgetKind)
-    assertEquals(2, accounting.requiredEvidenceUnits)
-    assertEquals(accounting.requiredEvidenceUnits, accounting.deliveredEvidenceUnits)
-    assertTrue(accounting.remainingEvidence.isEmpty())
-    assertFalse(failed.lane1.success)
-    assertEquals(2, assertNotNull(failed.coverage).incompleteLanes.size)
-    assertEquals(2, recorder.durableLanes.size)
-    assertTrue(recorder.durableLanes.all { it.reviewDisposition == "incomplete" })
-    val launchesBeforeResume = recorder.parentLaunches.count { it.skillRunRequest.issueKey == "code-review" }
-
-    exhaustBudget = false
-    val resumed = reviewHarness(config, recorder).run(request)
-    assertEquals(
-      launchesBeforeResume + 1,
-      recorder.parentLaunches.count { it.skillRunRequest.issueKey == "code-review" },
-    )
-    assertTrue(resumed.lane1.success)
-    assertTrue(assertNotNull(resumed.coverage).isCleanCoverage)
-    assertTrue(recorder.durableLanes.all { it.reviewDisposition == "complete" })
-  }
-
-  private fun deliverScenarioEvidence(protocol: NativeReviewOperationProtocol, lane: String, scenario: String) {
-    if (scenario in setOf("refused", "recovered")) {
-      protocol.read(ReviewEvidenceBatchRequest.of(ReviewEvidenceRequest(lane, "Outside.kt")))
-    }
-    val entries = protocol.discover(ReviewEvidenceDiscoveryRequest()).entries
-    val reads = when (scenario) {
-      "partial" -> entries.filter { it.path == "src/shared/Shared.kt" }
-      "full", "recovered" -> entries
-      else -> emptyList()
-    }
-    reads.forEach { entry ->
-      val response = protocol.read(
-        ReviewEvidenceBatchRequest.of(
-          ReviewEvidenceRequest(lane, entry.path, selector = entry.selector),
-        ),
-      )
-      protocol.confirmDelivery(assertNotNull(response.deliveryReceipt))
-    }
-  }
-
-  @Test
-  fun `complete governed delivery clears an unreviewable launch bundle`() {
+  fun `broker bind failure emits unbound degradation and a non-success lane`() {
     val recorder = ReviewRecorder()
     val result = reviewHarness(
       ReviewHarnessConfig(
         manifests = listOf(reviewPack("kotlin", listOf("architecture"), routingSignals = listOf("*.kt"))),
-        diff = diffForChanges("src/Repo.kt" to "x".repeat(50_000)),
-        budget = ReviewContextBudgetPolicy.DEFAULT.copy(maxLaneLaunchBytes = 40_000),
+        diff = diffForPaths("src/Repo.kt"),
+        evidenceBrokerFactory = ReviewEvidenceBrokerFactory { error("broker construction failed") },
+      ),
+      recorder,
+    ).run(
+      harnessRequest(
+        reviewRunId = "rvw-195-unbound",
+        codeReviewMode = CodeReviewExecutionMode.INLINE,
+      ),
+    )
+
+    assertFalse(result.lane1.success)
+    assertEquals("governed evidence broker construction failed", result.lane1.failureReason)
+    val unbound = recorder.stageDegradations.filter {
+      it.reason == ReviewStageDegradationReason.EVIDENCE_BOUNDARY_UNBOUND_BROKER
+    }
+    assertEquals(1, unbound.size)
+    assertEquals(ReviewEvidenceBoundaryAccounting.GOVERNED_EVIDENCE_SEAM, unbound.single().seam)
+    assertEquals("unbound", unbound.single().actual)
+  }
+
+  @Test
+  fun `endpoint bind failure emits the unbound degradation and launches nothing`() {
+    val recorder = ReviewRecorder()
+    val result = reviewHarness(
+      ReviewHarnessConfig(
+        manifests = listOf(reviewPack("kotlin", listOf("architecture"), routingSignals = listOf("*.kt"))),
+        diff = diffForPaths("src/Repo.kt"),
+        evidenceEndpointBinder = object : GovernedReviewEvidenceEndpointBinder {
+          override fun bind(
+            lane: String,
+            protocol: NativeReviewOperationProtocol,
+            onEvidenceRead: (() -> Unit)?,
+          ): GovernedReviewEvidenceEndpointHandle = error("endpoint bind failed")
+        },
+        parentLaunch = { error("a governed review must not launch when its evidence endpoint is unbound") },
+      ),
+      recorder,
+    ).run(
+      harnessRequest(
+        reviewRunId = "rvw-195-endpoint-unbound",
+        codeReviewMode = CodeReviewExecutionMode.INLINE,
+      ),
+    )
+
+    assertFalse(result.lane1.success)
+    assertEquals("governed evidence broker endpoint failed", result.lane1.failureReason)
+    val unbound = recorder.stageDegradations.filter {
+      it.reason == ReviewStageDegradationReason.EVIDENCE_BOUNDARY_UNBOUND_BROKER
+    }
+    assertEquals(1, unbound.size)
+    assertEquals(ReviewEvidenceBoundaryAccounting.GOVERNED_EVIDENCE_SEAM, unbound.single().seam)
+  }
+
+  @Test
+  fun `governed launch with locators and zero authorized reads emits one unexercised-boundary record`() {
+    val recorder = ReviewRecorder()
+    reviewHarness(
+      ReviewHarnessConfig(
+        manifests = listOf(reviewPack("kotlin", listOf("architecture"), routingSignals = listOf("*.kt"))),
+        diff = diffForPaths("src/Repo.kt"),
         simulateEvidenceReads = false,
-        response = { launch ->
-          val protocol = launch.skillRunRequest.nativeReviewOperations
-            ?: return@ReviewHarnessConfig RecordedWorkerResponse(stdout = "verdict: approved")
-          val broker = assertNotNull(launch.skillRunRequest.reviewEvidenceBroker)
-          val lane = broker.accounting().lane
-          deliverScenarioEvidence(protocol, lane, "full")
-          RecordedWorkerResponse(stdout = "verdict: approved")
+      ),
+      recorder,
+    ).run(
+      harnessRequest(
+        reviewRunId = "rvw-195-unexercised",
+        codeReviewMode = CodeReviewExecutionMode.INLINE,
+      ),
+    )
+
+    val unexercised = recorder.stageDegradations.filter {
+      it.reason == ReviewStageDegradationReason.EVIDENCE_BOUNDARY_UNEXERCISED
+    }
+    assertEquals(1, unexercised.size)
+    assertEquals(ReviewEvidenceBoundaryAccounting.GOVERNED_EVIDENCE_SEAM, unexercised.single().seam)
+    assertEquals("authorized_reads=0", unexercised.single().actual)
+    assertEquals(1, recorder.parentLaunches.size)
+    assertNotNull(recorder.parentLaunches.single().skillRunRequest.reviewEvidenceBroker)
+  }
+
+  @Test
+  fun `a lane reporting an authorized read with zero evidence bytes suppresses the unexercised-boundary record`() {
+    val recorder = ReviewRecorder()
+    val defaults = ReviewHarnessConfig(
+      manifests = listOf(reviewPack("kotlin", listOf("architecture"), routingSignals = listOf("*.kt"))),
+      diff = diffForPaths("src/Repo.kt"),
+    )
+    val result = reviewHarness(
+      defaults.copy(
+        evidenceBrokerFactory = ReviewEvidenceBrokerFactory { binding ->
+          val inner = defaults.evidenceBrokerFactory.brokerFor(binding)
+          object : ReviewEvidenceBroker by inner {
+            override fun accounting() = inner.accounting().copy(authorizedReadCount = 1, evidenceBytes = 0)
+          }
         },
       ),
       recorder,
     ).run(
-      harnessRequest(reviewRunId = "rvw-236-unreviewable-launch", codeReviewMode = CodeReviewExecutionMode.INLINE),
+      harnessRequest(
+        reviewRunId = "rvw-195-zero-byte",
+        codeReviewMode = CodeReviewExecutionMode.INLINE,
+      ),
+    )
+
+    assertEquals(1, result.lane1.accounting?.authorizedReadCount)
+    assertEquals(0L, result.lane1.accounting?.evidenceBytes)
+    assertTrue(
+      recorder.stageDegradations.none {
+        it.reason == ReviewStageDegradationReason.EVIDENCE_BOUNDARY_UNEXERCISED
+      },
+    )
+  }
+
+  @Test
+  fun `parse rejection of an inadmissible path emits one rejected-candidate record carrying the count`() {
+    val recorder = ReviewRecorder()
+    val rejectedLocation =
+      "Outside path noted; no register gate.\nverdict: approved"
+    val result = reviewHarness(
+      ReviewHarnessConfig(
+        manifests = listOf(reviewPack("kotlin", listOf("architecture"), routingSignals = listOf("*.kt"))),
+        diff = diffForPaths("src/Repo.kt"),
+        response = { RecordedWorkerResponse(stdout = rejectedLocation) },
+      ),
+      recorder,
+    ).run(
+      harnessRequest(
+        reviewRunId = "rvw-195-rejected",
+        codeReviewMode = CodeReviewExecutionMode.INLINE,
+      ),
     )
 
     assertTrue(result.lane1.success)
-    assertTrue(assertNotNull(result.coverage).isCleanCoverage)
-    assertTrue(assertNotNull(result.lane1.accounting).remainingEvidence.isEmpty())
+    assertEquals(emptyList(), result.mergeResult.findings)
+    assertEquals(rejectedLocation, result.mergeResult.formattedOutput)
+    assertTrue(
+      recorder.stageDegradations.none {
+        it.reason == ReviewStageDegradationReason.REGISTER_CANDIDATES_REJECTED
+      },
+    )
+  }
+
+  @Test
+  fun `a governed review whose launcher never starts still tears down the bound endpoint`() {
+    val directory = Files.createTempDirectory("skill-bill-review-evidence-")
+    val socketPath = directory.resolve("evidence.sock")
+    val configPath = directory.resolve("mcp.json")
+    Files.createFile(socketPath)
+    Files.createFile(configPath)
+
+    val result = reviewHarness(
+      ReviewHarnessConfig(
+        manifests = listOf(reviewPack("kotlin", listOf("architecture"), routingSignals = listOf("*.kt"))),
+        diff = diffForPaths("src/Repo.kt"),
+        evidenceEndpointBinder = object : GovernedReviewEvidenceEndpointBinder {
+          override fun bind(
+            lane: String,
+            protocol: NativeReviewOperationProtocol,
+            onEvidenceRead: (() -> Unit)?,
+          ): GovernedReviewEvidenceEndpointHandle = object : GovernedReviewEvidenceEndpointHandle {
+            override val descriptor = GovernedReviewEvidenceEndpointDescriptor(
+              lane = lane,
+              socketPath = socketPath,
+              mcpConfigPath = configPath,
+              token = "unavailable-cli",
+            )
+
+            override fun close() {
+              Files.deleteIfExists(socketPath)
+              Files.deleteIfExists(configPath)
+              Files.deleteIfExists(directory)
+            }
+          }
+        },
+        response = { RecordedWorkerResponse(spawnFailed = true, processStarted = false, exitStatus = null) },
+      ),
+      ReviewRecorder(),
+    ).run(
+      harnessRequest(
+        reviewRunId = "rvw-195-unavailable-cli",
+        codeReviewMode = CodeReviewExecutionMode.INLINE,
+      ),
+    )
+
+    assertFalse(result.lane1.success)
+    assertFalse(Files.exists(socketPath))
+    assertFalse(Files.exists(directory))
+  }
+
+  @Test
+  fun `unsupported provider omits unbound-broker and unexercised evidence records`() {
+    val recorder = ReviewRecorder()
+    val result = reviewHarness(
+      ReviewHarnessConfig(
+        manifests = listOf(reviewPack("kotlin", listOf("architecture"), routingSignals = listOf("*.kt"))),
+        diff = diffForPaths("src/Repo.kt"),
+        parentLaunch = { request ->
+          UnsupportedAgentRunLaunch(
+            agent = InstallAgent.fromNormalizedId(request.invokedAgentId, label = "agentId"),
+            reason = "not configured for this repo",
+          )
+        },
+      ),
+      recorder,
+    ).run(
+      harnessRequest(
+        reviewRunId = "rvw-195-unsupported",
+        codeReviewMode = CodeReviewExecutionMode.INLINE,
+      ),
+    )
+
+    assertFalse(result.lane1.success)
+    assertEquals(UNSUPPORTED_PROVIDER_TERMINAL_STATUS.wireValue, result.lane1.accounting?.terminalStatus)
+    assertTrue(
+      recorder.stageDegradations.none {
+        it.reason == ReviewStageDegradationReason.EVIDENCE_BOUNDARY_UNBOUND_BROKER ||
+          it.reason == ReviewStageDegradationReason.EVIDENCE_BOUNDARY_UNEXERCISED
+      },
+    )
+  }
+
+  @Test
+  fun `bound unread parent lane does not hide the other lane unbound evidence record`() {
+    val recorder = ReviewRecorder()
+    val binds = AtomicInteger()
+    val defaults = ReviewHarnessConfig(
+      manifests = listOf(reviewPack("kotlin", listOf("architecture"), routingSignals = listOf("*.kt"))),
+      diff = diffForPaths("src/Repo.kt"),
+      simulateEvidenceReads = false,
+      response = { RecordedWorkerResponse(stdout = "verdict: approved") },
+    )
+    val result = reviewHarness(
+      defaults.copy(
+        evidenceBrokerFactory = ReviewEvidenceBrokerFactory { binding ->
+          binds.incrementAndGet()
+          defaults.evidenceBrokerFactory.brokerFor(binding)
+        },
+      ),
+      recorder,
+    ).run(
+      harnessRequest(
+        reviewRunId = "rvw-195-mixed-lanes",
+        codeReviewMode = CodeReviewExecutionMode.INLINE,
+      ),
+    )
+
+    assertEquals(1, binds.get(), "single-agent review binds one parent evidence surface")
+    assertTrue(result.lane1.success)
+    assertTrue(
+      recorder.stageDegradations.none {
+        it.reason == ReviewStageDegradationReason.EVIDENCE_BOUNDARY_UNBOUND_BROKER
+      },
+    )
+  }
+
+  @Test
+  fun `a lane reporting prose after reading no evidence still succeeds`() {
+    val recorder = ReviewRecorder()
+    val result = reviewHarness(
+      ReviewHarnessConfig(
+        manifests = listOf(reviewPack("kotlin", listOf("architecture"), routingSignals = listOf("*.kt"))),
+        diff = diffForPaths("src/Repo.kt"),
+        simulateEvidenceReads = false,
+        response = { RecordedWorkerResponse(stdout = "No issues noted.\nverdict: approved") },
+      ),
+      recorder,
+    ).run(
+      harnessRequest(
+        reviewRunId = "rvw-198-unread-clean",
+        codeReviewMode = CodeReviewExecutionMode.INLINE,
+      ),
+    )
+
+    assertEquals(0, result.lane1.accounting?.authorizedReadCount)
+    assertTrue(
+      result.lane1.success,
+      "prose-only review does not fail on unread evidence when the parent process completed",
+    )
+    assertEquals(emptyList(), result.mergeResult.findings)
+  }
+
+  @Test
+  fun `inline parent binds one evidence surface covering every routed area it was selected for`() {
+    val recorder = ReviewRecorder()
+    val bound = mutableListOf<Pair<ReviewEvidenceBrokerBinding, ReviewEvidenceBroker>>()
+    val defaults = ReviewHarnessConfig(
+      manifests = listOf(
+        reviewPack("kotlin", listOf("architecture", "security"), routingSignals = listOf("*.kt")).copy(
+          laneConditions = mapOf(
+            "architecture" to ReviewLaneCondition(path = listOf("src/core/")),
+            "security" to ReviewLaneCondition(path = listOf("src/secure/")),
+          ),
+        ),
+      ),
+      diff = diffForPaths("src/core/Repo.kt", "src/secure/Auth.kt"),
+    )
+    reviewHarness(
+      defaults.copy(
+        evidenceBrokerFactory = ReviewEvidenceBrokerFactory { binding ->
+          defaults.evidenceBrokerFactory.brokerFor(binding).also { bound += binding to it }
+        },
+      ),
+      recorder,
+    ).run(
+      harnessRequest(
+        reviewRunId = "rvw-198-inline-union",
+        codeReviewMode = CodeReviewExecutionMode.INLINE,
+      ),
+    )
+
+    val (binding, broker) = bound.single()
+    assertTrue(
+      binding.assignment.assignedPaths.containsAll(listOf("src/core/Repo.kt", "src/secure/Auth.kt")),
+      "the inline parent reaches the broker through one endpoint that stamps one lane, so its " +
+        "surface must cover every routed area; it covered ${binding.assignment.assignedPaths}",
+    )
+    // Admitting the path is only half of it: the surface must also carry the hunks behind it, or
+    // the lane is handed a path whose body it can never obtain. ReviewEvidenceBrokerBinding's own
+    // invariant then ties projectedHunks to exactly these ids, so a servable body follows.
+    assertEquals(
+      setOf("src/core/Repo.kt", "src/secure/Auth.kt"),
+      binding.projectedHunks.map { it.path }.toSet(),
+      "the merged surface must carry every routed area's hunks, not just its paths",
+    )
+    assertEquals(
+      binding.assignment.assignedHunks.toSet(),
+      binding.projectedHunks.map { it.hunkId }.toSet(),
+    )
+  }
+
+  @Test
+  fun `inline parent evidence allowance equals sum of per-lane derived caps not base times lane count`() {
+    val recorder = ReviewRecorder()
+    val bound = mutableListOf<ReviewEvidenceBrokerBinding>()
+    val defaults = ReviewHarnessConfig(
+      manifests = listOf(
+        reviewPack("kotlin", listOf("architecture", "security"), routingSignals = listOf("*.kt")).copy(
+          laneConditions = mapOf(
+            "architecture" to ReviewLaneCondition(path = listOf("src/core/")),
+            "security" to ReviewLaneCondition(path = listOf("src/secure/")),
+          ),
+        ),
+      ),
+      diff = diffForChanges(
+        "src/core/Repo.kt" to "x".repeat(200_000),
+        "src/secure/Auth.kt" to "ok",
+      ),
+    )
+    reviewHarness(
+      defaults.copy(
+        evidenceBrokerFactory = ReviewEvidenceBrokerFactory { binding ->
+          defaults.evidenceBrokerFactory.brokerFor(binding).also { bound += binding }
+        },
+      ),
+      recorder,
+    ).run(
+      harnessRequest(
+        reviewRunId = "rvw-201-parent-derived-budget",
+        codeReviewMode = CodeReviewExecutionMode.INLINE,
+      ),
+    )
+
+    val parentBinding = bound.single()
+    val base = ReviewContextBudgetPolicy.DEFAULT.maxLaneEvidenceBytes
+    assertNotEquals(base * 2, parentBinding.budget.maxLaneEvidenceBytes)
+    assertTrue(parentBinding.budget.maxLaneEvidenceBytes < base * 2)
+  }
+
+  @Test
+  fun `broker lane evidence refusal reports incomplete naming only denied units`() {
+    val recorder = ReviewRecorder()
+    val result = reviewHarness(
+      ReviewHarnessConfig(
+        manifests = listOf(reviewPack("kotlin", listOf("architecture"), routingSignals = listOf("*.kt"))),
+        diff = diffForChanges(
+          "src/A.kt" to "a",
+          "src/B.kt" to "b".repeat(200),
+        ),
+        evidenceBrokerFactory = brokerDenyingUnit("src/B.kt"),
+      ),
+      recorder,
+    ).run(
+      harnessRequest(
+        reviewRunId = "rvw-201-broker-refusal",
+        codeReviewMode = CodeReviewExecutionMode.INLINE,
+      ),
+    )
+
+    assertTrue(result.lane1.success)
+    val accounting = assertNotNull(result.lane1.accounting)
+    assertEquals(ReviewLaneReviewDisposition.INCOMPLETE, accounting.reviewDisposition)
+    assertEquals(LANE_EVIDENCE_BYTES_DIMENSION, accounting.budgetDimension)
+    assertEquals(1, accounting.unreviewedUnits.size)
+    assertTrue(accounting.unreviewedUnits.single().endsWith("@src/B.kt"))
+    assertFalse(accounting.unreviewedUnits.any { it.endsWith("@src/A.kt") })
+    val coverage = assertNotNull(result.coverage)
+    assertFalse(coverage.isCleanCoverage)
   }
 
   @Test
@@ -455,7 +442,10 @@ class ParallelCodeReviewEvidenceBoundaryTest {
       ),
       recorder,
     ).run(
-      harnessRequest(reviewRunId = "rvw-201-broker-clean", codeReviewMode = CodeReviewExecutionMode.INLINE),
+      harnessRequest(
+        reviewRunId = "rvw-201-broker-clean",
+        codeReviewMode = CodeReviewExecutionMode.INLINE,
+      ),
     )
 
     assertTrue(result.lane1.success)

@@ -79,14 +79,19 @@ class GoalRunnerFeatureTaskRuntimeIntegrationTest {
     )
 
     val child = assertIs<FeatureTaskRuntimeRunReport.Completed>(parity.childReports.single())
-    assertEquals("complete", child.subtaskOutcome?.status)
+    assertEquals(GoalRunnerTerminalStatus.COMPLETE, child.subtaskOutcome?.status)
     assertIs<GoalRunnerRunReport.Completed>(parity.report)
   }
 
   @Test
   fun `authoritative terminal fields are preserved for complete blocked and failed child reports`() {
     val completeRun = goalRunForChildReport(
-      completedChildReport(status = "complete", commitSha = "sha-complete", reason = null, step = "commit_push"),
+      completedChildReport(
+        status = GoalRunnerTerminalStatus.COMPLETE,
+        commitSha = "sha-complete",
+        reason = null,
+        step = "commit_push",
+      ),
     )
     assertIs<GoalRunnerRunReport.Completed>(completeRun.first)
     val complete = completeRun.second
@@ -98,7 +103,7 @@ class GoalRunnerFeatureTaskRuntimeIntegrationTest {
 
     val blockedRun = goalRunForChildReport(
       completedChildReport(
-        status = "blocked",
+        status = GoalRunnerTerminalStatus.BLOCKED,
         commitSha = "sha-blocked",
         reason = "durable reason",
         step = "implement",
@@ -140,7 +145,7 @@ class GoalRunnerFeatureTaskRuntimeIntegrationTest {
     val outcomes = RecordingOutcomeStore().apply { seedReviewState(workflowId) }
     val phaseLauncher = defaultPhaseAwareLauncher()
     val gitOperations = RecordingWorkflowGitOperations(currentBranchValue = "feat/SKILL-56-goal")
-      .apply { headCommitShaValue = "0".repeat(40) }
+      .apply { headCommitShaValue = "goal-child-commit" }
     val runtime = runnerHarness(
       RuntimeHarnessConfig(
         branchSetup = BranchSetupTestConfig(
@@ -167,7 +172,7 @@ class GoalRunnerFeatureTaskRuntimeIntegrationTest {
       ),
     )
 
-    assertIs<GoalRunnerRunReport.Completed>(report, report.toString())
+    assertIs<GoalRunnerRunReport.Completed>(report)
     val reviewPrompts = phaseLauncher.requests
       .mapNotNull { it.skillRunRequest.promptOverride }
       .filter { it.contains("Phase: review") }
@@ -220,7 +225,7 @@ class GoalRunnerFeatureTaskRuntimeIntegrationTest {
       ),
     )
 
-    assertIs<GoalRunnerRunReport.Completed>(report, report.toString())
+    assertIs<GoalRunnerRunReport.Completed>(report)
     val launched = phaseLauncher.requests.map {
       phaseIdFromPrompt(requireNotNull(it.skillRunRequest.promptOverride))
     }
@@ -298,7 +303,7 @@ class GoalRunnerFeatureTaskRuntimeIntegrationTest {
     assertIs<GoalRunnerRunReport.Stopped>(parity.report)
     val blocked = assertNotNull(parity.blockedChildReason())
     assertContains(blocked, "Audit made no progress")
-    assertContains(blocked, "unresolved criterion set did not shrink")
+    assertContains(blocked, "repository fingerprint is unchanged")
     assertTrue(parity.runtime.recorder.loadPhaseRecords(WORKFLOW_ID).orEmpty()["validate"] == null)
   }
 
@@ -322,8 +327,8 @@ class GoalRunnerFeatureTaskRuntimeIntegrationTest {
       assertIs<GoalRunnerRunReport.Completed>(parity.report)
       parity.runtime.goalChildObservation(parity.childReports.last(), parity.authoritativeOutcome()).also {
         assertEquals(
-          standaloneObservation.withoutCommitIdentities(),
-          it.withoutCommitIdentities(),
+          standaloneObservation.copy(reviewComposition = it.reviewComposition),
+          it,
           "standalone and goal-child observations must match",
         )
         assertReviewCompositionParity(standaloneObservation, it)
@@ -387,7 +392,7 @@ private fun RunnerHarness.goalChildObservation(
         prompt
           .replace(Regex("for issue SKILL-\\d+\\."), "for issue <issue>.")
           .substringAfter("### from: audit\n")
-          .substringBefore("### prior_gap_memory")
+          .substringBefore("### from:")
           .trim()
       },
     reviewComposition = launcher.requests.mapNotNull { it.skillRunRequest.promptOverride }
@@ -422,7 +427,7 @@ private fun FeatureTaskRuntimeRunReport.terminalObservation(fallbackCommitSha: S
   }
   return if (outcome != null) {
     TerminalObservation(
-      outcome.status,
+      outcome.status.wireValue,
       outcome.blockedReason,
       outcome.commitSha,
       outcome.workflowId,
@@ -493,7 +498,7 @@ private fun standaloneAndGoalChildParity(
   acceptanceCriteria: List<String> = listOf("AC-1", "AC-2"),
 ): GoalChildParityRun {
   val standaloneGit = gitOperations().apply {
-    if (headCommitShaValue.isBlank()) headCommitShaValue = "0".repeat(40)
+    if (headCommitShaValue.isBlank()) headCommitShaValue = "goal-child-commit"
   }
   val standalone = runnerHarness(
     RuntimeHarnessConfig(
@@ -515,21 +520,13 @@ private fun standaloneAndGoalChildParity(
     ),
   )
   assertEquals(goalChild.childReports.size, goalChild.continuationRequestCount)
-  val standaloneObservation = standalone.goalChildObservation(standaloneReport)
-  val childObservation = goalChild.runtime.goalChildObservation(
-    goalChild.childReports.last(),
-    goalChild.authoritativeOutcome(),
-  )
-  listOf(standalone to standaloneObservation, goalChild.runtime to childObservation).forEach { (runtime, observation) ->
-    if (observation.terminalReport.status == "complete") {
-      assertEquals(runtime.gitOperations.headCommitShaValue, observation.terminalReport.commitSha)
-      assertEquals(observation.terminalReport, observation.authoritativeOutcome)
-    }
-  }
   assertEquals(
-    standaloneObservation.withoutCommitIdentities(),
-    childObservation.withoutCommitIdentities(),
-    "standalone and goal-child durable behavior must match independently of checkpoint identities",
+    standalone.goalChildObservation(standaloneReport).copy(
+      reviewComposition = goalChild.runtime
+        .goalChildObservation(goalChild.childReports.last(), goalChild.authoritativeOutcome()).reviewComposition,
+    ),
+    goalChild.runtime.goalChildObservation(goalChild.childReports.last(), goalChild.authoritativeOutcome()),
+    "standalone and goal-child durable scenario observations must match",
   )
   assertReviewCompositionParity(
     standalone.goalChildObservation(standaloneReport),
@@ -546,14 +543,6 @@ private fun standaloneAndGoalChildParity(
   return goalChild
 }
 
-private fun GoalChildObservation.withoutCommitIdentities(): GoalChildObservation = copy(
-  persistedOutputs = persistedOutputs.mapValues { (_, output) ->
-    output.replace(Regex("[0-9a-f]{40}"), "<commit>")
-  },
-  terminalReport = terminalReport.copy(commitSha = terminalReport.commitSha?.let { "<commit>" }),
-  authoritativeOutcome = authoritativeOutcome.copy(commitSha = authoritativeOutcome.commitSha?.let { "<commit>" }),
-)
-
 private fun assertReviewCompositionParity(standalone: GoalChildObservation, goalChild: GoalChildObservation) {
   assertEquals(standalone.reviewComposition.size, goalChild.reviewComposition.size)
   assertEquals(standalone.reviewComposition, goalChild.reviewComposition)
@@ -564,7 +553,7 @@ private fun assertReviewCompositionParity(standalone: GoalChildObservation, goal
 }
 
 private fun completedChildReport(
-  status: String,
+  status: GoalRunnerTerminalStatus,
   commitSha: String?,
   reason: String?,
   step: String,
@@ -627,7 +616,7 @@ private fun goalChildParityRun(
   config: GoalChildParityConfig = GoalChildParityConfig(),
 ): GoalChildParityRun {
   if (config.ensureCommitSha && config.gitOperations.headCommitShaValue.isBlank()) {
-    config.gitOperations.headCommitShaValue = "0".repeat(40)
+    config.gitOperations.headCommitShaValue = "goal-child-commit"
   }
   val outcomes = RecordingOutcomeStore().apply { seedReviewState(WORKFLOW_ID) }
   val runtime = runnerHarness(
@@ -711,7 +700,7 @@ private fun authoritativeTerminalOutcome(
   }
   if (subtaskOutcome != null) {
     return GoalRunnerStoredOutcome(
-      status = GoalRunnerTerminalStatus.valueOf(subtaskOutcome.status.uppercase()),
+      status = subtaskOutcome.status,
       workflowId = subtaskOutcome.workflowId,
       commitSha = subtaskOutcome.commitSha,
       blockedReason = subtaskOutcome.blockedReason,

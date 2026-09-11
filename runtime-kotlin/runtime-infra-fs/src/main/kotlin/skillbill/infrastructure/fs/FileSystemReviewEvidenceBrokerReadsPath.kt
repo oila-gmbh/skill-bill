@@ -10,20 +10,9 @@ import java.nio.file.LinkOption.NOFOLLOW_LINKS
 import java.nio.file.Path
 import java.security.MessageDigest
 
-private const val CHECKPOINT_DIGEST_BUFFER_BYTES = 8192
-
 internal fun checkpointDigest(root: Path, path: String): String? {
   val real = resolveRepositoryFile(root, path) ?: return null
-  val digest = MessageDigest.getInstance("SHA-256")
-  Files.newInputStream(real, NOFOLLOW_LINKS).use { input ->
-    val buffer = ByteArray(CHECKPOINT_DIGEST_BUFFER_BYTES)
-    while (true) {
-      val count = input.read(buffer)
-      if (count < 0) break
-      digest.update(buffer, 0, count)
-    }
-  }
-  return digest.digest().joinToString("") { "%02x".format(it) }
+  return digest(Files.readAllBytes(real))
 }
 
 internal fun digest(bytes: ByteArray): String = MessageDigest.getInstance("SHA-256").digest(bytes)
@@ -48,24 +37,24 @@ internal fun validateRepositoryMapping(root: Path, repositoryPath: String) {
 }
 
 internal fun resolveRepositoryFile(root: Path, normalized: String): Path? {
-  val realRoot = root.toRealPath()
-  val candidate = realRoot.resolve(normalized).normalize()
-  require(candidate.startsWith(realRoot)) { "Evidence path escapes the repository." }
-  var component = realRoot
-  realRoot.relativize(candidate).forEach { segment ->
+  val candidate = root.resolve(normalized).normalize()
+  require(candidate.startsWith(root)) { "Evidence path escapes the repository." }
+  var component = root
+  root.relativize(candidate).forEach { segment ->
     component = component.resolve(segment)
     if (!Files.exists(component, NOFOLLOW_LINKS)) return null
     require(!Files.isSymbolicLink(component)) { "Evidence paths must not contain symbolic links." }
   }
   val real = candidate.toRealPath()
-  require(real.startsWith(realRoot) && Files.isRegularFile(real)) { "Evidence path must be a repository file." }
+  require(real.startsWith(root) && Files.isRegularFile(real)) { "Evidence path must be a repository file." }
   return real
 }
 
-internal fun unavailableEvidence(state: FileSystemReviewEvidenceBrokerReadState, path: String) = forbiddenResult(
-  ForbiddenReviewOperation("evidence_unavailable", path, "Evidence is unavailable at the selected review coordinates."),
-  state.cumulativeBytes,
-  state.expansionLedger.size,
+internal fun unavailableResult(cumulativeBytes: Long, expansionCount: Int) = ReviewEvidenceResult(
+  content = null,
+  bytes = 0,
+  cumulativeBytes = cumulativeBytes,
+  expansionCount = expansionCount,
 )
 
 internal fun forbiddenResult(forbidden: ForbiddenReviewOperation, cumulativeBytes: Long, expansionCount: Int) =

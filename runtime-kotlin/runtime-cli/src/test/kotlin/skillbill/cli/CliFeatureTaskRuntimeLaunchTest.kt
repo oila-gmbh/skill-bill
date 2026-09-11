@@ -41,17 +41,17 @@ class CliFeatureTaskRuntimeLaunchTest {
       .map { it.skillRunRequest.promptOverride.orEmpty() }
       .filter { PHASE_LINE.containsMatchIn(it) }
       .forEach { prompt ->
-        val firstGuidance = "First selected guidance."
-        val lastGuidance = "Last selected guidance."
-        assertContains(prompt, firstGuidance)
-        assertContains(prompt, lastGuidance)
+        val firstHeader = "### agent_addon_first_helper (addon_content:first-helper)"
+        val lastHeader = "### agent_addon_last_helper (addon_content:last-helper)"
+        assertContains(prompt, firstHeader)
+        assertContains(prompt, lastHeader)
         assertContains(prompt, "First selected guidance.")
         assertContains(prompt, "Last selected guidance.")
         assertFalse(prompt.contains(firstManifest), prompt)
         assertFalse(prompt.contains(lastManifest), prompt)
         assertFalse(prompt.contains("middle-unselected"), prompt)
         assertFalse(prompt.contains("UNSELECTED SENTINEL"), prompt)
-        assertTrue(prompt.indexOf(firstGuidance) < prompt.indexOf(lastGuidance), prompt)
+        assertTrue(prompt.indexOf(firstHeader) < prompt.indexOf(lastHeader), prompt)
       }
     val driverPrompts = selectedLauncher.requests
       .map { it.skillRunRequest.promptOverride.orEmpty() }
@@ -107,11 +107,11 @@ class CliFeatureTaskRuntimeLaunchTest {
     assertEquals(AGENT_LAUNCHED_PHASES.dropWhile { it != "implement" }, resumedLauncher.phaseOrder())
     resumedLauncher.requests.forEach { request ->
       val prompt = request.skillRunRequest.promptOverride.orEmpty()
-      val firstGuidance = "First selected guidance."
-      val lastGuidance = "Last selected guidance."
-      assertContains(prompt, firstGuidance)
-      assertContains(prompt, lastGuidance)
-      assertTrue(prompt.indexOf(firstGuidance) < prompt.indexOf(lastGuidance), prompt)
+      val firstHeader = "### agent_addon_first_helper (addon_content:first-helper)"
+      val lastHeader = "### agent_addon_last_helper (addon_content:last-helper)"
+      assertContains(prompt, firstHeader)
+      assertContains(prompt, lastHeader)
+      assertTrue(prompt.indexOf(firstHeader) < prompt.indexOf(lastHeader), prompt)
       assertFalse(prompt.contains("middle-unselected"), prompt)
       assertFalse(prompt.contains("UNSELECTED RESUME SENTINEL"), prompt)
     }

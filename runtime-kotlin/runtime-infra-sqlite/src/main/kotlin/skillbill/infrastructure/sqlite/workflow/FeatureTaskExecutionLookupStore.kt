@@ -6,7 +6,6 @@ import skillbill.ports.workflow.FeatureTaskExecutionLookupRepository
 import skillbill.ports.workflow.model.FeatureTaskExecutionIdentity
 import skillbill.ports.workflow.model.FeatureTaskWorkflowCandidate
 import java.sql.Connection
-import java.sql.ResultSet
 
 internal class FeatureTaskExecutionLookupStore(
   private val connection: Connection,
@@ -77,16 +76,6 @@ internal class FeatureTaskExecutionLookupStore(
     "goal_child",
   )
 
-  override fun findGoalChildFeatureTaskCandidatesForExecution(
-    normalizedIssueKey: String,
-    repositoryIdentity: String,
-  ): List<FeatureTaskWorkflowCandidate> = findFeatureTaskCandidates(
-    normalizedIssueKey,
-    repositoryIdentity,
-    "goal_child",
-    includeUnknownOwnership = true,
-  )
-
   override fun countGoalChildIdentities(normalizedIssueKey: String): Int = connection.prepareStatement(
     """
     SELECT COUNT(*) AS child_count
@@ -102,42 +91,13 @@ internal class FeatureTaskExecutionLookupStore(
     normalizedIssueKey: String,
     repositoryIdentity: String,
     routeScope: String,
-    includeUnknownOwnership: Boolean = false,
   ): List<FeatureTaskWorkflowCandidate> = connection.prepareStatement(
-    candidateLookupSql(routeScope, includeUnknownOwnership),
-  ).use { statement ->
-    statement.setString(LOOKUP_WORKFLOW_ISSUE_KEY_INDEX, normalizedIssueKey)
-    statement.setString(LOOKUP_IDENTITY_ISSUE_KEY_INDEX, normalizedIssueKey)
-    statement.setString(LOOKUP_LEGACY_ROUTE_SCOPE_INDEX, routeScope)
-    statement.setString(LOOKUP_REPOSITORY_IDENTITY_INDEX, repositoryIdentity)
-    statement.setString(LOOKUP_ROUTE_SCOPE_INDEX, routeScope)
-    statement.executeQuery().use(::readFeatureTaskCandidates)
-  }
-
-  private fun candidateLookupSql(routeScope: String, includeUnknownOwnership: Boolean): String = """
+    """
     SELECT workflows.workflow_id
     FROM feature_task_workflows AS workflows
     LEFT JOIN feature_task_execution_identities AS identities
       ON identities.workflow_id = workflows.workflow_id
-    WHERE (
-        UPPER(workflows.issue_key) = ?
-        OR identities.normalized_issue_key = ?
-        ${if (includeUnknownOwnership) {
-    """
-        OR (
-          NULLIF(trim(workflows.issue_key), '') IS NULL
-          AND identities.workflow_id IS NULL
-        )
-        """
-  } else {
-    ""
-  }}
-        OR (
-          NULLIF(trim(workflows.issue_key), '') IS NULL
-          AND identities.workflow_id IS NULL
-          AND workflows.artifacts_json NOT LIKE '%"decomposition_runtime"%'
-        )
-      )
+    WHERE (UPPER(workflows.issue_key) = ? OR identities.normalized_issue_key = ?)
       AND (
         (
           ? = 'standalone'
@@ -145,25 +105,26 @@ internal class FeatureTaskExecutionLookupStore(
           AND workflows.artifacts_json NOT LIKE '%"decomposition_runtime"%'
         )
         OR (identities.repository_identity = ? AND identities.route_scope = ?)
-        ${if (includeUnknownOwnership && routeScope == "goal_child") {
-    """
-        OR identities.workflow_id IS NULL
-        """
-  } else {
-    ""
-  }}
       )
     ORDER BY identities.created_at, workflows.workflow_id
-  """.trimIndent()
-
-  private fun readFeatureTaskCandidates(rows: ResultSet): List<FeatureTaskWorkflowCandidate> = buildList {
-    while (rows.next()) {
-      val workflowId = rows.getString("workflow_id")
-      val workflow = connection.getFeatureTaskWorkflowSnapshotRow(workflowId)
-        ?: throw InvalidWorkflowStateSchemaError(
-          "Feature-task identity '$workflowId' has no workflow row.",
-        )
-      add(FeatureTaskWorkflowCandidate(connection.featureTaskIdentity(workflowId), workflow))
+    """.trimIndent(),
+  ).use { statement ->
+    statement.setString(LOOKUP_WORKFLOW_ISSUE_KEY_INDEX, normalizedIssueKey)
+    statement.setString(LOOKUP_IDENTITY_ISSUE_KEY_INDEX, normalizedIssueKey)
+    statement.setString(LOOKUP_LEGACY_ROUTE_SCOPE_INDEX, routeScope)
+    statement.setString(LOOKUP_REPOSITORY_IDENTITY_INDEX, repositoryIdentity)
+    statement.setString(LOOKUP_ROUTE_SCOPE_INDEX, routeScope)
+    statement.executeQuery().use { rows ->
+      buildList {
+        while (rows.next()) {
+          val workflowId = rows.getString("workflow_id")
+          val workflow = connection.getFeatureTaskWorkflowRow(workflowId)
+            ?: throw InvalidWorkflowStateSchemaError(
+              "Feature-task identity '$workflowId' has no workflow row.",
+            )
+          add(FeatureTaskWorkflowCandidate(connection.featureTaskIdentity(workflowId), workflow))
+        }
+      }
     }
   }
 }

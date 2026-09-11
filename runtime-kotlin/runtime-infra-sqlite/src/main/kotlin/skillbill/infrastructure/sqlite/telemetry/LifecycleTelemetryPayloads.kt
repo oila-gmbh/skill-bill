@@ -1,6 +1,6 @@
 package skillbill.infrastructure.sqlite.telemetry
 
-import skillbill.contracts.JsonSupport
+import skillbill.contracts.JsonCodec
 import skillbill.review.normalizeRoutedSkill
 import skillbill.review.normalizeStackLabel
 import skillbill.telemetry.model.PrDescriptionGeneratedRecord
@@ -19,7 +19,7 @@ fun featureTaskRuntimeStartedPayload(row: Map<String, Any?>, level: String, salt
 fun featureTaskRuntimeFinishedPayload(row: Map<String, Any?>, level: String): Map<String, Any?> =
   linkedMapOf<String, Any?>("session_id" to row.stringOrEmpty("session_id")).apply {
     put("completion_status", row.stringOrEmpty("completion_status"))
-    put("completed_phase_ids", JsonSupport.parseArrayOrEmpty(row.stringOrEmpty("completed_phase_ids")))
+    put("completed_phase_ids", JsonCodec.parseArrayOrEmpty(row.stringOrEmpty("completed_phase_ids")))
     put("phase_outcomes", parsePhaseOutcomes(row.stringOrEmpty("phase_outcomes")))
     put("review_fix_iteration_count", row.intOrZero("review_fix_iteration_count"))
     put("audit_gap_iteration_count", row.intOrZero("audit_gap_iteration_count"))
@@ -47,8 +47,8 @@ fun featureTaskRuntimeFinishedPayload(row: Map<String, Any?>, level: String): Ma
     }
   }
 
-private fun parsePhaseOutcomes(rawValue: String): Map<String, Any?> = JsonSupport.parseObjectOrNull(rawValue)
-  ?.mapValues { (_, value) -> JsonSupport.jsonElementToValue(value) }
+private fun parsePhaseOutcomes(rawValue: String): Map<String, Any?> = JsonCodec.parseObjectOrNull(rawValue)
+  ?.mapValues { (_, value) -> JsonCodec.jsonElementToValue(value) }
   .orEmpty()
 
 fun qualityCheckStartedPayload(row: Map<String, Any?>): Map<String, Any?> {
@@ -77,7 +77,7 @@ fun qualityCheckFinishedPayload(row: Map<String, Any?>, level: String): Map<Stri
     put("result", row.stringOrEmpty("result").ifBlank { "skipped" })
     put("duration_seconds", durationSeconds(row))
     if (level == "full") {
-      put("failing_check_names", JsonSupport.parseArrayOrEmpty(row.stringOrEmpty("failing_check_names")))
+      put("failing_check_names", JsonCodec.parseArrayOrEmpty(row.stringOrEmpty("failing_check_names")))
       put("unsupported_reason", row.stringOrEmpty("unsupported_reason"))
     }
   }
@@ -103,7 +103,7 @@ fun featureVerifyFinishedPayload(row: Map<String, Any?>, level: String): Map<Str
     put("history_helpfulness", row.stringOrEmpty("history_helpfulness").ifBlank { "none" })
     put("duration_seconds", durationSeconds(row))
     if (level == "full") {
-      put("gaps_found", JsonSupport.parseArrayOrEmpty(row.stringOrEmpty("gaps_found")))
+      put("gaps_found", JsonCodec.parseArrayOrEmpty(row.stringOrEmpty("gaps_found")))
     }
   }
 

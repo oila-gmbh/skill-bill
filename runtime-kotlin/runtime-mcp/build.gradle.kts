@@ -49,6 +49,7 @@ dependencies {
   // helper so dedicated parity/violations tests can locate the canonical
   // schema YAML on disk without re-declaring a local helper (C8).
   testImplementation(testFixtures(project(":runtime-core")))
+  testImplementation(testFixtures(project(":runtime-ports")))
   testImplementation(libs.junit.jupiter)
   testImplementation(libs.kotlin.test)
 }

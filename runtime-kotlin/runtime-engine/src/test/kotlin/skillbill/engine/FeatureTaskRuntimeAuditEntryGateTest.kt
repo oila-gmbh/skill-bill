@@ -2,7 +2,8 @@ package skillbill.engine
 import skillbill.application.assertGateBlockNamesRule
 import skillbill.application.assertNoRawResponseSpan
 import skillbill.application.diagnostics.RejectedOutputDiagnosticService
-import skillbill.application.realFeatureTaskRuntimePhaseOutputValidatorimport skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_CONTRACT_VERSION
+import skillbill.application.realFeatureTaskRuntimePhaseOutputValidator
+import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_CONTRACT_VERSION
 import skillbill.engine.featuretask.AlwaysValidValidator
 import skillbill.engine.featuretask.FeatureTaskRuntimeRunState
 import skillbill.engine.featuretask.REVIEW_INVALIDATION_AGENT_ID
@@ -138,7 +139,7 @@ class FeatureTaskRuntimeAuditEntryGateTest {
 
     assertIs<FeatureTaskRuntimeRunReport.Blocked>(harness.runner.run(harness.request()))
     val tombstone = requireNotNull(harness.recorder.loadPhaseRecords(WORKFLOW_ID).orEmpty()["review"])
-    assertEquals("running", tombstone.status)
+    assertEquals("running", tombstone.status.wireValue)
     assertEquals("audit-gate-migration", tombstone.resolvedAgentId)
     assertEquals(null, tombstone.outputArtifact)
     assertEquals(null, tombstone.reviewPassNumber)
@@ -424,7 +425,7 @@ class FeatureTaskRuntimeAuditEntryGateTest {
             goalBranch = "feat/goal-branch",
             suppressPr = true,
             parentWorkflowId = "wfl-parent",
-            reviewBaseline = GoalSubtaskReviewBaseline("0".repeat(40)),
+            reviewBaseline = GoalSubtaskReviewBaseline("0".repeat(40), emptyList()),
           ),
         ),
       ).request(),

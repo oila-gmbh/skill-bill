@@ -7,7 +7,8 @@ import skillbill.infrastructure.fs.scaffold.authoring.discoverTargets
 import skillbill.infrastructure.fs.scaffold.authoring.renderAuthoringTarget
 import skillbill.infrastructure.fs.scaffold.platformpack.loadPlatformManifest
 import skillbill.infrastructure.fs.scaffold.pointer.renderPointer
-import skillbill.model.toPathimport java.nio.file.Files
+import skillbill.model.toPath
+import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.io.path.isDirectory
 import kotlin.io.path.relativeTo
@@ -105,10 +106,13 @@ private fun validatePointerRenderability(root: Path, issues: MutableList<String>
           return@forEach
         }
         pack.pointers.forEach { spec ->
-          runCatching { renderPointer(root, pack.packRoot, spec) }
+          runCatching { renderPointer(root, pack.packRoot.toPath(), spec) }
             .onFailure { error ->
               val pointerFile = pack.packRoot.resolve(spec.skillRelativeDir).resolve(spec.name)
-              issues += "${driftDisplayPath(root, pointerFile)}: cannot resolve platform.yaml pointer target " +
+              issues += "${driftDisplayPath(
+                root,
+                pointerFile.toPath(),
+              )}: cannot resolve platform.yaml pointer target " +
                 "'${spec.target}': ${error.message.orEmpty()}"
             }
         }

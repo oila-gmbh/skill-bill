@@ -3,6 +3,7 @@ package skillbill.workflow.taskruntime.model
 import skillbill.boundary.OpenBoundaryMap
 import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_PERSISTENCE_CONTRACT_VERSION
 import skillbill.error.InvalidWorkflowStateSchemaError
+import skillbill.workflow.model.WorkflowStepStatus
 
 /**
  * Durable per-phase record: one entry per phase id holding its latest persisted state.
@@ -16,7 +17,7 @@ import skillbill.error.InvalidWorkflowStateSchemaError
  */
 data class FeatureTaskRuntimePhaseRecord(
   val phaseId: String,
-  val status: String,
+  val status: WorkflowStepStatus,
   val attemptCount: Int,
   val startedAt: String,
   val firstStartedAt: String = startedAt,
@@ -50,9 +51,60 @@ data class FeatureTaskRuntimePhaseRecord(
   val launchedEffort: String? = null,
   val reviewRunId: String? = null,
 ) {
+  constructor(
+    phaseId: String,
+    status: String,
+    attemptCount: Int,
+    startedAt: String,
+    firstStartedAt: String = startedAt,
+    finishedAt: String? = null,
+    durationMillis: Long? = null,
+    resolvedAgentId: String,
+    executionOrigin: FeatureTaskRuntimePhaseExecutionOrigin = FeatureTaskRuntimePhaseExecutionOrigin.AGENT_EXECUTED,
+    outputArtifact: String? = null,
+    rejectedOutput: String? = null,
+    blockedReason: String? = null,
+    failureDisposition: FeatureTaskRuntimeFailureDisposition? = null,
+    fileManifestBefore: List<String> = emptyList(),
+    fileManifestAfter: List<String> = emptyList(),
+    fileManifestIntroduced: List<String> = emptyList(),
+    loopId: String? = null,
+    edgeIteration: Int? = null,
+    reviewPassNumber: Int? = null,
+    repairEvidence: FeatureTaskRuntimePhaseOutputRepairEvidence? = null,
+    launchedModel: String? = null,
+    launchedEffort: String? = null,
+    reviewRunId: String? = null,
+  ) : this(
+    phaseId = phaseId,
+    status = requireNotNull(WorkflowStepStatus.fromWire(status)) {
+      "Unknown feature-task-runtime phase status '$status'."
+    },
+    attemptCount = attemptCount,
+    startedAt = startedAt,
+    firstStartedAt = firstStartedAt,
+    finishedAt = finishedAt,
+    durationMillis = durationMillis,
+    resolvedAgentId = resolvedAgentId,
+    executionOrigin = executionOrigin,
+    outputArtifact = outputArtifact,
+    rejectedOutput = rejectedOutput,
+    blockedReason = blockedReason,
+    failureDisposition = failureDisposition,
+    fileManifestBefore = fileManifestBefore,
+    fileManifestAfter = fileManifestAfter,
+    fileManifestIntroduced = fileManifestIntroduced,
+    loopId = loopId,
+    edgeIteration = edgeIteration,
+    reviewPassNumber = reviewPassNumber,
+    repairEvidence = repairEvidence,
+    launchedModel = launchedModel,
+    launchedEffort = launchedEffort,
+    reviewRunId = reviewRunId,
+  )
+
   init {
     require(phaseId.isNotBlank()) { "FeatureTaskRuntimePhaseRecord.phaseId must be non-blank." }
-    require(status.isNotBlank()) { "FeatureTaskRuntimePhaseRecord.status must be non-blank." }
     require(attemptCount >= 1) {
       "FeatureTaskRuntimePhaseRecord.attemptCount must be >= 1, was $attemptCount."
     }
@@ -93,7 +145,7 @@ data class FeatureTaskRuntimePhaseRecord(
     "contract_version" to FEATURE_TASK_RUNTIME_PERSISTENCE_CONTRACT_VERSION,
     "record_kind" to "private_phase_record",
     "phase_id" to phaseId,
-    "status" to status,
+    "status" to status.wireValue,
     "attempt_count" to attemptCount,
     "started_at" to startedAt,
     "first_started_at" to firstStartedAt,
@@ -130,7 +182,8 @@ data class FeatureTaskRuntimePhaseRecord(
       return try {
         FeatureTaskRuntimePhaseRecord(
           phaseId = phaseId,
-          status = raw.requireStringField("status"),
+          status = WorkflowStepStatus.fromWire(raw.requireStringField("status"))
+            ?: incompatiblePhaseRecord(listOf("unknown status '${raw["status"]}'")),
           attemptCount = raw.requireIntField("attempt_count"),
           startedAt = raw.requireStringField("started_at"),
           firstStartedAt = raw.requireStringField("first_started_at"),

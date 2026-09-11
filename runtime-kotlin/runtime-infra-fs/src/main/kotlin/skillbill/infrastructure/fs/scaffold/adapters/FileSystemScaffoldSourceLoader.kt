@@ -3,7 +3,8 @@ package skillbill.infrastructure.fs.scaffold.adapters
 import me.tatarka.inject.annotations.Inject
 import skillbill.error.InvalidScaffoldPayloadError
 import skillbill.infrastructure.fs.scaffold.platformpack.declaredSkillRelativeDirs
-import skillbill.model.toPathimport skillbill.ports.scaffold.source.ScaffoldSourceLoaderPort
+import skillbill.model.toPath
+import skillbill.ports.scaffold.source.ScaffoldSourceLoaderPort
 import skillbill.ports.scaffold.source.model.ScaffoldPlatformPackLoadRequest
 import skillbill.ports.scaffold.source.model.ScaffoldPlatformPackLoadResult
 import skillbill.scaffold.model.PlatformManifest
@@ -83,7 +84,7 @@ class FileSystemScaffoldSourceLoader : ScaffoldSourceLoaderPort {
     }
     val normalized = relative.normalize()
     val normalizedDir = normalized.toString().replace('\\', '/')
-    if (!Files.isDirectory(pack.packRoot.resolve(normalized))) {
+    if (!Files.isDirectory(pack.packRoot.resolve(normalized.toString()).toPath())) {
       failConsumerSkillDirsMissing(skillRelativeDir)
     }
     if (normalizedDir !in pack.declaredSkillRelativeDirs()) {
@@ -103,7 +104,7 @@ class FileSystemScaffoldSourceLoader : ScaffoldSourceLoaderPort {
 
   private fun defaultAddonConsumerSkillDirs(packRoot: Path, pack: PlatformManifest): List<String> {
     pack.declaredFiles.baseline?.let { contentFile ->
-      return listOf(packRoot.relativize(contentFile.parent).toString().replace('\\', '/'))
+      return listOf(packRoot.relativize(contentFile.toPath().parent).toString().replace('\\', '/'))
     }
     val declaredSkillDirs = pack.declaredSkillRelativeDirs().sorted()
     if (declaredSkillDirs.size == 1) {

@@ -6,7 +6,8 @@ import skillbill.infrastructure.fs.nativeagent.rendering.NativeAgentInstallRende
 import skillbill.infrastructure.fs.nativeagent.rendering.NativeAgentOperations
 import skillbill.infrastructure.fs.nativeagent.rendering.NativeAgentProvider
 import skillbill.install.model.AgentTarget
-import skillbill.model.toPathimport java.nio.file.Files
+import skillbill.model.toPath
+import java.nio.file.Files
 import java.nio.file.Path
 
 internal fun linkProviderAgentsBody(args: NativeAgentLinkProviderBodyArgs): NativeAgentLinkOutcome {
@@ -99,7 +100,7 @@ internal fun desiredNativeAgentInventory(
   val linkedPaths = linked.toSet()
   return generated.artifacts.flatMap { artifact ->
     targets.mapNotNull { target ->
-      val agentDir = target.path
+      val agentDir = target.path.toPath()
       val installedPath = agentDir.resolve(artifact.path.fileName)
       val isOurs = installedPath in linkedPaths ||
         (Files.isSymbolicLink(installedPath) && resolveSymlinkTarget(installedPath) == artifact.path)

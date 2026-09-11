@@ -26,11 +26,11 @@ fun phasesToReopenForCompletedUpstreamRepair(
   val qualityGateSelection = request.qualityGateSelection
   val stepOrder = FeatureTaskRuntimePhaseWorkflowDefinition.definition.stepIds
   return when {
-    phaseRecords[resumePhaseId]?.status == "blocked" -> listOf(resumePhaseId)
+    phaseRecords[resumePhaseId]?.status?.workflowStepStatus() == WorkflowStepStatus.BLOCKED -> listOf(resumePhaseId)
     else -> buildList {
       add(resumePhaseId)
       phaseRecords.forEach { (phaseId, record) ->
-        if (record.status == "blocked") {
+        if (record.status.workflowStepStatus() == WorkflowStepStatus.BLOCKED) {
           val missing = missingUpstream(
             phaseDeclaration(phaseId, featureSize, qualityGateSelection),
             recordedOutputs,

@@ -1,14 +1,16 @@
 package skillbill.engine.featuretask
 import skillbill.application.testHarnessClock
 import skillbill.application.testWorkflowSnapshotValidator
-import skillbill.engine.workflow.model.WorkflowFamily
-import skillbill.contracts.JsonSupport
+import skillbill.application.workflow.model.WorkflowFamily
+import skillbill.contracts.JsonCodec
 import skillbill.engine.InMemoryRuntimeWorkflowRepository
 import skillbill.engine.RuntimeFakeDatabaseSessionFactory
 import skillbill.engine.featuretask.model.FeatureTaskRuntimeGoalContinuationContext
 import skillbill.engine.featuretask.model.FeatureTaskRuntimePreparation
-import skillbill.engine.featuretask.model.FeatureTaskRuntimeRunRequestimport skillbill.ports.diagnostics.NoopRuntimeDiagnostics
+import skillbill.engine.featuretask.model.FeatureTaskRuntimeRunRequest
+import skillbill.ports.diagnostics.NoopRuntimeDiagnostics
 import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewBaseline
+import skillbill.ports.workflow.toRecord
 import skillbill.review.context.model.CodeReviewExecutionMode
 import skillbill.workflow.engine.WorkflowEngine
 import skillbill.workflow.engine.model.WorkflowUpdateInput
@@ -46,11 +48,11 @@ class FeatureTaskRuntimeGoalContinuationAdoptionPersistenceTest {
     assertEquals(ValidationDepth.FULL, prepared.request.goalContinuation?.validationDepth)
     val artifacts = harness.repository.taskRuntimeArtifacts(workflowId)
     val continuation = requireNotNull(
-      JsonSupport.anyToStringAnyMap(artifacts[FEATURE_TASK_RUNTIME_GOAL_CONTINUATION_ARTIFACT_KEY]),
+      JsonCodec.anyToStringAnyMap(artifacts[FEATURE_TASK_RUNTIME_GOAL_CONTINUATION_ARTIFACT_KEY]),
     )
     assertEquals("full", continuation["validation_depth"])
     val adoption = requireNotNull(
-      JsonSupport.anyToStringAnyMap(artifacts[FEATURE_TASK_RUNTIME_GOAL_CONTINUATION_FIELD_ADOPTION_ARTIFACT_KEY]),
+      JsonCodec.anyToStringAnyMap(artifacts[FEATURE_TASK_RUNTIME_GOAL_CONTINUATION_FIELD_ADOPTION_ARTIFACT_KEY]),
     )
     assertEquals("validation_depth", adoption["field"])
     assertEquals("full", adoption["adopted_value"])
@@ -84,11 +86,11 @@ class FeatureTaskRuntimeGoalContinuationAdoptionPersistenceTest {
     )
     val artifacts = harness.repository.taskRuntimeArtifacts(workflowId)
     val continuation = requireNotNull(
-      JsonSupport.anyToStringAnyMap(artifacts[FEATURE_TASK_RUNTIME_GOAL_CONTINUATION_ARTIFACT_KEY]),
+      JsonCodec.anyToStringAnyMap(artifacts[FEATURE_TASK_RUNTIME_GOAL_CONTINUATION_ARTIFACT_KEY]),
     )
     assertEquals("validate", continuation["quality_gate_selection"])
     val adoption = requireNotNull(
-      JsonSupport.anyToStringAnyMap(artifacts[FEATURE_TASK_RUNTIME_GOAL_CONTINUATION_FIELD_ADOPTION_ARTIFACT_KEY]),
+      JsonCodec.anyToStringAnyMap(artifacts[FEATURE_TASK_RUNTIME_GOAL_CONTINUATION_FIELD_ADOPTION_ARTIFACT_KEY]),
     )
     assertEquals("quality_gate_selection", adoption["field"])
     assertEquals("validate", adoption["adopted_value"])
@@ -114,7 +116,7 @@ class FeatureTaskRuntimeGoalContinuationAdoptionPersistenceTest {
     val artifacts = harness.repository.taskRuntimeArtifacts(workflowId)
     assertNull(artifacts[FEATURE_TASK_RUNTIME_GOAL_CONTINUATION_FIELD_ADOPTION_ARTIFACT_KEY])
     val continuation = requireNotNull(
-      JsonSupport.anyToStringAnyMap(artifacts[FEATURE_TASK_RUNTIME_GOAL_CONTINUATION_ARTIFACT_KEY]),
+      JsonCodec.anyToStringAnyMap(artifacts[FEATURE_TASK_RUNTIME_GOAL_CONTINUATION_ARTIFACT_KEY]),
     )
     assertEquals("full", continuation["validation_depth"])
   }
@@ -144,7 +146,7 @@ class FeatureTaskRuntimeGoalContinuationAdoptionPersistenceTest {
     val artifacts = harness.repository.taskRuntimeArtifacts(workflowId)
     assertNull(artifacts[FEATURE_TASK_RUNTIME_GOAL_CONTINUATION_FIELD_ADOPTION_ARTIFACT_KEY])
     val continuation = requireNotNull(
-      JsonSupport.anyToStringAnyMap(artifacts[FEATURE_TASK_RUNTIME_GOAL_CONTINUATION_ARTIFACT_KEY]),
+      JsonCodec.anyToStringAnyMap(artifacts[FEATURE_TASK_RUNTIME_GOAL_CONTINUATION_ARTIFACT_KEY]),
     )
     assertEquals("build", continuation["quality_gate_selection"])
   }
@@ -190,7 +192,7 @@ class FeatureTaskRuntimeGoalContinuationAdoptionPersistenceTest {
       codeReviewMode = CodeReviewExecutionMode.INLINE,
       validationDepth = validationDepth,
       qualityGateSelection = qualityGateSelection,
-      reviewBaseline = GoalSubtaskReviewBaseline(baselineSha),
+      reviewBaseline = GoalSubtaskReviewBaseline(baselineSha, emptyList()),
     ),
   )
 

@@ -280,7 +280,7 @@ class FeatureTaskRuntimePhasePromptComposerTest {
     assertContains(prompt, "validation_gate")
     assertContains(prompt, "only validate agent for this step")
     assertContains(prompt, "do not spawn delegated subagents")
-    assertContains(prompt, "one repair occupancy iterates in this same session")
+    assertContains(prompt, "up to three repair turns")
     assertContains(prompt, "Do not run `skill-bill validate`")
     assertContains(prompt, "`npx agnix`")
     assertTrue(prompt.contains("Invoke bill-code-check"))
@@ -354,11 +354,10 @@ class FeatureTaskRuntimePhasePromptComposerTest {
       assertContains(prompt, "run bill-code-check once to confirm")
       assertContains(prompt, "only validate agent for this step")
       assertContains(prompt, "do not spawn delegated subagents")
-      assertContains(prompt, "one repair occupancy iterates in this same session")
+      assertContains(prompt, "up to three repair turns")
       assertContains(prompt, "delegated subagents")
       assertContains(prompt, "numbered free-form checklist")
-      assertContains(prompt, "Stay in this session: fix, then run the targeted proof")
-      assertContains(prompt, "If any open finding names spotless, ktlint, or format, you must run")
+      assertContains(prompt, "After you have attempted a fix for every open finding")
       assertContains(prompt, "project-wide `./gradlew spotlessApply`")
       assertContains(prompt, "`detekt`")
       assertContains(prompt, "`ktlintCheck`")
@@ -379,14 +378,13 @@ class FeatureTaskRuntimePhasePromptComposerTest {
   }
 
   @Test
-  fun `agent-run validate prompts iterate targeted proofs in one occupancy and forbid a second agent`() {
+  fun `agent-run validate prompts allow targeted proof after all fixes and forbid a second agent`() {
     val prompt = composePhasePrompt(
       PROMPT_COMPOSER_ISSUE_KEY,
       promptComposerBriefingFor(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VALIDATE),
     ) { copy(agentRunValidateFallback = true) }
 
-    assertContains(prompt, "Stay in this session: fix, then run the targeted proof")
-    assertContains(prompt, "If any open finding names spotless, ktlint, or format, you must run")
+    assertContains(prompt, "After you have attempted a fix for every open finding")
     assertContains(prompt, "project-wide `./gradlew spotlessApply`")
     assertContains(prompt, "`detekt`")
     assertContains(prompt, "`ktlintCheck`")
@@ -394,8 +392,8 @@ class FeatureTaskRuntimePhasePromptComposerTest {
     assertContains(prompt, "`compileKotlin`")
     assertContains(prompt, "only validate agent for this step")
     assertContains(prompt, "do not spawn delegated subagents")
-    assertContains(prompt, "one repair occupancy iterates in this same session")
-    assertContains(prompt, "Do not rerun the full gate, bill-code-check, or a cache-bypassing full check")
+    assertContains(prompt, "up to three repair turns")
+    assertContains(prompt, "Do not rerun the full gate, bill-code-check, a cache-bypassing full check")
     assertContains(prompt, "Do not run `skill-bill validate`")
     assertContains(prompt, "`npx agnix`")
     assertFalse(prompt.contains("First action every repair turn"))
@@ -421,15 +419,14 @@ class FeatureTaskRuntimePhasePromptComposerTest {
     ) { copy(validationGateFindings = page, validationGateRepair = true) }
     listOf(fullPrompt, defaultPrompt).forEach { prompt ->
       assertContains(prompt, "A prior gate run parsed these items")
-      assertContains(prompt, "full open set for this repair occupancy")
-      assertContains(prompt, "validate repair occupancy")
+      assertContains(prompt, "full open set for this repair turn")
+      assertContains(prompt, "validate repair agent")
       assertFalse(prompt.contains("Invoke bill-code-check for collect-all and confirmation"))
       assertContains(prompt, "collect_all_full_gate_command")
       assertContains(prompt, "Do not run `skill-bill validate`")
       assertContains(prompt, "Do not spawn delegated subagents")
       assertContains(prompt, "numbered free-form checklist")
-      assertContains(prompt, "Stay in this session: fix, then run the targeted proof")
-      assertContains(prompt, "If any open finding names spotless, ktlint, or format, you must run")
+      assertContains(prompt, "After you have attempted a fix for every open finding")
       assertContains(prompt, "project-wide `./gradlew spotlessApply`")
       assertFalse(prompt.contains("First action every repair turn"))
       assertFalse(prompt.contains("Do not start the next checklist item"))
@@ -605,6 +602,8 @@ class FeatureTaskRuntimePhasePromptComposerTest {
     val input = GoalSubtaskReviewInput(
       reviewBaseSha = "a".repeat(40),
       currentHeadSha = "b".repeat(40),
+      trackedDelta = "scope-fingerprint:abc\n",
+      ownedUntrackedPatches = "",
     )
 
     val prompt = composePhasePrompt(

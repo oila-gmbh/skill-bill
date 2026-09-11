@@ -1,10 +1,14 @@
 package skillbill.engine.featuretask
 
 import skillbill.application.decomposition.decodeArtifacts
-import skillbill.engine.workflow.model.WorkflowFamily
-import skillbill.contracts.JsonSupportimport skillbill.error.InvalidFeatureTaskRuntimeCheckpointIdentityVersionError
+import skillbill.application.workflow.model.WorkflowFamily
+import skillbill.contracts.JsonCodec
+import skillbill.engine.featuretask.model.AppendCheckpointIdentityArgs
+import skillbill.engine.featuretask.model.FeatureTaskRuntimePhaseLedgerRequest
+import skillbill.error.InvalidFeatureTaskRuntimeCheckpointIdentityVersionError
 import skillbill.error.InvalidWorkflowStateSchemaError
 import skillbill.ports.db.DatabaseSessionFactory
+import skillbill.ports.workflow.get
 import skillbill.workflow.goal.model.appendBoundedHistoryBySequence
 import skillbill.workflow.taskruntime.FeatureTaskRuntimeQuarantineValidator
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_CHECKPOINT_IDENTITIES_ARTIFACT_KEY
@@ -64,7 +68,8 @@ class FeatureTaskRuntimePhaseEvidenceRecorder(
       true
     }
   override fun appendQuarantineEntry(workflowId: String, entry: FeatureTaskRuntimeQuarantineEntry): Boolean =
-    database.transaction { unitOfWork ->      val record = WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, workflowId)
+    database.transaction { unitOfWork ->
+      val record = WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, workflowId)
         ?: return@transaction false
       val artifacts = decodeArtifacts(record.artifactsJson)
       val existing = quarantineEntriesFrom(artifacts)
@@ -158,7 +163,7 @@ fun FeatureTaskRuntimePhaseEvidenceRecorder.quarantineEntriesFrom(
   artifacts: Map<String, Any?>,
 ): List<FeatureTaskRuntimeQuarantineEntry> {
   val raw = artifacts[FEATURE_TASK_RUNTIME_QUARANTINED_RECORDS_ARTIFACT_KEY] ?: return emptyList()
-  val map = JsonSupport.anyToStringAnyMap(raw)
+  val map = JsonCodec.anyToStringAnyMap(raw)
     ?: throw InvalidWorkflowStateSchemaError("Feature-task-runtime quarantine record must be an object.")
   quarantineValidator.validateQuarantineRecord(map, FEATURE_TASK_RUNTIME_QUARANTINED_RECORDS_ARTIFACT_KEY)
   return featureTaskRuntimeQuarantineEntriesFromWire(raw)

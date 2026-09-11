@@ -1,6 +1,6 @@
 package skillbill.infrastructure.fs.launcher.review
 
-import skillbill.contracts.JsonSupport
+import skillbill.contracts.JsonCodec
 import skillbill.error.GovernedReviewEvidenceTransportError
 import skillbill.infrastructure.fs.launcher.mcp.GovernedReviewMcpConfigWriter
 import skillbill.ports.review.NativeReviewOperationProtocol
@@ -12,7 +12,6 @@ import skillbill.ports.review.model.ReviewToolCall
 import skillbill.ports.review.model.ReviewToolCallResult
 import skillbill.review.context.model.ForbiddenReviewOperation
 import skillbill.review.context.model.ReviewBudgetOutcome
-import skillbill.review.context.model.ReviewEvidenceLimits
 import skillbill.review.context.model.ReviewExpansionRecord
 import java.net.UnixDomainSocketAddress
 import java.nio.channels.Channels
@@ -29,15 +28,6 @@ import kotlin.test.assertTrue
 class GovernedReviewEvidenceEndpointTest {
   private class RecordingProtocol : NativeReviewOperationProtocol {
     val reads = mutableListOf<ReviewEvidenceBatchRequest>()
-    var malformed = 0
-    var finishDeliverySessionCount = 0
-    override fun recordMalformedRequest() {
-      malformed += 1
-    }
-
-    override fun finishDeliverySession() {
-      finishDeliverySessionCount += 1
-    }
 
     override fun authorizeExpansion(request: ReviewExpansionAuthorizationRequest): ReviewExpansionRecord =
       error("unused")
@@ -65,31 +55,13 @@ class GovernedReviewEvidenceEndpointTest {
   }
 
   @Test
-  fun `oversized authenticated frames record a refusal without evidence and a new connection recovers`() {
-    val protocol = RecordingProtocol()
-    GovernedReviewEvidenceEndpoint.bind("architecture", protocol, listOf("/bin/true")).use { endpoint ->
-      connect(endpoint, endpoint.descriptor.token).use { connection ->
-        val response = requireNotNull(connection.call("x".repeat(ReviewEvidenceLimits.REQUEST_BYTES + 1)))
-        assertTrue(response.contains("byte limit"))
-        assertTrue(response.toByteArray().size < 1024)
-      }
-      assertEquals(1, protocol.malformed)
-      assertTrue(protocol.reads.isEmpty())
-      connect(endpoint, endpoint.descriptor.token).use { connection ->
-        assertTrue(requireNotNull(connection.call(readFrame("A.kt"))).contains("not assigned"))
-      }
-      assertEquals(1, protocol.reads.size)
-    }
-  }
-
-  @Test
   fun `an out-of-surface read is refused with no content and still reaches the broker`() {
     val protocol = RecordingProtocol()
     GovernedReviewEvidenceEndpoint.bind("architecture", protocol, listOf("/bin/true")).use { endpoint ->
       connect(endpoint, endpoint.descriptor.token).use { connection ->
         val reply = requireNotNull(connection.call(readFrame("src/Elsewhere.kt")))
         val payload = toolPayload(reply)
-        val result = requireNotNull(JsonSupport.anyToStringAnyMapList((payload["results"]))).single()
+        val result = requireNotNull(JsonCodec.anyToStringAnyMapList((payload["results"]))).single()
         assertEquals(true, result["refused"])
         assertFalse(result.containsKey("content"))
       }
@@ -157,19 +129,6 @@ class GovernedReviewEvidenceEndpointTest {
   }
 
   @Test
-  fun `unbindListener tears down the socket without finishing the delivery session`() {
-    val protocol = RecordingProtocol()
-    val endpoint = GovernedReviewEvidenceEndpoint.bind("architecture", protocol, listOf("/bin/true"))
-    assertTrue(Files.exists(endpoint.descriptor.socketPath))
-    endpoint.unbindListener()
-    assertFalse(Files.exists(endpoint.descriptor.socketPath))
-    assertFalse(Files.exists(endpoint.descriptor.mcpConfigPath))
-    assertEquals(0, protocol.finishDeliverySessionCount)
-    endpoint.close()
-    assertEquals(1, protocol.finishDeliverySessionCount)
-  }
-
-  @Test
   fun `closing the endpoint removes the per-launch socket and config`() {
     val endpoint = GovernedReviewEvidenceEndpoint.bind("architecture", RecordingProtocol(), listOf("/bin/true"))
     assertTrue(Files.exists(endpoint.descriptor.socketPath))
@@ -198,7 +157,7 @@ class GovernedReviewEvidenceEndpointTest {
 
     fun handshake(token: String): String? {
       send(
-        JsonSupport.mapToJsonString(
+        JsonCodec.mapToJsonString(
           linkedMapOf("jsonrpc" to "2.0", "method" to "handshake", "params" to mapOf("token" to token)),
         ),
       )
@@ -224,7 +183,7 @@ class GovernedReviewEvidenceEndpointTest {
     Client(SocketChannel.open(UnixDomainSocketAddress.of(endpoint.descriptor.socketPath)))
       .also { it.handshake(token) }
 
-  private fun readFrame(path: String): String = JsonSupport.mapToJsonString(
+  private fun readFrame(path: String): String = JsonCodec.mapToJsonString(
     linkedMapOf(
       "jsonrpc" to "2.0",
       "id" to 1,
@@ -237,12 +196,12 @@ class GovernedReviewEvidenceEndpointTest {
   )
 
   private fun toolPayload(reply: String): Map<String, Any?> {
-    val message = requireNotNull(JsonSupport.parseObjectOrNull(reply))
-    val result = JsonSupport.anyToStringAnyMap(message["result"]?.let(JsonSupport::jsonElementToValue)).orEmpty()
-    val content = requireNotNull(JsonSupport.anyToStringAnyMapList((result["content"]))).single()
+    val message = requireNotNull(JsonCodec.parseObjectOrNull(reply))
+    val result = JsonCodec.anyToStringAnyMap(message["result"]?.let(JsonCodec::jsonElementToValue)).orEmpty()
+    val content = requireNotNull(JsonCodec.anyToStringAnyMapList((result["content"]))).single()
     return requireNotNull(
-      JsonSupport.anyToStringAnyMap(
-        JsonSupport.parseObjectOrNull(content["text"].toString())?.let(JsonSupport::jsonElementToValue),
+      JsonCodec.anyToStringAnyMap(
+        JsonCodec.parseObjectOrNull(content["text"].toString())?.let(JsonCodec::jsonElementToValue),
       ),
     )
   }

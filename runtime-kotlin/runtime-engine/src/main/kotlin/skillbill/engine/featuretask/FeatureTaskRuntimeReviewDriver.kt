@@ -6,7 +6,7 @@ import skillbill.application.review.RuntimeOwnedReviewMode
 import skillbill.application.review.model.ParallelCodeReviewRequest
 import skillbill.application.review.model.ParallelCodeReviewResult
 import skillbill.application.reviewevidence.model.ParallelReviewScope
-import skillbill.contracts.JsonSupport
+import skillbill.contracts.JsonCodec
 import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_CONTRACT_VERSION
 import skillbill.goalrunner.subtaskreview.FeatureTaskRuntimeVerificationSignalKeys
 import skillbill.goalrunner.subtaskreview.GoalSubtaskReviewSummaryReducer
@@ -122,7 +122,7 @@ object FeatureTaskRuntimeReviewEnvelope {
     val outcome = GoalSubtaskReviewSummaryReducer.outcomeFor(envelope)
     produced[FeatureTaskRuntimeVerificationSignalKeys.REVIEW_FINDINGS] = findings
     envelope[FeatureTaskRuntimeVerificationSignalKeys.VERDICT] = outcome.verdict.wireValue
-    return JsonSupport.mapToJsonString(envelope)
+    return JsonCodec.mapToJsonString(envelope)
   }
 
   fun extractReviewVerdict(prose: String): FeatureTaskRuntimeVerdict {
@@ -146,9 +146,9 @@ object FeatureTaskRuntimeReviewEnvelope {
     }
   }
 
-  fun envelopeMap(outputText: String): Map<String, Any?> = JsonSupport.parseObjectOrNull(outputText)
-    ?.let(JsonSupport::jsonElementToValue)
-    ?.let(JsonSupport::anyToStringAnyMap)
+  fun envelopeMap(outputText: String): Map<String, Any?> = JsonCodec.parseObjectOrNull(outputText)
+    ?.let(JsonCodec::jsonElementToValue)
+    ?.let(JsonCodec::anyToStringAnyMap)
     .orEmpty()
 
   fun mintReviewRunId(clock: Clock): String {
@@ -185,8 +185,8 @@ object FeatureTaskRuntimeReviewEnvelope {
       ?: return null
     val accounting = summary.integration
     val pass = result.integration
-    val terminalOutcome = pass?.terminalOutcome
-      ?: accounting?.terminalOutcome?.let(ReviewIntegrationTerminalOutcome::fromWire)
+    val terminalOutcome = accounting?.terminalOutcome
+      ?: pass?.terminalOutcome
       ?: ReviewIntegrationTerminalOutcome.SKIPPED_NOT_APPLICABLE
     return GoalSubtaskCommitFocusedAccounting(
       commitSequenceDigest = routing.commitSequenceDigest,

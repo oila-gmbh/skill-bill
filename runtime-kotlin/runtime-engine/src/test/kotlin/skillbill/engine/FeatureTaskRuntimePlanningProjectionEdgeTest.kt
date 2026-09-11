@@ -1,8 +1,9 @@
 
 package skillbill.engine
 import skillbill.application.realPlanningProjectionValidator
-import skillbill.contracts.JsonSupport
-import skillbill.engine.featuretask.FeatureTaskRuntimePhaseBriefingAssemblerimport skillbill.error.InvalidFeatureTaskRuntimeHandoffProjectionError
+import skillbill.contracts.JsonCodec
+import skillbill.engine.featuretask.FeatureTaskRuntimePhaseBriefingAssembler
+import skillbill.error.InvalidFeatureTaskRuntimeHandoffProjectionError
 import skillbill.workflow.taskruntime.FeatureTaskRuntimeHandoffContract
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeHandoffAssemblyRequest
@@ -172,7 +173,7 @@ class FeatureTaskRuntimePlanningProjectionEdgeTest {
       headRef = "head",
       changedFileCount = 1,
       changedHunkCount = 1,
-      fileHunkIndexDigest = "0".repeat(64),
+      fileHunkIndexDigest = "a".repeat(64),
     )
     val projectionName = FeatureTaskRuntimePhaseWorkflowDefinition.SHARED_REVIEW_EVIDENCE_PROJECTION_NAME
 
@@ -411,7 +412,7 @@ class FeatureTaskRuntimePlanningProjectionEdgeTest {
         produced["changed_paths"] = listOf("runtime-domain/model/X.kt")
       }
     }
-    return JsonSupport.mapToJsonString(mapOf("produced_outputs" to produced))
+    return JsonCodec.mapToJsonString(mapOf("produced_outputs" to produced))
   }
 
   private data class BriefingAssembleFixture(
@@ -438,6 +439,7 @@ class FeatureTaskRuntimePlanningProjectionEdgeTest {
       ),
     ),
     sharedReviewEvidence = fixture.sharedReviewEvidence,
+    planningProjectionValidator = realPlanningProjectionValidator,
   )
 
   private fun phaseOutput(phaseId: String, payload: String) =

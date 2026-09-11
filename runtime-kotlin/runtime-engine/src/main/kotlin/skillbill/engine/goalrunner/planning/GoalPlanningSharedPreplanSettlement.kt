@@ -2,7 +2,8 @@ package skillbill.engine.goalrunner.planning
 
 import skillbill.contracts.workflow.GoalPlanningPreparationSchemaPaths
 import skillbill.engine.goalrunner.planning.model.GoalPlanningSweepOutcome
-import skillbill.goalrunner.planning.cascadeEligiblePlanSubtaskIdsimport skillbill.ports.goalrunner.model.GoalPlanningContractProvenance
+import skillbill.goalrunner.planning.cascadeEligiblePlanSubtaskIds
+import skillbill.ports.goalrunner.model.GoalPlanningContractProvenance
 import skillbill.ports.goalrunner.model.SharedGoalPreplanCheckpoint
 
 internal sealed class SharedPreplanSettlement {

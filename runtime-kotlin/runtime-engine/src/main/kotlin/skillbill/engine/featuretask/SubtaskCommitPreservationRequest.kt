@@ -9,6 +9,5 @@ internal data class SubtaskCommitPreservationRequest(
   val identity: FeatureTaskRuntimeSubtaskCommitIdentity,
   val message: String,
   val allowUnchangedIndex: Boolean,
-  val ownedPaths: List<String>,
   val record: (String) -> Unit,
 )

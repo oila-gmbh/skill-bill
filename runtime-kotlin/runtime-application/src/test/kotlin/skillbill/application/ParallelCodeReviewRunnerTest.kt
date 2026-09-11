@@ -7,7 +7,6 @@ import skillbill.agentaddon.model.PersistedAgentAddonSelectionEntry
 import skillbill.application.idestatus.AgentActivityStampWriter
 import skillbill.application.review.ParallelCodeReviewRunner
 import skillbill.application.review.RecordedWorkerResponse
-import skillbill.application.review.RecordingReviewEvidenceStore
 import skillbill.application.review.ReviewClaimVerificationRunner
 import skillbill.application.review.ReviewHarnessConfig
 import skillbill.application.review.ReviewRecorder
@@ -21,7 +20,6 @@ import skillbill.application.review.model.DefaultParallelCodeReviewRunnerPlannin
 import skillbill.application.review.model.ParallelCodeReviewRequest
 import skillbill.application.review.model.StackDetectionException
 import skillbill.application.review.model.UsageValidationException
-import skillbill.application.review.reviewFileSystemEvidenceBrokerFactory
 import skillbill.application.review.reviewHarness
 import skillbill.application.review.simulateGovernedEvidenceReads
 import skillbill.application.review.sparseReviewPack
@@ -42,18 +40,27 @@ import skillbill.ports.diff.DiffResolverPort
 import skillbill.ports.goalrunner.runner.GoalRunnerSubtaskLauncher
 import skillbill.ports.goalrunner.runner.model.GoalRunnerSubtaskLaunchRequest
 import skillbill.ports.persistence.UnitOfWork
+import skillbill.ports.repository.toFileLocation
+import skillbill.ports.review.ReviewEvidenceBroker
+import skillbill.ports.review.ReviewEvidenceBrokerFactory
 import skillbill.ports.review.ReviewLaunchAgentStagingPort
 import skillbill.ports.review.ReviewNativeAgentPreflightPort
 import skillbill.ports.review.ReviewRepository
 import skillbill.ports.review.ReviewRubricResolver
 import skillbill.ports.review.ReviewSpecialistContractProvider
 import skillbill.ports.review.model.ResolvedReviewRubric
-import skillbill.ports.review.model.ReviewCheckpointFileIdentity
+import skillbill.ports.review.model.ReviewEvidenceBatchRequest
+import skillbill.ports.review.model.ReviewEvidenceBatchResult
+import skillbill.ports.review.model.ReviewLaneAccounting
 import skillbill.ports.review.model.ReviewLaunchAgentStagingRequest
+import skillbill.ports.review.model.ReviewToolCall
+import skillbill.ports.review.model.ReviewToolCallResult
 import skillbill.ports.review.stubGovernedReviewEvidenceEndpointBinder
 import skillbill.ports.scaffold.ScaffoldCatalogGateway
 import skillbill.ports.scaffold.install.InstalledPlatformPackCatalogPort
 import skillbill.ports.scaffold.model.PilotedPlatformPackProjection
+import skillbill.ports.taskruntime.FeatureTaskRuntimeSharedEvidenceLocatorReadPort
+import skillbill.ports.taskruntime.FeatureTaskRuntimeSharedEvidenceResolverPort
 import skillbill.ports.telemetry.LifecycleTelemetryRepository
 import skillbill.review.ParallelReviewFindingParser
 import skillbill.review.context.ReviewContextEnvelopeValidator
@@ -263,7 +270,7 @@ class ParallelCodeReviewRunnerTest {
   @Test
   fun `STAGED scope maps diff command to git diff --cached`() {
     val resolver = RecordingDiffResolver(
-      responses = mapOf(listOf("git", "rev-parse", "--verify", "--end-of-options", "HEAD^{commit}") to "head-sha\n"),
+      responses = mapOf(listOf("git", "rev-parse", "--verify", "HEAD^{commit}") to "head-sha\n"),
       default = diffFor("A.kt"),
     )
     val launcher = ParallelSubtaskLauncher()
@@ -278,7 +285,7 @@ class ParallelCodeReviewRunnerTest {
   fun `BRANCH scope resolves merge-base then diffs the canonical base against the canonical head`() {
     val resolver = RecordingDiffResolver(
       responses = mapOf(
-        listOf("git", "rev-parse", "--verify", "--end-of-options", "HEAD^{commit}") to "head-sha\n",
+        listOf("git", "rev-parse", "--verify", "HEAD^{commit}") to "head-sha\n",
         listOf("git", "merge-base", "HEAD", "main") to "base-sha\n",
         listOf("git", "rev-list", "--first-parent", "--reverse", "base-sha..head-sha") to "",
       ),
@@ -295,11 +302,12 @@ class ParallelCodeReviewRunnerTest {
     assertContains(resolver.calls, listOf("git", "diff", "base-sha", "head-sha"))
   }
 
+  // AC-001: a PR review spans its own base branch instead of collapsing to HEAD..HEAD.
   @Test
   fun `PR scope resolves the pull request base and enumerates its commit range`() {
     val resolver = RecordingDiffResolver(
       responses = mapOf(
-        listOf("git", "rev-parse", "--verify", "--end-of-options", "HEAD^{commit}") to "head-sha\n",
+        listOf("git", "rev-parse", "--verify", "HEAD^{commit}") to "head-sha\n",
         listOf("gh", "pr", "view", "--json", "baseRefOid", "--jq", ".baseRefOid") to "pr-base-oid\n",
         listOf("git", "merge-base", "HEAD", "pr-base-oid") to "base-sha\n",
         listOf("git", "rev-list", "--first-parent", "--reverse", "base-sha..head-sha") to "",
@@ -357,7 +365,7 @@ class ParallelCodeReviewRunnerTest {
       assertContains(request.skillRunRequest.promptOverride.orEmpty(), "bill-code-review mode:inline")
       assertContains(request.skillRunRequest.promptOverride.orEmpty(), "do not launch specialists")
       assertContains(request.skillRunRequest.promptOverride.orEmpty(), "governed generic rubric")
-      assertFalse(request.skillRunRequest.promptOverride.orEmpty().contains("A.kt"))
+      assertContains(request.skillRunRequest.promptOverride.orEmpty(), "paths=\"A.kt\"")
     }
   }
 
@@ -387,40 +395,6 @@ class ParallelCodeReviewRunnerTest {
         "Run exactly one bill-code-review mode:inline review prompt in this context.",
       )
     }
-  }
-
-  @Test
-  fun `oversized inline review still launches one parent agent`() {
-    val launcher = ParallelSubtaskLauncher()
-    val diff = buildString {
-      appendLine("diff --git a/src/Chunks.kt b/src/Chunks.kt")
-      appendLine("--- a/src/Chunks.kt")
-      appendLine("+++ b/src/Chunks.kt")
-      (1..100).forEach { index ->
-        appendLine("@@ -$index,1 +$index,2 @@")
-        appendLine("+${"x".repeat(1_000)}")
-      }
-    }
-    val runner = runner(
-      launcher,
-      diffResolver = RecordingDiffResolver(default = diff),
-    )
-
-    val result = runner.run(
-      baseRequest(scope = ParallelReviewScope.STAGED).copy(codeReviewMode = CodeReviewExecutionMode.INLINE),
-    )
-
-    assertEquals(1, launcher.requests.size)
-    assertTrue(result.lane1.success)
-    val prompt = launcher.requests.single().skillRunRequest.promptOverride.orEmpty()
-    assertFalse(prompt.contains("Current governed inline review chunk:"))
-    assertEquals(
-      100,
-      assertNotNull(launcher.requests.single().skillRunRequest.reviewEvidenceBroker)
-        .accounting()
-        .requiredEvidenceUnits,
-    )
-    assertEquals(1, assertNotNull(result.lane1.accounting).modelTurns)
   }
 
   @Test
@@ -505,7 +479,7 @@ class ParallelCodeReviewRunnerTest {
     val accounting = assertNotNull(result.lane1.accounting)
     assertEquals("completed", accounting.terminalStatus)
     assertEquals(1, accounting.modelTurns, "An inline lane is exactly one parent turn, never a specialist child.")
-    assertTrue(accounting.evidenceBytes > 0, "The inline parent receives evidence through its broker.")
+    assertEquals(0L, accounting.evidenceBytes, "Inline mode never brokers evidence through a child worker.")
     assertTrue(accounting.launchBytes > 0, "The rendered parent prompt must be measured as launch bytes.")
     assertEquals(
       "- [F-001] Major | High | path=\"A.kt\" | line=1 | Inline finding".toByteArray().size.toLong(),
@@ -850,12 +824,11 @@ class ParallelCodeReviewSuppliedDiffTest {
       assertTrue(prompt.contains("bill-kotlin-code-review-architecture"))
       assertTrue(prompt.contains("bill-kotlin-code-review-testing"))
       assertFalse(prompt.contains(huge))
-      assertTrue(prompt.length < 20_000)
     }
+    // Projected headroom is not unreviewed code: nothing refused a read, segmentation carried every
+    // entry, and both workers ran, so the only honest verdict is clean coverage.
     val coverage = assertNotNull(result.coverage)
-    assertFalse(coverage.isCleanCoverage, coverage.render())
-    assertFalse(result.lane1.success)
-    assertTrue(assertNotNull(result.lane1.accounting).remainingEvidence.isNotEmpty())
+    assertTrue(coverage.isCleanCoverage, coverage.render())
   }
 
   @Test
@@ -871,26 +844,19 @@ class ParallelCodeReviewSuppliedDiffTest {
 
     runner.run(baseRequest(scope = ParallelReviewScope.BRANCH).copy(suppliedDiff = exactDiff))
 
-    assertEquals(
-      listOf(
-        listOf("git", "rev-parse", "--verify", "--end-of-options", "head-revision^{commit}"),
-        listOf("git", "rev-parse", "--verify", "--end-of-options", "base-revision^{commit}"),
-        HEAD_BRANCH_QUERY,
-      ),
-      resolver.calls,
-    )
+    assertEquals(listOf(HEAD_BRANCH_QUERY), resolver.calls)
     assertEquals(1, launcher.requests.size)
     launcher.requests.forEach { request ->
       val prompt = request.skillRunRequest.promptOverride.orEmpty()
       assertContains(prompt, "Resolved execution mode: inline")
+      assertContains(prompt, "Owned paths: \"Child.kt\"")
       assertContains(prompt, "## Assigned bundle:")
-      assertContains(prompt, "read_evidence")
-      assertContains(prompt, "request_expansion")
+      assertContains(prompt, "\"Child.kt\"")
       assertFalse(prompt.contains("+owned change"))
-      assertFalse(prompt.contains("Owned paths:"))
-      assertFalse(prompt.contains("hunk_id:"))
-      assertFalse(prompt.contains("content_digest:"))
-      assertFalse(prompt.contains("evidence_locator:"))
+      assertContains(prompt, "hunk_id:")
+      assertContains(prompt, "content_digest:")
+      assertContains(prompt, "evidence_locator:")
+      assertContains(prompt, "they are not read_evidence arguments and passing one is refused")
       assertFalse(prompt.contains("unexpected branch diff"), "the supplied diff must replace branch resolution")
       assertEquals("bill-code-review-inline", request.skillRunRequest.nativeReviewWorkerName)
     }
@@ -945,14 +911,7 @@ class ParallelCodeReviewSuppliedDiffTest {
       baseRequest(scope = ParallelReviewScope.BRANCH, repoRoot = repo).copy(suppliedDiff = exactDiff),
     )
 
-    assertEquals(
-      listOf(
-        listOf("git", "rev-parse", "--verify", "--end-of-options", "head-revision^{commit}"),
-        listOf("git", "rev-parse", "--verify", "--end-of-options", "base-revision^{commit}"),
-        HEAD_BRANCH_QUERY,
-      ),
-      resolver.calls,
-    )
+    assertEquals(listOf(HEAD_BRANCH_QUERY), resolver.calls)
     assertEquals(".feature-specs/SKILL-191-runtime/spec.md", database.specProjection?.specPath)
     assertEquals(null, database.specProjection?.absenceReason)
   }
@@ -1255,12 +1214,12 @@ class ParallelCodeReviewRunnerFailureTest {
     val (runId, lanes) = database.laneWrites.last()
     assertEquals(request.reviewRunId, runId)
     assertTrue(lanes.isNotEmpty(), "A runtime-launched review must record the lanes it planned.")
-    assertTrue(lanes.all { it.resolutionState == "resolved" })
+    assertTrue(lanes.all { it.resolutionState.wireValue == "resolved" })
     assertTrue(lanes.all { it.packSlug.isNotBlank() && it.area.isNotBlank() })
     assertEquals(lanes.map { it.laneSkillName }.distinct().size, lanes.size)
     assertEquals(lanes.map { it.orderIndex }.sorted(), lanes.map { it.orderIndex })
     assertTrue(
-      lanes.all { it.reviewDisposition == "complete" },
+      lanes.all { it.reviewDisposition.wireValue == "complete" },
       "Successful parallel pass must persist complete disposition for every planned lane.",
     )
     assertTrue(database.laneWrites.size >= 2, "Plan recording and disposition finalization must both write.")
@@ -1452,13 +1411,8 @@ internal fun runner(
 )
 
 internal fun createRunner(launcher: GoalRunnerSubtaskLauncher, config: RunnerFixtureConfig): ParallelCodeReviewRunner {
-  val evidenceReadingLauncher = GoalRunnerSubtaskLauncher { request ->
-    simulateGovernedEvidenceReads(request.skillRunRequest)
-    launcher.launch(request)
-  }
   val endpointRoot = config.evidenceEndpointRoot ?: Files.createTempDirectory("endpoint")
-  val evidenceStore = RecordingReviewEvidenceStore()
-  val sharedEvidenceLocatorReader = evidenceStore.reader
+  val sharedEvidenceLocatorReader = FeatureTaskRuntimeSharedEvidenceLocatorReadPort.NONE
   val planningPort = DefaultParallelCodeReviewRunnerPlanningPort(
     diffResolver = config.diffResolver,
     repoLocalConfig = object : RepoLocalConfigPort {
@@ -1472,7 +1426,7 @@ internal fun createRunner(launcher: GoalRunnerSubtaskLauncher, config: RunnerFix
     reviewSpecialistContractProvider = ReviewSpecialistContractProvider { TEST_SPECIALIST_CONTRACT },
     database = config.database,
     installedPackCatalog = config.installedPackCatalog,
-    sharedEvidenceResolver = evidenceStore.resolver,
+    sharedEvidenceResolver = FeatureTaskRuntimeSharedEvidenceResolverPort.NONE,
     sharedEvidenceLocatorReader = sharedEvidenceLocatorReader,
     specIntentProjectionResolver = SpecIntentProjectionResolver(
       TestDecompositionManifestStore,
@@ -1484,7 +1438,7 @@ internal fun createRunner(launcher: GoalRunnerSubtaskLauncher, config: RunnerFix
         TestDecompositionManifestStore,
       ),
     ),
-    parentReviewLauncher = evidenceReadingLauncher,
+    parentReviewLauncher = launcher,
     nativeAgentPreflight = config.nativeAgentPreflight,
     registerParse = config.registerParse,
     diagnostics = NoopRuntimeDiagnostics,
@@ -1492,8 +1446,37 @@ internal fun createRunner(launcher: GoalRunnerSubtaskLauncher, config: RunnerFix
     repositoryEnclosingRootPort = TestRepositoryEnclosingRoot,
   )
   val laneLaunchPort = DefaultParallelCodeReviewRunnerLaneLaunchPort(
-    parentReviewLauncher = evidenceReadingLauncher,
-    reviewEvidenceBrokerFactory = reviewFileSystemEvidenceBrokerFactory(),
+    parentReviewLauncher = launcher,
+    reviewEvidenceBrokerFactory = ReviewEvidenceBrokerFactory { binding ->
+      object : ReviewEvidenceBroker {
+        override fun readBatch(request: ReviewEvidenceBatchRequest) = ReviewEvidenceBatchResult(
+          results = emptyList(),
+          cumulativeBytes = 0,
+          expansions = emptyList(),
+        )
+
+        override fun recordToolCall(call: ReviewToolCall) = ReviewToolCallResult()
+
+        override fun recordModelTurn() = null
+
+        override fun validateLaneResult(result: String) = null
+
+        override fun observeLaneResultChunk(chunk: String) = null
+
+        override fun accounting() = ReviewLaneAccounting(
+          lane = binding.assignment.lane,
+          reviewId = binding.assignment.reviewId,
+          packetDigest = binding.assignment.packetDigest,
+          evidenceBytes = 0,
+          expansions = emptyList(),
+          toolCalls = 0,
+          modelTurns = 0,
+          resultBytes = 0,
+        )
+
+        override fun terminalOutcome() = null
+      }
+    },
     governedEvidenceEndpointBinder = stubGovernedReviewEvidenceEndpointBinder(endpointRoot),
     reviewLaunchAgentStaging = config.reviewLaunchAgentStaging,
     sharedEvidenceLocatorReader = sharedEvidenceLocatorReader,
@@ -1624,13 +1607,17 @@ internal fun baseRequest(
   timeout = timeout,
   codeReviewMode = CodeReviewExecutionMode.INLINE,
   reviewRunId = "runner-test-${runnerRequestSequence.incrementAndGet()}",
+  // Pinned so most fixtures never reach for Git; a scope test that exercises base or head detection
+  // clears them with `detectingRevisions()` to leave the resolution the runner performs visible.
   baseRevision = "base-revision",
   headRevision = "head-revision",
 )
 
+/** Drops the pinned revisions so the runner resolves the scope's own base and head. */
 private fun ParallelCodeReviewRequest.detectingRevisions() = copy(baseRevision = null, headRevision = null)
 
 private fun alwaysSuccessLauncher(stdout: String = "NO_FINDINGS") = GoalRunnerSubtaskLauncher { request ->
+  simulateGovernedEvidenceReads(request.skillRunRequest)
   AgentRunLaunchFacts(
     agent = InstallAgent.fromNormalizedId(request.invokedAgentId, label = "agentId"),
     exitStatus = 0,
@@ -1702,15 +1689,15 @@ private fun kotlinPersistenceInlineRunner(finding: String, persistencePath: Stri
 
 private fun kotlinPersistenceManifest() = PlatformManifest(
   slug = "kotlin",
-  packRoot = Path.of("platform-packs/kotlin"),
+  packRoot = Path.of("platform-packs/kotlin").toFileLocation(),
   contractVersion = "1.3",
   routingSignals = RoutingSignals(strong = listOf("*.kt"), tieBreakers = emptyList()),
   declaredCodeReviewAreas = listOf("architecture", "persistence"),
   declaredFiles = DeclaredFiles(
-    baseline = Path.of("content.md"),
+    baseline = Path.of("content.md").toFileLocation(),
     areas = mapOf(
-      "architecture" to Path.of("architecture.md"),
-      "persistence" to Path.of("persistence.md"),
+      "architecture" to Path.of("architecture.md").toFileLocation(),
+      "persistence" to Path.of("persistence.md").toFileLocation(),
     ),
   ),
   areaMetadata = emptyMap(),
@@ -1747,6 +1734,7 @@ private class ParallelSubtaskLauncher(
 
   override fun launch(request: GoalRunnerSubtaskLaunchRequest): AgentRunLaunchOutcome {
     requests += request
+    simulateGovernedEvidenceReads(request.skillRunRequest)
     return outcome ?: AgentRunLaunchFacts(
       agent = InstallAgent.fromNormalizedId(request.invokedAgentId, label = "agentId"),
       exitStatus = 0,
@@ -1764,23 +1752,9 @@ internal class RecordingDiffResolver(
 ) : DiffResolverPort {
   val calls: MutableList<List<String>> = mutableListOf()
 
-  override fun reviewWorktreeFileIdentities(
-    root: Path,
-    paths: List<String>,
-  ): Map<String, ReviewCheckpointFileIdentity> {
-    require(paths.isEmpty())
-    return emptyMap()
-  }
-
   override fun runProcess(args: List<String>, workDir: Path): String? {
     calls += args
-    return if (responses.containsKey(args)) {
-      responses[args]
-    } else if (args.getOrNull(1) == "ls-files") {
-      ""
-    } else {
-      default
-    }
+    return if (responses.containsKey(args)) responses[args] else default
   }
 }
 
@@ -1829,13 +1803,16 @@ private fun throwingCatalogGateway(): ScaffoldCatalogGateway = object : Scaffold
 
 private fun platformManifest(slug: String, strongSignals: List<String>) = PlatformManifest(
   slug = slug,
-  packRoot = Path.of("platform-packs/$slug"),
+  packRoot = Path.of("platform-packs/$slug").toFileLocation(),
   contractVersion = "1.3",
   routingSignals = RoutingSignals(strong = strongSignals, tieBreakers = emptyList()),
   declaredCodeReviewAreas = listOf("architecture", "testing"),
   declaredFiles = DeclaredFiles(
-    baseline = Path.of("content.md"),
-    areas = mapOf("architecture" to Path.of("architecture.md"), "testing" to Path.of("testing.md")),
+    baseline = Path.of("content.md").toFileLocation(),
+    areas = mapOf(
+      "architecture" to Path.of("architecture.md").toFileLocation(),
+      "testing" to Path.of("testing.md").toFileLocation(),
+    ),
   ),
   areaMetadata = emptyMap(),
   laneConditions = mapOf(
@@ -1853,13 +1830,13 @@ private fun sparsePlatformManifest(
   val areas = listOf(requiredArea) + pathAreas.keys.toList()
   return PlatformManifest(
     slug = slug,
-    packRoot = Path.of("platform-packs/$slug"),
+    packRoot = Path.of("platform-packs/$slug").toFileLocation(),
     contractVersion = "1.3",
     routingSignals = RoutingSignals(strong = strongSignals, tieBreakers = emptyList()),
     declaredCodeReviewAreas = areas,
     declaredFiles = DeclaredFiles(
-      baseline = Path.of("content.md"),
-      areas = areas.associateWith { Path.of("$it.md") },
+      baseline = Path.of("content.md").toFileLocation(),
+      areas = areas.associateWith { Path.of("$it.md").toFileLocation() },
     ),
     areaMetadata = emptyMap(),
     laneConditions = buildMap {

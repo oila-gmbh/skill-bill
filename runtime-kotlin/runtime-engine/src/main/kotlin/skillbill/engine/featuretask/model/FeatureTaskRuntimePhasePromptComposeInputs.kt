@@ -33,5 +33,4 @@ data class FeatureTaskRuntimePhasePromptComposeInputs(
   val packBuildCommand: String? = null,
   val repairLedger: FeatureTaskRuntimeRepairLedger? = null,
   val priorReviewContext: FeatureTaskRuntimePriorReviewContext? = null,
-  val phaseSettlement: FeatureTaskRuntimePhaseSettlementTarget? = null,
 )

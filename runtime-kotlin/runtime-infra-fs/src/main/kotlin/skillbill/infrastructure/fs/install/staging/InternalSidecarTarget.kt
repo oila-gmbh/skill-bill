@@ -6,7 +6,8 @@ import skillbill.infrastructure.fs.scaffold.authoring.discoverTargets
 import skillbill.infrastructure.fs.scaffold.authoring.parseInternalForFrontmatter
 import skillbill.infrastructure.fs.scaffold.authoring.renderWrapper
 import skillbill.install.model.InstallPlanSkill
-import skillbill.model.toPathimport skillbill.scaffold.model.PlatformManifest
+import skillbill.model.toPath
+import skillbill.scaffold.model.PlatformManifest
 import java.nio.file.Files
 import java.nio.file.LinkOption
 import java.nio.file.Path
@@ -157,9 +158,9 @@ internal fun discoverInternalSidecarTargets(
     }
     byName[skill.name] = InternalSidecarTarget(
       skillName = skill.name,
-      sourceDir = skill.sourceDir,
+      sourceDir = skill.sourceDir.toPath(),
       renderedWrapper = renderWrapper(discovered.getValue(skill.name)),
-      authoredCompanions = discoverAuthoredCompanions(skill.sourceDir),
+      authoredCompanions = discoverAuthoredCompanions(skill.sourceDir.toPath()),
     )
   }
   return byName.values.toList()

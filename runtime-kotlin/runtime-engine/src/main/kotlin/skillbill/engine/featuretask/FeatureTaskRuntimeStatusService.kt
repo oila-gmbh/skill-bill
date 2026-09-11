@@ -18,11 +18,6 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerEntry
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseRecord
 import skillbill.workflow.taskruntime.model.orLegacyValidate
 
-/**
- * Read-only status service that projects durable per-phase records and the ledger into a typed
- * projection: phases ordered by the definition's `stepIds`, complete/pending/blocked counts, and
- * the first not-yet-complete phase as the current phase. No orchestration, no resume logic.
- */
 @Inject
 class FeatureTaskRuntimeStatusService(
   val recorder: FeatureTaskRuntimePhaseRecorder,
@@ -38,9 +33,6 @@ class FeatureTaskRuntimeStatusService(
     return buildStatusProjection(request, records, decomposeTerminal, ledger)
   }
 
-  // Supplementary ledger-derived blocked-ness: a phase is blocked when its newest ledger entry is
-  // BLOCKED and no durable blocked record already covers it; a later entry from a resumed run
-  // supersedes the block. Phases with a durable blocked record are excluded (already authoritative).
   fun ledgerBlockedPhaseIds(
     ledger: List<FeatureTaskRuntimePhaseLedgerEntry>,
     durableBlockedPhaseIds: Set<String>,
@@ -61,7 +53,8 @@ fun FeatureTaskRuntimeStatusService.buildStatusProjection(
 ): FeatureTaskRuntimeStatusProjection {
   val auditRepairProgress = auditProgressFrom(records, ledger)
   val durableBlockedPhaseIds =
-    records.filterValues { it.status.workflowStepStatus() == WorkflowStepStatus.BLOCKED }.keys  val blockedPhaseIds = durableBlockedPhaseIds + ledgerBlockedPhaseIds(ledger, durableBlockedPhaseIds)
+    records.filterValues { it.status.workflowStepStatus() == WorkflowStepStatus.BLOCKED }.keys
+  val blockedPhaseIds = durableBlockedPhaseIds + ledgerBlockedPhaseIds(ledger, durableBlockedPhaseIds)
   val phases = phaseStatuses(records, blockedPhaseIds, ledger)
   val terminalDecomposeRecorded = decomposeTerminal != null
   val qualityGateSelection = recorder
@@ -135,7 +128,8 @@ private fun FeatureTaskRuntimeStatusService.statusProjectionFrom(
       0
     } else {
       phases.count { it.status.workflowStepStatus() == WorkflowStepStatus.BLOCKED }
-    },    currentPhaseId = parts.currentPhaseId,
+    },
+    currentPhaseId = parts.currentPhaseId,
     resolvedBranch = recorder.loadResolvedBranch(request.workflowId)?.branch,
     finalizingAgentId = agentAttributionFromPhaseState(
       recorder,

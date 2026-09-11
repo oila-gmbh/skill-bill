@@ -8,18 +8,19 @@ import skillbill.engine.featuretask.model.GoalSubtaskReviewPassCarryForward
 import skillbill.engine.featuretask.model.GoalSubtaskReviewPassInFlight
 import skillbill.engine.featuretask.model.GoalSubtaskReviewPassReservation
 import skillbill.engine.featuretask.model.GoalSubtaskReviewPassReserved
-import skillbill.ports.workflow.gitops.buildGoalSubtaskReviewInputimport skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
+import skillbill.ports.workflow.gitops.buildGoalSubtaskReviewInput
+import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFailureDisposition
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutput
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseRecord
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeResolvedBranch
 import skillbill.workflow.taskruntime.model.acceptanceCriterionRefsFor
+import skillbill.workflow.taskruntime.model.requireAcceptedOutput
 
-@Inject
-class FeatureTaskRuntimeRunLoopPhaseRunner {
+object FeatureTaskRuntimeRunLoopPhaseRunner {
   fun declaredCriterionRefs(runLoop: FeatureTaskRuntimeRunLoop): List<String> =
     acceptanceCriterionRefsFor(runLoop.request.runInvariants.acceptanceCriteria.size)
 
-  // Empty by construction: every audit re-decides every declared criterion against the tree, so no
-  // criterion is ever durably closed against a later audit. Kept as a seam because the audit briefing
-  // and the open-criteria projection both read it.
   fun durablyClosedCriterionRefs(): List<String> = emptyList()
 
   fun openAuditCriterionRefs(
@@ -32,17 +33,14 @@ class FeatureTaskRuntimeRunLoopPhaseRunner {
     run: PhaseRun,
     state: FeatureTaskRuntimeRunState,
     observability: FeatureTaskRuntimeRunObservability,
-  ): PhaseOutcome = when (val prepared = runLoop.collaborators.review.prepareRuntimeOwnedReview(runLoop, run, state)) {
-    is RuntimeOwnedReviewBlocked -> prepared.outcome
-    is RuntimeOwnedReviewReady -> {
-      runLoop.collaborators.launch.prepareLaunchForCapture(
-        runLoop,
-        prepared.run,
-        state,
-        state.nextIteration(prepared.run.phaseId),
-        null,
-      )
-      runLoop.collaborators.review.executePreparedReviewDriver(runLoop, prepared, observability)
+  ): PhaseOutcome {
+    val prepared = FeatureTaskRuntimeRunLoopReview.prepareRuntimeOwnedReview(runLoop, run, state)
+    return when (prepared) {
+      is RuntimeOwnedReviewBlocked -> prepared.outcome
+      is RuntimeOwnedReviewReady -> {
+        FeatureTaskRuntimeRunLoopLaunch.prepareLaunchForCapture(runLoop, prepared.run, state, null)
+        FeatureTaskRuntimeRunLoopReview.executePreparedReviewDriver(runLoop, prepared, observability)
+      }
     }
   }
 
@@ -55,7 +53,7 @@ class FeatureTaskRuntimeRunLoopPhaseRunner {
     val persisted = state.persistedBlockedReason(run.phaseId)?.let { persistedReason ->
       val nextIteration = state.nextIteration(run.phaseId)
       val durable = state.recordFor(run.phaseId)
-      if (runLoop.collaborators.phaseRunnerContinued1.shouldRelaunchPersistedBlock(
+      if (FeatureTaskRuntimeRunLoopPhaseRunner.shouldRelaunchPersistedBlock(
           runLoop,
           state,
           run.phaseId,
@@ -75,7 +73,7 @@ class FeatureTaskRuntimeRunLoopPhaseRunner {
       run.phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT &&
       run.reentry?.loopId == FeatureTaskRuntimePhaseWorkflowDefinition.AUDIT_GAP_LOOP_ID
     ) {
-      state.auditGapPlanningContextError()?.let { reason -> PreLaunchBlock(state.nextIteration(run.phaseId), reason) }
+      state.auditGapPlanningContextError?.let { reason -> PreLaunchBlock(state.nextIteration(run.phaseId), reason) }
     } else {
       null
     }
@@ -97,7 +95,7 @@ class FeatureTaskRuntimeRunLoopPhaseRunner {
     preLaunch: PreLaunchBlock,
   ): PhaseOutcome {
     val durable = preLaunch.durableRecord
-    return runLoop.collaborators.phaseAttemptsContinued2.blockAndPersist(
+    return FeatureTaskRuntimeRunLoopPhaseAttempts.blockAndPersist(
       runLoop,
       BlockAndPersistArgs(
         run = run,
@@ -121,7 +119,8 @@ class FeatureTaskRuntimeRunLoopPhaseRunner {
   internal fun missingRequiredUpstream(run: PhaseRun, state: FeatureTaskRuntimeRunState): List<String>? {
     val recoverableAuditRepairSource =
       run.phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT &&
-        run.reentry?.loopId == FeatureTaskRuntimePhaseWorkflowDefinition.AUDIT_GAP_LOOP_ID
+        run.reentry?.loopId == FeatureTaskRuntimePhaseWorkflowDefinition.AUDIT_GAP_LOOP_ID &&
+        run.reentry.reentryGapCriteria.isNotEmpty()
     return missingUpstream(run.declaration, state.outputs())
       ?.filterNot {
         recoverableAuditRepairSource && it == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT
@@ -141,17 +140,10 @@ class FeatureTaskRuntimeRunLoopPhaseRunner {
         )
   }
 
-  // The gate that wrote this reason blocked a goal review on schema-invalid output instead of retrying it,
-  // and persisted a terminal needs_user_action disposition. That gate is gone, so such a record is stale
-  // rather than terminal: the reserved pass still has no completed output, which the review schema
-  // correction loop decides. The remaining attempt budget is deliberately not restarted.
   fun isRemovedGoalReviewSchemaGateBlock(phaseId: String, reason: String): Boolean =
     phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW &&
       reason.startsWith("Goal-subtask review output failed schema validation after its reserved pass")
 
-  // Continuation used to hard-cap at five segments and persist needs_user_action. That cap is gone, so a
-  // durable block naming the old budget is stale rather than terminal: resume must relaunch implement and
-  // keep continuing until obligations close.
   fun isRemovedImplementationContinuationBudgetBlock(phaseId: String, reason: String): Boolean =
     phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT &&
       "exhausted the bounded implementation-continuation budget" in reason
@@ -506,4 +498,5 @@ class FeatureTaskRuntimeRunLoopPhaseRunner {
       failureDisposition = FeatureTaskRuntimeFailureDisposition.NEEDS_USER_ACTION,
       payload = BlockAndPersistPayload(),
     )
-  }}
+  }
+}

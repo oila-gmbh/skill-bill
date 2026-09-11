@@ -122,7 +122,7 @@ public class GoalRunnerLaunchReconciler(
         reviewBaseline = state.manifest.workflowIdFor(subtaskId)
           ?.let { workflowId -> outcomeStore.goalSubtaskReviewState(workflowId) }
           ?.let { reviewState ->
-            GoalSubtaskReviewBaseline(reviewState.reviewBaseSha)
+            GoalSubtaskReviewBaseline(reviewState.reviewBaseSha, reviewState.baselineUntrackedPaths)
           }
           ?: reviewBaseline,
       )
