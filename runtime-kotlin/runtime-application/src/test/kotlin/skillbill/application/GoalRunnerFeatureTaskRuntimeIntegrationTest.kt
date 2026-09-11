@@ -401,8 +401,8 @@ private fun RunnerHarness.goalChildObservation(
 private fun reviewComposition(prompt: String): String = listOf(
   Regex("bill-code-review mode:[^`\\s]+").find(prompt)?.value.orEmpty(),
   Regex("parallel:[^`\\s]+").find(prompt)?.value.orEmpty(),
-  Regex("durable base `[^`]+`").find(prompt)?.value.orEmpty(),
-  prompt.lineSequence().firstOrNull { it.contains("committed, staged, unstaged") }.orEmpty().trim(),
+  Regex("last commit `[^`]+`").find(prompt)?.value.orEmpty(),
+  prompt.lineSequence().firstOrNull { it.contains("against its first parent") }.orEmpty().trim(),
 ).joinToString("|")
 
 private fun GoalRunnerStoredOutcome.terminalObservation(): TerminalObservation = TerminalObservation(
@@ -557,10 +557,10 @@ private fun GoalChildObservation.withoutCommitIdentities(): GoalChildObservation
 private fun assertReviewCompositionParity(standalone: GoalChildObservation, goalChild: GoalChildObservation) {
   assertEquals(standalone.reviewComposition.size, goalChild.reviewComposition.size)
   assertEquals(standalone.reviewComposition, goalChild.reviewComposition)
-  assertTrue(standalone.reviewComposition.all { it.contains("durable base `${"0".repeat(40)}`") })
-  assertTrue(goalChild.reviewComposition.all { it.contains("durable base `${"0".repeat(40)}`") })
-  assertTrue(standalone.reviewComposition.all { it.contains("committed, staged, unstaged") })
-  assertTrue(goalChild.reviewComposition.all { it.contains("committed, staged, unstaged") })
+  assertTrue(standalone.reviewComposition.all { it.contains("last commit `") })
+  assertTrue(goalChild.reviewComposition.all { it.contains("last commit `") })
+  assertTrue(standalone.reviewComposition.all { it.contains("against its first parent") })
+  assertTrue(goalChild.reviewComposition.all { it.contains("against its first parent") })
 }
 
 private fun completedChildReport(

@@ -15,7 +15,6 @@ import skillbill.application.review.model.StackDetectionException
 import skillbill.application.review.model.UsageValidationException
 import skillbill.application.review.toBoundedPayload
 import skillbill.application.reviewevidence.model.DiffResolutionException
-import skillbill.application.reviewevidence.model.ParallelReviewScope
 import skillbill.cli.kernel.CliRunState
 import skillbill.cli.kernel.DocumentedCliCommand
 import skillbill.cli.kernel.invokingAgentResolutionHelp
@@ -42,8 +41,8 @@ open class CodeReviewDriverCommand(
   )
   private val scope by option(
     "--scope",
-    help = "Diff scope: staged, unstaged, branch (default), or pr.",
-  ).choice("staged", "unstaged", "branch", "pr").default(DEFAULT_CODE_REVIEW_SCOPE)
+    help = "Diff scope: staged, unstaged, uncommitted, branch (default), or pr.",
+  ).choice("staged", "unstaged", "uncommitted", "branch", "pr").default(DEFAULT_CODE_REVIEW_SCOPE)
   private val repoRoot by option(
     "--repo-root",
     help = "Repository root for diff and agent runs.",
@@ -91,9 +90,10 @@ open class CodeReviewDriverCommand(
     val resolvedAgent1 = resolveAgent1()
     val repo = Path.of(repoRoot).toAbsolutePath().normalize()
     validateCommitTarget()
+    val target = resolveStandaloneCodeReviewTarget(commitTarget, scope)
     val result = runParallelReviewDriver(
       runner,
-      request(resolvedAgent1, parsedReviewScope(scope), repo),
+      request(resolvedAgent1, target, repo),
       state,
     ) ?: return
     writeParallelReviewResult(state, result)
@@ -101,13 +101,17 @@ open class CodeReviewDriverCommand(
 
   private fun request(
     resolvedAgent1: String,
-    resolvedScope: ParallelReviewScope,
+    target: StandaloneCodeReviewTarget,
     repo: Path,
   ): ParallelCodeReviewRequest {
-    val (resolvedBase, resolvedHead) = resolveCodeReviewRevisions(commitTarget, baseRevision, headRevision)
+    val (resolvedBase, resolvedHead) = resolveCodeReviewRevisions(
+      target.commitRevision,
+      baseRevision,
+      headRevision,
+    )
     return ParallelCodeReviewRequest(
       agent1Id = resolvedAgent1,
-      scope = resolvedScope,
+      scope = target.scope,
       repoRoot = repo,
       timeout = timeoutMinutes?.minutes,
       codeReviewMode = parseExecutionMode(codeReviewMode),
@@ -128,11 +132,9 @@ open class CodeReviewDriverCommand(
   private fun validateCommitTarget() {
     if (commitTarget.isNullOrBlank()) return
     val error = when {
-      scope != DEFAULT_CODE_REVIEW_SCOPE ->
-        "A commit target cannot be combined with --scope '$scope'; use the default branch scope."
-      diffFile != null -> "A commit target cannot be combined with --diff-file."
+      diffFile != null -> "A positional review target cannot be combined with --diff-file."
       !baseRevision.isNullOrBlank() || !headRevision.isNullOrBlank() ->
-        "A commit target cannot be combined with --base-revision or --head-revision."
+        "A positional review target cannot be combined with --base-revision or --head-revision."
       else -> null
     }
     if (error != null) {
@@ -147,8 +149,6 @@ open class CodeReviewDriverCommand(
   }
 }
 
-internal const val DEFAULT_CODE_REVIEW_SCOPE = "branch"
-
 internal fun resolveCodeReviewRevisions(
   commitTarget: String?,
   baseRevision: String?,
@@ -157,14 +157,6 @@ internal fun resolveCodeReviewRevisions(
   val target = commitTarget?.takeIf(String::isNotBlank)
   if (target != null) return "$target^" to target
   return baseRevision?.takeIf(String::isNotBlank) to headRevision?.takeIf(String::isNotBlank)
-}
-
-private fun parsedReviewScope(scope: String): ParallelReviewScope = when (scope) {
-  "staged" -> ParallelReviewScope.STAGED
-  "unstaged" -> ParallelReviewScope.UNSTAGED
-  DEFAULT_CODE_REVIEW_SCOPE -> ParallelReviewScope.BRANCH
-  "pr" -> ParallelReviewScope.PR
-  else -> throw UsageError("Invalid scope: $scope")
 }
 
 private fun runParallelReviewDriver(

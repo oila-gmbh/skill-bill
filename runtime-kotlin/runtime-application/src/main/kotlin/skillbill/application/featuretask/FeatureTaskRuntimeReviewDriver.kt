@@ -71,7 +71,7 @@ object FeatureTaskRuntimeReviewDriverMapper {
       codeReviewMode = executed,
       resolvedTier = executed,
       reviewRunId = pass.reviewRunId,
-      baseRevision = input.reviewBaseSha,
+      baseRevision = lastCommitParentRevision(input.currentHeadSha),
       headRevision = input.currentHeadSha,
       specPath = specPath(runInvariants.specReference),
       selectedAgentAddonsSection = AgentAddonPromptFormatter.format(workspace.agentAddonSelection),
@@ -79,6 +79,8 @@ object FeatureTaskRuntimeReviewDriverMapper {
   }
 
   fun specPath(specReference: String): Path = Path.of(specReference)
+
+  internal fun lastCommitParentRevision(headSha: String): String = "$headSha^"
 }
 
 object FeatureTaskRuntimeReviewEnvelope {

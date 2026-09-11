@@ -601,7 +601,7 @@ class FeatureTaskRuntimePhasePromptComposerTest {
   }
 
   @Test
-  fun `the single review pass receives immutable-base scope framing`() {
+  fun `the single review pass receives last-commit scope framing`() {
     val input = GoalSubtaskReviewInput(
       reviewBaseSha = "a".repeat(40),
       currentHeadSha = "b".repeat(40),
@@ -619,8 +619,9 @@ class FeatureTaskRuntimePhasePromptComposerTest {
     }
 
     assertFalse(prompt.contains("scope-fingerprint:abc"))
-    assertContains(prompt, "from base `${input.reviewBaseSha}`")
-    assertContains(prompt, "`${input.currentHeadSha}` with target tree")
+    assertContains(prompt, "last commit `${input.currentHeadSha}`")
+    assertFalse(prompt.contains("durable base `${input.reviewBaseSha}`"))
+    assertContains(prompt, "resolves last-commit itself")
   }
 
   @Test

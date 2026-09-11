@@ -1,3 +1,10 @@
+## [2026-09-11] Named standalone code-review targets
+Areas: skills/bill-code-review
+- `/bill-code-review` accepted arguments now include `pr`, `last`, a commit SHA, and `uncommitted` (plus the narrower staged/unstaged packets).
+- The skill maps those tokens to the driver; it does not treat `pr` as a git revision.
+Feature flag: N/A
+Acceptance criteria: N/A (hotfix)
+
 ## [2026-08-24] SKILL-200 subtask 5 — collapse feature entry family to one skill
 Areas: skills/bill-feature, skills/bill-feature-spec, docs, orchestration/contracts, runtime-kotlin
 - Rewrote `bill-feature` as the sole feature entry point for intake, update checks, token forwarding, one preflight gate, selective rehydration, launch, and verbatim relay.

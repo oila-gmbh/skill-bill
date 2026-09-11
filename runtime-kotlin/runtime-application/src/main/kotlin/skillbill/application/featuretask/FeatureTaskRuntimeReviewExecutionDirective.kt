@@ -20,9 +20,9 @@ private fun baselineUntrackedPolicy(inputs: ReviewExecutionDirectiveInputs): Str
   ?.let { paths ->
     """
       ## Baseline-untracked review policy
-      These paths existed before this run and are excluded from the immutable-base review packet:
+      These paths existed before this run and are excluded from the last-commit review packet:
       ${paths.joinToString("\n") { path -> "- `$path`" }}
-      The runtime-owned review driver must not re-add these paths through a branch scope or a replacement diff.
+      The runtime-owned review driver must not re-add these paths through a replacement diff.
     """.trimIndent()
   }
   .orEmpty()
@@ -30,11 +30,12 @@ private fun baselineUntrackedPolicy(inputs: ReviewExecutionDirectiveInputs): Str
 private fun materializedScope(inputs: ReviewExecutionDirectiveInputs): String =
   inputs.goalSubtaskReviewInput?.let { input ->
     """
-    ## Immutable-base review scope
-    Review only the immutable committed revision pair from base `${input.reviewBaseSha}` to target
-    `${input.currentHeadSha}` with target tree `${input.reviewedTreeSha}`.
-    Do not use `origin/main...HEAD`, a merge base, the full feature branch, or a replacement baseline.
-    Read committed content on demand through the governed review evidence broker.
+    ## Last-commit review scope
+    Review only the last commit `${input.currentHeadSha}` against its first parent.
+    Do not use `origin/main...HEAD`, a merge base, the full feature branch, the durable implement base,
+    or the current worktree. Standalone `skill-bill code-review` still reviews the caller target
+    (pr, commit SHA or last, or uncommitted changes). The phase driver resolves last-commit itself; it does
+    not receive a pre-baked diff blob.
     """.trimIndent()
   }.orEmpty()
 

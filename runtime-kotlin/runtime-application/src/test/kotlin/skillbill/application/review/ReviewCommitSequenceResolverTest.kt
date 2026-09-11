@@ -200,6 +200,7 @@ class ReviewCommitSequenceResolverTest {
     listOf(
       ParallelReviewScope.STAGED to ReviewCommitSource.SYNTHETIC_WORKING_TREE,
       ParallelReviewScope.UNSTAGED to ReviewCommitSource.SYNTHETIC_WORKING_TREE,
+      ParallelReviewScope.UNCOMMITTED to ReviewCommitSource.SYNTHETIC_WORKING_TREE,
     ).forEach { (scope, expected) ->
       val resolved = resolve(noGit, scope, aggregate)
       assertEquals(1, resolved.units.size)

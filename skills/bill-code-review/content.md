@@ -1,6 +1,6 @@
 ---
 name: bill-code-review
-description: Dominant-stack code-review entry point. Use when reviewing code, a commit, a PR, staged changes, or when the user asks for a code review.
+description: Dominant-stack code-review entry point. Use when reviewing a PR, a commit, last commit, uncommitted changes, or when the user asks for a code review.
 ---
 
 # Code review entry
@@ -12,7 +12,12 @@ the driver:
 
 ```text
 Accepted arguments:
-  <commit>                         Review a commit against its first parent.
+  pr                               Review the current PR against its base.
+  last                             Review HEAD against its first parent.
+  <commit>                         Review that commit against its first parent.
+  uncommitted                      Review uncommitted work (staged, unstaged, and untracked).
+  staged                           Review the index only.
+  unstaged                         Review the worktree against the index.
   mode:auto|inline|delegated       Select review depth.
   context:feature-remediation     Review a bounded remediation delta.
 ```
@@ -44,12 +49,10 @@ blocks loudly; it never degrades to inline.
 
 `inline` is the single-prompt light tier: one review subagent launched by the
 driver as the declared `bill-code-review-inline` native agent, no per-area
-specialist workers, no nested baseline orchestrator, at reduced judgment depth.
-The worker traverses the delta exactly once against one combined checklist,
-holding all areas in mind simultaneously — it must never re-walk the same delta
-once per area. Evidence through the bound broker stays full: reduced depth does
-not authorize sampling or early stop. Never present it as equivalent to a
-delegated result.
+specialist workers, no nested baseline orchestrator, under a bounded budget at
+reduced depth. The worker traverses the delta exactly once against one combined
+checklist, holding all areas in mind simultaneously — it must never re-walk the
+same delta once per area. Never present it as equivalent to a delegated result.
 
 `auto` resolves to `inline` everywhere: a subtask's first review pass, a standalone
 review with no pass number, and every follow-up or remediation pass. Preserve and
@@ -75,32 +78,42 @@ A disposition without that evidence is not admissible.
 If the caller passes `parallel:<agent>` or `parallel:<agent>:<model>`, stop immediately,
 name the removed dual-agent parallel review capability, and do not invoke the driver.
 
-## Commit target argument
+## Review target argument
 
-Recognize at most one non-blank positional commit target. Pass it through to the
-driver as the positional commit argument so the driver reviews that commit
-against its first parent.
+Recognize at most one non-blank positional review target:
 
-A positional commit target cannot be combined with `--diff-file`,
-`--base-revision`, `--head-revision`, or a non-default `--scope`.
-When a commit target is supplied, omit `--scope`; the driver uses its default
-branch scope. Without a commit target, pass the caller's scope normally.
+- `pr` reviews the current pull request against its base.
+- `last` or `HEAD` reviews HEAD against its first parent.
+- a commit SHA or other git revision reviews that commit against its first parent.
+- `uncommitted` reviews staged, unstaged, and untracked work.
+- `staged` and `unstaged` keep those narrower packets.
+
+A positional review target cannot be combined with `--diff-file`,
+`--base-revision`, `--head-revision`, or a conflicting `--scope`.
+When the positional target already names the packet (`pr`, `last`,
+`uncommitted`, `staged`, `unstaged`), omit `--scope`. A commit SHA uses the
+default branch scope so the driver diffs that commit against its first parent.
+Without a positional target, pass the caller's `--scope` normally.
 
 ## Invoke the driver
 
-Feature-task and goal-child review receives an immutable committed revision pair. Read the base and target content on demand through the governed `read_evidence` and `request_expansion` broker tools, or bounded and paged Git reads. Do not expect inline path inventories, hunk catalogs, or diff bodies in the launch prompt; routing and coverage metadata remain runtime-private.
-
-Do not resolve scope, classify diff signals, name rubrics, sequence commits,
-account budgets, merge lanes, or launch workers in this session. Invoke the
-runtime driver once and present what it returns:
+Do not invent a scope from git, classify diff signals, name rubrics, sequence
+commits, account budgets, merge lanes, or launch workers in this session. Map
+the caller's named target, invoke the runtime driver once, and present what it
+returns:
 
 ```bash
 skill-bill code-review \
-  [<commit>] \
+  [<target>] \
   --execution-mode inline \
   [--scope <caller-scope>] \
   --repo-root <repo-root>
 ```
+
+Pass the caller's named target as the positional argument (`pr`, `last`,
+`<commit>`, `uncommitted`, `staged`, or `unstaged`). Do not pass `pr`,
+`last`, or `uncommitted` as a git revision unless the caller supplied a real SHA.
+When the positional target already names the packet, omit `--scope`.
 
 When the caller supplied an explicit `mode:delegated`, pass `--execution-mode delegated`
 instead. Omission and `mode:auto` always pass `--execution-mode inline`.

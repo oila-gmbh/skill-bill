@@ -42,6 +42,7 @@ internal fun ParallelCodeReviewRunnerPlanning.resolveDiff(
   } ?: when (request.scope) {
     ParallelReviewScope.STAGED -> runDiff(listOf("git", "diff", "--cached"), request.repoRoot)
     ParallelReviewScope.UNSTAGED -> runDiff(listOf("git", "diff"), request.repoRoot)
+    ParallelReviewScope.UNCOMMITTED -> resolveUncommittedDiff(request, base)
     ParallelReviewScope.BRANCH -> runDiff(listOf("git", "diff", base, head), request.repoRoot)
     ParallelReviewScope.PR -> diffResolver.runProcess(listOf("git", "diff", base, head), request.repoRoot)
       ?: runDiff(listOf("gh", "pr", "diff"), request.repoRoot)
@@ -50,6 +51,38 @@ internal fun ParallelCodeReviewRunnerPlanning.resolveDiff(
     throw DiffResolutionException("Diff is empty for scope '${request.scope.name.lowercase()}'.")
   }
   return diffText
+}
+
+internal fun ParallelCodeReviewRunnerPlanning.resolveUncommittedDiff(
+  request: ParallelCodeReviewRequest,
+  base: String,
+): String {
+  val tracked = diffResolver.runProcess(listOf("git", "diff", "--binary", base), request.repoRoot).orEmpty()
+  val untracked = diffResolver.runProcess(
+    listOf("git", "ls-files", "-o", "--exclude-standard", "-z"),
+    request.repoRoot,
+  ).orEmpty()
+    .split('\u0000')
+    .map(String::trim)
+    .filter(String::isNotBlank)
+  val patches = StringBuilder()
+  untracked.forEach { path ->
+    val patch = diffResolver.runProcess(
+      listOf("git", "diff", "--binary", "--no-index", "/dev/null", path),
+      request.repoRoot,
+    ).orEmpty()
+    if (patch.isNotBlank()) {
+      patches.append(patch)
+      if (!patches.endsWith("\n")) patches.append('\n')
+    }
+  }
+  return buildString {
+    append(tracked)
+    if (patches.isNotEmpty()) {
+      if (isNotEmpty() && !endsWith("\n")) append('\n')
+      append(patches)
+    }
+  }
 }
 
 internal fun ParallelCodeReviewRunnerPlanning.runDiff(args: List<String>, workDir: Path): String =

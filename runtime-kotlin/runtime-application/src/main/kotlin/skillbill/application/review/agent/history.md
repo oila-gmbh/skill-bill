@@ -1,5 +1,13 @@
 # Review Boundary History
 
+## [2026-09-11] Uncommitted standalone packet
+Areas: application/review, runtime-cli/codereview
+- `UNCOMMITTED` is a working-tree packet against HEAD, not a commit range and not the durable implement base.
+- Feature-task review stays last-commit `BRANCH`; this scope is standalone-only.
+Feature flag: N/A
+Acceptance criteria: N/A (hotfix)
+
+
 ## [2026-09-11] SKILL-237 subtask 1 — Inline review coverage continuation
 Areas: application/review, runtime-infra-fs/{infrastructure/fs,launcher/review}, runtime-ports/review
 - Inline review now retains the governed broker and review_run_id across slices, merging findings and accounting until coverage completes or a bounded terminal condition occurs.

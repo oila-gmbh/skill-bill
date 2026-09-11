@@ -1,5 +1,14 @@
 # featuretask runtime boundary history
 
+## [2026-09-11] Review phase is last commit; standalone stays caller-scoped
+Areas: runtime-application/featuretask, runtime-cli/codereview, application/review, skills/bill-code-review
+- Feature-task and goal `review` diffs `HEAD^..HEAD`. It no longer sends the durable implement-base range.
+- Standalone `skill-bill code-review` still reviews `pr`, a commit SHA, `last`/`HEAD`, or uncommitted work.
+- Pattern: phase scope is last commit; named standalone tokens map in the CLI so `pr` is never a git revision. reusable
+Feature flag: N/A
+Acceptance criteria: N/A (hotfix)
+
+
 ## [2026-09-11] Validate repair is one occupancy with in-session proofs
 Areas: runtime-application/featuretask, runtime-application/featuretask/validation
 - Validate `MAX_REPAIR_TURNS` is 1: discovery, one agent occupancy, one POST_REPAIR_VERIFY, then complete or block. Operator resume still resets an exhausted window.

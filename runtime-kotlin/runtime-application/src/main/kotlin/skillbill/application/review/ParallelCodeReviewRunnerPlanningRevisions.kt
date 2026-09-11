@@ -33,6 +33,7 @@ internal fun ParallelCodeReviewRunnerPlanning.canonicalRange(
     ParallelReviewScope.PR -> detectPrBase(request.repoRoot)
     ParallelReviewScope.STAGED,
     ParallelReviewScope.UNSTAGED,
+    ParallelReviewScope.UNCOMMITTED,
     ParallelReviewScope.BRANCH,
     -> detectBranchBase(request.repoRoot)
   }

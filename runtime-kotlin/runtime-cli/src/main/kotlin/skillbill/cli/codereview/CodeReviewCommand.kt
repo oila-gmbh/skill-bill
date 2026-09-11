@@ -21,7 +21,7 @@ class CodeReviewCommand(
 ) {
   private val commitArgument by argument(
     name = "commit",
-    help = "Commit to review against its first parent.",
+    help = "Review target: pr, last, a commit SHA, uncommitted, staged, or unstaged.",
   ).optional()
 
   override val commitTarget: String?

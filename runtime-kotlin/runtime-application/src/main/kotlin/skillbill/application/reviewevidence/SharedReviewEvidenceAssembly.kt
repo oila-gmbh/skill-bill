@@ -55,7 +55,9 @@ class SharedReviewEvidenceAssembler(private val diffResolver: DiffResolverPort) 
   ): SharedReviewEvidenceCommits {
     val declaredSynthetic = when {
       suppliedDiff -> ReviewCommitSource.SYNTHETIC_SUPPLIED_DIFF
-      scope == ParallelReviewScope.STAGED || scope == ParallelReviewScope.UNSTAGED ->
+      scope == ParallelReviewScope.STAGED ||
+        scope == ParallelReviewScope.UNSTAGED ||
+        scope == ParallelReviewScope.UNCOMMITTED ->
         ReviewCommitSource.SYNTHETIC_WORKING_TREE
       else -> null
     }

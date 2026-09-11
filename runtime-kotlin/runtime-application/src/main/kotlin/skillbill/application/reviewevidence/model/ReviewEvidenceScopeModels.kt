@@ -3,6 +3,7 @@ package skillbill.application.reviewevidence.model
 enum class ParallelReviewScope {
   STAGED,
   UNSTAGED,
+  UNCOMMITTED,
   BRANCH,
   PR,
 }

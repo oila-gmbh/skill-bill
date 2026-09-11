@@ -40,17 +40,17 @@ class FeatureTaskRuntimeRemediationPassPromptTest {
 
     assertContains(prompt, "Every carried finding — Blocker, Major, Minor, and Nit — is in scope")
     assertContains(prompt, "Do not re-apply the plan from scratch")
-    assertFalse(prompt.contains("## Immutable-base review scope"))
+    assertFalse(prompt.contains("## Last-commit review scope"))
     assertFalse(prompt.contains("immediately preceding pass's Blocker findings"))
   }
 
   @Test
-  fun `pass two omits the immutable-base materialized scope block and baseline-untracked policy`() {
+  fun `pass two omits the last-commit materialized scope block and baseline-untracked policy`() {
     val prompt = implementFixPrompt()
 
     assertFalse(
-      prompt.contains("## Immutable-base review scope"),
-      "The immutable-base scope block is pass one's authority only.",
+      prompt.contains("## Last-commit review scope"),
+      "The last-commit scope block is pass one's authority only.",
     )
     assertFalse(
       prompt.contains("## Baseline-untracked review policy"),
@@ -60,14 +60,14 @@ class FeatureTaskRuntimeRemediationPassPromptTest {
   }
 
   @Test
-  fun `pass one keeps the immutable-base materialized scope block`() {
+  fun `pass one keeps the last-commit materialized scope block`() {
     val prompt = composeReview(
       passNumber = 1,
       resolvedTier = CodeReviewExecutionMode.INLINE,
       reviewInput = REVIEW_INPUT,
     )
 
-    assertContains(prompt, "## Immutable-base review scope")
+    assertContains(prompt, "## Last-commit review scope")
   }
 
   @Test

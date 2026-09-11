@@ -161,6 +161,7 @@ class SharedReviewEvidenceResolutionTest {
     val parsed = ReviewDiffEvidence.parse(aggregate)
     val cases = listOf(
       Triple(ParallelReviewScope.STAGED, false, ReviewCommitSource.SYNTHETIC_WORKING_TREE),
+      Triple(ParallelReviewScope.UNCOMMITTED, false, ReviewCommitSource.SYNTHETIC_WORKING_TREE),
       Triple(ParallelReviewScope.BRANCH, true, ReviewCommitSource.SYNTHETIC_SUPPLIED_DIFF),
       Triple(ParallelReviewScope.PR, false, ReviewCommitSource.SYNTHETIC_AGGREGATE_PR_DIFF),
     )
@@ -210,6 +211,7 @@ class SharedReviewEvidenceResolutionTest {
     val branchAndPr = store.derivations
     resolve(store, noGit, aggregate, queryOf(scope = ParallelReviewScope.STAGED))
     resolve(store, noGit, aggregate, queryOf(scope = ParallelReviewScope.UNSTAGED))
+    resolve(store, noGit, aggregate, queryOf(scope = ParallelReviewScope.UNCOMMITTED))
 
     assertEquals(2, branchAndPr)
     assertTrue(store.derivations > branchAndPr)

@@ -35,7 +35,7 @@ import kotlin.test.assertTrue
 
 class FeatureTaskRuntimeReviewDelegationTest {
   @Test
-  fun `child-owned review uses the immutable commit range without a supplied diff blob`() {
+  fun `child-owned review resolves last commit without a supplied diff blob`() {
     val input = reviewInput()
     val request = mappedRequest(
       input = input,
@@ -45,7 +45,7 @@ class FeatureTaskRuntimeReviewDelegationTest {
 
     assertEquals(null, request.suppliedDiff)
     assertEquals(ParallelReviewScope.BRANCH, request.scope)
-    assertEquals(input.reviewBaseSha, request.baseRevision)
+    assertEquals(FeatureTaskRuntimeReviewDriverMapper.lastCommitParentRevision(input.currentHeadSha), request.baseRevision)
     assertEquals(input.currentHeadSha, request.headRevision)
     assertEquals(CodeReviewExecutionMode.INLINE, request.codeReviewMode)
     assertEquals(CodeReviewExecutionMode.INLINE, request.resolvedTier)
