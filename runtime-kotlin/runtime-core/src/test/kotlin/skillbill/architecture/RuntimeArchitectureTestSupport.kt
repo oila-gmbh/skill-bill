@@ -1111,6 +1111,7 @@ internal object RuntimeArchitectureScanConstants {
     "skillbill.workflow.goal.model.appendBoundedHistoryBySequence",
     "skillbill.workflow.goal.model.goalObservabilityHistoryFromArtifacts",
     "skillbill.workflow.goal.model.goalObservabilityLatestEventFromArtifacts",
+    "skillbill.workflow.goal.model.goalObservabilityLatestEventForLiveness",
     "skillbill.ports.idestatus.IdeStatusValidator.validate",
     "skillbill.workflow.taskruntime.FeatureTaskRuntimeBuildReceiptValidator.validateBuildReceipt",
     "skillbill.workflow.taskruntime.FeatureTaskRuntimeHandoffEnvelopeValidator.validateEnvelope",

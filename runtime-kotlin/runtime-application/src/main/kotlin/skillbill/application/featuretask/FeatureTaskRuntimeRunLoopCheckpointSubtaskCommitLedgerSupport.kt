@@ -257,7 +257,7 @@ private fun loadCheckpointIdentitiesForReconciliation(
   null
 }
 
-private data class MissingCheckpointIdentityRequest(
+internal data class MissingCheckpointIdentityRequest(
   val runLoop: FeatureTaskRuntimeRunLoop,
   val identity: FeatureTaskRuntimeSubtaskCommitIdentity,
   val relevant: List<FeatureTaskRuntimeCheckpointIdentity>,
@@ -270,63 +270,29 @@ private data class MissingCheckpointIdentityRequest(
 
 private fun recoverMissingCheckpointIdentity(request: MissingCheckpointIdentityRequest): Boolean {
   val runLoop = request.runLoop
-  val identity = request.identity
-  val relevant = request.relevant
-  val identities = request.identities
   val headSha = request.headSha
-  val precedingPhaseId = request.precedingPhaseId
-  val branch = request.branch
-  val blockedReason = request.blockedReason
   val tree = runLoop.phaseGates.gitOperations.resolveTree(runLoop.request.repoRoot, headSha)
   if (!tree.ok || tree.value.orEmpty().isBlank()) {
     return blockLedgerReconciliation(
       runLoop,
       BlockReconciliationRequest(
-        precedingPhaseId,
-        branch,
-        blockedReason,
+        request.precedingPhaseId,
+        request.branch,
+        request.blockedReason,
         "the tree for committed HEAD '$headSha' could not be resolved; operator decision: repair Git object access " +
           "before reviewing",
       ),
     )
   }
-  val ledger = SubtaskCommitLedgerState(
-    commitSha = relevant.lastOrNull()?.commitSha,
-    nextSequenceNumber = (identities.maxOfOrNull { it.sequenceNumber } ?: -1) + 1,
-    branch = relevant.lastOrNull()?.branch,
-  )
-  val recovered = runLoop.phaseGates.gitOperations.recoveredSubtaskParent(
-    RecoveredSubtaskParentRequest(
-      repoRoot = runLoop.request.repoRoot,
-      headSha = headSha,
-      branch = branch,
-      identity = identity,
-      sequenceNumber = ledger.nextSequenceNumber,
-      prior = relevant.lastOrNull(),
-    ),
-  )
-  if (recovered.ok) {
-    return recordRecoveredCheckpointIdentity(request, recovered.value.orEmpty().trim())
-  }
-  val parent = runLoop.phaseGates.gitOperations.resolveCommit(runLoop.request.repoRoot, "$headSha^")
-  val parentSha = parent.value.orEmpty().trim()
-  if (parent.ok && parentSha.isNotBlank()) {
-    runCatching {
-      runLoop.diagnostics.warning(
-        "record_kind=migration seam=FeatureTaskRuntimeRunLoopCheckpointSubtaskCommitLedger." +
-          "recoverMissingCheckpointIdentity value_used='$headSha' parent='$parentSha' " +
-          "cause=${recovered.error}; defaulting owned parent to HEAD^",
-      )
-    }
-    return recordRecoveredCheckpointIdentity(request, parentSha)
-  }
+  val recovered = resolveRecoveredCheckpointParent(request)
+  recovered.parentSha?.let { return recordRecoveredCheckpointIdentity(request, it) }
   return blockLedgerReconciliation(
     runLoop,
     BlockReconciliationRequest(
-      precedingPhaseId,
-      branch,
-      blockedReason,
-      "${recovered.error}; operator decision: reconcile the durable checkpoint before reviewing",
+      request.precedingPhaseId,
+      request.branch,
+      request.blockedReason,
+      "${recovered.failure}; operator decision: reconcile the durable checkpoint before reviewing",
     ),
   )
 }
@@ -367,81 +333,6 @@ private fun recordRecoveredCheckpointIdentity(request: MissingCheckpointIdentity
   )
   if (!recorded) return false
   return persistRecoveredCheckpointParentRef(request, parentSha)
-}
-
-private fun persistRecoveredCheckpointParentRef(
-  request: MissingCheckpointIdentityRequest,
-  parentSha: String,
-): Boolean {
-  val runLoop = request.runLoop
-  val sequenceNumber = (request.identities.maxOfOrNull { it.sequenceNumber } ?: -1) + 1
-  val refName = request.identity.checkpointRefName(sequenceNumber)
-  val existing = runLoop.phaseGates.gitOperations.resolveCheckpointRef(
-    runLoop.request.repoRoot,
-    FEATURE_TASK_RUNTIME_CHECKPOINT_REF_NAMESPACE,
-    refName,
-  )
-  if (!existing.ok) {
-    return blockLedgerReconciliation(
-      runLoop,
-      BlockReconciliationRequest(
-        request.precedingPhaseId,
-        request.branch,
-        request.blockedReason,
-        "recovered checkpoint ref '$refName' could not be inspected (${existing.error}); operator decision: " +
-          "repair checkpoint ref access before reviewing",
-      ),
-    )
-  }
-  val occupant = existing.value.orEmpty().trim()
-  if (occupant.isNotBlank() && occupant != parentSha) {
-    return blockLedgerReconciliation(
-      runLoop,
-      BlockReconciliationRequest(
-        request.precedingPhaseId,
-        request.branch,
-        request.blockedReason,
-        "recovered checkpoint ref '$refName' already names '$occupant' instead of parent '$parentSha'; " +
-          "operator decision: resolve the foreign recovery ref before reviewing",
-      ),
-    )
-  }
-  if (occupant.isBlank()) {
-    val written = runLoop.phaseGates.gitOperations.updateCheckpointRef(
-      runLoop.request.repoRoot,
-      FEATURE_TASK_RUNTIME_CHECKPOINT_REF_NAMESPACE,
-      refName,
-      parentSha,
-    )
-    if (!written.ok) {
-      return blockLedgerReconciliation(
-        runLoop,
-        BlockReconciliationRequest(
-          request.precedingPhaseId,
-          request.branch,
-          request.blockedReason,
-          "recovered checkpoint ref '$refName' could not be written (${written.error}); operator decision: " +
-            "repair checkpoint ref access before reviewing",
-        ),
-      )
-    }
-  }
-  val verified = runLoop.phaseGates.gitOperations.resolveCheckpointRef(
-    runLoop.request.repoRoot,
-    FEATURE_TASK_RUNTIME_CHECKPOINT_REF_NAMESPACE,
-    refName,
-  )
-  if (verified.ok && verified.value.orEmpty().trim() == parentSha) return true
-  return blockLedgerReconciliation(
-    runLoop,
-    BlockReconciliationRequest(
-      request.precedingPhaseId,
-      request.branch,
-      request.blockedReason,
-      "recovered checkpoint ref '$refName' did not verify as parent '$parentSha'; operator decision: " +
-        "repair the recovery refs before reviewing",
-    ),
-  )
 }
 
 internal fun blockLedgerReconciliation(

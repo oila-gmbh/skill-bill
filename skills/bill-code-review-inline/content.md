@@ -6,7 +6,7 @@ description: "Inline review worker for bill-code-review mode:inline. Parent-laun
 
 ## Role
 
-`bill-code-review-inline` is the declared worker for a governed `mode:inline` review. The runtime launches exactly one inline worker for the review. A large evidence surface is paged through the governed evidence broker inside that single session, never by spawning sequential chunk workers or per-area specialists.
+`bill-code-review-inline` is the declared worker for a governed `mode:inline` review. The runtime launches exactly one inline worker for the review. A large evidence surface is paged through the governed evidence broker inside that single session, never per-area specialist workers and never by spawning sequential chunk workers.
 
 The parent launches this declared agent rather than a general-purpose worker. The declared toolset is the point: every byte of repository content arrives through the two governed evidence operations, `read_evidence` and `request_expansion`, and nothing else. There is no raw filesystem, search, or shell tool. A general-purpose worker inherits the host's entire tool surface and re-sends every unused tool schema on each of its model turns, paying for mutation and delegation capability that the read-only review contract forbids anyway.
 

@@ -1,5 +1,14 @@
 # Review Boundary History
 
+## [2026-09-11] SKILL-237 subtask 1 — Inline review coverage continuation
+Areas: application/review, runtime-infra-fs/{infrastructure/fs,launcher/review}, runtime-ports/review
+- Inline review now retains the governed broker and review_run_id across slices, merging findings and accounting until coverage completes or a bounded terminal condition occurs.
+- Discovery omits already-delivered selectors while preserving full-list cursor positions; endpoint unbind tears down transport without prematurely finishing delivery.
+- Reusable: the continuation seam, delivered-selector catalog filtering, and transport unbind lifecycle preserve coverage truth across worker exits.
+- Limitation: delegated single-use launches remain unchanged; continuation stops on zero progress, budget exhaustion, timeout, spawn failure, interrupt, or other non-coverage failure.
+Feature flag: N/A
+Acceptance criteria: 7/7 implemented
+
 ## [2026-09-10] Inline reduced-depth vs full evidence wording
 Areas: application/review, skills/bill-code-review-inline, skills/bill-code-review, orchestration/review-orchestrator, docs
 - Parent prompt and inline skill now state that reduced depth is judgment-only (one merged checklist, one walk) and does not authorize sampling, a page budget, or early stop.

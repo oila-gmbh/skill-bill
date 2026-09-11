@@ -88,12 +88,23 @@ class ParallelCodeReviewEvidenceBoundaryTest {
   @Test
   fun `inline prelaunch expansion authorizes on the single parent broker`() {
     val fixture = prepareChunkedInlineRepository("review-chunked-expansion")
+    var expansionChunks = 0
     val result = reviewHarness(
       ReviewHarnessConfig(
         manifests = chunkedInlineArchitectureSecurityManifests(),
         diff = fixture.git("diff", "--cached"),
         diffResolver = fixture.resolver,
-        simulateEvidenceReads = true,
+        simulateEvidenceReads = false,
+        response = { launch ->
+          if (launch.skillRunRequest.issueKey != "code-review") {
+            return@ReviewHarnessConfig RecordedWorkerResponse()
+          }
+          val broker = assertNotNull(launch.skillRunRequest.reviewEvidenceBroker)
+          assertTrue(discoveryHasAuthorizedExpansion(BrokerBackedNativeReviewOperationProtocol(broker)))
+          expansionChunks += 1
+          simulateGovernedEvidenceReads(launch.skillRunRequest)
+          RecordedWorkerResponse(stdout = "verdict: approved")
+        },
       ),
       fixture.recorder,
     ).run(
@@ -108,12 +119,6 @@ class ParallelCodeReviewEvidenceBoundaryTest {
       ).copy(baseRevision = fixture.revision, headRevision = fixture.revision),
     )
     assertEquals(1, fixture.recorder.parentLaunches.count { it.skillRunRequest.issueKey == "code-review" })
-    val expansionChunks = fixture.recorder.parentLaunches
-      .filter { it.skillRunRequest.issueKey == "code-review" }
-      .count { launch ->
-      val broker = assertNotNull(launch.skillRunRequest.reviewEvidenceBroker)
-      discoveryHasAuthorizedExpansion(BrokerBackedNativeReviewOperationProtocol(broker))
-    }
     assertEquals(1, expansionChunks)
     assertTrue(result.lane1.success)
     assertTrue(assertNotNull(result.coverage).isCleanCoverage)
@@ -154,7 +159,6 @@ class ParallelCodeReviewEvidenceBoundaryTest {
     assertTrue(accounting.requiredEvidenceUnits > accounting.deliveredEvidenceUnits)
     assertFalse(assertNotNull(result.coverage).isCleanCoverage)
   }
-
 
   private fun discoveryHasAuthorizedExpansion(protocol: NativeReviewOperationProtocol): Boolean {
     var cursor: String? = null
