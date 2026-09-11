@@ -76,6 +76,9 @@ class GovernedReviewEvidenceEndpoint private constructor(
   @Volatile
   private var closed = false
 
+  @Volatile
+  private var sessionFinished = false
+
   private val deliveryLock = ReentrantLock()
   private val deliveryCompleted = deliveryLock.newCondition()
   private val pendingDeliveries = mutableSetOf<String>()
@@ -86,7 +89,7 @@ class GovernedReviewEvidenceEndpoint private constructor(
   private val acceptor = thread(name = "skill-bill-review-evidence-${descriptor.lane}", isDaemon = true) {
     acceptLoop()
   }
-  override fun close() {
+  override fun unbindListener() {
     deliveryLock.withLock {
       if (closing) return
       closing = true
@@ -104,17 +107,15 @@ class GovernedReviewEvidenceEndpoint private constructor(
     }
     runCatching { activeConnection?.close() }
     acceptor.interrupt()
-    protocol.finishDeliverySession()
-    deleteDirectory()
+    deleteGovernedReviewEndpointArtifacts(descriptor, directory)
   }
-  private fun deleteDirectory() {
-    runCatching { Files.deleteIfExists(descriptor.socketPath) }
-    runCatching { Files.deleteIfExists(descriptor.mcpConfigPath) }
-    runCatching { Files.deleteIfExists(GovernedReviewMcpConfigWriter.tomlConfigPath(descriptor.mcpConfigPath)) }
-    val cursorConfig = GovernedReviewMcpConfigWriter.cursorProjectConfigPath(descriptor.mcpConfigPath)
-    runCatching { Files.deleteIfExists(cursorConfig) }
-    runCatching { Files.deleteIfExists(cursorConfig.parent) }
-    runCatching { Files.deleteIfExists(directory) }
+
+  override fun close() {
+    unbindListener()
+    if (!sessionFinished) {
+      sessionFinished = true
+      protocol.finishDeliverySession()
+    }
   }
   private fun acceptLoop() {
     while (!closed) {

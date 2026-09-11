@@ -82,9 +82,18 @@ internal class FileSystemReviewEvidenceCatalog(private val binding: ReviewEviden
 
   fun discover(request: ReviewEvidenceDiscoveryRequest): ReviewEvidenceDiscoveryPage {
     if (request.pageSize !in 1..REVIEW_DISCOVERY_PAGE_SIZE) invalid("Discovery page size is outside its limit.")
+    val allEntries = entries.values.toList()
     val start = request.cursor?.let { cursors[it] ?: invalid("Foreign or stale discovery cursor.") } ?: 0
-    val selected = entries.values.drop(start).take(request.pageSize)
-    val next = (start + selected.size).takeIf { it < entries.size }?.let { offset ->
+    val selected = mutableListOf<ReviewEvidenceCatalogEntry>()
+    var index = start
+    while (index < allEntries.size && selected.size < request.pageSize) {
+      val entry = allEntries[index]
+      if (entry.selector !in delivered) {
+        selected.add(entry)
+      }
+      index++
+    }
+    val next = index.takeIf { it < allEntries.size }?.let { offset ->
       val cursor = "$generation:$offset"
       cursors[cursor] = offset
       cursor
