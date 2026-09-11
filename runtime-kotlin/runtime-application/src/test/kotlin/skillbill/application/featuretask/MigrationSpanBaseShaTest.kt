@@ -2,7 +2,10 @@ package skillbill.application.featuretask
 
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNull
+import kotlin.test.assertTrue
+import skillbill.ports.workflow.gitops.model.WorkflowGitOperationResult
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeCheckpointIdentity
 import skillbill.workflow.taskruntime.model.featureTaskRuntimeCheckpointRefName
 
@@ -26,6 +29,24 @@ class MigrationSpanBaseShaTest {
   fun `first subtask empty ledger keeps HEAD as the recorded branch base`() {
     val head = "a".repeat(40)
     assertEquals(head, migrationSpanBaseSha(head, head, emptyList()))
+  }
+
+  @Test
+  fun `a proven non-ancestor durable base defaults the owned span to HEAD`() {
+    val provenNonAncestor = WorkflowGitOperationResult(
+      status = "ok",
+      value = "false",
+    )
+    assertTrue(unprovenAncestorDefaultsOwnedSpanToHead(provenNonAncestor))
+  }
+
+  @Test
+  fun `unreadable ancestry still refuses instead of defaulting to HEAD`() {
+    val unreadable = WorkflowGitOperationResult(
+      status = "error",
+      error = "cat-file failed",
+    )
+    assertFalse(unprovenAncestorDefaultsOwnedSpanToHead(unreadable))
   }
 
   @Test

@@ -2,6 +2,7 @@ package skillbill.application.featuretask
 
 import skillbill.application.featuretask.model.FeatureTaskRuntimeSubtaskCommitIdentity
 import skillbill.ports.workflow.gitops.commitMessage
+import skillbill.ports.workflow.gitops.model.WorkflowGitOperationResult
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeCheckpointIdentity
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeResolvedBranch
 
@@ -220,9 +221,13 @@ private fun migrationSettlementValidationFailure(request: MigrationSettlementReq
     baseSha == null ->
       "the durable subtask base '$durableBase' collapsed onto HEAD without a recoverable checkpoint parent; " +
         "operator decision: identify the exact active span before normalizing"
-    baseReachability == null || !baseReachability.ok || baseReachability.value != "true" ->
-      "the durable subtask base '$baseSha' is not a proven ancestor of HEAD '${context.headSha}'; " +
-        "operator decision: identify the exact active span before normalizing"
+    baseReachability != null && !baseReachability.ok ->
+      "the durable subtask base '$baseSha' is not a proven ancestor of HEAD '${context.headSha}' " +
+        "(${baseReachability.error}); operator decision: repair Git object access before normalizing"
+    unprovenAncestorDefaultsOwnedSpanToHead(baseReachability) -> {
+      recordDefaultOwnedSpanToHead(request, baseSha)
+      null
+    }
     else -> spanFailureForMigration(
       request.runLoop,
       SubtaskCommitSpanFailureRequest(
@@ -233,6 +238,21 @@ private fun migrationSettlementValidationFailure(request: MigrationSettlementReq
         identity = context.identity,
         checkpoints = request.active,
       ),
+    )
+  }
+}
+
+internal fun unprovenAncestorDefaultsOwnedSpanToHead(
+  reachability: WorkflowGitOperationResult?,
+): Boolean = reachability == null || (reachability.ok && reachability.value != "true")
+
+private fun recordDefaultOwnedSpanToHead(request: MigrationSettlementRequest, staleBaseSha: String) {
+  runCatching {
+    request.runLoop.diagnostics.warning(
+      "record_kind=migration seam=FeatureTaskRuntimeSubtaskCommitMigrationNormalizer." +
+        "migrationSettlementValidationFailure value_used='${request.context.headSha}' " +
+        "value_expected='$staleBaseSha' " +
+        "cause=durable subtask base is not an ancestor of HEAD; defaulting owned span to HEAD",
     )
   }
 }
