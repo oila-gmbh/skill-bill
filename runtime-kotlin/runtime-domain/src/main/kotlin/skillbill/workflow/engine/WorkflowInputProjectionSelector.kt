@@ -1,6 +1,7 @@
 package skillbill.workflow.engine
 
 import skillbill.contracts.JsonCodec
+import skillbill.contracts.review.ReviewVerificationSignalKeys
 import skillbill.error.InvalidWorkflowStateSchemaError
 import skillbill.workflow.engine.model.WorkflowDefinition
 import skillbill.workflow.engine.model.WorkflowInputProjection
@@ -84,7 +85,7 @@ object WorkflowInputProjectionSelector {
     }
     return declaration.requiredArtifactKeys.associateWith { artifactKey ->
       if (artifactKey == RUNTIME_REPOSITORY_EVIDENCE_ARTIFACT_KEY) {
-        mapOf("fingerprint" to resolvedRepositoryCheckpointIdentity)
+        mapOf(ReviewVerificationSignalKeys.REPOSITORY_CHECKPOINT_FINGERPRINT to resolvedRepositoryCheckpointIdentity)
       } else {
         projectArtifact(
           definition = definition,
@@ -141,15 +142,17 @@ object WorkflowInputProjectionSelector {
       ?: reject(definition, "projection for step '$stepId' has null repository checkpoint evidence")
     val checkpoint = repositoryCheckpoint as? Map<*, *>
       ?: reject(definition, "projection for step '$stepId' repository checkpoint evidence is not typed")
-    val checkpointIdentity = checkpoint["fingerprint"] ?: checkpoint["checkpoint"]
-      ?: reject(definition, "projection for step '$stepId' repository checkpoint evidence has no identity")
+    val checkpointIdentity =
+      checkpoint[ReviewVerificationSignalKeys.REPOSITORY_CHECKPOINT_FINGERPRINT] ?: checkpoint["checkpoint"]
+        ?: reject(definition, "projection for step '$stepId' repository checkpoint evidence has no identity")
     if (checkpointIdentity != resolvedRepositoryCheckpointIdentity) {
       reject(
         definition,
         "projection for step '$stepId' repository checkpoint evidence does not match the runtime-resolved checkpoint",
       )
     }
-    val claimedIdentity = checkpoint["repository_checkpoint"] ?: checkpoint["checkpoint"] ?: checkpoint["fingerprint"]
+    val claimedIdentity = checkpoint[ReviewVerificationSignalKeys.REPOSITORY_CHECKPOINT] ?: checkpoint["checkpoint"]
+      ?: checkpoint[ReviewVerificationSignalKeys.REPOSITORY_CHECKPOINT_FINGERPRINT]
     if (claimedIdentity != checkpointIdentity) {
       reject(definition, "projection for step '$stepId' repository checkpoint evidence is stale or mismatched")
     }
@@ -202,8 +205,8 @@ object WorkflowInputProjectionSelector {
 
   private fun nestedRepositoryCheckpointIdentity(value: Any?): Any? {
     val typed = value as? Map<*, *> ?: return null
-    val nested = typed["repository_checkpoint"] as? Map<*, *> ?: return null
-    return nested["fingerprint"] ?: nested["checkpoint"]
+    val nested = typed[ReviewVerificationSignalKeys.REPOSITORY_CHECKPOINT] as? Map<*, *> ?: return null
+    return nested[ReviewVerificationSignalKeys.REPOSITORY_CHECKPOINT_FINGERPRINT] ?: nested["checkpoint"]
   }
 
   private fun reject(definition: WorkflowDefinition, detail: String): Nothing =

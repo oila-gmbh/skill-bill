@@ -9,4 +9,6 @@ object ReviewVerificationSignalKeys {
   const val EVIDENCE_COVERAGE_COMPLETE = "evidence_coverage_complete"
   const val FINDINGS_VERIFICATION_DISPOSITIONS = "finding_dispositions"
   const val CITATION_DIAGNOSTICS = "citation_diagnostics"
+  const val REPOSITORY_CHECKPOINT = "repository_checkpoint"
+  const val REPOSITORY_CHECKPOINT_FINGERPRINT = "fingerprint"
 }

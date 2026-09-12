@@ -111,7 +111,9 @@ internal object FeatureTaskRuntimeHandoffProjectionValueBuilder {
   }.filterValues { it != null }
 
   private fun checkpointFingerprint(inputs: FeatureTaskRuntimeHandoffProjectionInputs): Map<String, String>? =
-    inputs.resolvedCheckpoint?.let { mapOf("fingerprint" to it.fingerprint) }
+    inputs.resolvedCheckpoint?.let {
+      mapOf(ReviewVerificationSignalKeys.REPOSITORY_CHECKPOINT_FINGERPRINT to it.fingerprint)
+    }
 
   private fun phaseProseProjectionValues(
     inputs: FeatureTaskRuntimeHandoffProjectionInputs,
@@ -236,13 +238,15 @@ internal object FeatureTaskRuntimeHandoffProjectionValueBuilder {
   ): FeatureTaskRuntimeHandoffProjectionValue {
     if (name == FeatureTaskRuntimeHandoffProjectionEnvelopeWire.REPOSITORY_CHECKPOINT_FIELD) {
       val checkpoint = JsonCodec.anyToStringAnyMap(value)
-      val fingerprint = (checkpoint?.get("fingerprint") as? String)?.takeIf(String::isNotBlank)
-        ?: rejectFeatureTaskRuntimeHandoffProjection(
-          inputs,
-          declaration,
-          FeatureTaskRuntimeHandoffProjectionFailureKind.MALFORMED_FIELD,
-          "repository_checkpoint must contain a non-blank fingerprint.",
-        )
+      val fingerprint =
+        (checkpoint?.get(ReviewVerificationSignalKeys.REPOSITORY_CHECKPOINT_FINGERPRINT) as? String)
+          ?.takeIf(String::isNotBlank)
+          ?: rejectFeatureTaskRuntimeHandoffProjection(
+            inputs,
+            declaration,
+            FeatureTaskRuntimeHandoffProjectionFailureKind.MALFORMED_FIELD,
+            "repository_checkpoint must contain a non-blank fingerprint.",
+          )
       return FeatureTaskRuntimeHandoffProjectionValue.CompactReference(
         FeatureTaskRuntimeCompactReferenceKind.REPOSITORY_CHECKPOINT,
         fingerprint,

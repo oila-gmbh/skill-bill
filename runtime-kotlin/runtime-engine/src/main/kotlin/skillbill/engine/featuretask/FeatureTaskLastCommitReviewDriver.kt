@@ -70,12 +70,11 @@ class FeatureTaskLastCommitReviewDriver(
     else -> null
   }
 
-  private fun droppedCandidateDiagnostic(rejected: Int, candidateCount: Int): String? =
-    if (rejected == 0) {
-      null
-    } else {
-      "dropped $rejected of $candidateCount [F-XXX] candidate line(s)"
-    }
+  private fun droppedCandidateDiagnostic(rejected: Int, candidateCount: Int): String? = if (rejected == 0) {
+    null
+  } else {
+    "dropped $rejected of $candidateCount [F-XXX] candidate line(s)"
+  }
 
   private fun lastCommitReviewFixPrompt(
     request: ParallelCodeReviewRequest,
@@ -88,6 +87,7 @@ class FeatureTaskLastCommitReviewDriver(
     appendLine("Do not launch bill-code-review, delegated review subagents, or an isolated review process.")
     appendLine("Fix every Blocker and Major finding in this same session before you emit.")
     appendLine("You may edit files. Leave Minor and Nit unfixed unless the edit is local and obvious.")
+    appendLine("Do not commit, amend, reset, or stage changes; the runtime owns the review checkpoint.")
     appendLine("Criterion-gap detection remains exclusive to audit. Do not report unsatisfied acceptance criteria.")
     appendLine("Do not run `./gradlew check`, the pack collect-all gate, or `bill-code-check`; validate owns those.")
     request.specPath?.let { path ->

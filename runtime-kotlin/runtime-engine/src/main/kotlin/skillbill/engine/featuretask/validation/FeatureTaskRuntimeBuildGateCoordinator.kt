@@ -4,6 +4,7 @@ import me.tatarka.inject.annotations.Inject
 import skillbill.config.model.applyValidationGateGradleWrapper
 import skillbill.contracts.JsonCodec
 import skillbill.contracts.SharedPayloadKeys
+import skillbill.contracts.review.ReviewVerificationSignalKeys
 import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_BUILD_RECEIPT_CONTRACT_VERSION
 import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_CONTRACT_VERSION
 import skillbill.engine.featuretask.emitFeatureTaskRuntimeEventSafely
@@ -308,7 +309,8 @@ class FeatureTaskRuntimeBuildGateCoordinator(
         SharedPayloadKeys.CONTRACT_VERSION to FEATURE_TASK_RUNTIME_BUILD_RECEIPT_CONTRACT_VERSION,
         "validation_status" to "passed",
         "checks" to checks,
-        "repository_checkpoint" to mapOf("fingerprint" to repositoryCheckpoint),
+        ReviewVerificationSignalKeys.REPOSITORY_CHECKPOINT to
+          mapOf(ReviewVerificationSignalKeys.REPOSITORY_CHECKPOINT_FINGERPRINT to repositoryCheckpoint),
         "gate_run_count" to measurements.size,
         "gate_runs" to measurements.map { it.toArtifactMap() },
       )

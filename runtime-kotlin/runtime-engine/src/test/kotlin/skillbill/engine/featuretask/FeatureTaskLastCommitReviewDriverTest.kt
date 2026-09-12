@@ -51,6 +51,7 @@ class FeatureTaskLastCommitReviewDriverTest {
     assertTrue(prompt.contains("git diff abc^ def"))
     assertTrue(prompt.contains("Fix every Blocker and Major"))
     assertTrue(prompt.contains("You may edit files"))
+    assertTrue(prompt.contains("the runtime owns the review checkpoint"))
     assertTrue(result.lane1.success)
     assertEquals("reviewed last commit\nverdict: approved", result.output)
     assertEquals(emptyList(), result.mergeResult.findings)

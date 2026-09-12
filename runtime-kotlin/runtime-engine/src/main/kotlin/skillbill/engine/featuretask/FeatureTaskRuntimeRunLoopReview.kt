@@ -7,8 +7,11 @@ import skillbill.application.review.model.ParallelCodeReviewResult
 import skillbill.application.review.model.StackDetectionException
 import skillbill.application.review.model.UsageValidationException
 import skillbill.application.reviewevidence.model.DiffResolutionException
+import skillbill.contracts.JsonCodec
+import skillbill.contracts.SharedPayloadKeys
 import skillbill.error.InvalidReviewContextSchemaError
 import skillbill.error.UnreadableSpecIntentProjectionError
+import skillbill.goalrunner.subtaskreview.FeatureTaskRuntimeVerificationSignalKeys
 import skillbill.goalrunner.subtaskreview.GoalSubtaskReviewSummaryReducer
 import skillbill.goalrunner.subtaskreview.model.UnaddressedFindingLedgerScope
 import skillbill.ports.diagnostics.model.ProducerOutputEvidence
@@ -16,10 +19,12 @@ import skillbill.ports.workflow.gitops.model.WorkflowGitOperationResult
 import skillbill.ports.workflow.gitops.repositoryFingerprint
 import skillbill.review.context.model.ReviewContextBudgetExceededException
 import skillbill.workflow.goal.model.GoalSubtaskBlockerDisposition
+import skillbill.workflow.taskruntime.model.AcceptedFeatureTaskRuntimePhaseOutput
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFailureDisposition
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutput
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseRecord
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeReviewPassSequence
+import skillbill.workflow.taskruntime.model.NormalizedFeatureTaskRuntimePhaseOutput
 import skillbill.workflow.taskruntime.model.requireAcceptedOutput
 import kotlin.coroutines.cancellation.CancellationException
 
@@ -237,29 +242,138 @@ object FeatureTaskRuntimeRunLoopReview {
         ),
       )
     }
-    val cycle = FeatureTaskRuntimeReviewDriverCycle.assemble(
-      result = result,
-      request = prepared.driverRequest,
-      cycle = FeatureTaskRuntimeReviewCycleContext(
-        passNumber = prepared.launch.passNumber,
-        resolvedTier = prepared.launch.resolvedTier,
-        repositoryFingerprint = prepared.launch.checkpoint,
-        blockerDispositions = reviewBlockerDispositions(
+    return when (
+      val settlement = prepareReviewSettlement(runLoop, prepared, result, observability, fileManifest)
+    ) {
+      is ReviewSettlementPreparation.Blocked -> settlement.outcome
+      is ReviewSettlementPreparation.Ready -> settleRuntimeOwnedReview(
+        runLoop,
+        SettleRuntimeOwnedReviewArgs(
+          run,
+          prepared.launch.iteration,
+          settlement.outputText,
+          observability,
+          fileManifest,
+        ),
+        settlement.acceptedOutput,
+      )
+    }
+  }
+
+  private fun prepareReviewSettlement(
+    runLoop: FeatureTaskRuntimeRunLoop,
+    prepared: RuntimeOwnedReviewReady,
+    result: ParallelCodeReviewResult,
+    observability: FeatureTaskRuntimeRunObservability,
+    fileManifest: FeatureTaskRuntimePhaseFileManifest,
+  ): ReviewSettlementPreparation {
+    val run = prepared.run
+    val initialCycle = assembleReviewCycle(runLoop, prepared, result, prepared.launch.checkpoint)
+    val acceptedOutput = runCatching {
+      runLoop.outputValidator.validatePhaseOutput(
+        initialCycle.outputText,
+        sourceLabel = run.phaseId,
+      ).requireAcceptedOutput(run.phaseId)
+    }.getOrElse { error ->
+      return ReviewSettlementPreparation.Blocked(
+        FeatureTaskRuntimeRunLoopPhaseAttempts.blockAndPersistInPhase(
           runLoop,
-          ReviewBlockerDispositionsArgs(
-            run = run,
-            passNumber = prepared.launch.passNumber,
-            result = result,
-            reviewRunId = prepared.launch.reviewRunId,
-            resolvedTier = prepared.launch.resolvedTier,
+          phaseBlockArgs(
+            run,
+            prepared.launch.iteration,
+            "Runtime-owned review settlement did not validate: ${error.message.orEmpty()}",
+            observability,
+            payload = BlockAndPersistPayload(fileManifest = fileManifest),
           ),
         ),
+      )
+    }
+    if (fileManifest.before == fileManifest.after) {
+      return ReviewSettlementPreparation.Ready(initialCycle.outputText, acceptedOutput)
+    }
+    return when (val checkpoint = checkpointReviewChanges(runLoop, run, prepared.launch.iteration, observability)) {
+      is ReviewCheckpointResult.Blocked -> ReviewSettlementPreparation.Blocked(checkpoint.outcome)
+      is ReviewCheckpointResult.Refreshed -> {
+        val outputText = assembleReviewCycle(runLoop, prepared, result, checkpoint.fingerprint).outputText
+        ReviewSettlementPreparation.Ready(
+          outputText,
+          acceptedOutput.withReviewRepositoryFingerprintIfNeeded(outputText),
+        )
+      }
+    }
+  }
+
+  private fun assembleReviewCycle(
+    runLoop: FeatureTaskRuntimeRunLoop,
+    prepared: RuntimeOwnedReviewReady,
+    result: ParallelCodeReviewResult,
+    fingerprint: String,
+  ): FeatureTaskRuntimeReviewDriverCycleOutcome = FeatureTaskRuntimeReviewDriverCycle.assemble(
+    result = result,
+    request = prepared.driverRequest,
+    cycle = FeatureTaskRuntimeReviewCycleContext(
+      passNumber = prepared.launch.passNumber,
+      resolvedTier = prepared.launch.resolvedTier,
+      repositoryFingerprint = fingerprint,
+      blockerDispositions = reviewBlockerDispositions(
+        runLoop,
+        ReviewBlockerDispositionsArgs(
+          run = prepared.run,
+          passNumber = prepared.launch.passNumber,
+          result = result,
+          reviewRunId = prepared.launch.reviewRunId,
+          resolvedTier = prepared.launch.resolvedTier,
+        ),
       ),
+    ),
+  )
+
+  private fun checkpointReviewChanges(
+    runLoop: FeatureTaskRuntimeRunLoop,
+    run: PhaseRun,
+    iteration: Int,
+    observability: FeatureTaskRuntimeRunObservability,
+  ): ReviewCheckpointResult {
+    val checkpointed = FeatureTaskRuntimeRunLoopCheckpointRemediation.checkpointEstablished(
+      runLoop = runLoop,
+      precedingPhaseId = run.phaseId,
+      loopId = null,
+      intent = FeatureTaskRuntimeCheckpointMessage.INTENT_REMEDIATION,
+      blockedReason = { branch, error ->
+        "Feature-task-runtime could not amend review changes on the feature branch '$branch'" +
+          (if (error.isBlank()) "." else " ($error).") +
+          " Refusing to complete review with uncommitted review fixes."
+      },
     )
-    return settleRuntimeOwnedReview(
-      runLoop,
-      SettleRuntimeOwnedReviewArgs(run, prepared.launch.iteration, cycle.outputText, observability, fileManifest),
-    )
+    if (!checkpointed) {
+      return ReviewCheckpointResult.Blocked(
+        FeatureTaskRuntimeRunLoopPhaseAttempts.blockInPhase(
+          runLoop,
+          PhaseBlockRequest(
+            run = run,
+            attemptCount = iteration,
+            reason = "Runtime-owned review changes could not be committed before review settlement.",
+            observability = observability,
+            failureDisposition = FeatureTaskRuntimeFailureDisposition.PROCESS_FAILURE,
+          ),
+        ),
+      )
+    }
+    val fingerprint = runLoop.gitOperations.repositoryFingerprint(run.request.repoRoot).value
+      .takeIf(String::isNotBlank)
+      ?: return ReviewCheckpointResult.Blocked(
+        FeatureTaskRuntimeRunLoopPhaseAttempts.blockInPhase(
+          runLoop,
+          PhaseBlockRequest(
+            run = run,
+            attemptCount = iteration,
+            reason = "Runtime-owned review could not resolve the post-amend repository checkpoint fingerprint.",
+            observability = observability,
+            failureDisposition = FeatureTaskRuntimeFailureDisposition.PROCESS_FAILURE,
+          ),
+        ),
+      )
+    return ReviewCheckpointResult.Refreshed(fingerprint)
   }
 
   internal fun reviewBaselineUntrackedPaths(runLoop: FeatureTaskRuntimeRunLoop, run: PhaseRun): List<String> =
@@ -318,28 +432,13 @@ object FeatureTaskRuntimeRunLoopReview {
   internal fun settleRuntimeOwnedReview(
     runLoop: FeatureTaskRuntimeRunLoop,
     args: SettleRuntimeOwnedReviewArgs,
+    acceptedOutput: AcceptedFeatureTaskRuntimePhaseOutput,
   ): PhaseOutcome {
     val run = args.run
     val iteration = args.iteration
     val outputText = args.outputText
     val observability = args.observability
     val fileManifest = args.fileManifest
-    val acceptedOutput = runCatching {
-      runLoop.outputValidator.validatePhaseOutput(
-        outputText,
-        sourceLabel = run.phaseId,
-      ).requireAcceptedOutput(run.phaseId)
-    }.getOrElse { error ->
-      return FeatureTaskRuntimeRunLoopPhaseAttempts.blockAndPersistInPhase(
-        runLoop,
-        phaseBlockArgs(
-          run,
-          iteration,
-          "Runtime-owned review settlement did not validate: ${error.message.orEmpty()}",
-          observability,
-        ),
-      )
-    }
     with(FeatureTaskRuntimeRunLoopReviewDriverSettlement) {
       retainRuntimeOwnedReviewEvidence(runLoop, run, runLoop.state, iteration, outputText)
       persistReviewCompletionOutcome(
@@ -364,6 +463,51 @@ object FeatureTaskRuntimeRunLoopReview {
     }
   }
 }
+
+private sealed interface ReviewSettlementPreparation {
+  data class Ready(
+    val outputText: String,
+    val acceptedOutput: AcceptedFeatureTaskRuntimePhaseOutput,
+  ) : ReviewSettlementPreparation
+
+  data class Blocked(val outcome: PhaseOutcome) : ReviewSettlementPreparation
+}
+
+private sealed interface ReviewCheckpointResult {
+  data class Refreshed(val fingerprint: String) : ReviewCheckpointResult
+
+  data class Blocked(val outcome: PhaseOutcome) : ReviewCheckpointResult
+}
+
+private fun AcceptedFeatureTaskRuntimePhaseOutput.withReviewRepositoryFingerprintIfNeeded(
+  outputText: String,
+): AcceptedFeatureTaskRuntimePhaseOutput {
+  val fingerprint = outputText.repositoryCheckpointFingerprint() ?: return this
+  val envelope = JsonCodec.anyToStringAnyMap(
+    FeatureTaskRuntimeReviewEnvelope.envelopeMap(outputText),
+  ).orEmpty().toMutableMap()
+  val produced = JsonCodec.anyToStringAnyMap(envelope[SharedPayloadKeys.PRODUCED_OUTPUTS])
+    .orEmpty()
+    .toMutableMap()
+  produced[FeatureTaskRuntimeVerificationSignalKeys.REPOSITORY_CHECKPOINT] =
+    mapOf(
+      FeatureTaskRuntimeVerificationSignalKeys.REPOSITORY_CHECKPOINT_FINGERPRINT to fingerprint,
+    )
+  envelope[SharedPayloadKeys.PRODUCED_OUTPUTS] = produced
+  return copy(
+    normalizedOutput = NormalizedFeatureTaskRuntimePhaseOutput(
+      canonicalJson = JsonCodec.mapToJsonString(envelope),
+      envelope = envelope,
+    ),
+  )
+}
+
+private fun String.repositoryCheckpointFingerprint(): String? = FeatureTaskRuntimeReviewEnvelope.envelopeMap(this)
+  .let { JsonCodec.anyToStringAnyMap(it[SharedPayloadKeys.PRODUCED_OUTPUTS]).orEmpty() }
+  .let { JsonCodec.anyToStringAnyMap(it[FeatureTaskRuntimeVerificationSignalKeys.REPOSITORY_CHECKPOINT]) }
+  ?.get(FeatureTaskRuntimeVerificationSignalKeys.REPOSITORY_CHECKPOINT_FINGERPRINT)
+  ?.toString()
+  ?.takeIf(String::isNotBlank)
 
 object FeatureTaskRuntimeRunLoopReviewDriverSettlement {
   internal fun FeatureTaskRuntimeRunLoopReview.retainRuntimeOwnedReviewEvidence(

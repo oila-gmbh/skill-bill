@@ -2,6 +2,7 @@ package skillbill.application.workflow
 
 import skillbill.boundary.OpenBoundaryMap
 import skillbill.contracts.SharedPayloadKeys
+import skillbill.contracts.review.ReviewVerificationSignalKeys
 import skillbill.contracts.workflow.WorkflowContracts
 import skillbill.workflow.engine.model.WorkflowCompactContinueView
 import skillbill.workflow.engine.model.WorkflowContinuationArtifactSummary
@@ -126,7 +127,7 @@ object WorkflowWireProjections {
   fun inputProjectionMap(projection: WorkflowInputProjection): Map<String, Any?> = linkedMapOf(
     SharedPayloadKeys.STEP_ID to projection.stepId,
     "producer_iteration" to projection.producerIteration,
-    "repository_checkpoint" to projection.repositoryCheckpoint,
+    ReviewVerificationSignalKeys.REPOSITORY_CHECKPOINT to projection.repositoryCheckpoint,
     "artifacts" to projection.artifacts,
     "utf8_bytes" to projection.utf8Bytes,
   )

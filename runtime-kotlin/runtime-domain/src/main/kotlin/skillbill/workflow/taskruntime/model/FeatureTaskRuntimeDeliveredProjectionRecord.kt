@@ -3,6 +3,7 @@ package skillbill.workflow.taskruntime.model
 import skillbill.boundary.OpenBoundaryMap
 import skillbill.contracts.JsonCodec
 import skillbill.contracts.SharedPayloadKeys
+import skillbill.contracts.review.ReviewVerificationSignalKeys
 import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_PERSISTENCE_CONTRACT_VERSION
 import skillbill.error.InvalidWorkflowStateSchemaError
 
@@ -48,7 +49,8 @@ data class FeatureTaskRuntimeDeliveredProjectionRecord(
     "source_producer_iterations" to sourceProducerIterations.map {
       mapOf(SharedPayloadKeys.PHASE_ID to it.phaseId, "iteration" to it.iteration)
     },
-    REPOSITORY_CHECKPOINT_FIELD to mapOf("fingerprint" to repositoryCheckpointFingerprint),
+    REPOSITORY_CHECKPOINT_FIELD to
+      mapOf(ReviewVerificationSignalKeys.REPOSITORY_CHECKPOINT_FINGERPRINT to repositoryCheckpointFingerprint),
     "handoff_envelope" to envelope.toEnvelopeMap(),
   )
 
@@ -113,7 +115,8 @@ data class FeatureTaskRuntimeDeliveredProjectionRecord(
     ) {
       val checkpoint = JsonCodec.anyToStringAnyMap(raw[REPOSITORY_CHECKPOINT_FIELD])
         ?: missing(REPOSITORY_CHECKPOINT_FIELD)
-      val persistedFingerprint = checkpoint["fingerprint"] as? String ?: missing("repository_checkpoint.fingerprint")
+      val persistedFingerprint = checkpoint[ReviewVerificationSignalKeys.REPOSITORY_CHECKPOINT_FINGERPRINT] as? String
+        ?: missing("repository_checkpoint.fingerprint")
       if (persistedFingerprint != record.repositoryCheckpointFingerprint) {
         throw InvalidWorkflowStateSchemaError(
           "Feature-task-runtime delivered projection checkpoint identity does not match its validated envelope; " +

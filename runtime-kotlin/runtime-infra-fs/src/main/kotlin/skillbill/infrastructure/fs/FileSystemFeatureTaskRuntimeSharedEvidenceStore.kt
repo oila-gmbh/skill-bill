@@ -2,6 +2,7 @@ package skillbill.infrastructure.fs
 
 import com.fasterxml.jackson.databind.ObjectMapper
 import me.tatarka.inject.annotations.Inject
+import skillbill.contracts.review.ReviewVerificationSignalKeys
 import skillbill.error.ReviewHunkEvidenceLocatorMissingError
 import skillbill.error.ReviewHunkEvidenceLocatorUnreadableError
 import skillbill.ports.taskruntime.FeatureTaskRuntimeSharedEvidenceDeriver
@@ -189,7 +190,7 @@ open class FileSystemFeatureTaskRuntimeSharedEvidenceStore :
   }
 
   private fun envelopeOf(artifact: FeatureTaskRuntimeSharedEvidenceArtifact): Map<String, Any?> = linkedMapOf(
-    "fingerprint" to artifact.fingerprint,
+    ReviewVerificationSignalKeys.REPOSITORY_CHECKPOINT_FINGERPRINT to artifact.fingerprint,
     "base_ref" to artifact.baseRef,
     "head_ref" to artifact.headRef,
     "files" to artifact.files.map { mapOf("path" to it.path, "change_kind" to it.changeKind) },

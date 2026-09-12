@@ -2,6 +2,7 @@ package skillbill.workflow.taskruntime.model
 
 import skillbill.boundary.OpenBoundaryMap
 import skillbill.contracts.SharedPayloadKeys
+import skillbill.contracts.review.ReviewVerificationSignalKeys
 import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_HANDOFF_ENVELOPE_CONTRACT_VERSION
 import skillbill.error.InvalidFeatureTaskRuntimePhaseHandoffSchemaError
 
@@ -35,7 +36,7 @@ data class FeatureTaskRuntimeHandoffEnvelope(
     "consumer_phase_id" to consumerPhaseId,
     "projections" to projections.map { it.toEnvelopeMap() },
   ).apply {
-    repositoryCheckpoint?.let { put("repository_checkpoint", it.toEnvelopeMap()) }
+    repositoryCheckpoint?.let { put(ReviewVerificationSignalKeys.REPOSITORY_CHECKPOINT, it.toEnvelopeMap()) }
   }
 
   companion object {
@@ -43,9 +44,13 @@ data class FeatureTaskRuntimeHandoffEnvelope(
     fun fromEnvelopeMap(raw: Map<String, Any?>): FeatureTaskRuntimeHandoffEnvelope = FeatureTaskRuntimeHandoffEnvelope(
       consumerPhaseId = raw.requireString("consumer_phase_id"),
       projections = (raw["projections"] as? List<*>).orEmpty().map { projectionFromWire(it) },
-      repositoryCheckpoint = (raw["repository_checkpoint"] as? Map<*, *>)?.let { checkpoint ->
+      repositoryCheckpoint = (
+        raw[ReviewVerificationSignalKeys.REPOSITORY_CHECKPOINT] as? Map<*, *>
+        )?.let { checkpoint ->
         FeatureTaskRuntimeRepositoryCheckpoint(
-          fingerprint = checkpoint.requireString("fingerprint"),
+          fingerprint = checkpoint.requireString(
+            ReviewVerificationSignalKeys.REPOSITORY_CHECKPOINT_FINGERPRINT,
+          ),
           baseRef = checkpoint["base_ref"] as? String,
           headRef = checkpoint["head_ref"] as? String,
           workingTreeOwnedPaths = (checkpoint["working_tree_owned_paths"] as? List<*>).orEmpty()

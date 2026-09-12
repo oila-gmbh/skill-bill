@@ -3998,6 +3998,46 @@ class FeatureTaskRuntimeReconcileOnResumeTest {
     )
   }
 
+  @Test
+  fun `review edits amend the owned subtask commit before review settlement`() {
+    val git = RecordingWorkflowGitOperations(currentBranchValue = "feat/existing-runtime-branch")
+    git.repositoryFingerprintValue = "before-review"
+    val harness = runnerHarness(
+      RuntimeHarnessConfig(
+        branchSetup = BranchSetupTestConfig(gitOperations = git),
+        reviewDriver = FeatureTaskRuntimeReviewDriver { request ->
+          git.worktreeStatusValue = " M src/Foo.kt\n M src/ReviewFix.kt"
+          git.ownedPathsValue = listOf("src/Foo.kt", "src/ReviewFix.kt")
+          git.repositoryFingerprintValue = "after-review"
+          ApprovingReviewDriverStub.run(request)
+        },
+      ).copy(
+        agentAssignment = phasePerAgentAssignment(),
+        launcher = RuntimeRecordingLauncher { request ->
+          val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
+          if (phaseId == "implement") {
+            git.worktreeStatusValue = " M src/Foo.kt"
+            git.ownedPathsValue = listOf("src/Foo.kt")
+          }
+          facts(validJsonOutput(phaseId))
+        },
+      ),
+    )
+
+    val report = harness.runner.run(harness.request(IMPLEMENT_FIX_CYCLE))
+
+    assertIs<FeatureTaskRuntimeRunReport.Completed>(report)
+    assertEquals(1, git.createCommitMessages.size)
+    assertTrue(
+      git.amendCommitMessages.any { it.contains("phase=review") },
+      "review changes must amend the owned subtask commit before the phase completes",
+    )
+    assertContains(
+      requireNotNull(harness.recorder.loadPhaseRecords(WORKFLOW_ID).orEmpty()["review"]?.outputArtifact),
+      "after-review",
+    )
+  }
+
   // F-001: a staging failure must block loudly rather than proceeding to a doomed empty-index commit.
   @Test
   fun `dirty tree checkpoint that fails to stage blocks loudly and never commits`() {
@@ -4032,8 +4072,9 @@ class FeatureTaskRuntimeReconcileOnResumeTest {
     assertContains(blocked.blockedReason, "index was restored")
   }
 
+  // AC-001/AC-002: the checkpoint commits its owned inventory and nothing else, whatever else is dirty.
   @Test
-  fun `checkpoint stages every non-runtime-private path`() {
+  fun `checkpoint stages only implementation paths while specs and foreign dirt stay alone`() {
     val git = checkpointGit(
       ownedPaths = listOf("src/Owned.kt", SPEC_REFERENCE),
       stagedPaths = listOf("unrelated/ForeignStaged.kt"),
@@ -4043,15 +4084,17 @@ class FeatureTaskRuntimeReconcileOnResumeTest {
     val report = harness.runner.run(harness.request(IMPLEMENT_FIX_CYCLE))
 
     assertIs<FeatureTaskRuntimeRunReport.Completed>(report)
+    assertTrue(git.stagePathsCalls.isNotEmpty(), "the owned inventory must be staged")
     assertEquals(
-      setOf("src/Owned.kt", SPEC_REFERENCE, "unrelated/ForeignStaged.kt"),
+      setOf("src/Owned.kt"),
       git.stagePathsCalls.toSet(),
-      "every non-runtime-private path must reach the staging call",
+      "no foreign path may ever reach the staging call",
     )
   }
 
+  // AC-001: foreign dirt alone is not this workflow's work, so it must not produce a checkpoint commit.
   @Test
-  fun `foreign dirt is included in the checkpoint commit`() {
+  fun `only foreign dirt present produces no checkpoint commit and does not block the phase transition`() {
     val git = checkpointGit(ownedPaths = emptyList(), stagedPaths = listOf("unrelated/ForeignStaged.kt"))
     git.worktreeStatusValue = " M unrelated/ForeignStaged.kt"
     val harness = checkpointRunHarness(git)
@@ -4059,12 +4102,10 @@ class FeatureTaskRuntimeReconcileOnResumeTest {
     val report = harness.runner.run(harness.request(IMPLEMENT_FIX_CYCLE))
 
     assertIs<FeatureTaskRuntimeRunReport.Completed>(report)
-    assertEquals(setOf("unrelated/ForeignStaged.kt"), git.stagePathsCalls.toSet())
-    assertTrue(
-      (git.createCommitMessages + git.amendCommitMessages).isNotEmpty(),
-      "foreign dirt must be committed",
-    )
-    assertTrue(git.checkpointRefs.isNotEmpty(), "the checkpoint must write its ref")
+    assertTrue(git.createCommitMessages.isEmpty(), "an empty owned delta must not commit foreign dirt")
+    assertTrue(git.stagePathsCalls.isEmpty())
+    assertTrue(git.amendCommitMessages.isEmpty(), "a Skip verdict must neither create nor amend")
+    assertTrue(git.checkpointRefs.isEmpty(), "a Skip verdict must write no checkpoint ref")
   }
 
   // AC-005: an owned path staged outside the workflow is adopted on-branch, never a reason to refuse.
@@ -4514,8 +4555,10 @@ class FeatureTaskRuntimeCheckpointHistoryOnResumeTest {
     assertTrue(git.stagePathsCalls.isNotEmpty(), "the run's checkpoint must stage phase-written paths")
   }
 
+  // AC-001/AC-002: a foreign path that appears after the ownership baseline is not this run's work,
+  // so being dirty must not enrol it in the inventory the checkpoint stages and commits.
   @Test
-  fun `a foreign path appearing after the baseline is included in the checkpoint`() {
+  fun `a foreign path appearing after the baseline is never staged merely because it is dirty`() {
     val foreign = "unrelated/SiblingAgentWrote.kt"
     val git = checkpointGit(ownedPaths = listOf("src/Owned.kt"))
     val harness = checkpointRunHarness(git) { phaseId ->
@@ -4526,7 +4569,7 @@ class FeatureTaskRuntimeCheckpointHistoryOnResumeTest {
     val report = harness.runner.run(harness.request(IMPLEMENT_FIX_CYCLE))
 
     assertIs<FeatureTaskRuntimeRunReport.Completed>(report)
-    assertTrue(foreign in git.stagePathsCalls, "a non-runtime-private path must be staged")
+    assertFalse(foreign in git.stagePathsCalls, "a path this run never wrote must never be staged")
     assertTrue(git.stagePathsCalls.isNotEmpty(), "the run's own owned inventory is still checkpointed")
   }
 

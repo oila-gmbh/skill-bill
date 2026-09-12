@@ -107,17 +107,11 @@ class CliFeatureTaskRuntimeLaunchTest {
     assertEquals(AGENT_LAUNCHED_PHASES.dropWhile { it != "implement" }, resumedLauncher.phaseOrder())
     resumedLauncher.requests.forEach { request ->
       val prompt = request.skillRunRequest.promptOverride.orEmpty()
-      val firstIndex = listOf(
-        "### agent_addon_first_helper (addon_content:first-helper)",
-        "### 1. first-helper",
-      ).map(prompt::indexOf).firstOrNull { it >= 0 } ?: -1
-      val lastIndex = listOf(
-        "### agent_addon_last_helper (addon_content:last-helper)",
-        "### 2. last-helper",
-      ).map(prompt::indexOf).firstOrNull { it >= 0 } ?: -1
-      assertTrue(firstIndex >= 0, prompt)
-      assertTrue(lastIndex >= 0, prompt)
-      assertTrue(firstIndex < lastIndex, prompt)
+      val firstHeader = "### agent_addon_first_helper (addon_content:first-helper)"
+      val lastHeader = "### agent_addon_last_helper (addon_content:last-helper)"
+      assertContains(prompt, firstHeader)
+      assertContains(prompt, lastHeader)
+      assertTrue(prompt.indexOf(firstHeader) < prompt.indexOf(lastHeader), prompt)
       assertFalse(prompt.contains("middle-unselected"), prompt)
       assertFalse(prompt.contains("UNSELECTED RESUME SENTINEL"), prompt)
     }

@@ -12,21 +12,33 @@ private const val MAX_REPORTED_PATHS = 10
 object FeatureTaskRuntimeCheckpointScope {
   fun decide(input: FeatureTaskRuntimeCheckpointScopeInput): FeatureTaskRuntimeCheckpointDecision {
     val deleted = sanitized(input.deletedPaths)
-    val owned = sanitized(input.ownedPaths + deleted)
-    val ownedAliases = owned.associateBy(::normalizeForAliasComparison)
+    val implementationPaths = sanitized(
+      input.ownedPaths +
+        input.phaseIntroducedPaths +
+        input.concurrentlyModifiedOwnedPaths +
+        deleted,
+    ).filterNot { isFeatureSpecPathForIssue(it, input.issueKey) }
+    val implementationAliases = implementationPaths
+      .groupBy(::normalizeForAliasComparison)
+      .mapValues { (_, paths) -> paths.first() }
     val stageable = sanitized(
       input.worktreeDeltaPaths +
         input.phaseIntroducedPaths +
         input.foreignStagedPaths +
         input.concurrentlyModifiedOwnedPaths +
         deleted,
-    ).map { ownedAliases[normalizeForAliasComparison(it)] ?: it }.distinct().sorted()
-    val ownedSpelling = sanitized(input.ownedPaths).map(::normalizeForAliasComparison).toSet()
+    ).filterNot { isFeatureSpecPathForIssue(it, input.issueKey) }
+      .mapNotNull { path ->
+        implementationAliases[normalizeForAliasComparison(path)]
+      }.distinct().sorted()
     val adopted = sanitized(
       input.foreignStagedPaths +
         input.concurrentlyModifiedOwnedPaths +
-        deleted.filterNot { normalizeForAliasComparison(it) in ownedSpelling },
-    ).map { ownedAliases[normalizeForAliasComparison(it)] ?: it }.distinct().sorted()
+        deleted,
+    ).filterNot { isFeatureSpecPathForIssue(it, input.issueKey) }
+      .mapNotNull { path ->
+        implementationAliases[normalizeForAliasComparison(path)]
+      }.distinct().sorted()
     return if (stageable.isEmpty()) {
       FeatureTaskRuntimeCheckpointDecision.Skip
     } else {

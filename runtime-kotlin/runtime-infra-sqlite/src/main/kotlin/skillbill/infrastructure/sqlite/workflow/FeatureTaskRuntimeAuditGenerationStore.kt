@@ -1,6 +1,7 @@
 package skillbill.infrastructure.sqlite.workflow
 
 import skillbill.contracts.SharedPayloadKeys
+import skillbill.contracts.review.ReviewVerificationSignalKeys
 import skillbill.infrastructure.sqlite.telemetry.bind
 import skillbill.ports.featuretask.FeatureTaskRuntimeAuditGenerationRepository
 import skillbill.ports.featuretask.model.FeatureTaskRuntimeAuditGenerationRow
@@ -53,7 +54,7 @@ internal class FeatureTaskRuntimeAuditGenerationStore(
               FeatureTaskRuntimeAuditGenerationRow(
                 workflowId = rows.getString(SharedPayloadKeys.WORKFLOW_ID),
                 generationOrdinal = rows.getInt("generation_ordinal"),
-                repositoryCheckpoint = rows.getString("repository_checkpoint"),
+                repositoryCheckpoint = rows.getString(ReviewVerificationSignalKeys.REPOSITORY_CHECKPOINT),
                 contractVersion = rows.getString(SharedPayloadKeys.CONTRACT_VERSION),
                 generationJson = rows.getString("generation_json"),
               ),
