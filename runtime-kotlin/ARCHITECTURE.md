@@ -1,6 +1,141 @@
 # Skill Bill Runtime Architecture
 
-This document defines the enforced architecture for `runtime-kotlin`.
+This document defines architecture requirements and enforcement boundaries for `runtime-kotlin`.
+
+## Design Principles
+
+Apply these principles when designing, implementing, or reviewing runtime changes.
+They are requirements for new and changed code. Existing violations remain tracked
+work, not examples to copy. [SKILL-239](../.feature-specs/SKILL-239-runtime-architecture-ownership-and-simplicity/spec.md)
+owns the implementation gaps identified below; publishing this document does not
+mean those fixes or checks have landed. Kotlin coding patterns remain in
+[Code Principles](../docs/code-principles.md).
+
+### Dependencies And Responsibilities
+
+Keep domain rules independent of entry frameworks and concrete adapters. Application
+and engine code coordinate use cases through ports; adapters handle filesystem,
+process, HTTP, and SQLite operations. The composition root wires implementations.
+Use the declared module graph and package ownership below rather than introducing
+another layer to satisfy an architecture label.
+
+A component owns a responsibility whose changes can be understood together. A port
+describes operations its consumer needs, not getters for another object's entire
+dependency graph. An implementation must preserve the port's success, failure,
+cancellation, and transaction semantics so a caller can substitute it without
+changing its assumptions. Extend manifest-driven packs and injected process
+strategies instead of adding identity branches to shared runners.
+
+### State Ownership
+
+Give each run one owner for coupled state transitions. Expose named transitions
+and read-only results; do not expose mutable collections or session fields to
+helper objects. Model mutually exclusive outcomes as alternatives in a closed
+type, not independently nullable reports with accidental precedence.
+
+Pass helpers the facts or capabilities they use. Moving an all-access run-loop
+parameter into a context, callback bag, or role interface does not narrow access.
+Reconstruction from durable records must preserve the same invariants as live
+execution, including retry consumption, checkpoint ownership, and phase order.
+
+### Resource Lifetime And Failure
+
+Successful acquisition immediately establishes one cleanup owner for a child
+process, stream, drain, endpoint, or lease. Every exit goes through that owner's
+cleanup, including callback exceptions and cancellation. A shutdown hook is a
+last resort, not the normal release path. Only terminate resources the invocation
+owns, with the existing identity and fencing checks.
+
+Bound cleanup and drain settlement. Do not publish mutable or incomplete capture
+as settled evidence. Preserve the primary failure if teardown also fails, retain
+cancellation signals, and record secondary failures through an independent,
+bounded diagnostic path. Follow the [observability policy](../docs/observability-policy.md)
+for degradation and fallback; failure must not silently become normal absence.
+
+### Durable State And Projections
+
+Name the authoritative store and the transaction owner for each mutation. Keep
+related database changes atomic. SQLite and a filesystem projection do not share
+a transaction: distinguish committed state from projection success or failure.
+Regenerate a failed projection from authoritative state without replaying an
+already committed workflow mutation.
+
+Keep absent, completed, and failed operations distinguishable in boundary results.
+An adapter callback inside a transaction must preserve that transaction's snapshot
+and ownership. Do not move it outside merely to simplify a dependency diagram.
+
+### Database Readiness And Routine Work
+
+Separate database readiness from opening a connection for ordinary work. Once
+readiness succeeds, routine writes must not rerun historical backfills or full-table
+repair scans. Keep required connection setup and the requested transaction.
+
+Failed initialization must not publish readiness. Concurrent initialization,
+database replacement at the same path, and explicit reset must preserve recovery.
+Run compatibility repair at a documented initialization or recovery boundary;
+do not remove required repair or cache success forever by pathname alone.
+Measure repeated work before adding a cache, connection pool, or replacement library.
+
+### Contract Ownership And Enforcement
+
+Canonical schemas own wire shape. Kotlin contract owners declare keys and versions;
+consumers reference those declarations. Keep open extension payloads distinct from
+governed envelopes. Type state whose invariants need compiler protection without
+closing manifest-authored extension vocabularies.
+
+A check for missing key ownership needs authority independent of existing key
+declarations. A key absent from the owner inventory must not escape enforcement
+because the scanner only searches that inventory. Test newly introduced schema
+fields and undeclared literals, as well as valid references and allowed extensions.
+State exactly which boundaries a scanner covers.
+
+### Simplicity And Change Cost
+
+Keep an abstraction only when a current consumer, adapter boundary, or useful test
+substitute needs it. One production adapter can justify a hexagonal port. Repeating
+its dependencies in a same-module interface and implementation usually cannot.
+Delete dead helpers and pure forwarding layers before adding another abstraction.
+
+Use the existing modules and tooling unless a concrete requirement justifies a
+change. Do not add speculative extensibility, a generic workflow framework, or a
+blanket identifier-wrapper migration. Required schema validation, typed failures,
+compatibility recovery, lease fencing, and durable evidence remain requirements.
+
+File size and constructor arity are signals, not definitions of cohesion. Do not
+split by count, merge unrelated responsibilities, or hide dependencies in bags to
+satisfy a threshold. Numeric limits and exemptions belong to their existing
+enforcement owners, not another handwritten table in this document.
+
+### Tests And Evidence
+
+Before adding a test, name the concrete regression it catches. Prefer observable
+boundaries: a child is gone after failure, a write rolls back, a projection recovers,
+or resumed execution agrees with durable state. Exercise a scanner through its
+real entry point instead of reproducing its algorithm in a test.
+
+Keep schema, compatibility, transaction, and lease tests. Remove assertions that
+only pin incidental prose, trivial forwarding, or implementation structure without
+protecting a contract. Do not pin exact SQL counts or use timing assertions where
+the required property is absence of repeated maintenance.
+
+### Enforcement Status
+
+Review applies these requirements now. Mechanical checks prove only their tested
+scope. Keep the existing enforcement inventory and baselines as the record of
+implemented checks and tolerated debt; do not expand an exemption to make a change
+pass. Documentation must distinguish current enforcement from planned coverage.
+
+| Requirement with an identified gap | Implementation owner |
+| --- | --- |
+| Cleanup after callback failure and incomplete drain settlement | SKILL-239 subtask 1 |
+| Database readiness and explicit projection outcomes | SKILL-239 subtask 2 |
+| Run-loop state ownership, narrow helper inputs, and engine cycle removal | SKILL-239 subtask 3 |
+| Independent wire-key coverage and truthful architecture documentation | SKILL-239 subtask 4 |
+| Redundant role interfaces and application forwarders | SKILL-238 |
+
+The owning subtask updates this status with the checks that actually landed.
+Neither a green source scan nor an archived spec establishes universal compliance
+with Clean Architecture, SOLID, or YAGNI.
 
 ## DB-first feature-task continuation
 

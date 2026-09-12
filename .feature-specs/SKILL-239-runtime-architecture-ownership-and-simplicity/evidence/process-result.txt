@@ -1,0 +1,2 @@
+runner_exception=audit-output-sink-failure
+child_alive_after_runner_exception=true

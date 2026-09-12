@@ -1,8 +1,10 @@
 # Code Principles
 
 Each section states the rule, preferred shapes, anti-patterns, then reference examples
-from this tree. `runtime-kotlin/ARCHITECTURE.md` records module boundaries and
-package ownership; this document records copyable coding patterns.
+from this tree. [Runtime architecture](../runtime-kotlin/ARCHITECTURE.md) records
+module boundaries and package ownership. Its [Design Principles](../runtime-kotlin/ARCHITECTURE.md#design-principles)
+define ownership, failure, persistence, and simplicity requirements; this document
+records copyable coding patterns.
 
 Amended or review-only rules name what changed and why. A principle this program
 did not mechanically enforce is amended here or in `runtime-kotlin/agent/decisions.md`,
@@ -197,8 +199,8 @@ site; a flag that is never flipped. `@OpenBoundaryMap` sites inventoried in
 
 **Rule.** Shared JVM test and toolchain settings live in convention plugins;
 module `build.gradle.kts` files do not re-declare what `configureKotlinJvm` already
-owns. Production Kotlin files stay at or below 500 lines unless explicitly
-exempted in `PrincipleEnforcementInventory`.
+owns. Production Kotlin files stay within `PrincipleEnforcementInventory.PRODUCTION_LINE_CEILING`
+unless explicitly exempted in that inventory.
 
 **Preferred shapes.** `skillbill.jvm-library` convention applying
 `configureKotlinJvm`; file splits by verb family or responsibility within the same
@@ -206,7 +208,7 @@ package; empty exemption map when the tree is clean.
 
 **Anti-patterns.** Copy-pasting `update-snapshots` `systemProperty` into module
 build files; `@Suppress("LargeClass")` instead of splitting; applying the
-500-line gate to test sources.
+production line-ceiling gate to test sources.
 
 **Reference examples.**
 
@@ -214,18 +216,18 @@ build files; `@Suppress("LargeClass")` instead of splitting; applying the
 - `runtime-kotlin/runtime-core/src/test/kotlin/skillbill/architecture/ProductionFileLineCeilingArchitectureTest.kt`
 - `runtime-kotlin/runtime-core/src/test/kotlin/skillbill/architecture/ConventionReapplicationArchitectureTest.kt`
 
-**Amendment.** The 500-line ceiling applies to production `src/main` Kotlin only.
-Test sources may exceed 500 lines. Detekt complexity pinning and suppression
+**Amendment.** The line ceiling applies to production `src/main` Kotlin only.
+Test sources are outside that ceiling. Detekt complexity pinning and suppression
 cleanup are SKILL-221, not this program.
 
 ## Guard Baselines And Exemptions
 
 **Rule.** `PrincipleEnforcementInventory` and the files under
 `skillbill/architecture/baselines/` decide which rules run and what debt they
-still tolerate. Both ratchet one direction. A new violation gets fixed; it does
-not get recorded. Regenerate a baseline only when a fix shrinks it. All eight
-baseline files, `productionLineCeilingExemptions`, and
-`spilloverFileNameExemptions` are empty today, and empty is the target state.
+still tolerate. A new violation gets fixed; it does not get recorded. Regenerate
+a baseline only when a fix shrinks it. Read the current files and exemption sets
+for the remaining allowances; their existence does not imply they are empty.
+An empty baseline is the target state, not a claim of current compliance.
 
 **Preferred shapes.** `RECORD_ARCHITECTURE_BASELINES=1` run after a cleanup that
 removes entries; a new rule registered in `enforceableRules` with its scan in
