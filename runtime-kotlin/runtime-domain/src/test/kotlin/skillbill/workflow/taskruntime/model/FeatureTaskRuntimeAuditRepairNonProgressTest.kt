@@ -71,6 +71,45 @@ class FeatureTaskRuntimeAuditRepairNonProgressTest {
   }
 
   @Test
+  fun `missing fingerprints allow repair progress when the audit closes criteria without new gaps`() {
+    val fingerprints = listOf(
+      UNPROVEN_REPOSITORY_FINGERPRINT to "after",
+      "before" to UNPROVEN_REPOSITORY_FINGERPRINT,
+      UNPROVEN_REPOSITORY_FINGERPRINT to UNPROVEN_REPOSITORY_FINGERPRINT,
+      "" to "after",
+      "before" to "",
+    )
+    fingerprints.forEach { (before, after) ->
+      val decision = detectAuditRepairNonProgress(
+        previous = FeatureTaskRuntimeAuditRepairSnapshot(true, before, setOf("AC-001", "AC-002")),
+        current = FeatureTaskRuntimeAuditRepairSnapshot(true, after, setOf("AC-002")),
+      )
+      assertFalse(decision.blocked, "Expected criterion progress for fingerprints '$before' and '$after'.")
+      assertTrue(requireNotNull(decision.reason).contains("acceptance-criteria fallback"))
+    }
+  }
+
+  @Test
+  fun `a failed current fingerprint cannot turn unchanged replaced or missing gaps into progress`() {
+    val previous = FeatureTaskRuntimeAuditRepairSnapshot(true, "before", setOf("AC-001", "AC-002"))
+    val currentGapSets = listOf(
+      setOf("AC-001", "AC-002"),
+      setOf("AC-001", "AC-002", "AC-003"),
+      setOf("AC-003"),
+      emptySet(),
+    )
+    currentGapSets.forEach { gaps ->
+      val decision = detectAuditRepairNonProgress(
+        previous,
+        FeatureTaskRuntimeAuditRepairSnapshot(true, UNPROVEN_REPOSITORY_FINGERPRINT, gaps),
+      )
+      assertTrue(decision.blocked, "Unresolved criteria '$gaps' do not establish progress.")
+      assertTrue(requireNotNull(decision.reason).contains("acceptance-criteria fallback"))
+      assertFalse(requireNotNull(decision.reason).contains("fingerprint is unchanged"))
+    }
+  }
+
+  @Test
   fun `a proven repository change continues`() {
     val decision = detectAuditRepairNonProgress(
       previous = FeatureTaskRuntimeAuditRepairSnapshot(

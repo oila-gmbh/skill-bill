@@ -288,7 +288,10 @@ object FeatureTaskRuntimeRunLoopOutputVerification {
         }
       }
     }
-    if (!decision.blocked) return null
+    if (!decision.blocked) {
+      decision.reason?.let { runLoop.diagnostics.warning(it) }
+      return null
+    }
     return FeatureTaskRuntimeAuditGapPause(
       pauseKind = FeatureTaskRuntimeAuditGapPauseKind.NO_PROGRESS,
       reason = noProgressPauseReason(requireNotNull(decision.reason)),
@@ -297,7 +300,7 @@ object FeatureTaskRuntimeRunLoopOutputVerification {
   }
 
   fun noProgressPauseReason(decisionReason: String): String =
-    "$decisionReason The subtask is runLoop.session.paused for an operator decision: choose retry_fix to allow one " +
+    "$decisionReason The subtask is paused for an operator decision: choose retry_fix to allow one " +
       "further remediation attempt, or abandon_subtask to end the subtask."
 
   internal fun terminalOutputAttempt(
