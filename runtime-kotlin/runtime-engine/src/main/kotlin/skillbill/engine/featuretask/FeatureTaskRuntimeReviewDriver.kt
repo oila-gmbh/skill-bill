@@ -105,7 +105,10 @@ object FeatureTaskRuntimeReviewEnvelope {
     val produced = linkedMapOf<String, Any?>(
       FeatureTaskRuntimeVerificationSignalKeys.REVIEW_FINDINGS to emptyList<Any?>(),
       FeatureTaskRuntimeVerificationSignalKeys.REVIEW_RUN_ID to reviewRunId,
-      "repository_checkpoint" to mapOf("fingerprint" to cycle.repositoryFingerprint),
+      FeatureTaskRuntimeVerificationSignalKeys.REPOSITORY_CHECKPOINT to
+        mapOf(
+          FeatureTaskRuntimeVerificationSignalKeys.REPOSITORY_CHECKPOINT_FINGERPRINT to cycle.repositoryFingerprint,
+        ),
     )
     commitFocusedAccounting(result, cycle.resolvedTier)?.let { accounting ->
       produced["commit_focused_accounting"] = accounting.toArtifactMap()

@@ -19,6 +19,9 @@ object FeatureTaskRuntimeVerificationSignalKeys {
    */
   const val REVIEW_RUN_ID = "review_run_id"
 
+  const val REPOSITORY_CHECKPOINT = "repository_checkpoint"
+  const val REPOSITORY_CHECKPOINT_FINGERPRINT = "fingerprint"
+
   const val EVIDENCE_COVERAGE_COMPLETE = "evidence_coverage_complete"
 
   const val FINDINGS_VERIFICATION_DISPOSITIONS = "finding_dispositions"

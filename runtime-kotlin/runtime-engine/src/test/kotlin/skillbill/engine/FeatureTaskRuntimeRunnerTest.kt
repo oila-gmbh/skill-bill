@@ -3998,6 +3998,46 @@ class FeatureTaskRuntimeReconcileOnResumeTest {
     )
   }
 
+  @Test
+  fun `review edits amend the owned subtask commit before review settlement`() {
+    val git = RecordingWorkflowGitOperations(currentBranchValue = "feat/existing-runtime-branch")
+    git.repositoryFingerprintValue = "before-review"
+    val harness = runnerHarness(
+      RuntimeHarnessConfig(
+        branchSetup = BranchSetupTestConfig(gitOperations = git),
+        reviewDriver = FeatureTaskRuntimeReviewDriver { request ->
+          git.worktreeStatusValue = " M src/Foo.kt\n M src/ReviewFix.kt"
+          git.ownedPathsValue = listOf("src/Foo.kt", "src/ReviewFix.kt")
+          git.repositoryFingerprintValue = "after-review"
+          ApprovingReviewDriverStub.run(request)
+        },
+      ).copy(
+        agentAssignment = phasePerAgentAssignment(),
+        launcher = RuntimeRecordingLauncher { request ->
+          val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
+          if (phaseId == "implement") {
+            git.worktreeStatusValue = " M src/Foo.kt"
+            git.ownedPathsValue = listOf("src/Foo.kt")
+          }
+          facts(validJsonOutput(phaseId))
+        },
+      ),
+    )
+
+    val report = harness.runner.run(harness.request(IMPLEMENT_FIX_CYCLE))
+
+    assertIs<FeatureTaskRuntimeRunReport.Completed>(report)
+    assertEquals(1, git.createCommitMessages.size)
+    assertTrue(
+      git.amendCommitMessages.any { it.contains("phase=review") },
+      "review changes must amend the owned subtask commit before the phase completes",
+    )
+    assertContains(
+      requireNotNull(harness.recorder.loadPhaseRecords(WORKFLOW_ID).orEmpty()["review"]?.outputArtifact),
+      "after-review",
+    )
+  }
+
   // F-001: a staging failure must block loudly rather than proceeding to a doomed empty-index commit.
   @Test
   fun `dirty tree checkpoint that fails to stage blocks loudly and never commits`() {
