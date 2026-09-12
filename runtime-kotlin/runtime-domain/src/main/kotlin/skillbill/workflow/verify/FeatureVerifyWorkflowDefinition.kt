@@ -1,5 +1,7 @@
 package skillbill.workflow.verify
 
+import skillbill.contracts.SharedPayloadKeys
+
 import skillbill.contracts.workflow.WORKFLOW_STATE_CONTRACT_VERSION
 import skillbill.workflow.engine.model.WorkflowDefinition
 import skillbill.workflow.engine.model.WorkflowInputProjectionDeclaration
@@ -86,7 +88,7 @@ object FeatureVerifyWorkflowDefinition {
       "code_review" to "Step 5: Code Review",
       "unit_test_value_check" to "Step 6: Unit Test Value Check",
       "completeness_audit" to "Step 7: Completeness Audit",
-      "verdict" to "Step 8: Consolidated Verdict",
+      SharedPayloadKeys.VERDICT to "Step 8: Consolidated Verdict",
       "finish" to "Finish",
     ),
     requiredArtifactsByStep =
@@ -98,7 +100,7 @@ object FeatureVerifyWorkflowDefinition {
       "code_review" to listOf("criteria_summary", "review_rubric", "diff_projection"),
       "unit_test_value_check" to listOf("criteria_summary", "unit_test_value_rubric", "diff_projection"),
       "completeness_audit" to listOf("criteria_summary", "completeness_rubric", "diff_projection"),
-      "verdict" to listOf(
+      SharedPayloadKeys.VERDICT to listOf(
         "feature_flag_audit_receipt",
         "code_review_receipt",
         "unit_test_value_receipt",
@@ -124,7 +126,7 @@ object FeatureVerifyWorkflowDefinition {
         "Run bill-unit-test-value-check independently against criteria, its rubric, and diff_projection.",
       "completeness_audit" to
         "Run completeness independently against criteria, its rubric, and diff_projection.",
-      "verdict" to
+      SharedPayloadKeys.VERDICT to
         "Reuse only compact typed evaluator receipts to produce the final verdict without rerunning earlier phases.",
       "finish" to "Close the workflow by marking the verdict complete and emitting the terminal summary.",
     ),
@@ -154,7 +156,7 @@ object FeatureVerifyWorkflowDefinition {
         "content.md :: Step 7: Completeness Audit",
         "content.md :: Completeness Audit",
       ),
-      "verdict" to listOf(
+      SharedPayloadKeys.VERDICT to listOf(
         "content.md :: Continuation Mode",
         "content.md :: Step 8: Consolidated Verdict",
         "content.md :: Consolidated Verdict",
@@ -185,7 +187,7 @@ object FeatureVerifyWorkflowDefinition {
       "completeness_audit" to
         "Run independently from sibling evaluators using criteria_summary, completeness_rubric, and the " +
         "checkpoint-scoped diff_projection. Refresh the projection if the target changed materially.",
-      "verdict" to
+      SharedPayloadKeys.VERDICT to
         "Reuse only compact typed evaluator receipts to produce the final verdict without rerunning earlier phases.",
       "finish" to
         "Do not re-run analysis. Close the workflow using the saved verdict_result and return the terminal summary " +
@@ -247,7 +249,7 @@ object FeatureVerifyWorkflowDefinition {
           "diff_projection" to diffFields,
         ),
       ),
-      "verdict" to projection(
+      SharedPayloadKeys.VERDICT to projection(
         "feature_flag_audit_receipt",
         "code_review_receipt",
         "unit_test_value_receipt",

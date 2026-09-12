@@ -1,5 +1,7 @@
 package skillbill.infrastructure.sqlite.workflow
 
+import skillbill.contracts.SharedPayloadKeys
+
 import skillbill.goalrunner.model.GoalRunnerControlState
 import skillbill.goalrunner.model.GoalRunnerExecutionLease
 import skillbill.ports.goalrunner.runner.model.GoalRunnerOutOfBandAcceptance
@@ -22,7 +24,7 @@ internal fun GoalRunnerReviewPolicy.toArtifactMap(): Map<String, Any?> = buildMa
 }
 
 internal fun GoalRunnerOutOfBandAcceptance.toArtifactMap(): Map<String, Any?> = mapOf(
-  "subtask_id" to subtaskId,
+  SharedPayloadKeys.SUBTASK_ID to subtaskId,
   "commit_sha" to commitSha,
   "reason" to reason,
   "accepted_at" to acceptedAt,

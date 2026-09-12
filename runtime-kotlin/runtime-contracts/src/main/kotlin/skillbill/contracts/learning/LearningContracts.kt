@@ -1,5 +1,7 @@
 package skillbill.contracts.learning
 
+import skillbill.contracts.SharedPayloadKeys
+
 import skillbill.contracts.JsonPayloadContract
 
 data class LearningEntryDto(
@@ -17,7 +19,7 @@ data class LearningEntryDto(
     "reference" to reference,
     "scope" to scope,
     "scope_key" to scopeKey,
-    "status" to status,
+    SharedPayloadKeys.STATUS to status,
     "title" to title,
     "rule_text" to ruleText,
     "rationale" to rationale,

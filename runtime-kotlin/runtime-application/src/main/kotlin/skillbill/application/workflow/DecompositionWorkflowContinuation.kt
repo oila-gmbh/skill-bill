@@ -1,5 +1,7 @@
 package skillbill.application.workflow
 
+import skillbill.contracts.SharedPayloadKeys
+
 import skillbill.application.decomposition.DecompositionManifestWriter
 import skillbill.application.decomposition.resolveDecompositionManifest
 import skillbill.application.workflow.model.AdvanceCompletedSubtasksRequest
@@ -101,8 +103,8 @@ class DecompositionWorkflowContinuation(
           null
         } else {
           listOf(
-            mapOf("step_id" to "preplan", "status" to "completed", "attempt_count" to 1),
-            mapOf("step_id" to "plan", "status" to "completed", "attempt_count" to 1),
+            mapOf(SharedPayloadKeys.STEP_ID to "preplan", SharedPayloadKeys.STATUS to "completed", "attempt_count" to 1),
+            mapOf(SharedPayloadKeys.STEP_ID to "plan", SharedPayloadKeys.STATUS to "completed", "attempt_count" to 1),
           )
         },
         artifactsPatch = parentProjectionArtifacts(manifest, validator, base.artifactsJson),
@@ -246,7 +248,7 @@ class DecompositionWorkflowContinuation(
         workflowStatus = "running",
         currentStepId = "preplan",
         stepUpdates = listOf(
-          mapOf("step_id" to "preplan", "status" to "running", "attempt_count" to 1),
+          mapOf(SharedPayloadKeys.STEP_ID to "preplan", SharedPayloadKeys.STATUS to "running", "attempt_count" to 1),
         ),
         artifactsPatch = subtaskStartArtifacts(selection, updatedManifest, validator),
         sessionId = parentRecord.sessionId.orEmpty(),

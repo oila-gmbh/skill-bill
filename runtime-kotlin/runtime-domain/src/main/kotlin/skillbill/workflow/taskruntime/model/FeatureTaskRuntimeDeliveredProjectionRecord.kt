@@ -1,5 +1,7 @@
 package skillbill.workflow.taskruntime.model
 
+import skillbill.contracts.SharedPayloadKeys
+
 import skillbill.boundary.OpenBoundaryMap
 import skillbill.contracts.JsonCodec
 import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_PERSISTENCE_CONTRACT_VERSION
@@ -39,13 +41,13 @@ data class FeatureTaskRuntimeDeliveredProjectionRecord(
 
   @OpenBoundaryMap("Feature-task-runtime delivered-projection record at the durable workflow-artifact seam")
   fun toArtifactMap(): Map<String, Any?> = linkedMapOf(
-    "contract_version" to FEATURE_TASK_RUNTIME_PERSISTENCE_CONTRACT_VERSION,
+    SharedPayloadKeys.CONTRACT_VERSION to FEATURE_TASK_RUNTIME_PERSISTENCE_CONTRACT_VERSION,
     "record_kind" to "delivered_projection",
-    "workflow_id" to workflowId,
+    SharedPayloadKeys.WORKFLOW_ID to workflowId,
     "consumer_phase_id" to consumerPhaseId,
     "consumer_delivery_iteration" to iteration,
     "source_producer_iterations" to sourceProducerIterations.map {
-      mapOf("phase_id" to it.phaseId, "iteration" to it.iteration)
+      mapOf(SharedPayloadKeys.PHASE_ID to it.phaseId, "iteration" to it.iteration)
     },
     REPOSITORY_CHECKPOINT_FIELD to mapOf("fingerprint" to repositoryCheckpointFingerprint),
     "handoff_envelope" to envelope.toEnvelopeMap(),
@@ -63,7 +65,7 @@ data class FeatureTaskRuntimeDeliveredProjectionRecord(
     }
 
     private fun requireSupportedPersistenceContract(raw: Map<String, Any?>) {
-      val contractVersion = raw["contract_version"] as? String ?: missing("contract_version")
+      val contractVersion = raw[SharedPayloadKeys.CONTRACT_VERSION] as? String ?: missing("contract_version")
       if (contractVersion != FEATURE_TASK_RUNTIME_PERSISTENCE_CONTRACT_VERSION) {
         throw InvalidWorkflowStateSchemaError(
           "Feature-task-runtime delivered projection uses unsupported persistence contract version " +
@@ -82,7 +84,7 @@ data class FeatureTaskRuntimeDeliveredProjectionRecord(
     }
 
     private fun decodeDeliveredProjection(raw: Map<String, Any?>) = FeatureTaskRuntimeDeliveredProjectionRecord(
-      workflowId = raw["workflow_id"] as? String ?: missing("workflow_id"),
+      workflowId = raw[SharedPayloadKeys.WORKFLOW_ID] as? String ?: missing("workflow_id"),
       consumerPhaseId = raw["consumer_phase_id"] as? String ?: missing("consumer_phase_id"),
       iteration = (raw["consumer_delivery_iteration"] as? Number)?.toInt()
         ?: missing("consumer_delivery_iteration"),
@@ -100,7 +102,7 @@ data class FeatureTaskRuntimeDeliveredProjectionRecord(
         ?.map { identity ->
           val map = JsonCodec.anyToStringAnyMap(identity) ?: missing("source_producer_iterations")
           FeatureTaskRuntimeProducerIteration(
-            phaseId = map["phase_id"] as? String ?: missing("source_producer_iterations.phase_id"),
+            phaseId = map[SharedPayloadKeys.PHASE_ID] as? String ?: missing("source_producer_iterations.phase_id"),
             iteration = (map["iteration"] as? Number)?.toInt()
               ?: missing("source_producer_iterations.iteration"),
           )

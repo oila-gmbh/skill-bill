@@ -1,5 +1,7 @@
 package skillbill.mcp.core
 
+import skillbill.contracts.SharedPayloadKeys
+
 internal fun stringSchema(
   enum: List<String> = emptyList(),
   minLength: Int? = null,
@@ -23,8 +25,8 @@ internal fun arraySchema(items: Map<String, Any?>): Map<String, Any?> = mapOf(
 internal fun stepUpdateSchema(stepIdEnum: List<String>): Map<String, Any?> = McpToolSpec.strictObjectSchema(
   required = listOf("step_id", "status", "attempt_count"),
   properties = mapOf(
-    "step_id" to stringSchema(enum = stepIdEnum),
-    "status" to stringSchema(enum = listOf("pending", "running", "completed", "failed", "blocked", "skipped")),
+    SharedPayloadKeys.STEP_ID to stringSchema(enum = stepIdEnum),
+    SharedPayloadKeys.STATUS to stringSchema(enum = listOf("pending", "running", "completed", "failed", "blocked", "skipped")),
     "attempt_count" to integerSchema,
   ),
 )

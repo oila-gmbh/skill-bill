@@ -1,5 +1,7 @@
 package skillbill.infrastructure.sqlite.workflow
 
+import skillbill.contracts.SharedPayloadKeys
+
 import skillbill.infrastructure.sqlite.core.inImmediateTransaction
 import skillbill.ports.featuretask.model.FeatureTaskRuntimeCrashReconciliationCandidate
 import skillbill.ports.featuretask.model.FeatureTaskRuntimeWorkerOwnership
@@ -126,7 +128,7 @@ internal class FeatureTaskRuntimeWorkerStore(
     statement.executeQuery().use { rows ->
       buildList {
         while (rows.next()) {
-          val workflowId = rows.getString("workflow_id")
+          val workflowId = rows.getString(SharedPayloadKeys.WORKFLOW_ID)
           val ownership = connection.featureTaskRuntimeWorkerOwnership(workflowId) ?: continue
           add(
             FeatureTaskRuntimeCrashReconciliationCandidate(

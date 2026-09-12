@@ -1,5 +1,7 @@
 package skillbill.cli.scaffold
 
+import skillbill.contracts.SharedPayloadKeys
+
 import skillbill.application.install.ExternalAddonOverlayService
 import skillbill.cli.kernel.CliOutput
 import skillbill.cli.kernel.CliRunState
@@ -51,7 +53,7 @@ internal fun runNativeScaffoldPayload(payload: Map<String, *>, run: NativeScaffo
   val created = result.run { createdFiles }.map { path -> path.toString() }
   val presentation =
     mapOf(
-      "status" to "ok",
+      SharedPayloadKeys.STATUS to "ok",
       "session_id" to sessionId,
       "skill_path" to result.skillPath.toString(),
       "dry_run" to dryRun,
@@ -126,7 +128,7 @@ internal fun registerExternalAddonSourceAfterSuccess(
 internal fun errorResult(message: String, format: CliFormat): CliExecutionResult {
   val presentation =
     mapOf(
-      "status" to "error",
+      SharedPayloadKeys.STATUS to "error",
       "error" to message,
     )
   return CliExecutionResult(
@@ -183,7 +185,7 @@ internal fun ScaffoldRenderResult.toCliPayload(dryRun: Boolean): Map<String, Any
 internal fun unsupportedNativeScaffoldResult(message: String, format: CliFormat): CliExecutionResult {
   val presentation =
     mapOf(
-      "status" to "unsupported",
+      SharedPayloadKeys.STATUS to "unsupported",
       "error" to message,
     )
   return CliExecutionResult(

@@ -1,5 +1,7 @@
 package skillbill.workflow.engine
 
+import skillbill.contracts.SharedPayloadKeys
+
 import skillbill.workflow.engine.model.WorkflowDefinition
 import skillbill.workflow.engine.model.WorkflowUpdateInput
 
@@ -28,7 +30,7 @@ private fun validateOneStepUpdate(
   update: Map<String, Any?>,
   seenStepIds: MutableSet<String>,
 ): String? {
-  val stepId = update["step_id"] as? String
+  val stepId = update[SharedPayloadKeys.STEP_ID] as? String
   if (stepId.isNullOrBlank()) {
     return "step_updates[$index].step_id must be a non-empty string."
   }
@@ -44,7 +46,7 @@ private fun validateStepStatusAndAttempt(
   index: Int,
   update: Map<String, Any?>,
 ): String? {
-  val status = update["status"] as? String
+  val status = update[SharedPayloadKeys.STATUS] as? String
   if (status.isNullOrBlank()) {
     return "step_updates[$index].status must be a non-empty string."
   }

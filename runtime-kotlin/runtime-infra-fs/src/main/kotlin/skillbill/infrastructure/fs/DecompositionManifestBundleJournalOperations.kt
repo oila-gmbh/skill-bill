@@ -1,5 +1,7 @@
 package skillbill.infrastructure.fs
 
+import skillbill.contracts.SharedPayloadKeys
+
 import com.fasterxml.jackson.dataformat.yaml.YAMLMapper
 import skillbill.contracts.JsonCodec
 import skillbill.error.InvalidDecompositionManifestSchemaError
@@ -83,7 +85,7 @@ internal object DecompositionManifestBundleJournalCreate {
       marker,
       yamlMapper.writeValueAsString(
         mapOf(
-          "contract_version" to DecompositionManifestBundleJournal.BUNDLE_CONTRACT_VERSION,
+          SharedPayloadKeys.CONTRACT_VERSION to DecompositionManifestBundleJournal.BUNDLE_CONTRACT_VERSION,
           "staging_directory" to stagingDirectory.toString(),
           "entries" to entries.map { entry ->
             mapOf(
@@ -122,7 +124,7 @@ internal object DecompositionManifestBundleJournalIo {
     val raw = requireNotNull(
       JsonCodec.anyToStringAnyMap(yamlMapper.readValue(Files.readString(marker), Map::class.java)),
     )
-    require(raw["contract_version"] == DecompositionManifestBundleJournal.BUNDLE_CONTRACT_VERSION) {
+    require(raw[SharedPayloadKeys.CONTRACT_VERSION] == DecompositionManifestBundleJournal.BUNDLE_CONTRACT_VERSION) {
       "Unsupported decomposition manifest bundle journal contract."
     }
     val stagingDirectory = Path.of(requireNotNull(raw["staging_directory"] as? String))

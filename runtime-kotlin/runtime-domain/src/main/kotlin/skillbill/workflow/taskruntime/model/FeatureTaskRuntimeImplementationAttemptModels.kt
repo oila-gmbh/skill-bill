@@ -1,5 +1,7 @@
 package skillbill.workflow.taskruntime.model
 
+import skillbill.contracts.SharedPayloadKeys
+
 import skillbill.boundary.OpenBoundaryMap
 import skillbill.contracts.JsonCodec
 import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_IMPLEMENTATION_ATTEMPT_CONTRACT_VERSION
@@ -43,17 +45,17 @@ data class FeatureTaskRuntimeImplementationAttempt(
   @OpenBoundaryMap("Feature-task-runtime implementation-attempt entry at the durable workflow-artifact seam")
   fun toArtifactMap(): Map<String, Any?> = linkedMapOf<String, Any?>(
     "sequence_number" to sequenceNumber,
-    "phase_id" to phaseId,
+    SharedPayloadKeys.PHASE_ID to phaseId,
     "attempt_number" to attemptNumber,
     "agent_id" to agentId,
-    "status" to status.wireValue,
+    SharedPayloadKeys.STATUS to status.wireValue,
     "recorded_at" to recordedAt,
-    "value" to value,
+    SharedPayloadKeys.VALUE to value,
   ).apply {
     loopId?.let { put("loop_id", it) }
     edgeIteration?.let { put("edge_iteration", it) }
-    failureDisposition?.let { put("failure_disposition", it.wireValue) }
-    prompt?.let { put("prompt", it) }
+    failureDisposition?.let { put(SharedPayloadKeys.FAILURE_DISPOSITION, it.wireValue) }
+    prompt?.let { put(SharedPayloadKeys.PROMPT, it) }
   }
 
   companion object {
@@ -119,7 +121,7 @@ enum class FeatureTaskRuntimeImplementationAttemptStatus(val wireValue: String) 
 fun featureTaskRuntimeImplementationAttemptRecordToWire(
   attempts: List<FeatureTaskRuntimeImplementationAttempt>,
 ): Map<String, Any?> = linkedMapOf(
-  "contract_version" to FEATURE_TASK_RUNTIME_IMPLEMENTATION_ATTEMPT_CONTRACT_VERSION,
+  SharedPayloadKeys.CONTRACT_VERSION to FEATURE_TASK_RUNTIME_IMPLEMENTATION_ATTEMPT_CONTRACT_VERSION,
   "attempts" to attempts.map { it.toArtifactMap() },
 )
 
@@ -127,7 +129,7 @@ fun featureTaskRuntimeImplementationAttemptRecordToWire(
 fun featureTaskRuntimeImplementationAttemptsFromWire(raw: Any?): List<FeatureTaskRuntimeImplementationAttempt> {
   val map = raw as? Map<*, *>
     ?: implementationAttemptError("Feature-task-runtime implementation-attempt record must be an object.")
-  val version = map["contract_version"]
+  val version = map[SharedPayloadKeys.CONTRACT_VERSION]
   if (version != FEATURE_TASK_RUNTIME_IMPLEMENTATION_ATTEMPT_CONTRACT_VERSION) {
     implementationAttemptError(
       "Feature-task-runtime implementation-attempt record uses unsupported contract version '$version'; " +

@@ -1,5 +1,7 @@
 package skillbill.application.decomposition
 
+import skillbill.contracts.SharedPayloadKeys
+
 import skillbill.application.decomposition.model.DecompositionManifestRuntimeUpdate
 import skillbill.application.telemetry.normalizedBlockedReason
 import skillbill.workflow.decomposition.model.CurrentSubtaskIntent
@@ -71,20 +73,20 @@ fun statusFromUpdate(update: DecompositionManifestRuntimeUpdate): String? {
   val workflowStatus = update.workflowStatus.workflowStatus()
   return when {
     workflowStatus == WorkflowStatus.BLOCKED ||
-      stepUpdates.any { it["status"].workflowStepStatus() == WorkflowStepStatus.BLOCKED } ->
+      stepUpdates.any { it[SharedPayloadKeys.STATUS].workflowStepStatus() == WorkflowStepStatus.BLOCKED } ->
       DecompositionStatus.BLOCKED.wireValue
     prSuppressedCommitStatus(update) == DecompositionStatus.COMPLETE -> DecompositionStatus.COMPLETE.wireValue
     prSuppressedCommitStatus(update) == DecompositionStatus.BLOCKED -> DecompositionStatus.BLOCKED.wireValue
     stepUpdates.any {
-      it["status"].workflowStepStatus() == WorkflowStepStatus.SKIPPED &&
-        it["step_id"] in terminalSkippedSteps
+      it[SharedPayloadKeys.STATUS].workflowStepStatus() == WorkflowStepStatus.SKIPPED &&
+        it[SharedPayloadKeys.STEP_ID] in terminalSkippedSteps
     } -> DecompositionStatus.SKIPPED.wireValue
     workflowStatus == WorkflowStatus.COMPLETED ||
       stepUpdates.any {
-        it["status"].workflowStepStatus() == WorkflowStepStatus.COMPLETED &&
-          it["step_id"] in completionSteps
+        it[SharedPayloadKeys.STATUS].workflowStepStatus() == WorkflowStepStatus.COMPLETED &&
+          it[SharedPayloadKeys.STEP_ID] in completionSteps
       } -> DecompositionStatus.COMPLETE.wireValue
-    update.currentStepId in statusTrackedSteps || stepUpdates.any { it["step_id"] in statusTrackedSteps } ->
+    update.currentStepId in statusTrackedSteps || stepUpdates.any { it[SharedPayloadKeys.STEP_ID] in statusTrackedSteps } ->
       DecompositionStatus.IN_PROGRESS.wireValue
     else -> null
   }
@@ -158,14 +160,14 @@ private fun prSuppressedCommitStatus(update: DecompositionManifestRuntimeUpdate)
   val suppressPr = goalContinuation["suppress_pr"] == true
   val commitPushResult = artifacts["commit_push_result"] as? Map<*, *>
   val commitPushActive = update.currentStepId == "commit_push" ||
-    update.stepUpdates.orEmpty().any { it["step_id"] == "commit_push" }
+    update.stepUpdates.orEmpty().any { it[SharedPayloadKeys.STEP_ID] == "commit_push" }
   val preCommitProjection = commitPushActive &&
     commitPushResult?.get("pre_commit_projection") == true &&
     commitShaFrom(artifacts) == null
   val commitPushCompleted =
     update.stepUpdates.orEmpty().any {
-      it["step_id"] == "commit_push" &&
-        it["status"].workflowStepStatus() == WorkflowStepStatus.COMPLETED
+      it[SharedPayloadKeys.STEP_ID] == "commit_push" &&
+        it[SharedPayloadKeys.STATUS].workflowStepStatus() == WorkflowStepStatus.COMPLETED
     }
   return when {
     !suppressPr -> null
@@ -182,8 +184,8 @@ private fun commitShaFrom(artifacts: Map<String, Any?>): String? {
   val fromOutcome = (artifacts["goal_continuation_outcome"] as? Map<*, *>)
     ?.get("commit_sha")?.toString()?.trim()?.takeIf(String::isNotBlank)
   if (fromCommitPush != null && fromOutcome != null && fromCommitPush != fromOutcome) {
-    val subtaskId = (artifacts["goal_continuation_outcome"] as? Map<*, *>)?.get("subtask_id")
-      ?: (artifacts["goal_continuation"] as? Map<*, *>)?.get("subtask_id")
+    val subtaskId = (artifacts["goal_continuation_outcome"] as? Map<*, *>)?.get(SharedPayloadKeys.SUBTASK_ID)
+      ?: (artifacts["goal_continuation"] as? Map<*, *>)?.get(SharedPayloadKeys.SUBTASK_ID)
     error(
       "Conflicting completing commit SHAs for subtask $subtaskId: " +
         "commit_push_result.commit_sha=$fromCommitPush vs goal_continuation_outcome.commit_sha=$fromOutcome.",

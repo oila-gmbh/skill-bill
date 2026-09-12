@@ -1,13 +1,15 @@
 package skillbill.cli.featuretask
 
+import skillbill.contracts.SharedPayloadKeys
+
 import skillbill.engine.featuretask.model.FeatureTaskRuntimePhaseStatus
 import skillbill.engine.featuretask.model.FeatureTaskRuntimeStatusProjection
 
 internal fun FeatureTaskRuntimeStatusProjection?.toRuntimeStatusCliMap(workflowId: String): Map<String, Any?> =
   this?.let {
     linkedMapOf<String, Any?>(
-      "status" to "ok",
-      "workflow_id" to it.workflowId,
+      SharedPayloadKeys.STATUS to "ok",
+      SharedPayloadKeys.WORKFLOW_ID to it.workflowId,
       "feature_size" to it.featureSize,
       "complete_count" to it.completeCount,
       "pending_count" to it.pendingCount,
@@ -26,7 +28,7 @@ internal fun FeatureTaskRuntimeStatusProjection?.toRuntimeStatusCliMap(workflowI
         linkedMapOf(
           "count" to degraded.count,
           "failure_class" to degraded.failureClass,
-          "phase_id" to degraded.phaseId,
+          SharedPayloadKeys.PHASE_ID to degraded.phaseId,
           "attempt" to degraded.attempt,
         )
       },
@@ -43,8 +45,8 @@ internal fun FeatureTaskRuntimeStatusProjection?.toRuntimeStatusCliMap(workflowI
       "phases" to it.phases.map(FeatureTaskRuntimePhaseStatus::toRuntimePhaseStatusCliMap),
     )
   } ?: linkedMapOf(
-    "status" to "not_found",
-    "workflow_id" to workflowId,
+    SharedPayloadKeys.STATUS to "not_found",
+    SharedPayloadKeys.WORKFLOW_ID to workflowId,
     "feature_size" to null,
     "complete_count" to 0,
     "pending_count" to 0,
@@ -59,8 +61,8 @@ internal fun FeatureTaskRuntimeStatusProjection?.toRuntimeStatusCliMap(workflowI
   )
 
 internal fun FeatureTaskRuntimePhaseStatus.toRuntimePhaseStatusCliMap(): Map<String, Any?> = linkedMapOf(
-  "phase_id" to phaseId,
-  "status" to status,
+  SharedPayloadKeys.PHASE_ID to phaseId,
+  SharedPayloadKeys.STATUS to status,
   "attempt_count" to attemptCount,
   "resolved_agent_id" to resolvedAgentId,
   "execution_origin" to executionOrigin,
@@ -68,11 +70,11 @@ internal fun FeatureTaskRuntimePhaseStatus.toRuntimePhaseStatusCliMap(): Map<Str
   "finished" to finished,
 )
 
-internal fun Map<String, Any?>.runtimeStatusExitCode(): Int = if (this["status"] == "ok") 0 else 1
+internal fun Map<String, Any?>.runtimeStatusExitCode(): Int = if (this[SharedPayloadKeys.STATUS] == "ok") 0 else 1
 
 internal fun runtimeStatusText(payload: Map<String, Any?>): String = buildString {
-  appendLine("feature-task-runtime: ${payload["workflow_id"]}")
-  appendLine("status: ${payload["status"]}")
+  appendLine("feature-task-runtime: ${payload[SharedPayloadKeys.WORKFLOW_ID]}")
+  appendLine("status: ${payload[SharedPayloadKeys.STATUS]}")
   appendLine("feature_size: ${payload["feature_size"] ?: "unknown"}")
   appendLine("complete: ${payload["complete_count"]}")
   appendLine("pending: ${payload["pending_count"]}")
@@ -91,7 +93,7 @@ internal fun runtimeStatusText(payload: Map<String, Any?>): String = buildString
   (payload["degraded_diagnostic"] as? Map<*, *>)?.let { degraded ->
     appendLine("degraded_diagnostic_count: ${degraded["count"]}")
     appendLine("degraded_diagnostic_failure_class: ${degraded["failure_class"]}")
-    appendLine("degraded_diagnostic_phase: ${degraded["phase_id"]}")
+    appendLine("degraded_diagnostic_phase: ${degraded[SharedPayloadKeys.PHASE_ID]}")
     appendLine("degraded_diagnostic_attempt: ${degraded["attempt"]}")
   }
   (payload["decompose_terminal"] as? Map<*, *>)?.let { terminal ->
@@ -105,7 +107,7 @@ internal fun runtimeStatusText(payload: Map<String, Any?>): String = buildString
   (payload["phases"] as? List<*>).orEmpty().forEach { rawPhase ->
     val phase = rawPhase as? Map<*, *> ?: return@forEach
     appendLine(
-      "phase: id=${phase["phase_id"]} status=${phase["status"]} attempt=${phase["attempt_count"]} " +
+      "phase: id=${phase[SharedPayloadKeys.PHASE_ID]} status=${phase[SharedPayloadKeys.STATUS]} attempt=${phase["attempt_count"]} " +
         "agent=${phase["resolved_agent_id"] ?: "none"} " +
         "origin=${phase["execution_origin"] ?: "none"} finished=${phase["finished"]}",
     )

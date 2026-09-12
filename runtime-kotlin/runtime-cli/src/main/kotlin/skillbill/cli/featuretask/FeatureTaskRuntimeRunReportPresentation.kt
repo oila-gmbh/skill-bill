@@ -1,22 +1,24 @@
 package skillbill.cli.featuretask
 
+import skillbill.contracts.SharedPayloadKeys
+
 import skillbill.engine.featuretask.model.FeatureTaskRuntimeRunReport
 import skillbill.engine.featuretask.model.FeatureTaskRuntimeSubtaskOutcome
 import skillbill.workflow.model.DecompositionStatus
 
 internal fun FeatureTaskRuntimeRunReport.toRuntimeRunCliMap(): Map<String, Any?> = when (this) {
   is FeatureTaskRuntimeRunReport.Completed -> linkedMapOf(
-    "status" to "complete",
-    "issue_key" to issueKey,
-    "workflow_id" to workflowId,
+    SharedPayloadKeys.STATUS to "complete",
+    SharedPayloadKeys.ISSUE_KEY to issueKey,
+    SharedPayloadKeys.WORKFLOW_ID to workflowId,
     "feature_size" to featureSize,
     "resolved_branch" to resolvedBranch,
     "completed_phases" to completedPhaseIds,
   ).withSubtaskOutcome(subtaskOutcome)
   is FeatureTaskRuntimeRunReport.Blocked -> linkedMapOf(
-    "status" to "blocked",
-    "issue_key" to issueKey,
-    "workflow_id" to workflowId,
+    SharedPayloadKeys.STATUS to "blocked",
+    SharedPayloadKeys.ISSUE_KEY to issueKey,
+    SharedPayloadKeys.WORKFLOW_ID to workflowId,
     "feature_size" to featureSize,
     "resolved_branch" to resolvedBranch,
     "last_incomplete_phase" to lastIncompletePhase,
@@ -24,9 +26,9 @@ internal fun FeatureTaskRuntimeRunReport.toRuntimeRunCliMap(): Map<String, Any?>
     "completed_phases" to completedPhaseIds,
   ).withSubtaskOutcome(subtaskOutcome)
   is FeatureTaskRuntimeRunReport.Paused -> linkedMapOf(
-    "status" to "paused",
-    "issue_key" to issueKey,
-    "workflow_id" to workflowId,
+    SharedPayloadKeys.STATUS to "paused",
+    SharedPayloadKeys.ISSUE_KEY to issueKey,
+    SharedPayloadKeys.WORKFLOW_ID to workflowId,
     "feature_size" to featureSize,
     "resolved_branch" to resolvedBranch,
     "paused_phase" to pausedPhase,
@@ -35,9 +37,9 @@ internal fun FeatureTaskRuntimeRunReport.toRuntimeRunCliMap(): Map<String, Any?>
     "completed_phases" to completedPhaseIds,
   ).withSubtaskOutcome(subtaskOutcome)
   is FeatureTaskRuntimeRunReport.Decomposed -> linkedMapOf(
-    "status" to "decomposed",
-    "issue_key" to issueKey,
-    "workflow_id" to workflowId,
+    SharedPayloadKeys.STATUS to "decomposed",
+    SharedPayloadKeys.ISSUE_KEY to issueKey,
+    SharedPayloadKeys.WORKFLOW_ID to workflowId,
     "feature_size" to featureSize,
     "resolved_branch" to resolvedBranch,
     "reason" to reason,
@@ -58,11 +60,11 @@ internal fun Map<String, Any?>.withSubtaskOutcome(outcome: FeatureTaskRuntimeSub
       put(
         "subtask_outcome",
         linkedMapOf(
-          "issue_key" to outcome.issueKey,
-          "subtask_id" to outcome.subtaskId,
-          "status" to outcome.status.wireValue,
+          SharedPayloadKeys.ISSUE_KEY to outcome.issueKey,
+          SharedPayloadKeys.SUBTASK_ID to outcome.subtaskId,
+          SharedPayloadKeys.STATUS to outcome.status.wireValue,
           "commit_sha" to outcome.commitSha,
-          "workflow_id" to outcome.workflowId,
+          SharedPayloadKeys.WORKFLOW_ID to outcome.workflowId,
           "blocked_reason" to outcome.blockedReason,
           "last_resumable_step" to outcome.lastResumableStep,
           "finalizing_agent_id" to outcome.finalizingAgentId,
@@ -75,12 +77,12 @@ internal fun Map<String, Any?>.withSubtaskOutcome(outcome: FeatureTaskRuntimeSub
 internal fun Map<String, Any?>.runtimeRunExitCode(): Int = if (isTerminalSuccessStatus()) 0 else 1
 
 internal fun Map<String, Any?>.isTerminalSuccessStatus(): Boolean =
-  this["status"] in setOf(DecompositionStatus.COMPLETE.wireValue, "decomposed")
+  this[SharedPayloadKeys.STATUS] in setOf(DecompositionStatus.COMPLETE.wireValue, "decomposed")
 
 internal fun runtimeRunText(payload: Map<String, Any?>): String = buildString {
-  appendLine("feature-task-runtime: ${payload["issue_key"]}")
-  appendLine("workflow_id: ${payload["workflow_id"]}")
-  appendLine("status: ${payload["status"]}")
+  appendLine("feature-task-runtime: ${payload[SharedPayloadKeys.ISSUE_KEY]}")
+  appendLine("workflow_id: ${payload[SharedPayloadKeys.WORKFLOW_ID]}")
+  appendLine("status: ${payload[SharedPayloadKeys.STATUS]}")
   appendLine("feature_size: ${payload["feature_size"]}")
   appendLine("resolved_branch: ${payload["resolved_branch"] ?: "none"}")
   appendLine("completed_phases: ${(payload["completed_phases"] as? List<*>).orEmpty().joinToString()}")
@@ -97,11 +99,11 @@ internal fun runtimeRunText(payload: Map<String, Any?>): String = buildString {
 
 internal fun StringBuilder.appendSubtaskOutcome(outcome: Map<*, *>) {
   appendLine("subtask_outcome:")
-  appendLine("  issue_key: ${outcome["issue_key"]}")
-  appendLine("  subtask_id: ${outcome["subtask_id"]}")
-  appendLine("  status: ${outcome["status"]}")
+  appendLine("  issue_key: ${outcome[SharedPayloadKeys.ISSUE_KEY]}")
+  appendLine("  subtask_id: ${outcome[SharedPayloadKeys.SUBTASK_ID]}")
+  appendLine("  status: ${outcome[SharedPayloadKeys.STATUS]}")
   appendLine("  commit_sha: ${outcome["commit_sha"] ?: "none"}")
-  appendLine("  workflow_id: ${outcome["workflow_id"]}")
+  appendLine("  workflow_id: ${outcome[SharedPayloadKeys.WORKFLOW_ID]}")
   appendLine("  last_resumable_step: ${outcome["last_resumable_step"]}")
   outcome["finalizing_agent_id"]?.let { appendLine("  finalizing_agent_id: $it") }
   (outcome["participating_agent_ids"] as? List<*>)?.takeIf { it.isNotEmpty() }

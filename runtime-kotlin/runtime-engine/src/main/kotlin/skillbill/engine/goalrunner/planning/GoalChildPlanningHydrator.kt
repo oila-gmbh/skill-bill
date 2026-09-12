@@ -1,5 +1,7 @@
 package skillbill.engine.goalrunner.planning
 
+import skillbill.contracts.SharedPayloadKeys
+
 import skillbill.application.decomposition.decodeArtifacts
 import skillbill.engine.goalrunner.planning.model.GoalChildPlanningHydration
 import skillbill.engine.planningprojection.requireValidPlanningProjection
@@ -242,7 +244,7 @@ private class PreparedPlanningPayloadValidator(
     val decoded = accepted.normalizedOutput.envelope
     // The projection gate is a no-op on a non-completed envelope, because a blocked or failed producer
     // makes no projection claim. An import, by contrast, only ever admits a settled completed payload.
-    if (decoded["phase_id"] != phaseId || decoded["status"].workflowStepStatus() != WorkflowStepStatus.COMPLETED) {
+    if (decoded[SharedPayloadKeys.PHASE_ID] != phaseId || decoded[SharedPayloadKeys.STATUS].workflowStepStatus() != WorkflowStepStatus.COMPLETED) {
       invalidPlanningPreparation(
         workflowId,
         "$phaseId.payload",
@@ -395,8 +397,8 @@ private class GoalChildPlanningImportMatcher(
   // producer lands running/running, and blocked is an interrupt that the quarantine produces and the
   // fix loop handles. Accepting a status the recorder cannot emit would admit forged state.
   private fun settledStepStatus(record: Map<*, *>?, phaseId: String): WorkflowStepStatus? {
-    if (record == null || record["phase_id"] != phaseId) return null
-    return when (record["status"].workflowStepStatus()) {
+    if (record == null || record[SharedPayloadKeys.PHASE_ID] != phaseId) return null
+    return when (record[SharedPayloadKeys.STATUS].workflowStepStatus()) {
       WorkflowStepStatus.COMPLETED ->
         WorkflowStepStatus.COMPLETED
           .takeIf { (record["output_artifact"] as? String)?.isNotBlank() == true }
@@ -416,7 +418,7 @@ private class GoalChildPlanningImportMatcher(
         (entry["action"] as? String)?.let(FeatureTaskRuntimePhaseLedgerAction::fromWire) ==
           FeatureTaskRuntimePhaseLedgerAction.COMPLETE,
         (entry["sequence_number"] as? Number)?.toInt() == index,
-        entry["phase_id"] == PLANNING_PHASE_IDS[index],
+        entry[SharedPayloadKeys.PHASE_ID] == PLANNING_PHASE_IDS[index],
         (entry["attempt_count"] as? Number)?.toInt() == 1,
         entry["resolved_agent_id"] == null,
       ).all { it }
@@ -438,7 +440,7 @@ private fun expectedProvenance(request: GoalChildPlanningHydrationRequest): Map<
   "parent_goal_workflow_id" to request.identity.parentGoalWorkflowId,
   "normalized_issue_key" to request.identity.normalizedIssueKey,
   "repository_identity" to request.identity.repositoryIdentity,
-  "subtask_id" to request.descriptor.subtaskId,
+  SharedPayloadKeys.SUBTASK_ID to request.descriptor.subtaskId,
   "manifest_order" to request.descriptor.manifestOrder,
   "governed_sub_spec_path" to request.descriptor.governedSubSpecPath,
   "sub_spec_hash" to request.descriptor.subSpecHash,
@@ -451,8 +453,8 @@ private fun expectedProvenance(request: GoalChildPlanningHydrationRequest): Map<
 )
 
 private fun completedStep(phaseId: String): Map<String, Any?> = linkedMapOf(
-  "step_id" to phaseId,
-  "status" to "completed",
+  SharedPayloadKeys.STEP_ID to phaseId,
+  SharedPayloadKeys.STATUS to "completed",
   "attempt_count" to 1,
 )
 

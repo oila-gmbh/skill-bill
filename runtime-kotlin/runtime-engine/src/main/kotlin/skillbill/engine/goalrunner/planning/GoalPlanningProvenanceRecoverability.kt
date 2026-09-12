@@ -1,5 +1,6 @@
 package skillbill.engine.goalrunner.planning
 import skillbill.contracts.JsonCodec
+import skillbill.contracts.SharedPayloadKeys
 import skillbill.ports.goalrunner.model.GoalPlanningContractProvenance
 import skillbill.ports.goalrunner.model.SharedGoalPreplanCheckpoint
 import skillbill.text.sha256HexUtf8
@@ -44,9 +45,9 @@ fun preplanProseValue(preplanPayload: String): String = runCatching {
   JsonCodec.parseObjectOrNull(preplanPayload)
     ?.let(JsonCodec::jsonElementToValue)
     ?.let(JsonCodec::anyToStringAnyMap)
-    ?.get("produced_outputs")
+    ?.get(SharedPayloadKeys.PRODUCED_OUTPUTS)
     ?.let(JsonCodec::anyToStringAnyMap)
-    ?.get("value")
+    ?.get(SharedPayloadKeys.VALUE)
     ?.toString()
     .orEmpty()
 }.getOrDefault("")
@@ -55,9 +56,9 @@ fun preplanProsePrompt(preplanPayload: String): String? = runCatching {
   JsonCodec.parseObjectOrNull(preplanPayload)
     ?.let(JsonCodec::jsonElementToValue)
     ?.let(JsonCodec::anyToStringAnyMap)
-    ?.get("produced_outputs")
+    ?.get(SharedPayloadKeys.PRODUCED_OUTPUTS)
     ?.let(JsonCodec::anyToStringAnyMap)
-    ?.get("prompt")
+    ?.get(SharedPayloadKeys.PROMPT)
     ?.toString()
     ?.takeIf(String::isNotBlank)
 }.getOrNull()

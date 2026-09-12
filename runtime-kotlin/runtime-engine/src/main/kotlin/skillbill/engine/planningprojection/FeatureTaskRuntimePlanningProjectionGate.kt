@@ -1,5 +1,7 @@
 package skillbill.engine.planningprojection
 
+import skillbill.contracts.SharedPayloadKeys
+
 import skillbill.error.InvalidGoalPlanningPreparationSchemaError
 import skillbill.workflow.model.WorkflowStepStatus
 import skillbill.workflow.model.workflowStepStatus
@@ -20,7 +22,7 @@ fun producerProjectionGateReason(
   outputMap: Map<String, Any?>,
   planningProjectionValidator: FeatureTaskRuntimePlanningProjectionValidator,
 ): String? {
-  if ((outputMap["status"] as? String).workflowStepStatus() != WorkflowStepStatus.COMPLETED) return null
+  if ((outputMap[SharedPayloadKeys.STATUS] as? String).workflowStepStatus() != WorkflowStepStatus.COMPLETED) return null
   val expectedKind = FeatureTaskRuntimePlanningProjectionContract.producedProjectionKindFor(phaseId)
     ?: return null
   return unresolvedProducerProjectionKindReason(phaseId, expectedKind, planningProjectionValidator)

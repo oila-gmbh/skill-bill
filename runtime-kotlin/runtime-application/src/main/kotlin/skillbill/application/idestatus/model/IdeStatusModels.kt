@@ -1,5 +1,7 @@
 package skillbill.application.idestatus.model
 
+import skillbill.contracts.SharedPayloadKeys
+
 import skillbill.boundary.OpenBoundaryMap
 import skillbill.contracts.workflow.GOAL_PLANNING_WAVE_CAP
 import skillbill.contracts.workflow.IDE_STATUS_CONTRACT_VERSION
@@ -285,10 +287,10 @@ data class IdeStatusSnapshot(
 
   @OpenBoundaryMap("IDE status snapshot wire map at the schema-validation emit seam")
   fun toStatusWireMap(): Map<String, Any?> = buildMap {
-    put("contract_version", contractVersion)
+    put(SharedPayloadKeys.CONTRACT_VERSION, contractVersion)
     put("repository_identity", repositoryIdentity)
-    issueKey?.takeIf(String::isNotBlank)?.let { put("issue_key", it) }
-    workflowId?.takeIf(String::isNotBlank)?.let { put("workflow_id", it) }
+    issueKey?.takeIf(String::isNotBlank)?.let { put(SharedPayloadKeys.ISSUE_KEY, it) }
+    workflowId?.takeIf(String::isNotBlank)?.let { put(SharedPayloadKeys.WORKFLOW_ID, it) }
     workflowFamily?.let { put("workflow_family", it.wireValue) }
     put("lifecycle_state", lifecycleState.wireValue)
     put(
@@ -319,7 +321,7 @@ data class IdeStatusSnapshot(
     putAgentActivity()
     put("updated_at", updatedAt.toString())
     put("freshness", freshness.wireValue)
-    put("summary", summary)
+    put(SharedPayloadKeys.SUMMARY, summary)
     putProblem()
   }
 
@@ -347,7 +349,7 @@ data class IdeStatusSnapshot(
       buildMap {
         put("model", model.model)
         model.effort?.let { put("effort", it) }
-        model.phaseId?.let { put("phase_id", it) }
+        model.phaseId?.let { put(SharedPayloadKeys.PHASE_ID, it) }
       },
     )
   }
@@ -361,7 +363,7 @@ data class IdeStatusSnapshot(
     put(
       "current_phase_execution",
       buildMap {
-        put("phase_id", execution.phaseId)
+        put(SharedPayloadKeys.PHASE_ID, execution.phaseId)
         put("kind", execution.kind.wireValue)
         put("count", execution.count)
         execution.total?.let { put("total", it) }

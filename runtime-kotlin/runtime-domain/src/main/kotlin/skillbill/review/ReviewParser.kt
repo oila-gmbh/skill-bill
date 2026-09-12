@@ -1,5 +1,7 @@
 package skillbill.review
 
+import skillbill.contracts.SharedPayloadKeys
+
 import skillbill.review.model.ImportedReview
 import skillbill.review.model.ReviewExecutionMode
 import skillbill.review.model.ReviewIssueCategory
@@ -44,7 +46,7 @@ object ReviewParser {
   }
 
   private fun parseExecutionMode(text: String): ReviewExecutionMode? {
-    val reported = reportedExecutionModePattern.find(text)?.groups?.get("value")?.value?.trim()
+    val reported = reportedExecutionModePattern.find(text)?.groups?.get(SharedPayloadKeys.VALUE)?.value?.trim()
       ?: return null
     return ReviewExecutionMode.fromWire(extractSummaryValue(text, "execution_mode"))
       ?: throw IllegalArgumentException(

@@ -1,5 +1,7 @@
 package skillbill.engine.goalrunner.planning
 
+import skillbill.contracts.SharedPayloadKeys
+
 import skillbill.contracts.JsonCodec
 import skillbill.contracts.goalplanning.GoalPlanningDiscoveryExclusions
 import skillbill.ports.goalrunner.planning.model.GoalPlanningContext
@@ -128,7 +130,7 @@ object GoalPlanningSharedContextPacket {
       },
       "dependencies" to subtask.dependencies.map { dependency ->
         linkedMapOf(
-          "subtask_id" to dependency.subtaskId,
+          SharedPayloadKeys.SUBTASK_ID to dependency.subtaskId,
           "optional" to dependency.optional,
           "skipped" to dependency.skipped,
         )

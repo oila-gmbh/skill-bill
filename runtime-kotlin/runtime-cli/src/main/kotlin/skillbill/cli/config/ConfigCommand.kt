@@ -1,5 +1,7 @@
 package skillbill.cli.config
 
+import skillbill.contracts.SharedPayloadKeys
+
 import com.github.ajalt.clikt.core.subcommands
 import com.github.ajalt.clikt.parameters.options.default
 import com.github.ajalt.clikt.parameters.options.option
@@ -58,7 +60,7 @@ class ConfigResolveSpecTypeCommand(
     }
     state.completeText(
       "${resolved.id}\n",
-      mapOf("status" to "ok", "spec_type" to resolved.id),
+      mapOf(SharedPayloadKeys.STATUS to "ok", "spec_type" to resolved.id),
     )
   }
 
@@ -77,7 +79,7 @@ class ConfigResolveSpecTypeCommand(
   }
 
   private fun failurePayload(message: String?): Map<String, Any?> =
-    mapOf("status" to "failed", "error" to message.orEmpty())
+    mapOf(SharedPayloadKeys.STATUS to "failed", "error" to message.orEmpty())
 
   private data class ExplicitArg(
     val value: SpecType?,

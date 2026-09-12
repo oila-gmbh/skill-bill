@@ -1,5 +1,7 @@
 package skillbill.cli.work
 
+import skillbill.contracts.SharedPayloadKeys
+
 import com.github.ajalt.clikt.core.subcommands
 import com.github.ajalt.clikt.parameters.options.default
 import com.github.ajalt.clikt.parameters.options.option
@@ -81,9 +83,9 @@ private fun WorkListResult.toPayload(): Map<String, Any?> = mapOf(
 )
 
 private fun WorkListItem.toPayload(): Map<String, Any?> = linkedMapOf(
-  "issue_key" to issueKey,
+  SharedPayloadKeys.ISSUE_KEY to issueKey,
   "workflow_kind" to workflowKind.wireValue,
-  "workflow_id" to workflowId,
+  SharedPayloadKeys.WORKFLOW_ID to workflowId,
   "started_at" to startedAt.toString(),
   "current_state" to currentState,
   "state_entered_at" to stateEnteredAt.toString(),

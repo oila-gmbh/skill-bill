@@ -1,5 +1,7 @@
 package skillbill.engine.featuretask
 
+import skillbill.contracts.SharedPayloadKeys
+
 import skillbill.application.decomposition.decodeArtifacts
 import skillbill.application.workflow.model.WorkflowFamily
 import skillbill.engine.featuretask.model.PersistHealedRemediationBaseRequest
@@ -70,7 +72,7 @@ class FeatureTaskRuntimeRemediationBaseReconciler(
           FEATURE_TASK_RUNTIME_CHECKPOINT_IDENTITIES_ARTIFACT_KEY to null,
           CHECKPOINT_IDENTITY_QUARANTINE_ARTIFACT_KEY to existing + listOf(
             linkedMapOf(
-              "workflow_id" to workflowId,
+              SharedPayloadKeys.WORKFLOW_ID to workflowId,
               "rejection_detail" to error.message.orEmpty(),
               "quarantined_at" to clock.instant().toString(),
               "rejected_record" to rejected,

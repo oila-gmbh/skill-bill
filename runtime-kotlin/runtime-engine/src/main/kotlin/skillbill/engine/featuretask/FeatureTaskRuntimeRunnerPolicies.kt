@@ -1,5 +1,7 @@
 package skillbill.engine.featuretask
 
+import skillbill.contracts.SharedPayloadKeys
+
 import skillbill.contracts.JsonCodec
 import skillbill.engine.featuretask.model.FeatureTaskRuntimeRunRequest
 import skillbill.workflow.model.WorkflowStepStatus
@@ -77,8 +79,8 @@ fun mutatingReconciliationGateReason(phaseId: String, outputMap: Map<String, Any
   // schema-valid terminal outcome that never claimed the tree reached target, so charging it with a
   // missing reconciliation report converted it into a schema-gate rejection and denied it the terminal
   // path it belongs on.
-  if ((outputMap["status"] as? String).workflowStepStatus() != WorkflowStepStatus.COMPLETED) return null
-  val producedOutputs = outputMap["produced_outputs"] as? Map<*, *>
+  if ((outputMap[SharedPayloadKeys.STATUS] as? String).workflowStepStatus() != WorkflowStepStatus.COMPLETED) return null
+  val producedOutputs = outputMap[SharedPayloadKeys.PRODUCED_OUTPUTS] as? Map<*, *>
   val nestedReconciled = (producedOutputs?.get("reconciled_state") as? Map<*, *>)?.get("reconciled")
   val reconciled = nestedReconciled == true || producedOutputs?.get("reconciled") == true
   return if (reconciled) {

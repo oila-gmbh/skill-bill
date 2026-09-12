@@ -1,5 +1,7 @@
 package skillbill.infrastructure.fs.scaffold.runtime
 
+import skillbill.contracts.SharedPayloadKeys
+
 import skillbill.infrastructure.fs.nativeagent.composition.NativeAgentCompositionContext
 import java.nio.file.Files
 import java.nio.file.Path
@@ -17,7 +19,7 @@ data class RepoValidationReport(
   val passed: Boolean = issues.isEmpty()
 
   fun toPayload(): Map<String, Any?> = mapOf(
-    "status" to if (passed) "passed" else "failed",
+    SharedPayloadKeys.STATUS to if (passed) "passed" else "failed",
     "skill_count" to skillCount,
     "governed_addon_count" to addonCount,
     "platform_pack_count" to platformPackCount,

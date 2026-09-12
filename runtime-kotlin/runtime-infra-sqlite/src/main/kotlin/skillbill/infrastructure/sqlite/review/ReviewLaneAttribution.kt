@@ -1,5 +1,6 @@
 package skillbill.infrastructure.sqlite.review
 import skillbill.infrastructure.sqlite.PARAM_FOUR
+import skillbill.contracts.review.ReviewFindingPayloadKeys
 import skillbill.infrastructure.sqlite.PARAM_ONE
 import skillbill.infrastructure.sqlite.PARAM_THREE
 import skillbill.infrastructure.sqlite.PARAM_TWO
@@ -241,7 +242,7 @@ fun fetchFindingLaneAttribution(connection: Connection, reviewRunId: String): Ma
     statement.executeQuery().use { resultSet ->
       buildMap {
         while (resultSet.next()) {
-          put(resultSet.getString("finding_id"), resultSet.getString("lane_skill_name"))
+          put(resultSet.getString(ReviewFindingPayloadKeys.FINDING_ID), resultSet.getString("lane_skill_name"))
         }
       }
     }

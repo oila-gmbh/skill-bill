@@ -1,5 +1,7 @@
 package skillbill.mcp.workflow
 
+import skillbill.contracts.SharedPayloadKeys
+
 import skillbill.application.workflow.WorkflowWireProjections
 import skillbill.workflow.engine.model.WorkflowContinueView
 import skillbill.workflow.model.WorkflowContinueStatus
@@ -19,12 +21,12 @@ internal fun standardMcpContinueMap(
   map["db_path"] = dbPath
   if (view.continueStatus == WorkflowContinueStatus.BLOCKED) {
     val missingArtifacts = view.resume.missingArtifacts
-    map["status"] = "error"
+    map[SharedPayloadKeys.STATUS] = "error"
     map["error"] =
       "Cannot continue workflow until the missing artifacts are restored: " +
       missingArtifacts.joinToString()
   } else {
-    map["status"] = "ok"
+    map[SharedPayloadKeys.STATUS] = "ok"
   }
   return map
 }

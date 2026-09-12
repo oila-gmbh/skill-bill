@@ -1,5 +1,7 @@
 package skillbill.infrastructure.fs.nativeagent.composition
 
+import skillbill.contracts.SharedPayloadKeys
+
 import com.fasterxml.jackson.databind.node.JsonNodeFactory
 import com.fasterxml.jackson.databind.node.ObjectNode
 import skillbill.infrastructure.fs.nativeagent.rendering.YAML_DOUBLE_QUOTE_ESCAPES
@@ -97,7 +99,7 @@ fun parseNativeAgentSourceText(text: String, label: String = "native agent sourc
   frontmatter["name"]?.let { instance.put("name", it) }
   frontmatter["description"]?.let { instance.put("description", it) }
   frontmatter["compose"]?.let { instance.put("compose", it) }
-  frontmatter["contract_version"]?.let { instance.put("contract_version", it) }
+  frontmatter[SharedPayloadKeys.CONTRACT_VERSION]?.let { instance.put(SharedPayloadKeys.CONTRACT_VERSION, it) }
   if (tools.isNotEmpty()) {
     instance.putArray("tools").apply { tools.forEach { add(it) } }
   }

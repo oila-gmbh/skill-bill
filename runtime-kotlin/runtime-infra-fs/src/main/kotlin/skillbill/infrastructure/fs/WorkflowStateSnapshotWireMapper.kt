@@ -1,5 +1,7 @@
 package skillbill.infrastructure.fs
 
+import skillbill.contracts.SharedPayloadKeys
+
 import skillbill.boundary.OpenBoundaryMap
 import skillbill.contracts.JsonCodec
 import skillbill.error.InvalidWorkflowStateSchemaError
@@ -9,10 +11,10 @@ import skillbill.workflow.engine.model.WorkflowStateSnapshot
 object WorkflowStateSnapshotWireMapper {
   @OpenBoundaryMap("Canonical workflow-state snapshot map at the schema-validation seam")
   fun wireMap(snapshot: WorkflowStateSnapshot): Map<String, Any?> = linkedMapOf<String, Any?>(
-    "workflow_id" to snapshot.workflowId,
+    SharedPayloadKeys.WORKFLOW_ID to snapshot.workflowId,
     "session_id" to snapshot.sessionId.orEmpty(),
     "workflow_name" to snapshot.workflowName,
-    "contract_version" to snapshot.contractVersion,
+    SharedPayloadKeys.CONTRACT_VERSION to snapshot.contractVersion,
     "workflow_status" to snapshot.workflowStatus,
     "current_step_id" to snapshot.currentStepId.orEmpty(),
     "steps" to decodeArray(snapshot.stepsJson, "stepsJson"),

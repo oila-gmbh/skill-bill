@@ -100,6 +100,8 @@ NO COMMENTS, DON'T WRITE ANY NEW COMMENTS. NONE!!! IF YOU SEE A COMMENT - REMOVE
 
 Follow `docs/code-principles.md` for Kotlin patterns, package clustering, imports, file-size limits, and architecture guards. Mechanical enforcement lives under `runtime-kotlin/runtime-core/src/test/kotlin/skillbill/architecture/` (`InlineFqnArchitectureTest`, `ProductionFileLineCeilingArchitectureTest`, `PrincipleEnforcementInventory`, and siblings).
 
+**Wire and payload keys.** Never inline contract or wire map keys as string literals in `get`, `put`, `mapOf("key" to …)`, or bracket access. Declare each key once in an owning `*Keys` or `*PayloadKeys` object in `runtime-contracts` (`SharedPayloadKeys` for workflow-envelope keys; area-owned keys such as `ReviewVerificationSignalKeys` and `ReviewFindingPayloadKeys` beside their contract family). Downstream modules alias those constants; they do not restate wire strings. Enum wire tokens use `wireValue` on the owning enum; do not restate them in local `setOf`/`mapOf` collections. `WireVocabularyArchitectureTest` enforces this; see `runtime-kotlin/ARCHITECTURE.md` (Wire vocabulary).
+
 ## Quality Checks
 
 Prefer `bill-code-check`; document fallback if no platform checker. Bias: stable base commands, platform depth behind routers, explicit overrides, validator-backed rules, acceptance and rejection tests.

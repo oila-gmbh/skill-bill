@@ -1,5 +1,9 @@
 package skillbill.workflow.goal.model
 
+import skillbill.contracts.review.ReviewFindingPayloadKeys
+
+import skillbill.contracts.SharedPayloadKeys
+
 import skillbill.boundary.OpenBoundaryMap
 
 const val GOAL_SUBTASK_REVIEW_STATE_ARTIFACT_KEY: String = "goal_subtask_review_state"
@@ -72,8 +76,8 @@ data class GoalSubtaskBlockerDisposition(
 
   @OpenBoundaryMap("Blocker disposition at the durable workflow-artifact seam")
   fun toArtifactMap(): Map<String, Any?> = linkedMapOf(
-    "finding_id" to findingId,
-    "verdict" to verdict.wireValue,
+    ReviewFindingPayloadKeys.FINDING_ID to findingId,
+    SharedPayloadKeys.VERDICT to verdict.wireValue,
     "evidence" to evidence,
   )
 

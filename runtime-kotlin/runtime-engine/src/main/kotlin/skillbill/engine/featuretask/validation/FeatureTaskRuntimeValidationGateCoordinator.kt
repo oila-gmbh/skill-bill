@@ -1,5 +1,7 @@
 package skillbill.engine.featuretask.validation
 
+import skillbill.contracts.SharedPayloadKeys
+
 import me.tatarka.inject.annotations.Inject
 import skillbill.config.model.applyValidationGateGradleWrapper
 import skillbill.contracts.JsonCodec
@@ -344,12 +346,12 @@ class FeatureTaskRuntimeValidationGateCoordinator(
       )
       val payload = JsonCodec.mapToJsonString(
         mapOf(
-          "contract_version" to FEATURE_TASK_RUNTIME_CONTRACT_VERSION,
-          "phase_id" to FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VALIDATE,
-          "status" to VALIDATE_PHASE_STATUS_COMPLETED,
-          "summary" to "Validation satisfied by runtime-owned gate execution.",
-          "verdict" to FeatureTaskRuntimeVerdict.SATISFIED.wireValue,
-          "produced_outputs" to mapOf(
+          SharedPayloadKeys.CONTRACT_VERSION to FEATURE_TASK_RUNTIME_CONTRACT_VERSION,
+          SharedPayloadKeys.PHASE_ID to FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VALIDATE,
+          SharedPayloadKeys.STATUS to VALIDATE_PHASE_STATUS_COMPLETED,
+          SharedPayloadKeys.SUMMARY to "Validation satisfied by runtime-owned gate execution.",
+          SharedPayloadKeys.VERDICT to FeatureTaskRuntimeVerdict.SATISFIED.wireValue,
+          SharedPayloadKeys.PRODUCED_OUTPUTS to mapOf(
             "validation_result" to validationResult,
           ),
         ),

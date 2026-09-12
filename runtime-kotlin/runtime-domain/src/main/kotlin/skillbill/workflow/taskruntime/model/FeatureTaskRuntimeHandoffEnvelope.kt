@@ -1,5 +1,7 @@
 package skillbill.workflow.taskruntime.model
 
+import skillbill.contracts.SharedPayloadKeys
+
 import skillbill.boundary.OpenBoundaryMap
 import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_HANDOFF_ENVELOPE_CONTRACT_VERSION
 import skillbill.error.InvalidFeatureTaskRuntimePhaseHandoffSchemaError
@@ -30,7 +32,7 @@ data class FeatureTaskRuntimeHandoffEnvelope(
 
   @OpenBoundaryMap("Feature-task-runtime handoff envelope at the durable workflow-artifact seam")
   fun toEnvelopeMap(): Map<String, Any?> = linkedMapOf<String, Any?>(
-    "contract_version" to contractVersion,
+    SharedPayloadKeys.CONTRACT_VERSION to contractVersion,
     "consumer_phase_id" to consumerPhaseId,
     "projections" to projections.map { it.toEnvelopeMap() },
   ).apply {

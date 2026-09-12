@@ -1,5 +1,9 @@
 package skillbill.infrastructure.sqlite.review
 
+import skillbill.contracts.review.ReviewVerificationSignalKeys
+
+import skillbill.contracts.review.ReviewFindingPayloadKeys
+
 import skillbill.review.model.ImportedFinding
 import skillbill.review.model.NumberedFinding
 import skillbill.review.model.ReviewClaimVerdict
@@ -12,10 +16,10 @@ import skillbill.review.model.ReviewSummary
 import java.sql.ResultSet
 
 fun ResultSet.toImportedFinding(): ImportedFinding = ImportedFinding(
-  findingId = getString("finding_id"),
+  findingId = getString(ReviewFindingPayloadKeys.FINDING_ID),
   severity = getString("severity"),
   confidence = getString("confidence"),
-  issueCategory = getString("issue_category"),
+  issueCategory = getString(ReviewFindingPayloadKeys.ISSUE_CATEGORY),
   location = getString("location"),
   description = getString("description"),
   findingText = getString("finding_text"),
@@ -23,7 +27,7 @@ fun ResultSet.toImportedFinding(): ImportedFinding = ImportedFinding(
 )
 
 fun ResultSet.toReviewSummary(): ReviewSummary = ReviewSummary(
-  reviewRunId = getString("review_run_id"),
+  reviewRunId = getString(ReviewVerificationSignalKeys.REVIEW_RUN_ID),
   reviewSessionId = getString("review_session_id"),
   routedSkill = getString("routed_skill"),
   detectedScope = getString("detected_scope"),
@@ -41,15 +45,15 @@ fun ResultSet.toReviewSummary(): ReviewSummary = ReviewSummary(
 
 fun ResultSet.toNumberedFinding(number: Int): NumberedFinding = NumberedFinding(
   number = number,
-  findingId = getString("finding_id"),
+  findingId = getString(ReviewFindingPayloadKeys.FINDING_ID),
   severity = getString("severity"),
   confidence = getString("confidence"),
   location = getString("location"),
   description = getString("description"),
-  claimVerdict = getString("claim_verdict")?.trim()?.takeIf(String::isNotBlank)?.let(ReviewClaimVerdict::fromWire),
-  scopeDisposition = getString("scope_disposition")?.trim()?.takeIf(String::isNotBlank)
+  claimVerdict = getString(ReviewFindingPayloadKeys.CLAIM_VERDICT)?.trim()?.takeIf(String::isNotBlank)?.let(ReviewClaimVerdict::fromWire),
+  scopeDisposition = getString(ReviewFindingPayloadKeys.SCOPE_DISPOSITION)?.trim()?.takeIf(String::isNotBlank)
     ?.let(ReviewScopeDisposition::fromWire),
-  citations = ReviewFindingCitation.decodeList(getString("citations")),
+  citations = ReviewFindingCitation.decodeList(getString(ReviewFindingPayloadKeys.CITATIONS)),
   severityAdjustment = numberedFindingAdjustment(
     getString("severity_adjustment_direction"),
     getString("severity_adjustment_justification"),

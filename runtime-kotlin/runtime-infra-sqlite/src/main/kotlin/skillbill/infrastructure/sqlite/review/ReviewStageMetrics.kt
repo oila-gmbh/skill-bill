@@ -1,5 +1,6 @@
 package skillbill.infrastructure.sqlite.review
 import skillbill.infrastructure.sqlite.PARAM_ONE
+import skillbill.contracts.review.ReviewVerificationSignalKeys
 import skillbill.review.context.model.ReviewClaimVerdictAdmission
 import skillbill.review.context.model.ReviewSpecAdjudicationAdmission
 import skillbill.review.model.ReviewClaimVerdict
@@ -85,7 +86,7 @@ fun loadReviewRunTiers(connection: Connection): Map<String, String> = connection
     buildMap {
       while (resultSet.next()) {
         put(
-          resultSet.getString("review_run_id"),
+          resultSet.getString(ReviewVerificationSignalKeys.REVIEW_RUN_ID),
           resolvedTier(resultSet.getString("execution_mode")?.let(ReviewExecutionMode::fromWire)),
         )
       }

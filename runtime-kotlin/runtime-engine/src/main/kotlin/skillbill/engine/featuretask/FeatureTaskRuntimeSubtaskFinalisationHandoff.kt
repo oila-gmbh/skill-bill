@@ -1,5 +1,7 @@
 package skillbill.engine.featuretask
 
+import skillbill.contracts.SharedPayloadKeys
+
 import skillbill.contracts.JsonCodec
 import skillbill.engine.featuretask.model.FeatureTaskRuntimeCommitPushHandoff
 import skillbill.engine.featuretask.model.FeatureTaskRuntimeCommitPushHandoffInvalid
@@ -29,20 +31,20 @@ object FeatureTaskRuntimeSubtaskFinalisationHandoff {
   }
 
   fun withCommitSha(envelope: Map<String, Any?>, commitSha: String): Map<String, Any?> {
-    val produced = JsonCodec.anyToStringAnyMap(envelope["produced_outputs"])?.toMutableMap()
+    val produced = JsonCodec.anyToStringAnyMap(envelope[SharedPayloadKeys.PRODUCED_OUTPUTS])?.toMutableMap()
       ?: return envelope
     val result = JsonCodec.anyToStringAnyMap(produced[COMMIT_PUSH_RESULT_KEY])?.toMutableMap()
       ?: return envelope
     result[COMMIT_SHA_KEY] = commitSha
     produced[COMMIT_PUSH_RESULT_KEY] = result
-    return envelope.toMutableMap().apply { this["produced_outputs"] = produced }
+    return envelope.toMutableMap().apply { this[SharedPayloadKeys.PRODUCED_OUTPUTS] = produced }
   }
 
   private fun changedPaths(result: Map<String, Any?>): List<String>? =
     (result[CHANGED_PATHS_KEY] as? List<*>)?.mapNotNull { it?.toString()?.trim()?.takeIf(String::isNotBlank) }
 
   private fun commitPushResult(envelope: Map<String, Any?>): Map<String, Any?>? =
-    JsonCodec.anyToStringAnyMap(envelope["produced_outputs"])?.let { produced ->
+    JsonCodec.anyToStringAnyMap(envelope[SharedPayloadKeys.PRODUCED_OUTPUTS])?.let { produced ->
       JsonCodec.anyToStringAnyMap(produced[COMMIT_PUSH_RESULT_KEY])
     } ?: JsonCodec.anyToStringAnyMap(envelope[COMMIT_PUSH_RESULT_KEY])
 

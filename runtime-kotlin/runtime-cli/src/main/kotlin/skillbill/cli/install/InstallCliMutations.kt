@@ -1,5 +1,7 @@
 package skillbill.cli.install
 
+import skillbill.contracts.SharedPayloadKeys
+
 import skillbill.cli.kernel.CliRunState
 import skillbill.cli.model.CliRunInputs
 import skillbill.ports.install.model.NativeAgentLinkOutcome
@@ -21,7 +23,7 @@ internal fun CliRunState.refuseInstallMutationDuringGoalContinuation(
   completeText(
     "$message\n",
     mapOf(
-      "status" to "error",
+      SharedPayloadKeys.STATUS to "error",
       "error" to message,
       "exit_code" to GOAL_CONTINUATION_INSTALL_REFUSAL_EXIT_CODE,
     ),

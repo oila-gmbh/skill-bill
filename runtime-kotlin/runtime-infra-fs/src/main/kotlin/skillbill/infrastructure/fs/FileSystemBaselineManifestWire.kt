@@ -1,5 +1,7 @@
 package skillbill.infrastructure.fs
 
+import skillbill.contracts.SharedPayloadKeys
+
 import skillbill.contracts.JsonCodec
 import skillbill.error.UnreadableBaselineManifestError
 import skillbill.install.model.BaselineManifest
@@ -16,7 +18,7 @@ import java.nio.file.Path
 internal fun BaselineManifest.toBaselineManifestJson(): String = JsonCodec.mapToJsonString(toWireMap())
 
 private fun BaselineManifest.toWireMap(): Map<String, Any?> = linkedMapOf(
-  "contract_version" to BASELINE_MANIFEST_CONTRACT_VERSION,
+  SharedPayloadKeys.CONTRACT_VERSION to BASELINE_MANIFEST_CONTRACT_VERSION,
   // Sorted keys give a deterministic, byte-stable serialization for idempotent writes.
   "baselines" to LinkedHashMap<String, Any?>(entries.toSortedMap()),
 )

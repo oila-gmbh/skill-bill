@@ -1,5 +1,7 @@
 package skillbill.ports.validation.model
 
+import skillbill.contracts.SharedPayloadKeys
+
 import skillbill.boundary.OpenBoundaryMap
 
 data class RepoValidationReport(
@@ -14,7 +16,7 @@ data class RepoValidationReport(
 
   @OpenBoundaryMap("Wire-shape serializer for repo-validation report")
   fun toPayload(): Map<String, Any?> = mapOf(
-    "status" to if (passed) "passed" else "failed",
+    SharedPayloadKeys.STATUS to if (passed) "passed" else "failed",
     "skill_count" to skillCount,
     "governed_addon_count" to addonCount,
     "platform_pack_count" to platformPackCount,

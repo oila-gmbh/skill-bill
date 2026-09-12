@@ -1,5 +1,7 @@
 package skillbill.cli.scaffold
 
+import skillbill.contracts.SharedPayloadKeys
+
 import com.github.ajalt.clikt.parameters.arguments.argument
 import com.github.ajalt.clikt.parameters.arguments.optional
 import com.github.ajalt.clikt.parameters.options.default
@@ -105,7 +107,7 @@ class ValidateSkillCommand(
 
   override fun run() {
     state.result =
-      authoringResult(format, successExitCode = { payload -> if (payload["status"] == "pass") 0 else 1 }) {
+      authoringResult(format, successExitCode = { payload -> if (payload[SharedPayloadKeys.STATUS] == "pass") 0 else 1 }) {
         scaffoldGateway.validate(Path.of(repoRoot), skillNames).toCliMap()
       }
   }

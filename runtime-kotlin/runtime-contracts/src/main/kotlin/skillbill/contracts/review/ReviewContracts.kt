@@ -12,7 +12,7 @@ data class ReviewPreviewContract(
   val executionMode: String?,
 ) : JsonPayloadContract {
   override fun toPayload(): Map<String, Any?> = linkedMapOf(
-    "review_run_id" to reviewRunId,
+    ReviewVerificationSignalKeys.REVIEW_RUN_ID to reviewRunId,
     "review_session_id" to reviewSessionId,
     "finding_count" to findingCount,
     "routed_skill" to routedSkill,
@@ -39,7 +39,7 @@ data class ReviewFeedbackContract(
 ) : JsonPayloadContract {
   override fun toPayload(): Map<String, Any?> = linkedMapOf(
     "db_path" to dbPath,
-    "review_run_id" to reviewRunId,
+    ReviewVerificationSignalKeys.REVIEW_RUN_ID to reviewRunId,
     "outcome_type" to outcomeType,
     "recorded_findings" to recordedFindings,
   )
@@ -59,16 +59,16 @@ data class NumberedFindingContract(
 ) : JsonPayloadContract {
   override fun toPayload(): Map<String, Any?> = linkedMapOf<String, Any?>(
     "number" to number,
-    "finding_id" to findingId,
+    ReviewFindingPayloadKeys.FINDING_ID to findingId,
     "severity" to severity,
     "confidence" to confidence,
     "location" to location,
     "description" to description,
   ).apply {
-    claimVerdict?.let { put("claim_verdict", it) }
-    scopeDisposition?.let { put("scope_disposition", it) }
-    if (citations.isNotEmpty()) put("citations", citations)
-    severityAdjustment?.let { put("severity_adjustment", it) }
+    claimVerdict?.let { put(ReviewFindingPayloadKeys.CLAIM_VERDICT, it) }
+    scopeDisposition?.let { put(ReviewFindingPayloadKeys.SCOPE_DISPOSITION, it) }
+    if (citations.isNotEmpty()) put(ReviewFindingPayloadKeys.CITATIONS, citations)
+    severityAdjustment?.let { put(ReviewFindingPayloadKeys.SEVERITY_ADJUSTMENT, it) }
   }
 }
 
@@ -80,7 +80,7 @@ data class TriageDecisionContract(
 ) : JsonPayloadContract {
   override fun toPayload(): Map<String, Any?> = linkedMapOf(
     "number" to number,
-    "finding_id" to findingId,
+    ReviewFindingPayloadKeys.FINDING_ID to findingId,
     "outcome_type" to outcomeType,
     "note" to note,
   )
@@ -93,8 +93,8 @@ data class TriageListContract(
 ) : JsonPayloadContract {
   override fun toPayload(): Map<String, Any?> = linkedMapOf(
     "db_path" to dbPath,
-    "review_run_id" to reviewRunId,
-    "findings" to findings.map(NumberedFindingContract::toPayload),
+    ReviewVerificationSignalKeys.REVIEW_RUN_ID to reviewRunId,
+    ReviewVerificationSignalKeys.REVIEW_FINDINGS to findings.map(NumberedFindingContract::toPayload),
   )
 }
 
@@ -105,7 +105,7 @@ data class TriageRecordedContract(
 ) : JsonPayloadContract {
   override fun toPayload(): Map<String, Any?> = linkedMapOf(
     "db_path" to dbPath,
-    "review_run_id" to reviewRunId,
+    ReviewVerificationSignalKeys.REVIEW_RUN_ID to reviewRunId,
     "recorded" to recorded.map(TriageDecisionContract::toPayload),
   )
 }

@@ -1,5 +1,7 @@
 package skillbill.application.review
 
+import skillbill.contracts.review.ReviewFindingPayloadKeys
+
 import skillbill.agent.model.AgentPhaseInput
 import skillbill.agent.model.AgentPhaseOutput
 import skillbill.application.review.model.ReviewClaimVerificationOutcome
@@ -281,8 +283,8 @@ internal fun parseWorkerResult(stdout: String): ReviewClaimWorkerResult? {
   val payload = parseJsonObject(stdout) ?: return null
   val finding = JsonCodec.anyToStringAnyMap(payload["finding"])
   return ReviewClaimWorkerResult(
-    claimVerdict = payload["claim_verdict"] as? String,
-    citations = parseCitations(payload["citations"]),
+    claimVerdict = payload[ReviewFindingPayloadKeys.CLAIM_VERDICT] as? String,
+    citations = parseCitations(payload[ReviewFindingPayloadKeys.CITATIONS]),
     findingRef = (finding?.get("finding_ref") as? String) ?: payload["finding_ref"] as? String,
     severity = (finding?.get("severity") as? String) ?: payload["severity"] as? String,
     location = (finding?.get("location") as? String) ?: payload["location"] as? String,

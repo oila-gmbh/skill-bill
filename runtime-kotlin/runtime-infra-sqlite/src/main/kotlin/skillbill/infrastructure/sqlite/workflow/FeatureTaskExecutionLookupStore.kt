@@ -1,5 +1,7 @@
 package skillbill.infrastructure.sqlite.workflow
 
+import skillbill.contracts.SharedPayloadKeys
+
 import skillbill.error.InvalidFeatureTaskExecutionIdentitySchemaError
 import skillbill.error.InvalidWorkflowStateSchemaError
 import skillbill.ports.workflow.FeatureTaskExecutionLookupRepository
@@ -117,7 +119,7 @@ internal class FeatureTaskExecutionLookupStore(
     statement.executeQuery().use { rows ->
       buildList {
         while (rows.next()) {
-          val workflowId = rows.getString("workflow_id")
+          val workflowId = rows.getString(SharedPayloadKeys.WORKFLOW_ID)
           val workflow = connection.getFeatureTaskWorkflowRow(workflowId)
             ?: throw InvalidWorkflowStateSchemaError(
               "Feature-task identity '$workflowId' has no workflow row.",

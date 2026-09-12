@@ -1,5 +1,7 @@
 package skillbill.workflow.taskruntime.model
 
+import skillbill.contracts.SharedPayloadKeys
+
 import skillbill.boundary.OpenBoundaryMap
 import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_PHASE_OUTPUT_VALIDATION_CONTRACT_VERSION
 import skillbill.error.FailureWireCode
@@ -160,7 +162,7 @@ data class FeatureTaskRuntimePhaseOutputRepairEvidence(
 
   @OpenBoundaryMap("Typed phase-output repair evidence at the private workflow-artifact seam")
   fun toArtifactMap(): Map<String, Any?> = linkedMapOf(
-    "contract_version" to contractVersion,
+    SharedPayloadKeys.CONTRACT_VERSION to contractVersion,
     "validator_version" to validatorVersion,
     "format" to format.wireValue,
     "original_digest" to originalDigest,

@@ -1,5 +1,7 @@
 package skillbill.infrastructure.sqlite.worklist
 
+import skillbill.contracts.SharedPayloadKeys
+
 import skillbill.error.InvalidWorkListRowError
 import skillbill.ports.work.WorkListRepository
 import skillbill.ports.work.model.LEGACY_FEATURE_TASK_PROSE_WORKFLOW_STATUSES
@@ -105,7 +107,7 @@ private fun ResultSet.toWorkItem(): WorkItem {
     else -> invalid(workflowId, "invalid state_entered_at_estimated '$estimatedValue'")
   }
   return WorkItem(
-    issueKey = getString("issue_key")?.trim()?.takeIf(String::isNotEmpty),
+    issueKey = getString(SharedPayloadKeys.ISSUE_KEY)?.trim()?.takeIf(String::isNotEmpty),
     workflowKind = kind,
     workflowId = workflowId,
     startedAt = parseInstant(required("started_at"), workflowId, "started_at"),
@@ -123,9 +125,9 @@ private val validWorkStates: Set<String> =
     FeatureVerifyWorkflowDefinition.definition.workflowStatuses
 
 private fun ResultSet.required(column: String): String {
-  val value = getString(column) ?: invalid(getString("workflow_id").orEmpty(), "missing $column")
-  if (value.isBlank()) invalid(getString("workflow_id").orEmpty(), "missing $column")
-  if (value != value.trim()) invalid(getString("workflow_id").orEmpty(), "invalid $column '$value'")
+  val value = getString(column) ?: invalid(getString(SharedPayloadKeys.WORKFLOW_ID).orEmpty(), "missing $column")
+  if (value.isBlank()) invalid(getString(SharedPayloadKeys.WORKFLOW_ID).orEmpty(), "missing $column")
+  if (value != value.trim()) invalid(getString(SharedPayloadKeys.WORKFLOW_ID).orEmpty(), "invalid $column '$value'")
   return value
 }
 

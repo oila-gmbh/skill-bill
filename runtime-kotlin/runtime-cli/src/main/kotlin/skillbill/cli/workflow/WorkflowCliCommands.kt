@@ -1,5 +1,7 @@
 package skillbill.cli.workflow
 
+import skillbill.contracts.SharedPayloadKeys
+
 import com.github.ajalt.clikt.core.CliktCommand
 import com.github.ajalt.clikt.core.subcommands
 import com.github.ajalt.clikt.parameters.arguments.argument
@@ -322,7 +324,7 @@ private fun parseArtifactsPatch(rawValue: String): Map<String, Any?> = JsonCodec
     emptyMap()
   }
 
-private fun Map<String, Any?>.exitCode(): Int = if (this["status"] == "error") 1 else 0
+private fun Map<String, Any?>.exitCode(): Int = if (this[SharedPayloadKeys.STATUS] == "error") 1 else 0
 
 private fun resolveWorkflowId(
   workflowId: String?,

@@ -1,5 +1,7 @@
 package skillbill.engine.featuretask
 
+import skillbill.contracts.SharedPayloadKeys
+
 import skillbill.application.diagnostics.model.FeatureTaskRuntimeRejectedOutputWrite
 import skillbill.application.diagnostics.model.RejectedOutputDiagnosticRequest
 import skillbill.contracts.JsonCodec
@@ -660,7 +662,7 @@ object FeatureTaskRuntimeRunLoopAttemptSettlement {
   ): CommitPushFinalisation {
     if (
       run.phaseId != FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_COMMIT_PUSH ||
-      (normalizedOutput.envelope["status"] as? String).workflowStepStatus() != WorkflowStepStatus.COMPLETED
+      (normalizedOutput.envelope[SharedPayloadKeys.STATUS] as? String).workflowStepStatus() != WorkflowStepStatus.COMPLETED
     ) {
       return CommitPushNotApplicable
     }

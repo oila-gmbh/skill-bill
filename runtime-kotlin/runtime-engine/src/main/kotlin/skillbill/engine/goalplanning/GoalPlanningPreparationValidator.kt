@@ -1,5 +1,7 @@
 package skillbill.engine.goalplanning
 
+import skillbill.contracts.SharedPayloadKeys
+
 import skillbill.contracts.JsonCodec
 import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_CONTRACT_VERSION
 import skillbill.contracts.workflow.FeatureTaskRuntimePhaseOutputSchemaPaths
@@ -47,7 +49,7 @@ class GoalPlanningPreparationValidator(
   }
 
   private fun requireCompleted(payload: Map<String, Any?>, phaseId: String, label: String) {
-    val status = payload["status"]?.toString()
+    val status = payload[SharedPayloadKeys.STATUS]?.toString()
     if (status.workflowStepStatus() != WorkflowStepStatus.COMPLETED) {
       throw InvalidGoalPlanningPreparationSchemaError(
         sourceLabel = label,

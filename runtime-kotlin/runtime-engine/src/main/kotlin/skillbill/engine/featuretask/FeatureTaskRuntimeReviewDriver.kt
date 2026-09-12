@@ -1,5 +1,9 @@
 package skillbill.engine.featuretask
 
+import skillbill.contracts.review.ReviewFindingPayloadKeys
+
+import skillbill.contracts.SharedPayloadKeys
+
 import skillbill.agentaddon.model.AgentAddonPromptFormatter
 import skillbill.agentaddon.model.HydratedAgentAddonSelection
 import skillbill.application.review.RuntimeOwnedReviewMode
@@ -112,11 +116,11 @@ object FeatureTaskRuntimeReviewEnvelope {
     }
     CRITERION_GAP_KEYS.forEach { key -> produced.remove(key) }
     val envelope = linkedMapOf<String, Any?>(
-      "contract_version" to FEATURE_TASK_RUNTIME_CONTRACT_VERSION,
-      "phase_id" to "review",
-      "status" to STATUS_COMPLETED,
-      "summary" to prose.take(SUMMARY_MAX_CHARS),
-      "produced_outputs" to produced,
+      SharedPayloadKeys.CONTRACT_VERSION to FEATURE_TASK_RUNTIME_CONTRACT_VERSION,
+      SharedPayloadKeys.PHASE_ID to "review",
+      SharedPayloadKeys.STATUS to STATUS_COMPLETED,
+      SharedPayloadKeys.SUMMARY to prose.take(SUMMARY_MAX_CHARS),
+      SharedPayloadKeys.PRODUCED_OUTPUTS to produced,
       FeatureTaskRuntimeVerificationSignalKeys.VERDICT to extractReviewVerdict(prose).wireValue,
     )
     val outcome = GoalSubtaskReviewSummaryReducer.outcomeFor(envelope)
@@ -160,15 +164,15 @@ object FeatureTaskRuntimeReviewEnvelope {
   }
 
   private fun findingPayload(finding: ParallelReviewMergedFinding): Map<String, Any?> = buildMap {
-    put("finding_id", finding.fNumber)
+    put(ReviewFindingPayloadKeys.FINDING_ID, finding.fNumber)
     put("severity", finding.severity.name.lowercase())
     put("message", finding.description)
     put("location", finding.location)
-    finding.repositoryPath?.let { put("repository_path", it) }
-    finding.claimVerdict?.let { put("claim_verdict", it.wireValue) }
-    finding.scopeDisposition?.let { put("scope_disposition", it.wireValue) }
+    finding.repositoryPath?.let { put(ReviewFindingPayloadKeys.REPOSITORY_PATH, it) }
+    finding.claimVerdict?.let { put(ReviewFindingPayloadKeys.CLAIM_VERDICT, it.wireValue) }
+    finding.scopeDisposition?.let { put(ReviewFindingPayloadKeys.SCOPE_DISPOSITION, it.wireValue) }
     if (finding.citations.isNotEmpty()) {
-      put("citations", finding.citations.map(::citationPayload))
+      put(ReviewFindingPayloadKeys.CITATIONS, finding.citations.map(::citationPayload))
     }
   }
 

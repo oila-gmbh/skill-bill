@@ -1,5 +1,11 @@
 package skillbill.workflow.taskruntime
 
+import skillbill.contracts.review.ReviewVerificationSignalKeys
+
+import skillbill.contracts.review.ReviewFindingPayloadKeys
+
+import skillbill.contracts.SharedPayloadKeys
+
 import skillbill.contracts.JsonCodec
 import skillbill.error.FeatureTaskRuntimeHandoffProjectionFailureKind
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeCompactReferenceKind
@@ -52,7 +58,7 @@ internal object FeatureTaskRuntimeHandoffProjectionValueBuilder {
         FeatureTaskRuntimeHandoffProjectionFailureKind.MALFORMED_FIELD,
         "validated producer output could not be decoded as an object.",
       )
-    val produced = JsonCodec.anyToStringAnyMap(envelope["produced_outputs"]).orEmpty()
+    val produced = JsonCodec.anyToStringAnyMap(envelope[SharedPayloadKeys.PRODUCED_OUTPUTS]).orEmpty()
     val runtimeOwned = runtimeOwnedPhaseProjectionValues(inputs, declaration, produced, envelope)
     return declaration.declaredFieldNames.mapNotNull { name ->
       val value = runtimeOwned[name] ?: when {
@@ -80,18 +86,18 @@ internal object FeatureTaskRuntimeHandoffProjectionValueBuilder {
         .reviewScope
         .wireValue,
       REPOSITORY_CHECKPOINT_FIELD to checkpointFingerprint(inputs),
-      "verdict" to auditClearanceStatus(envelope),
+      SharedPayloadKeys.VERDICT to auditClearanceStatus(envelope),
     )
     FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.REVIEW_REPAIR_REQUEST -> mapOf(
       "unresolved_blocker_findings" to verifiedFindingsProjection(inputs, produced),
       REPOSITORY_CHECKPOINT_FIELD to checkpointFingerprint(inputs),
     )
     FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.FINDINGS_VERIFICATION_INPUT -> mapOf(
-      "findings" to reviewFindingsForVerificationProjection(produced),
+      ReviewVerificationSignalKeys.REVIEW_FINDINGS to reviewFindingsForVerificationProjection(produced),
       REPOSITORY_CHECKPOINT_FIELD to checkpointFingerprint(inputs),
     )
     FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.FINDINGS_VERIFICATION_DISPOSITIONS -> mapOf(
-      "finding_dispositions" to produced["finding_dispositions"],
+      ReviewVerificationSignalKeys.FINDINGS_VERIFICATION_DISPOSITIONS to produced[ReviewVerificationSignalKeys.FINDINGS_VERIFICATION_DISPOSITIONS],
       REPOSITORY_CHECKPOINT_FIELD to checkpointFingerprint(inputs),
     )
     FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.CHANGE_RECEIPT -> mapOf(
@@ -130,7 +136,7 @@ internal object FeatureTaskRuntimeHandoffProjectionValueBuilder {
         "produced_outputs.value must contain non-blank prose for phase handoff.",
       )
     }
-    val fields = linkedMapOf<String, Any?>("value" to valueText)
+    val fields = linkedMapOf<String, Any?>(SharedPayloadKeys.VALUE to valueText)
     resolveDeclaredPhaseField(produced, "prompt")
       ?.toString()
       ?.takeIf(String::isNotBlank)
@@ -139,7 +145,7 @@ internal object FeatureTaskRuntimeHandoffProjectionValueBuilder {
   }
 
   private fun auditClearanceStatus(envelope: Map<String, Any?>): String? =
-    (envelope["verdict"] as? String)?.takeIf(String::isNotBlank)
+    (envelope[SharedPayloadKeys.VERDICT] as? String)?.takeIf(String::isNotBlank)
 
   private fun verifiedFindingsProjection(
     inputs: FeatureTaskRuntimeHandoffProjectionInputs,
@@ -149,9 +155,9 @@ internal object FeatureTaskRuntimeHandoffProjectionValueBuilder {
       FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW,
     ]?.let(FeatureTaskRuntimeHandoffProjectionFinalization::genericProducedOutputs).orEmpty()
     val reviewFindingsById = reviewFindingsForVerificationProjection(reviewProduced)
-      .associateBy { it["finding_id"]?.toString().orEmpty() }
+      .associateBy { it[ReviewFindingPayloadKeys.FINDING_ID]?.toString().orEmpty() }
     return FeatureTaskRuntimeFindingVerificationDisposition.parseList(
-      produced["finding_dispositions"],
+      produced[ReviewVerificationSignalKeys.FINDINGS_VERIFICATION_DISPOSITIONS],
       "produced_outputs.finding_dispositions",
     )
       .filter { it.disposition == FeatureTaskRuntimeFindingVerificationDispositionVerdict.VERIFIED }
@@ -163,7 +169,7 @@ internal object FeatureTaskRuntimeHandoffProjectionValueBuilder {
           ?.takeIf(String::isNotBlank)
           ?: "blocker"
         mapOf(
-          "finding_id" to disposition.findingId,
+          ReviewFindingPayloadKeys.FINDING_ID to disposition.findingId,
           "severity" to severity,
           "location" to (review?.get("location") ?: "repository"),
           "expected_outcome" to (
@@ -178,22 +184,22 @@ internal object FeatureTaskRuntimeHandoffProjectionValueBuilder {
   }
 
   private fun reviewFindingsForVerificationProjection(produced: Map<String, Any?>): List<Map<String, Any?>> =
-    (produced["findings"] as? List<*>).orEmpty()
+    (produced[ReviewVerificationSignalKeys.REVIEW_FINDINGS] as? List<*>).orEmpty()
       .mapNotNull(JsonCodec::anyToStringAnyMap)
       .map { finding ->
         val severity = (finding["severity"] as? String)?.takeIf(String::isNotBlank) ?: "blocker"
         mapOf(
-          "finding_id" to (finding["finding_id"] ?: finding["f_number"] ?: finding["id"]),
+          ReviewFindingPayloadKeys.FINDING_ID to (finding[ReviewFindingPayloadKeys.FINDING_ID] ?: finding[ReviewFindingPayloadKeys.F_NUMBER] ?: finding["id"]),
           "severity" to severity,
           "location" to (
-            finding["location"] ?: finding["repository_path"] ?: finding["path"] ?: "repository"
+            finding["location"] ?: finding[ReviewFindingPayloadKeys.REPOSITORY_PATH] ?: finding["path"] ?: "repository"
             ),
           "message" to (
             finding["message"] ?: finding["description"] ?: finding["expected_outcome"] ?: "Review finding."
             ),
-          "issue_category" to (finding["issue_category"] ?: finding["category"] ?: "other"),
-          "claim_verdict" to finding["claim_verdict"],
-          "scope_disposition" to finding["scope_disposition"],
+          ReviewFindingPayloadKeys.ISSUE_CATEGORY to (finding[ReviewFindingPayloadKeys.ISSUE_CATEGORY] ?: finding["category"] ?: "other"),
+          ReviewFindingPayloadKeys.CLAIM_VERDICT to finding[ReviewFindingPayloadKeys.CLAIM_VERDICT],
+          ReviewFindingPayloadKeys.SCOPE_DISPOSITION to finding[ReviewFindingPayloadKeys.SCOPE_DISPOSITION],
         ).filterValues { it != null }
       }
 

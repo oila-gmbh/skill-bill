@@ -1,5 +1,7 @@
 package skillbill.engine.goalrunner.planning
 
+import skillbill.contracts.SharedPayloadKeys
+
 import skillbill.engine.featuretask.FeatureTaskRuntimePhaseSafetyPolicy
 import skillbill.engine.goalrunner.planning.model.GoalPlanningPhaseProduction
 import skillbill.engine.goalrunner.planning.model.GoalPlanningSweepOutcome
@@ -155,7 +157,7 @@ internal fun DefaultGoalPlanningSweep.validatePlanningAttemptOutput(
 }.fold(
   onSuccess = { accepted ->
     val payload = accepted.normalizedOutput.envelope
-    if (payload["status"].workflowStepStatus() != WorkflowStepStatus.COMPLETED) {
+    if (payload[SharedPayloadKeys.STATUS].workflowStepStatus() != WorkflowStepStatus.COMPLETED) {
       val reason = unsuccessfulStatusReason(phaseId, payload)
       val canonical = accepted.normalizedOutput.canonicalJson
       if (FeatureTaskRuntimePhaseSafetyPolicy.dispositionForTerminalOutput(phaseId, payload).retryOnResume) {

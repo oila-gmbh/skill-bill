@@ -1,5 +1,9 @@
 package skillbill.infrastructure.sqlite.telemetry
 
+import skillbill.contracts.review.ReviewVerificationSignalKeys
+
+import skillbill.contracts.review.ReviewFindingPayloadKeys
+
 import skillbill.infrastructure.sqlite.core.DbConstants
 import java.sql.Connection
 
@@ -63,8 +67,8 @@ internal object FeedbackEventMigration {
             add(
               LegacyFeedbackEventRow(
                 id = resultSet.getLong("id"),
-                reviewRunId = resultSet.getString("review_run_id"),
-                findingId = resultSet.getString("finding_id"),
+                reviewRunId = resultSet.getString(ReviewVerificationSignalKeys.REVIEW_RUN_ID),
+                findingId = resultSet.getString(ReviewFindingPayloadKeys.FINDING_ID),
                 eventType = normalizeFeedbackEventType(resultSet.getString("event_type")),
                 note = resultSet.getString("note").orEmpty(),
                 createdAt = resultSet.getString("created_at"),

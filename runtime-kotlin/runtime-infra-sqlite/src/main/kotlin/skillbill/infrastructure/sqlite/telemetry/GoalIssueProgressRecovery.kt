@@ -1,5 +1,7 @@
 package skillbill.infrastructure.sqlite.telemetry
 
+import skillbill.contracts.SharedPayloadKeys
+
 import skillbill.telemetry.model.GoalIssueFinishedRecord
 import java.sql.Connection
 
@@ -36,10 +38,10 @@ private fun loadRecoveredGoalSegments(
       while (resultSet.next()) {
         add(
           RecoveredGoalSegment(
-            workflowId = resultSet.getString("workflow_id"),
+            workflowId = resultSet.getString(SharedPayloadKeys.WORKFLOW_ID),
             startedAt = resultSet.getString("started_at"),
             resumed = resultSet.getInt("resumed") != 0,
-            status = resultSet.getString("status"),
+            status = resultSet.getString(SharedPayloadKeys.STATUS),
           ),
         )
       }

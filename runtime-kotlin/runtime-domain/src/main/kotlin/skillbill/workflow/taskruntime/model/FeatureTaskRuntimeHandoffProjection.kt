@@ -1,5 +1,7 @@
 package skillbill.workflow.taskruntime.model
 
+import skillbill.contracts.SharedPayloadKeys
+
 import skillbill.boundary.OpenBoundaryMap
 import skillbill.contracts.JsonCodec
 
@@ -62,7 +64,7 @@ data class FeatureTaskRuntimeHandoffProjection(
     "projection_contract_version" to projectionContractVersion,
     "prompt_visibility" to promptVisibility.wireValue,
     "producer_iteration" to mapOf(
-      "phase_id" to producerIteration.phaseId,
+      SharedPayloadKeys.PHASE_ID to producerIteration.phaseId,
       "iteration" to producerIteration.iteration,
     ),
     "fields" to fields.map { field ->

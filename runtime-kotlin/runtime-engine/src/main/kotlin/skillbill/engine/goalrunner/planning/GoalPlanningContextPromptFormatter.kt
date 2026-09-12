@@ -1,5 +1,7 @@
 package skillbill.engine.goalrunner.planning
 
+import skillbill.contracts.SharedPayloadKeys
+
 import skillbill.contracts.JsonCodec
 import skillbill.ports.goalrunner.planning.model.GoalPlanningContext
 import skillbill.ports.goalrunner.planning.model.GoalPlanningResolvedBoundaryBodies
@@ -44,10 +46,10 @@ object GoalPlanningContextPromptFormatter {
       append(
         JsonCodec.mapToJsonString(
           mapOf(
-            "subtask_id" to currentSubtask.id,
+            SharedPayloadKeys.SUBTASK_ID to currentSubtask.id,
             "dependencies" to currentSubtask.dependencies.map { dependency ->
               mapOf(
-                "subtask_id" to dependency.subtaskId,
+                SharedPayloadKeys.SUBTASK_ID to dependency.subtaskId,
                 "optional" to dependency.optional,
                 "skipped" to dependency.skipped,
               )

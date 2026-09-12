@@ -1,5 +1,9 @@
 package skillbill.workflow.taskruntime.model
 
+import skillbill.contracts.review.ReviewFindingPayloadKeys
+
+import skillbill.contracts.SharedPayloadKeys
+
 import skillbill.boundary.OpenBoundaryMap
 import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_REPAIR_RECEIPT_CONTRACT_VERSION
 import skillbill.error.InvalidFeatureTaskRuntimeRepairReceiptError
@@ -164,7 +168,7 @@ data class FeatureTaskRuntimeRepairReceiptEntry(
 
   @OpenBoundaryMap("Repair receipt entry at the durable workflow-artifact seam")
   fun toArtifactMap(): Map<String, Any?> = buildMap {
-    put("finding_id", findingId)
+    put(ReviewFindingPayloadKeys.FINDING_ID, findingId)
     put("outcome", outcome.wireValue)
     noEditReason?.let { put("no_edit_reason", it) }
     unresolvedReason?.let { put("unresolved_reason", it) }
@@ -226,7 +230,7 @@ data class FeatureTaskRuntimeRepairReceipt(
 
   @OpenBoundaryMap("Repair receipt at the durable workflow-artifact seam")
   fun toArtifactMap(): Map<String, Any?> = linkedMapOf<String, Any?>(
-    "contract_version" to contractVersion,
+    SharedPayloadKeys.CONTRACT_VERSION to contractVersion,
     "round_number" to roundNumber,
     "pre_fix_checkpoint_sha" to preFixCheckpointSha,
     "entries" to entries.map(FeatureTaskRuntimeRepairReceiptEntry::toArtifactMap),

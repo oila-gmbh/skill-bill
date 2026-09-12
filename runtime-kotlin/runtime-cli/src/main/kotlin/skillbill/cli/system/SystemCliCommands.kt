@@ -1,5 +1,7 @@
 package skillbill.cli.system
 
+import skillbill.contracts.SharedPayloadKeys
+
 import com.github.ajalt.clikt.parameters.arguments.argument
 import com.github.ajalt.clikt.parameters.arguments.optional
 import com.github.ajalt.clikt.parameters.options.default
@@ -140,7 +142,7 @@ class UpdateCommand(
   }
 
   private fun UpdateCommandPlan.toPayload(status: String): Map<String, Any?> = linkedMapOf(
-    "status" to status,
+    SharedPayloadKeys.STATUS to status,
     "command" to command,
     "installer_args" to installerArgs,
   )
@@ -245,7 +247,7 @@ private fun UpdateCheckResult.toText(): String = buildString {
 }
 
 private fun UpdateCheckResult.toPayload(): Map<String, Any?> = linkedMapOf(
-  "status" to status.wireName,
+  SharedPayloadKeys.STATUS to status.wireName,
   "installed_version" to installedVersion,
   "latest_version" to latestVersion,
   "release_url" to releaseUrl,

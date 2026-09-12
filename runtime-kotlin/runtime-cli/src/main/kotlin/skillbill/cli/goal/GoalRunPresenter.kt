@@ -1,5 +1,7 @@
 package skillbill.cli.goal
 
+import skillbill.contracts.SharedPayloadKeys
+
 import skillbill.cli.model.CliRunInputs
 import skillbill.contracts.system.RuntimeProvenanceContract
 import skillbill.engine.goalrunner.model.GoalRunnerEventSink
@@ -52,8 +54,8 @@ class GoalRunPresenter(
 
 internal fun GoalRunnerRunReport.toGoalRunCliMap(): Map<String, Any?> = when (this) {
   is GoalRunnerRunReport.Completed -> linkedMapOf(
-    "status" to "complete",
-    "issue_key" to issueKey,
+    SharedPayloadKeys.STATUS to "complete",
+    SharedPayloadKeys.ISSUE_KEY to issueKey,
     "feature_name" to featureName,
     "attempted_subtasks" to attemptedSubtasks,
     "subtasks_completed" to subtasksCompleted,
@@ -65,20 +67,20 @@ internal fun GoalRunnerRunReport.toGoalRunCliMap(): Map<String, Any?> = when (th
     "pull_request_url" to pullRequestUrl,
   )
   is GoalRunnerRunReport.Stopped -> linkedMapOf(
-    "status" to "stopped",
-    "issue_key" to issueKey,
+    SharedPayloadKeys.STATUS to "stopped",
+    SharedPayloadKeys.ISSUE_KEY to issueKey,
     "attempted_subtasks" to attemptedSubtasks,
-    "subtask_id" to stop.subtaskId,
+    SharedPayloadKeys.SUBTASK_ID to stop.subtaskId,
     "reason" to stop.reason.name.lowercase(),
     "blocked_reason" to stop.blockedReason,
-    "workflow_id" to stop.workflowId,
+    SharedPayloadKeys.WORKFLOW_ID to stop.workflowId,
     "last_resumable_step" to stop.lastResumableStep,
   )
 }
 
 internal fun GoalRunnerPauseResult.toGoalPauseCliMap(): Map<String, Any?> = linkedMapOf(
-  "status" to status,
-  "issue_key" to issueKey,
+  SharedPayloadKeys.STATUS to status,
+  SharedPayloadKeys.ISSUE_KEY to issueKey,
   "parent_workflow_id" to parentWorkflowId,
   "paused" to paused,
   "pause_requested" to pauseRequested,
@@ -86,13 +88,13 @@ internal fun GoalRunnerPauseResult.toGoalPauseCliMap(): Map<String, Any?> = link
 )
 
 internal fun goalPauseText(payload: Map<String, Any?>): String = buildString {
-  appendLine("goal ${payload["issue_key"]}: ${payload["status"]}")
+  appendLine("goal ${payload[SharedPayloadKeys.ISSUE_KEY]}: ${payload[SharedPayloadKeys.STATUS]}")
   payload["pause_reason"]?.let { appendLine("reason: $it") }
 }
 
 internal fun GoalRunnerStopVerbResult.toGoalStopCliMap(): Map<String, Any?> = linkedMapOf(
-  "status" to status.wireValue,
-  "issue_key" to issueKey,
+  SharedPayloadKeys.STATUS to status.wireValue,
+  SharedPayloadKeys.ISSUE_KEY to issueKey,
   "parent_workflow_id" to parentWorkflowId,
   "pause_reason" to pauseReason,
   "paused_at" to pausedAt,
@@ -100,14 +102,14 @@ internal fun GoalRunnerStopVerbResult.toGoalStopCliMap(): Map<String, Any?> = li
 )
 
 internal fun goalStopText(payload: Map<String, Any?>): String = buildString {
-  appendLine("goal ${payload["issue_key"]}: ${payload["status"]}")
+  appendLine("goal ${payload[SharedPayloadKeys.ISSUE_KEY]}: ${payload[SharedPayloadKeys.STATUS]}")
   payload["pause_reason"]?.let { appendLine("reason: $it") }
   payload["paused_at"]?.let { appendLine("paused at: $it") }
 }
 
 internal fun GoalRunnerResumeResult.toGoalResumeCliMap(): Map<String, Any?> = linkedMapOf(
-  "status" to status,
-  "issue_key" to issueKey,
+  SharedPayloadKeys.STATUS to status,
+  SharedPayloadKeys.ISSUE_KEY to issueKey,
   "parent_workflow_id" to parentWorkflowId,
   "paused" to false,
   "pause_requested" to false,
@@ -115,13 +117,13 @@ internal fun GoalRunnerResumeResult.toGoalResumeCliMap(): Map<String, Any?> = li
 )
 
 internal fun goalResumeText(payload: Map<String, Any?>): String = buildString {
-  appendLine("goal ${payload["issue_key"]}: ${payload["status"]}")
+  appendLine("goal ${payload[SharedPayloadKeys.ISSUE_KEY]}: ${payload[SharedPayloadKeys.STATUS]}")
   payload["cleared_pause_reason"]?.let { appendLine("cleared reason: $it") }
 }
 
-internal fun goalRunText(payload: Map<String, Any?>): String = when (payload["status"]) {
+internal fun goalRunText(payload: Map<String, Any?>): String = when (payload[SharedPayloadKeys.STATUS]) {
   "complete" -> buildString {
-    appendLine("goal ${payload["issue_key"]}: finished")
+    appendLine("goal ${payload[SharedPayloadKeys.ISSUE_KEY]}: finished")
     append("summary: ")
     append(singleLineBounded(payload["feature_name"]?.toString().orEmpty().ifBlank { "goal" }))
     append(" — ")
@@ -149,8 +151,8 @@ internal fun goalRunText(payload: Map<String, Any?>): String = when (payload["st
       reason.contains("failed") || reason.contains("timeout") -> "failed"
       else -> "blocked"
     }
-    append("goal ${payload["issue_key"]}: $verb")
-    payload["subtask_id"]?.let { append(" at subtask $it") }
+    append("goal ${payload[SharedPayloadKeys.ISSUE_KEY]}: $verb")
+    payload[SharedPayloadKeys.SUBTASK_ID]?.let { append(" at subtask $it") }
     append(" — ")
     append(singleLineBounded(payload["blocked_reason"]?.toString() ?: reason.ifBlank { "terminal outcome" }))
     appendLine()

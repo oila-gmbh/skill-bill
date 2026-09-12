@@ -1,5 +1,7 @@
 package skillbill.workflow.taskruntime.model
 
+import skillbill.contracts.SharedPayloadKeys
+
 import skillbill.boundary.OpenBoundaryMap
 import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_DIAGNOSTIC_DEGRADATION_MEASUREMENT_CONTRACT_VERSION
 import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_PROJECTION_MEASUREMENT_CONTRACT_VERSION
@@ -64,12 +66,12 @@ data class FeatureTaskRuntimeProjectionMeasurement(
 
   @OpenBoundaryMap("Content-free feature-task-runtime projection measurement telemetry seam")
   fun toTelemetryMap(): Map<String, Any?> = linkedMapOf(
-    "contract_version" to FEATURE_TASK_RUNTIME_PROJECTION_MEASUREMENT_CONTRACT_VERSION,
-    "workflow_id" to workflowId,
+    SharedPayloadKeys.CONTRACT_VERSION to FEATURE_TASK_RUNTIME_PROJECTION_MEASUREMENT_CONTRACT_VERSION,
+    SharedPayloadKeys.WORKFLOW_ID to workflowId,
     "consumer_phase_id" to consumerPhaseId,
     "projection_contract_id" to projectionContractId,
     "producer_iteration" to mapOf(
-      "phase_id" to producerIteration.phaseId,
+      SharedPayloadKeys.PHASE_ID to producerIteration.phaseId,
       "iteration" to producerIteration.iteration,
     ),
     "repository_checkpoint_fingerprint" to repositoryCheckpointFingerprint,
@@ -113,8 +115,8 @@ data class FeatureTaskRuntimeSharedEvidenceMeasurement(
 
   @OpenBoundaryMap("Content-free feature-task-runtime shared-evidence measurement telemetry seam")
   fun toTelemetryMap(): Map<String, Any?> = linkedMapOf(
-    "contract_version" to FEATURE_TASK_RUNTIME_SHARED_EVIDENCE_PROJECTION_CONTRACT_VERSION,
-    "workflow_id" to workflowId,
+    SharedPayloadKeys.CONTRACT_VERSION to FEATURE_TASK_RUNTIME_SHARED_EVIDENCE_PROJECTION_CONTRACT_VERSION,
+    SharedPayloadKeys.WORKFLOW_ID to workflowId,
     "checkpoint_fingerprint" to checkpointFingerprint,
     "consumer_phase_id" to consumerPhaseId,
     "outcome" to outcome.wireValue,
@@ -167,9 +169,9 @@ data class FeatureTaskRuntimeRejectionMeasurement(
 
   @OpenBoundaryMap("Content-free feature-task-runtime rejection measurement telemetry seam")
   fun toTelemetryMap(): Map<String, Any?> = linkedMapOf(
-    "contract_version" to FEATURE_TASK_RUNTIME_REJECTION_MEASUREMENT_CONTRACT_VERSION,
-    "workflow_id" to workflowId,
-    "phase_id" to phaseId,
+    SharedPayloadKeys.CONTRACT_VERSION to FEATURE_TASK_RUNTIME_REJECTION_MEASUREMENT_CONTRACT_VERSION,
+    SharedPayloadKeys.WORKFLOW_ID to workflowId,
+    SharedPayloadKeys.PHASE_ID to phaseId,
     "iteration" to iteration,
     "rule" to rule,
     "pointer_path" to pointerPath,
@@ -223,9 +225,9 @@ data class FeatureTaskRuntimeDiagnosticDegradationMeasurement(
 
   @OpenBoundaryMap("Content-free feature-task-runtime diagnostic-degradation measurement telemetry seam")
   fun toTelemetryMap(): Map<String, Any?> = linkedMapOf(
-    "contract_version" to FEATURE_TASK_RUNTIME_DIAGNOSTIC_DEGRADATION_MEASUREMENT_CONTRACT_VERSION,
-    "workflow_id" to workflowId,
-    "phase_id" to phaseId,
+    SharedPayloadKeys.CONTRACT_VERSION to FEATURE_TASK_RUNTIME_DIAGNOSTIC_DEGRADATION_MEASUREMENT_CONTRACT_VERSION,
+    SharedPayloadKeys.WORKFLOW_ID to workflowId,
+    SharedPayloadKeys.PHASE_ID to phaseId,
     "attempt" to attempt,
     "generation" to generation,
     "operation" to operation,

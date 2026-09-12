@@ -1,5 +1,7 @@
 package skillbill.infrastructure.fs.contracts.workflow
 
+import skillbill.contracts.SharedPayloadKeys
+
 import skillbill.error.InvalidDecompositionManifestSchemaError
 import java.math.BigDecimal
 import java.math.BigInteger
@@ -42,7 +44,7 @@ internal object DecompositionManifestCoherenceValidator {
     val dependencies = (subtask["dependencies"] as? List<*>).orEmpty().mapNotNull { it as? Map<*, *> }
     dependencies.forEachIndexed { depIndex, dependency ->
       val path = "subtasks[$index].dependencies[$depIndex].subtask_id"
-      val dependencyId = dependency["subtask_id"].asExactInt(sourceLabel, path)
+      val dependencyId = dependency[SharedPayloadKeys.SUBTASK_ID].asExactInt(sourceLabel, path)
       if (dependencyId !in subtaskIds || dependencyId == id) {
         throw coherenceError(
           sourceLabel,
@@ -97,7 +99,7 @@ internal object DecompositionManifestCoherenceValidator {
       subtask["id"].asExactInt(sourceLabel, "subtasks[$index].id")
     }
     val actualStackIds = stackBranches.mapIndexed { index, branch ->
-      branch["subtask_id"].asExactInt(sourceLabel, "stack_branches[$index].subtask_id")
+      branch[SharedPayloadKeys.SUBTASK_ID].asExactInt(sourceLabel, "stack_branches[$index].subtask_id")
     }
     if (actualStackIds != expectedStackIds || actualStackIds.toSet() != subtaskIds) {
       throw coherenceError(
@@ -110,7 +112,7 @@ internal object DecompositionManifestCoherenceValidator {
 
   private fun validateCurrentIntent(manifest: Map<String, Any?>, subtaskIds: Set<Int>, sourceLabel: String) {
     val intent = manifest["current_subtask_intent"] as? Map<*, *> ?: return
-    val intentId = intent["subtask_id"].asExactInt(sourceLabel, "current_subtask_intent.subtask_id")
+    val intentId = intent[SharedPayloadKeys.SUBTASK_ID].asExactInt(sourceLabel, "current_subtask_intent.subtask_id")
     val intentAction = intent["action"]?.toString().orEmpty()
     val isTerminalAction = intentAction == "none" || intentAction == "complete"
     if (isTerminalAction && intentId != 0) {

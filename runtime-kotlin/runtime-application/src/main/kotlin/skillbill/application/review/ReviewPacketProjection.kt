@@ -1,5 +1,9 @@
 package skillbill.application.review
 
+import skillbill.contracts.review.ReviewFindingPayloadKeys
+
+import skillbill.contracts.SharedPayloadKeys
+
 import skillbill.application.review.model.ReviewContextEnvelope
 import skillbill.contracts.review.REVIEW_CONTEXT_CONTRACT_VERSION
 import skillbill.review.context.model.GovernedReviewAdjudicationLaunch
@@ -18,7 +22,7 @@ import skillbill.review.model.ReviewFindingVerdict
 
 fun ReviewContextPacket.toParentPacketEnvelope(): ReviewContextEnvelope = ReviewContextEnvelope(
   linkedMapOf(
-    "contract_version" to REVIEW_CONTEXT_CONTRACT_VERSION,
+    SharedPayloadKeys.CONTRACT_VERSION to REVIEW_CONTEXT_CONTRACT_VERSION,
     "kind" to "parent_packet",
     "review_id" to reviewId,
     "packet_digest" to digest,
@@ -26,7 +30,7 @@ fun ReviewContextPacket.toParentPacketEnvelope(): ReviewContextEnvelope = Review
     "repository_identity" to repositoryIdentity,
     "base_revision" to baseRevision,
     "head_revision" to headRevision,
-    "status" to status.normalizeLineEndings(),
+    SharedPayloadKeys.STATUS to status.normalizeLineEndings(),
     "stack" to stack,
     "pack" to pack,
     "add_ons" to addOns.sorted(),
@@ -54,7 +58,7 @@ fun ReviewContextPacket.toParentPacketEnvelope(): ReviewContextEnvelope = Review
 )
 fun ReviewAssignment.toAssignmentEnvelope(): ReviewContextEnvelope = ReviewContextEnvelope(
   linkedMapOf(
-    "contract_version" to REVIEW_CONTEXT_CONTRACT_VERSION,
+    SharedPayloadKeys.CONTRACT_VERSION to REVIEW_CONTEXT_CONTRACT_VERSION,
     "kind" to "assignment",
     "review_id" to reviewId,
     "packet_digest" to packetDigest,
@@ -78,7 +82,7 @@ fun ReviewAssignment.toAssignmentEnvelope(): ReviewContextEnvelope = ReviewConte
 )
 fun GovernedReviewLaunch.toLaunchEnvelope(): ReviewContextEnvelope = ReviewContextEnvelope(
   linkedMapOf(
-    "contract_version" to REVIEW_CONTEXT_CONTRACT_VERSION,
+    SharedPayloadKeys.CONTRACT_VERSION to REVIEW_CONTEXT_CONTRACT_VERSION,
     "kind" to "launch",
     "review_id" to assignment.reviewId,
     "packet_digest" to assignment.packetDigest,
@@ -112,7 +116,7 @@ fun GovernedReviewLaunch.toLaunchEnvelope(): ReviewContextEnvelope = ReviewConte
 
 fun GovernedReviewVerificationLaunch.toVerificationLaunchEnvelope(): ReviewContextEnvelope = ReviewContextEnvelope(
   linkedMapOf(
-    "contract_version" to REVIEW_CONTEXT_CONTRACT_VERSION,
+    SharedPayloadKeys.CONTRACT_VERSION to REVIEW_CONTEXT_CONTRACT_VERSION,
     "kind" to "verification_launch",
     "review_id" to packet.reviewId,
     "packet_digest" to packet.digest,
@@ -138,7 +142,7 @@ fun GovernedReviewVerificationLaunch.toVerificationLaunchEnvelope(): ReviewConte
 
 fun GovernedReviewAdjudicationLaunch.toAdjudicationLaunchEnvelope(): ReviewContextEnvelope = ReviewContextEnvelope(
   linkedMapOf(
-    "contract_version" to REVIEW_CONTEXT_CONTRACT_VERSION,
+    SharedPayloadKeys.CONTRACT_VERSION to REVIEW_CONTEXT_CONTRACT_VERSION,
     "kind" to "adjudication_launch",
     "review_id" to packet.reviewId,
     "packet_digest" to packet.digest,
@@ -161,17 +165,16 @@ fun GovernedReviewAdjudicationLaunch.toAdjudicationLaunchEnvelope(): ReviewConte
 )
 
 internal fun ReviewFindingVerdict.toEnvelope(): Map<String, Any?> = buildMap {
-  put("contract_version", contractVersion)
+  put(SharedPayloadKeys.CONTRACT_VERSION, contractVersion)
   put("kind", "finding_verdict")
   put("stage", stage.wireValue)
   put("finding_ref", findingRef)
-  put("claim_verdict", claimVerdict.wireValue)
+  put(ReviewFindingPayloadKeys.CLAIM_VERDICT, claimVerdict.wireValue)
   put("recorded_at", recordedAt)
-  scopeDisposition?.let { put("scope_disposition", it.wireValue) }
-  if (citations.isNotEmpty()) put("citations", citations.map { it.toEnvelope() })
+  scopeDisposition?.let { put(ReviewFindingPayloadKeys.SCOPE_DISPOSITION, it.wireValue) }
+  if (citations.isNotEmpty()) put(ReviewFindingPayloadKeys.CITATIONS, citations.map { it.toEnvelope() })
   severityAdjustment?.let { adjustment ->
-    put(
-      "severity_adjustment",
+    put(ReviewFindingPayloadKeys.SEVERITY_ADJUSTMENT,
       linkedMapOf(
         "direction" to adjustment.direction.wireValue,
         "justification" to adjustment.justification,
@@ -195,7 +198,7 @@ private fun ParallelReviewMergedFinding.toEnvelope(): Map<String, Any?> = linked
 
 fun GovernedReviewIntegrationLaunch.toIntegrationLaunchEnvelope(): ReviewContextEnvelope = ReviewContextEnvelope(
   linkedMapOf(
-    "contract_version" to REVIEW_CONTEXT_CONTRACT_VERSION,
+    SharedPayloadKeys.CONTRACT_VERSION to REVIEW_CONTEXT_CONTRACT_VERSION,
     "kind" to "integration_launch",
     "review_id" to packet.reviewId,
     "packet_digest" to packet.digest,
@@ -227,5 +230,5 @@ private fun ReviewSpecialistSummary.toEnvelope(): Map<String, Any?> = linkedMapO
   "commit_shas" to commitShas,
   "finding_count" to findingCount,
   "unreviewed_segment_ids" to unreviewedSegmentIds,
-  "summary" to summary.normalizeLineEndings(),
+  SharedPayloadKeys.SUMMARY to summary.normalizeLineEndings(),
 )

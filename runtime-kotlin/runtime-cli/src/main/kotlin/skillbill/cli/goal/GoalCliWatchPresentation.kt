@@ -1,11 +1,13 @@
 package skillbill.cli.goal
 
+import skillbill.contracts.SharedPayloadKeys
+
 internal fun Map<String, Any?>.withWatchRefresh(refreshIndex: Int): Map<String, Any?> =
   linkedMapOf<String, Any?>("refresh_index" to refreshIndex).apply { putAll(this@withWatchRefresh) }
 
 internal fun Map<String, Any?>.goalWatchStopReason(refreshCount: Int, maxRefreshes: Int, idleStop: Boolean): String? =
   when {
-    this["status"] == "not_found" -> "not_found"
+    this[SharedPayloadKeys.STATUS] == "not_found" -> "not_found"
     // Only a reached pause is terminal. `pause_requested` is deferred to the next launch boundary, so
     // the current subtask keeps running; stopping on the request blinds the monitor for the rest of it.
     this["paused"] == true -> "goal_paused"
@@ -16,8 +18,8 @@ internal fun Map<String, Any?>.goalWatchStopReason(refreshCount: Int, maxRefresh
   }
 
 internal fun goalWatchText(payload: Map<String, Any?>): String = buildString {
-  appendLine("goal: ${payload["issue_key"]}")
-  appendLine("status: ${payload["status"]}")
+  appendLine("goal: ${payload[SharedPayloadKeys.ISSUE_KEY]}")
+  appendLine("status: ${payload[SharedPayloadKeys.STATUS]}")
   appendLine("refresh_count: ${payload["refresh_count"]}")
   appendLine("interval_seconds: ${payload["interval_seconds"]}")
   appendLine("stop_reason: ${payload["stop_reason"]}")
@@ -27,7 +29,7 @@ internal fun goalWatchText(payload: Map<String, Any?>): String = buildString {
 
 internal fun goalWatchRefreshText(refresh: Map<*, *>): String = buildString {
   appendLine(
-    "watch_refresh: index=${refresh["refresh_index"]} status=${refresh["status"]} " +
+    "watch_refresh: index=${refresh["refresh_index"]} status=${refresh[SharedPayloadKeys.STATUS]} " +
       "current_subtask=${refresh["current_subtask"] ?: "none"} " +
       "current_step=${refresh["current_step"] ?: "none"} " +
       "execution_liveness=${refresh["execution_liveness"] ?: "unknown"} " +

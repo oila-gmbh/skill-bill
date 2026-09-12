@@ -1,9 +1,11 @@
 package skillbill.review
 
+import skillbill.contracts.SharedPayloadKeys
+
 import skillbill.review.model.ImportedFinding
 
 fun requireMatch(pattern: Regex, text: String, errorMessage: String): String =
-  pattern.find(text)?.groups?.get("value")?.value ?: throw IllegalArgumentException(errorMessage)
+  pattern.find(text)?.groups?.get(SharedPayloadKeys.VALUE)?.value ?: throw IllegalArgumentException(errorMessage)
 
 fun parseReviewFindings(text: String): List<ImportedFinding> {
   val bulletFindings = parseBulletFindings(text)
@@ -39,7 +41,7 @@ private fun parseProvenanceLane(provenance: MatchResult): String? = provenance
   ?.value
   ?.let(findingSpecialistsProvenancePattern::find)
   ?.groups
-  ?.get("value")
+  ?.get(SharedPayloadKeys.VALUE)
   ?.value
   ?.split(",")
   ?.map(String::trim)
@@ -62,13 +64,13 @@ fun parseTableFindings(text: String): List<ImportedFinding> {
 }
 
 fun extractSummaryValue(text: String, key: String): String? =
-  summaryPatterns[key]?.find(text)?.groups?.get("value")?.value?.trim()
+  summaryPatterns[key]?.find(text)?.groups?.get(SharedPayloadKeys.VALUE)?.value?.trim()
 
 fun extractSpecialistReviews(text: String): List<String> {
   val seen = linkedSetOf<String>()
   specialistReviewsPattern.findAll(text).forEach { match ->
     match
-      .groups["value"]
+      .groups[SharedPayloadKeys.VALUE]
       ?.value
       .orEmpty()
       .split(",")

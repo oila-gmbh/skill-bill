@@ -1,5 +1,7 @@
 package skillbill.engine.goalrunner
 
+import skillbill.contracts.SharedPayloadKeys
+
 import skillbill.application.decomposition.withParentStatus
 import skillbill.engine.goalrunner.model.GoalRunnerResetSnapshot
 import skillbill.engine.goalrunner.model.GoalRunnerResetSubtaskSnapshot
@@ -121,8 +123,8 @@ fun DecompositionManifest.toResetSnapshot(): GoalRunnerResetSnapshot = GoalRunne
 )
 
 fun GoalObservabilityProgressEvent.toStatusMap(): Map<String, Any?> = linkedMapOf(
-  "issue_key" to issueKey,
-  "subtask_id" to subtaskId,
+  SharedPayloadKeys.ISSUE_KEY to issueKey,
+  SharedPayloadKeys.SUBTASK_ID to subtaskId,
   "workflow_phase" to workflowPhase,
   "worker_role" to workerRole,
   "liveness_class" to livenessClass,

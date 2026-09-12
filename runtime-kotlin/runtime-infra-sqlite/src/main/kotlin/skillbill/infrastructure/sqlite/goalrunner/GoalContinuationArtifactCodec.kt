@@ -1,5 +1,6 @@
 package skillbill.infrastructure.sqlite.goalrunner
 import skillbill.boundary.OpenBoundaryMap
+import skillbill.contracts.SharedPayloadKeys
 import skillbill.contracts.JsonCodec
 import skillbill.error.InvalidGoalSubtaskReviewStateSchemaError
 import skillbill.error.InvalidWorkflowStateSchemaError
@@ -24,8 +25,8 @@ import skillbill.workflow.taskruntime.model.requireAcceptedOutput
 @OpenBoundaryMap("Goal continuation artifact decode from durable workflow artifacts")
 fun goalContinuation(artifacts: Map<String, Any?>): GoalContinuation? =
   (artifacts["goal_continuation"] as? Map<*, *>)?.let { payload ->
-    val issueKey = payload["issue_key"]?.toString()?.takeIf(String::isNotBlank)
-    val subtaskId = payload["subtask_id"].asGoalRunnerIntOrNull()
+    val issueKey = payload[SharedPayloadKeys.ISSUE_KEY]?.toString()?.takeIf(String::isNotBlank)
+    val subtaskId = payload[SharedPayloadKeys.SUBTASK_ID].asGoalRunnerIntOrNull()
     if (issueKey == null || subtaskId == null) {
       null
     } else {

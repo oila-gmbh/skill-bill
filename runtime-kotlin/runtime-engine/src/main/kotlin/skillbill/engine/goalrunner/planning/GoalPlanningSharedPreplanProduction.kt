@@ -1,5 +1,7 @@
 package skillbill.engine.goalrunner.planning
 
+import skillbill.contracts.SharedPayloadKeys
+
 import skillbill.application.decomposition.DECOMPOSITION_MANIFEST_FILENAME
 import skillbill.contracts.JsonCodec
 import skillbill.engine.goalrunner.model.GoalRunnerRunRequest
@@ -59,10 +61,10 @@ fun enrichPreplan(payload: String, packet: Map<String, Any?>): String {
     ?.let(JsonCodec::jsonElementToValue)
     ?.let(JsonCodec::anyToStringAnyMap)
     ?: error("preplan payload is not a JSON object")
-  val produced = JsonCodec.anyToStringAnyMap(root["produced_outputs"])
+  val produced = JsonCodec.anyToStringAnyMap(root[SharedPayloadKeys.PRODUCED_OUTPUTS])
     ?: error("preplan produced_outputs is not an object")
   return JsonCodec.mapToJsonString(
-    root + ("produced_outputs" to (produced + (GoalPlanningSweepConstants.SHARED_CONTEXT_FIELD to packet))),
+    root + (SharedPayloadKeys.PRODUCED_OUTPUTS to (produced + (GoalPlanningSweepConstants.SHARED_CONTEXT_FIELD to packet))),
   )
 }
 
@@ -70,7 +72,7 @@ fun planningPacketFrom(record: SharedGoalPreplanCheckpoint): Map<String, Any?>? 
   JsonCodec.parseObjectOrNull(record.preplanPayload)
     ?.let(JsonCodec::jsonElementToValue)
     ?.let(JsonCodec::anyToStringAnyMap)
-    ?.get("produced_outputs")
+    ?.get(SharedPayloadKeys.PRODUCED_OUTPUTS)
     ?.let(JsonCodec::anyToStringAnyMap)
     ?.get(GoalPlanningSweepConstants.SHARED_CONTEXT_FIELD)
     ?.let(JsonCodec::anyToStringAnyMap)

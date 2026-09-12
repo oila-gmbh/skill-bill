@@ -1,5 +1,7 @@
 package skillbill.workflow.taskruntime.model
 
+import skillbill.contracts.SharedPayloadKeys
+
 import skillbill.boundary.OpenBoundaryMap
 import skillbill.contracts.JsonCodec
 import skillbill.error.InvalidWorkflowStateSchemaError
@@ -71,7 +73,7 @@ data class FeatureTaskRuntimeDiagnosticSignal(
     "operation" to operation,
     "failure_class" to failureClass.wireValue,
     "conflicting_key" to conflictingKey,
-    "phase_id" to phaseId,
+    SharedPayloadKeys.PHASE_ID to phaseId,
     "attempt" to attempt,
     "repair_turn" to repairTurn,
     "generation" to generation,

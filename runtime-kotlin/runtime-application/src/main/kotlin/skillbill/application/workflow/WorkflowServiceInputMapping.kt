@@ -1,5 +1,6 @@
 package skillbill.application.workflow
 import skillbill.application.workflow.model.GoalObservabilityProgressInput
+import skillbill.contracts.SharedPayloadKeys
 import skillbill.application.workflow.model.GoalObservabilityWorktreeActivity
 import skillbill.application.workflow.model.PersistOpenedWorkflowArgs
 import skillbill.application.workflow.model.WorkflowFamilyKind
@@ -107,8 +108,8 @@ fun WorkflowContinueDecision.toReopenInput(sessionId: String): WorkflowUpdateInp
   stepUpdates =
   listOf(
     mapOf(
-      "step_id" to resumeStepId,
-      "status" to "running",
+      SharedPayloadKeys.STEP_ID to resumeStepId,
+      SharedPayloadKeys.STATUS to "running",
       "attempt_count" to nextAttemptCount,
     ),
   ),

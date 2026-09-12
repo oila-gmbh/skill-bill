@@ -1,5 +1,6 @@
 package skillbill.engine.goalrunner.planning
 import me.tatarka.inject.annotations.Inject
+import skillbill.contracts.SharedPayloadKeys
 import skillbill.contracts.JsonCodec
 import skillbill.contracts.workflow.GoalPlanningPreparationSchemaPaths
 import skillbill.engine.goalplanning.GoalPlanningPreparationCheckpoint
@@ -87,7 +88,7 @@ class LaunchAlignedGoalPlanningStatusReasonCoherence(
     val packet = JsonCodec.parseObjectOrNull(existing.preplanPayload)
       ?.let(JsonCodec::jsonElementToValue)
       ?.let(JsonCodec::anyToStringAnyMap)
-      ?.get("produced_outputs")
+      ?.get(SharedPayloadKeys.PRODUCED_OUTPUTS)
       ?.let(JsonCodec::anyToStringAnyMap)
       ?.get("_goal_planning_shared_context")
       ?.let(JsonCodec::anyToStringAnyMap)

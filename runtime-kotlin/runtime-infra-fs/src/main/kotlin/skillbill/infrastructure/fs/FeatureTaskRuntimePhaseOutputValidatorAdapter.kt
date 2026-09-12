@@ -1,5 +1,7 @@
 package skillbill.infrastructure.fs
 
+import skillbill.contracts.SharedPayloadKeys
+
 import me.tatarka.inject.annotations.Inject
 import skillbill.contracts.JsonCodec
 import skillbill.error.InvalidFeatureTaskRuntimeBuildReceiptSchemaError
@@ -126,7 +128,7 @@ class FeatureTaskRuntimePhaseOutputValidatorAdapter : FeatureTaskRuntimePhaseOut
 
   private fun validateNestedBuildReceipt(normalized: NormalizedFeatureTaskRuntimePhaseOutput, sourceLabel: String) {
     if (sourceLabel != FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_BUILD) return
-    val produced = JsonCodec.anyToStringAnyMap(normalized.envelope["produced_outputs"])
+    val produced = JsonCodec.anyToStringAnyMap(normalized.envelope[SharedPayloadKeys.PRODUCED_OUTPUTS])
       ?: throw InvalidFeatureTaskRuntimeBuildReceiptSchemaError(
         sourceLabel = sourceLabel,
         reason = "produced_outputs must be present for the build phase envelope.",

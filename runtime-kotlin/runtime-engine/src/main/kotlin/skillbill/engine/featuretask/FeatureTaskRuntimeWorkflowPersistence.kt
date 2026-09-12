@@ -1,5 +1,7 @@
 package skillbill.engine.featuretask
 
+import skillbill.contracts.SharedPayloadKeys
+
 import skillbill.application.workflow.model.WorkflowFamily
 import skillbill.contracts.issuekey.normalizeIssueKey
 import skillbill.engine.featuretask.model.FeatureTaskRuntimePhaseStateRequest
@@ -125,8 +127,8 @@ fun stepUpdatesFrom(records: Map<String, FeatureTaskRuntimePhaseRecord>): List<M
   }
   return records.values.map { record ->
     linkedMapOf<String, Any?>(
-      "step_id" to record.phaseId,
-      "status" to stepStatusFor(record),
+      SharedPayloadKeys.STEP_ID to record.phaseId,
+      SharedPayloadKeys.STATUS to stepStatusFor(record),
       "attempt_count" to record.attemptCount,
     )
   }

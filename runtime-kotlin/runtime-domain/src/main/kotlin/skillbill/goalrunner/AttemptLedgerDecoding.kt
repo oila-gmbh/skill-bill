@@ -1,5 +1,6 @@
 package skillbill.goalrunner
 import skillbill.boundary.OpenBoundaryMap
+import skillbill.contracts.SharedPayloadKeys
 import skillbill.error.InvalidGoalProgressEventSchemaError
 import skillbill.goalrunner.model.BuildDeclaredGoalProgressEventArgs
 import skillbill.goalrunner.model.GoalRunnerProgressEvent
@@ -70,7 +71,7 @@ private fun Map<*, *>.buildDeclaredGoalProgressEvent(args: BuildDeclaredGoalProg
       processAlive = this["process_alive"] == true,
       sequenceNumber = args.sequenceNumber,
       timestamp = args.timestamp,
-      stepId = this["step_id"]?.toString()?.takeIf(String::isNotBlank),
+      stepId = this[SharedPayloadKeys.STEP_ID]?.toString()?.takeIf(String::isNotBlank),
       operationName = this["operation_name"]?.toString()?.takeIf(String::isNotBlank),
       operationKind = this["operation_kind"]?.toString()?.takeIf(String::isNotBlank),
       expectedLong = this["expected_long"] == true,

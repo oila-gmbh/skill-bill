@@ -1,5 +1,7 @@
 package skillbill.infrastructure.sqlite.workflow
 
+import skillbill.contracts.SharedPayloadKeys
+
 import skillbill.error.InvalidWorkflowStateSchemaError
 import skillbill.ports.workflow.model.FeatureTaskWorkflowMode
 import skillbill.ports.workflow.model.WorkflowStateRecord
@@ -241,15 +243,15 @@ internal fun Connection.listFeatureTaskWorkflowRows(
 }
 
 internal fun ResultSet.toWorkflowStateRecord(): WorkflowStateRecord = WorkflowStateRecord(
-  workflowId = getString("workflow_id"),
+  workflowId = getString(SharedPayloadKeys.WORKFLOW_ID),
   sessionId = getString("session_id"),
   workflowName = getString("workflow_name"),
-  contractVersion = getString("contract_version"),
+  contractVersion = getString(SharedPayloadKeys.CONTRACT_VERSION),
   workflowStatus = getString("workflow_status"),
   currentStepId = getString("current_step_id"),
   stepsJson = getString("steps_json"),
   artifactsJson = getString("artifacts_json"),
-  issueKey = getString("issue_key"),
+  issueKey = getString(SharedPayloadKeys.ISSUE_KEY),
   startedAt = getString("started_at"),
   updatedAt = getString("updated_at"),
   stateEnteredAt = getString("state_entered_at"),
@@ -258,7 +260,7 @@ internal fun ResultSet.toWorkflowStateRecord(): WorkflowStateRecord = WorkflowSt
 )
 
 internal fun ResultSet.toFeatureTaskWorkflowStateRecord(): WorkflowStateRecord {
-  val workflowId = getString("workflow_id")
+  val workflowId = getString(SharedPayloadKeys.WORKFLOW_ID)
   val workflowName = getString("workflow_name")
   if (workflowName != "bill-feature-task") {
     throw InvalidWorkflowStateSchemaError(
@@ -274,12 +276,12 @@ internal fun ResultSet.toFeatureTaskWorkflowStateRecord(): WorkflowStateRecord {
     workflowId = workflowId,
     sessionId = getString("session_id"),
     workflowName = workflowName,
-    contractVersion = getString("contract_version"),
+    contractVersion = getString(SharedPayloadKeys.CONTRACT_VERSION),
     workflowStatus = getString("workflow_status"),
     currentStepId = getString("current_step_id"),
     stepsJson = getString("steps_json"),
     artifactsJson = getString("artifacts_json"),
-    issueKey = getString("issue_key"),
+    issueKey = getString(SharedPayloadKeys.ISSUE_KEY),
     startedAt = getString("started_at"),
     updatedAt = getString("updated_at"),
     stateEnteredAt = getString("state_entered_at"),

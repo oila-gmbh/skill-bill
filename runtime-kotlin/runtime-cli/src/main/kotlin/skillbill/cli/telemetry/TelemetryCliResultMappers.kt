@@ -1,5 +1,7 @@
 package skillbill.cli.telemetry
 
+import skillbill.contracts.SharedPayloadKeys
+
 import skillbill.application.telemetry.model.TelemetryMutationResult
 import skillbill.application.telemetry.model.TelemetryStatusResult
 import skillbill.application.telemetry.model.TelemetrySyncStatusResult
@@ -56,7 +58,7 @@ internal fun TelemetryMutationResult.toCliMap(): Map<String, Any?> = linkedMapOf
 )
 
 internal fun TelemetryProxyCapabilities.toCliMap(): Map<String, Any?> = linkedMapOf<String, Any?>(
-  "contract_version" to contractVersion,
+  SharedPayloadKeys.CONTRACT_VERSION to contractVersion,
   "source" to source,
   "proxy_url" to proxyUrl,
   "capabilities_url" to capabilitiesUrl,

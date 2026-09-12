@@ -1,5 +1,7 @@
 package skillbill.infrastructure.fs.contracts.workflow
 
+import skillbill.contracts.SharedPayloadKeys
+
 import com.fasterxml.jackson.core.JsonProcessingException
 import com.fasterxml.jackson.databind.JsonNode
 import skillbill.error.InvalidFeatureTaskRuntimePhaseOutputSchemaError
@@ -44,7 +46,7 @@ internal fun readPhaseOutputObjectNodeLenient(phaseOutputText: String, sourceLab
 }
 
 internal fun validateVerifyingEnvelopeShell(parsed: Map<String, Any?>, sourceLabel: String) {
-  val phaseId = parsed["phase_id"] as? String
+  val phaseId = parsed[SharedPayloadKeys.PHASE_ID] as? String
   if (phaseId != sourceLabel) {
     throw InvalidFeatureTaskRuntimePhaseOutputSchemaError(
       sourceLabel = sourceLabel,
@@ -53,7 +55,7 @@ internal fun validateVerifyingEnvelopeShell(parsed: Map<String, Any?>, sourceLab
       failureCode = "phase_id_mismatch",
     )
   }
-  val status = parsed["status"] as? String
+  val status = parsed[SharedPayloadKeys.STATUS] as? String
   if (status.isNullOrBlank()) {
     throw InvalidFeatureTaskRuntimePhaseOutputSchemaError(
       sourceLabel = sourceLabel,

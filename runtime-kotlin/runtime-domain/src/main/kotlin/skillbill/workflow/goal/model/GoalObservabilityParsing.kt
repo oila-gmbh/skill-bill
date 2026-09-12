@@ -1,5 +1,7 @@
 package skillbill.workflow.goal.model
 
+import skillbill.contracts.SharedPayloadKeys
+
 import skillbill.boundary.OpenBoundaryMap
 import skillbill.contracts.JsonCodec
 import skillbill.contracts.workflow.GOAL_OBSERVABILITY_EVENT_CONTRACT_VERSION
@@ -20,7 +22,7 @@ fun goalObservabilityLatestEventForLiveness(
 ): GoalObservabilityEvent? {
   val raw = artifacts[GOAL_OBSERVABILITY_LATEST_EVENT_ARTIFACT_KEY] ?: return null
   val eventMap = JsonCodec.anyToStringAnyMap(raw) ?: return null
-  if (eventMap["contract_version"] != GOAL_OBSERVABILITY_EVENT_CONTRACT_VERSION) return null
+  if (eventMap[SharedPayloadKeys.CONTRACT_VERSION] != GOAL_OBSERVABILITY_EVENT_CONTRACT_VERSION) return null
   return runCatching {
     goalObservabilityEventFromArtifact(raw, GOAL_OBSERVABILITY_LATEST_EVENT_ARTIFACT_KEY, validator)
   }.getOrNull()

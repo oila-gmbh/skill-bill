@@ -1,5 +1,7 @@
 package skillbill.infrastructure.fs.contracts.workflow
 
+import skillbill.contracts.SharedPayloadKeys
+
 import com.fasterxml.jackson.core.JsonParser
 import com.fasterxml.jackson.core.type.TypeReference
 import com.fasterxml.jackson.databind.JsonNode
@@ -34,7 +36,7 @@ object FeatureTaskRuntimePhaseOutputSchemaValidator {
         payloadFreeReason = reasons.payloadFree,
       )
     }
-    val phaseId = phaseOutput["phase_id"] as? String
+    val phaseId = phaseOutput[SharedPayloadKeys.PHASE_ID] as? String
     if (phaseId != sourceLabel) {
       throw InvalidFeatureTaskRuntimePhaseOutputSchemaError(
         sourceLabel = sourceLabel,

@@ -1,5 +1,7 @@
 package skillbill.application.workflow
 
+import skillbill.contracts.SharedPayloadKeys
+
 import skillbill.application.decomposition.DECOMPOSITION_RUNTIME_ARTIFACT_KEY
 import skillbill.application.decomposition.decodeArtifacts
 import skillbill.application.decomposition.encodeDecompositionManifestMap
@@ -124,8 +126,8 @@ fun subtaskStartArtifacts(
   "assessment" to mapOf(
     "spec_path" to selection.subtask.specPath,
     "goal_continuation" to true,
-    "issue_key" to manifest.issueKey,
-    "subtask_id" to selection.subtask.id,
+    SharedPayloadKeys.ISSUE_KEY to manifest.issueKey,
+    SharedPayloadKeys.SUBTASK_ID to selection.subtask.id,
     "accepted_without_user_confirmation" to true,
   ),
   "branch" to mapOf(
@@ -135,8 +137,8 @@ fun subtaskStartArtifacts(
   ),
   "goal_continuation" to mapOf(
     "enabled" to true,
-    "issue_key" to manifest.issueKey,
-    "subtask_id" to selection.subtask.id,
+    SharedPayloadKeys.ISSUE_KEY to manifest.issueKey,
+    SharedPayloadKeys.SUBTASK_ID to selection.subtask.id,
     "suppress_pr" to true,
     "outcome_authority" to "workflow_store",
   ),

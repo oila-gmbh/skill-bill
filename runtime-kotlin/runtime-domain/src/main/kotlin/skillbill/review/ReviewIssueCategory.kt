@@ -1,5 +1,7 @@
 package skillbill.review
 
+import skillbill.contracts.SharedPayloadKeys
+
 import skillbill.review.model.ImportedFinding
 import skillbill.review.model.ReviewIssueCategory
 
@@ -68,7 +70,7 @@ private fun resolveExplicitCategory(rawValue: String?): ReviewIssueCategory? = r
   ?.let(explicitCategoryAliases::get)
 
 private fun extractBulletCategory(findingText: String): String? =
-  bulletCategoryPattern.find(findingText)?.groups?.get("value")?.value
+  bulletCategoryPattern.find(findingText)?.groups?.get(SharedPayloadKeys.VALUE)?.value
 
 private fun resolveRoutedCategory(routedSkill: String?, specialistReviews: List<String>): ReviewIssueCategory? {
   val labels = listOfNotNull(routedSkill) + specialistReviews

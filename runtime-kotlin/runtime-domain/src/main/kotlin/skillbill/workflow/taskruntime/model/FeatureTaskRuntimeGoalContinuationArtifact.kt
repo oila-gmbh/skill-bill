@@ -1,5 +1,7 @@
 package skillbill.workflow.taskruntime.model
 
+import skillbill.contracts.SharedPayloadKeys
+
 import skillbill.agentaddon.model.AgentAddonSelection
 import skillbill.agentaddon.model.PersistedAgentAddonSelectionEntry
 import skillbill.boundary.OpenBoundaryMap
@@ -37,8 +39,8 @@ data class FeatureTaskRuntimeGoalContinuationArtifact(
 
   @OpenBoundaryMap("Feature-task-runtime goal-continuation artifact map at the durable workflow-artifact seam")
   fun toArtifactMap(): Map<String, Any?> = linkedMapOf<String, Any?>(
-    "issue_key" to issueKey,
-    "subtask_id" to subtaskId,
+    SharedPayloadKeys.ISSUE_KEY to issueKey,
+    SharedPayloadKeys.SUBTASK_ID to subtaskId,
     "suppress_pr" to suppressPr,
     "goal_branch" to goalBranch,
     "code_review_mode" to codeReviewMode.wireValue,

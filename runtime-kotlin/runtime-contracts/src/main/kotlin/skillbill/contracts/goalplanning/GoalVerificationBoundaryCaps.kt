@@ -1,5 +1,7 @@
 package skillbill.contracts.goalplanning
 
+import skillbill.contracts.SharedPayloadKeys
+
 import org.yaml.snakeyaml.Yaml
 import skillbill.error.InvalidGoalVerificationBoundaryCapsSchemaError
 
@@ -55,7 +57,7 @@ object GoalVerificationBoundaryCaps {
         "goal verification boundary caps contract is not a YAML mapping",
       )
     requireKnownKeysOnly(root)
-    requireSupportedVersion(root["contract_version"])
+    requireSupportedVersion(root[SharedPayloadKeys.CONTRACT_VERSION])
     return Contract(
       maxDiscoveryFileCount = requiredPositiveInt(root, "max_discovery_file_count"),
       maxHeadingsPerFile = requiredPositiveInt(root, "max_headings_per_file"),

@@ -1,5 +1,7 @@
 package skillbill.infrastructure.fs.contracts.review
 
+import skillbill.contracts.SharedPayloadKeys
+
 import com.fasterxml.jackson.core.JsonProcessingException
 import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.databind.ObjectMapper
@@ -111,7 +113,7 @@ private fun validateExpectedKind(
 }
 
 private fun requireMatchingContractVersion(payload: Map<String, Any?>, sourceLabel: String, definitionName: String?) {
-  val declared = payload["contract_version"] ?: return
+  val declared = payload[SharedPayloadKeys.CONTRACT_VERSION] ?: return
   val declaredText = declared as? String ?: declared.toString()
   if (declaredText == REVIEW_CONTEXT_CONTRACT_VERSION) return
   throw InvalidReviewContextSchemaError(

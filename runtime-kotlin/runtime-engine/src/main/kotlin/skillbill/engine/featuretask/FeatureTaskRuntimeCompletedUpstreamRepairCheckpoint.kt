@@ -1,5 +1,7 @@
 package skillbill.engine.featuretask
 
+import skillbill.contracts.SharedPayloadKeys
+
 import skillbill.engine.featuretask.model.CompletedUpstreamRepairRequest
 import skillbill.workflow.engine.model.WorkflowUpdateInput
 import skillbill.workflow.model.WorkflowStepStatus
@@ -52,8 +54,8 @@ fun completedUpstreamRepairWorkflowUpdate(
   currentStepId = request.resumePhaseId,
   stepUpdates = phasesToReopen.map { phaseId ->
     mapOf(
-      "step_id" to phaseId,
-      "status" to "pending",
+      SharedPayloadKeys.STEP_ID to phaseId,
+      SharedPayloadKeys.STATUS to "pending",
       "attempt_count" to 0,
     )
   },
@@ -65,7 +67,7 @@ fun completedUpstreamRepairWorkflowUpdate(
         FEATURE_TASK_RUNTIME_PHASE_LEDGER_LIMIT,
       ),
     FEATURE_TASK_RUNTIME_OPERATOR_BLOCK_RETRY_ARTIFACT_KEY to mapOf(
-      "phase_id" to request.resumePhaseId,
+      SharedPayloadKeys.PHASE_ID to request.resumePhaseId,
       "reason" to request.reason,
       "retried_at" to OffsetDateTime.now(ZoneOffset.UTC).toString(),
       "previous_blocked_reason" to "completed_upstream_missing_output",

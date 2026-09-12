@@ -1,5 +1,7 @@
 package skillbill.install.model
 
+import skillbill.contracts.SharedPayloadKeys
+
 import skillbill.boundary.OpenBoundaryMap
 import skillbill.contracts.install.INSTALL_PLAN_CONTRACT_VERSION
 import skillbill.contracts.install.InstallPlanSchemaPaths
@@ -19,8 +21,8 @@ import skillbill.contracts.install.InstallPlanSchemaPaths
  */
 @OpenBoundaryMap("Wire-shape serializer for install plan")
 fun buildInstallPlanWireMap(plan: InstallPlan): Map<String, Any?> = mapOf(
-  "status" to "planned",
-  "contract_version" to INSTALL_PLAN_CONTRACT_VERSION,
+  SharedPayloadKeys.STATUS to "planned",
+  SharedPayloadKeys.CONTRACT_VERSION to INSTALL_PLAN_CONTRACT_VERSION,
   "agents" to plan.agents.map(::agentTargetWireMap),
   "platform_packs" to plan.discoveredPlatformPacks.map { pack ->
     mapOf(

@@ -1,5 +1,9 @@
 package skillbill.engine.featuretask
 
+import skillbill.contracts.review.ReviewFindingPayloadKeys
+
+import skillbill.contracts.SharedPayloadKeys
+
 import skillbill.contracts.JsonCodec
 import skillbill.goalrunner.subtaskreview.FeatureTaskRuntimeVerificationSignalKeys
 import skillbill.review.ReviewFindingActionability
@@ -15,7 +19,7 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeVerdict
 
 object FeatureTaskRuntimeOutputVerification {
   fun verdictFor(phaseId: String, outputObject: Map<String, Any?>?): FeatureTaskRuntimeVerdict {
-    val wireVerdict = (outputObject?.get("verdict") as? String)
+    val wireVerdict = (outputObject?.get(SharedPayloadKeys.VERDICT) as? String)
       ?.takeIf(String::isNotBlank)
       ?.let { value -> FeatureTaskRuntimeVerdict.rejectRemovedVerdict(value, "phase output verdict") }
     return when (phaseId) {
@@ -43,9 +47,9 @@ object FeatureTaskRuntimeOutputVerification {
   fun unresolvedReviewFindings(outputObject: Map<String, Any?>?): List<FeatureTaskRuntimeReviewFinding> =
     reviewVerdictFrom(outputObject)?.unresolvedFindings.orEmpty()
 
-  fun auditProseValue(outputObject: Map<String, Any?>?): String? = outputObject?.get("produced_outputs")
+  fun auditProseValue(outputObject: Map<String, Any?>?): String? = outputObject?.get(SharedPayloadKeys.PRODUCED_OUTPUTS)
     ?.let(JsonCodec::anyToStringAnyMap)
-    ?.get("value")
+    ?.get(SharedPayloadKeys.VALUE)
     ?.toString()
     ?.takeIf(String::isNotBlank)
 }
@@ -58,7 +62,7 @@ private fun findingVerificationVerdict(wireVerdict: FeatureTaskRuntimeVerdict?):
 private fun findingVerificationVerdictFrom(
   outputObject: Map<String, Any?>?,
 ): FeatureTaskRuntimeFindingVerificationVerdict? {
-  val dispositionsRaw = outputObject?.get("produced_outputs")
+  val dispositionsRaw = outputObject?.get(SharedPayloadKeys.PRODUCED_OUTPUTS)
     ?.let(JsonCodec::anyToStringAnyMap)
     ?.get(FeatureTaskRuntimeVerificationSignalKeys.FINDINGS_VERIFICATION_DISPOSITIONS) as? List<*>
     ?: return null
@@ -83,7 +87,7 @@ private fun auditVerdict(wireVerdict: FeatureTaskRuntimeVerdict?): FeatureTaskRu
 }
 
 private fun reviewVerdictFrom(outputObject: Map<String, Any?>?): FeatureTaskRuntimeReviewVerdict? {
-  val findingsRaw = outputObject?.get("produced_outputs")
+  val findingsRaw = outputObject?.get(SharedPayloadKeys.PRODUCED_OUTPUTS)
     ?.let(JsonCodec::anyToStringAnyMap)
     ?.get(FeatureTaskRuntimeVerificationSignalKeys.REVIEW_FINDINGS) as? List<*>
     ?: return null
@@ -96,8 +100,8 @@ private fun actionableReviewFinding(entry: Any?): FeatureTaskRuntimeReviewFindin
   val severity = (map["severity"] as? String)?.takeIf(String::isNotBlank)
   val message = (map["message"] as? String)?.takeIf(String::isNotBlank)
   if (severity == null || message == null) return null
-  val claimVerdict = optionalClaimVerdict(map["claim_verdict"])
-  val scopeDisposition = optionalScopeDisposition(map["scope_disposition"])
+  val claimVerdict = optionalClaimVerdict(map[ReviewFindingPayloadKeys.CLAIM_VERDICT])
+  val scopeDisposition = optionalScopeDisposition(map[ReviewFindingPayloadKeys.SCOPE_DISPOSITION])
   if (!ReviewFindingActionability.isActionable(claimVerdict, scopeDisposition)) {
     return null
   }

@@ -1,5 +1,7 @@
 package skillbill.workflow.taskruntime.model
 
+import skillbill.contracts.SharedPayloadKeys
+
 import skillbill.agentaddon.model.AgentAddonSelection
 import skillbill.agentaddon.model.PersistedAgentAddonSelectionEntry
 import skillbill.boundary.OpenBoundaryMap
@@ -16,7 +18,7 @@ const val FEATURE_TASK_RUNTIME_RUN_INVARIANTS_ARTIFACT_KEY: String = "feature_ta
 
 @OpenBoundaryMap("Feature-task-runtime run-invariants artifact map at the durable workflow-artifact seam")
 fun FeatureTaskRuntimeRunInvariants.toArtifactMap(): Map<String, Any?> = linkedMapOf(
-  "contract_version" to FEATURE_TASK_RUNTIME_RUN_INVARIANTS_CONTRACT_VERSION,
+  SharedPayloadKeys.CONTRACT_VERSION to FEATURE_TASK_RUNTIME_RUN_INVARIANTS_CONTRACT_VERSION,
   "spec_reference" to specReference,
   "feature_size" to featureSize.name,
   "acceptance_criteria" to acceptanceCriteria,
@@ -95,7 +97,7 @@ private fun Map<String, Any?>.optionalAgentAddonSelection(): AgentAddonSelection
 }
 
 private fun Map<String, Any?>.requireRunInvariantsContractVersion() {
-  val declared = this["contract_version"]
+  val declared = this[SharedPayloadKeys.CONTRACT_VERSION]
     ?: runInvariantSchemaError(
       "Feature-task-runtime run-invariants artifact is missing 'contract_version'; records written " +
         "before $FEATURE_TASK_RUNTIME_RUN_INVARIANTS_CONTRACT_VERSION carry pre-SKILL-159 " +

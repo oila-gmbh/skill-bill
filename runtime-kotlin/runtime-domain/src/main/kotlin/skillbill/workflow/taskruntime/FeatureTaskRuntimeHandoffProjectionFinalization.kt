@@ -1,5 +1,7 @@
 package skillbill.workflow.taskruntime
 
+import skillbill.contracts.SharedPayloadKeys
+
 import skillbill.contracts.JsonCodec
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeHandoffProjectionInputs
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutput
@@ -41,7 +43,7 @@ internal object FeatureTaskRuntimeHandoffProjectionFinalization {
       ?: JsonCodec.parseObjectOrNull(output.payload)?.let(JsonCodec::jsonElementToValue)
         ?.let(JsonCodec::anyToStringAnyMap)
       ?: return emptyMap()
-    return JsonCodec.anyToStringAnyMap(envelope["produced_outputs"]).orEmpty()
+    return JsonCodec.anyToStringAnyMap(envelope[SharedPayloadKeys.PRODUCED_OUTPUTS]).orEmpty()
   }
 
   private fun finalizationProjectionContext(
@@ -70,7 +72,7 @@ internal object FeatureTaskRuntimeHandoffProjectionFinalization {
     "validation_summary" to (
       context.validation["validation_result"]
         ?: context.validation["validation_summary"]
-        ?: context.validation["summary"]
+        ?: context.validation[SharedPayloadKeys.SUMMARY]
         ?: "completed"
       ),
     "base_branch" to context.base,

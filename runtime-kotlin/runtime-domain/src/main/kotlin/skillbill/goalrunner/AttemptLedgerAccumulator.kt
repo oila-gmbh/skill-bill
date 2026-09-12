@@ -1,5 +1,7 @@
 package skillbill.goalrunner
 
+import skillbill.contracts.SharedPayloadKeys
+
 import skillbill.boundary.OpenBoundaryMap
 import skillbill.goalrunner.model.GOAL_ATTEMPT_LEDGER_ARTIFACT_KEY
 import skillbill.goalrunner.model.GoalRunnerAttemptLedgerSummary
@@ -36,7 +38,7 @@ class AttemptLedgerAccumulator {
   }
 
   private fun accumulateBackwardEdge(entry: Map<*, *>) {
-    val subtaskId = entry["subtask_id"].asGoalRunnerIntOrNull() ?: return
+    val subtaskId = entry[SharedPayloadKeys.SUBTASK_ID].asGoalRunnerIntOrNull() ?: return
     val loopId = entry["loop_id"]?.toString()?.takeIf(String::isNotBlank) ?: return
     val count = entry["cumulative_loop_count"].asGoalRunnerIntOrNull() ?: return
     cumulativeFixIterations.merge("$subtaskId:$loopId", count, ::maxOf)
@@ -70,7 +72,7 @@ fun backwardEdgeCountsFromLedger(artifacts: Map<String, Any?>): Map<String, Int>
   entries.forEach { item ->
     val entry = item as? Map<*, *> ?: return@forEach
     if (entry["action"]?.toString() != "backward_edge_entry") return@forEach
-    val subtaskId = entry["subtask_id"].asGoalRunnerIntOrNull() ?: return@forEach
+    val subtaskId = entry[SharedPayloadKeys.SUBTASK_ID].asGoalRunnerIntOrNull() ?: return@forEach
     val loopId = entry["loop_id"]?.toString()?.takeIf(String::isNotBlank) ?: return@forEach
     val count = entry["cumulative_loop_count"].asGoalRunnerIntOrNull() ?: return@forEach
     val key = "$subtaskId:$loopId"

@@ -1,5 +1,7 @@
 package skillbill.workflow.goal.model
 
+import skillbill.contracts.SharedPayloadKeys
+
 import skillbill.boundary.OpenBoundaryMap
 import skillbill.contracts.workflow.GOAL_OBSERVABILITY_EVENT_CONTRACT_VERSION
 import skillbill.contracts.workflow.GOAL_PROGRESS_EVENT_CONTRACT_VERSION
@@ -97,15 +99,15 @@ data class GoalProgressEvent(
 
   @OpenBoundaryMap("Goal progress event artifact map at durable workflow-artifact/schema seams")
   fun toArtifactMap(): Map<String, Any?> = linkedMapOf<String, Any?>(
-    "contract_version" to contractVersion,
+    SharedPayloadKeys.CONTRACT_VERSION to contractVersion,
     "event_kind" to eventKind.wireValue,
-    "workflow_id" to workflowId,
+    SharedPayloadKeys.WORKFLOW_ID to workflowId,
     "workflow_phase" to workflowPhase,
     "process_alive" to processAlive,
     "sequence_number" to sequenceNumber,
     "timestamp" to timestamp,
   ).apply {
-    stepId?.takeIf(String::isNotBlank)?.let { put("step_id", it) }
+    stepId?.takeIf(String::isNotBlank)?.let { put(SharedPayloadKeys.STEP_ID, it) }
     operationName?.takeIf(String::isNotBlank)?.let { put("operation_name", it) }
     operationKind?.takeIf(String::isNotBlank)?.let { put("operation_kind", it) }
     if (eventKind.isOperationEvent) {
@@ -185,11 +187,11 @@ data class GoalObservabilityEvent(
 ) {
   @OpenBoundaryMap("Goal observability event artifact map at durable workflow-artifact/schema seams")
   fun toArtifactMap(includeHeavyFields: Boolean = false): Map<String, Any?> = linkedMapOf<String, Any?>(
-    "contract_version" to contractVersion,
+    SharedPayloadKeys.CONTRACT_VERSION to contractVersion,
     "record_kind" to recordKind.wireValue,
-    "issue_key" to issueKey,
-    "subtask_id" to subtaskId,
-    "workflow_id" to workflowId,
+    SharedPayloadKeys.ISSUE_KEY to issueKey,
+    SharedPayloadKeys.SUBTASK_ID to subtaskId,
+    SharedPayloadKeys.WORKFLOW_ID to workflowId,
     "workflow_phase" to workflowPhase,
     "worker_role" to workerRole,
     "liveness_class" to livenessClass,
@@ -234,8 +236,8 @@ data class GoalObservabilityEvent(
 
   @OpenBoundaryMap("Compact goal observability summary map rendered by CLI/MCP workflow adapters")
   fun toCompactSummaryMap(): Map<String, Any?> = linkedMapOf<String, Any?>(
-    "issue_key" to issueKey,
-    "subtask_id" to subtaskId,
+    SharedPayloadKeys.ISSUE_KEY to issueKey,
+    SharedPayloadKeys.SUBTASK_ID to subtaskId,
     "workflow_phase" to workflowPhase,
     "worker_role" to workerRole,
     "liveness_class" to livenessClass,

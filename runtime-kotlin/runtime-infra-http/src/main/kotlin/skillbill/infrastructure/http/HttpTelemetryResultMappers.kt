@@ -1,5 +1,7 @@
 package skillbill.infrastructure.http
 
+import skillbill.contracts.SharedPayloadKeys
+
 import skillbill.telemetry.model.TelemetryProxyCapabilities
 import skillbill.telemetry.model.TelemetryRemoteStatsResult
 
@@ -19,7 +21,7 @@ internal fun Map<String, Any?>.toTelemetryProxyCapabilities(): TelemetryProxyCap
       "supported_workflows",
     )
   return TelemetryProxyCapabilities(
-    contractVersion = this["contract_version"]?.toString().orEmpty(),
+    contractVersion = this[SharedPayloadKeys.CONTRACT_VERSION]?.toString().orEmpty(),
     source = this["source"]?.toString().orEmpty(),
     proxyUrl = this["proxy_url"]?.toString().orEmpty(),
     capabilitiesUrl = this["capabilities_url"]?.toString().orEmpty(),

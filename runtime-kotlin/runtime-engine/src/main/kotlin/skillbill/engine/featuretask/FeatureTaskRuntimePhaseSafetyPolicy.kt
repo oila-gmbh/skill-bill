@@ -1,5 +1,7 @@
 package skillbill.engine.featuretask
 
+import skillbill.contracts.SharedPayloadKeys
+
 import skillbill.workflow.model.WorkflowStepStatus
 import skillbill.workflow.model.workflowStepStatus
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFailureDisposition
@@ -43,11 +45,11 @@ object FeatureTaskRuntimePhaseSafetyPolicy {
     .sorted()
 
   fun dispositionForTerminalOutput(phaseId: String, output: Map<String, Any?>): FeatureTaskRuntimeFailureDisposition {
-    val explicit = (output["failure_disposition"] as? String)
+    val explicit = (output[SharedPayloadKeys.FAILURE_DISPOSITION] as? String)
       ?.let(FeatureTaskRuntimeFailureDisposition::fromWireValue)
     if (explicit != null) return explicit
     return if (
-      (output["status"] as? String).workflowStepStatus() == WorkflowStepStatus.FAILED ||
+      (output[SharedPayloadKeys.STATUS] as? String).workflowStepStatus() == WorkflowStepStatus.FAILED ||
       phaseId == "validate"
     ) {
       FeatureTaskRuntimeFailureDisposition.RETRYABLE

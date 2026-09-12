@@ -1,5 +1,8 @@
 package skillbill.contracts.mcp
 
+import skillbill.contracts.SharedPayloadKeys
+import skillbill.contracts.review.ReviewVerificationSignalKeys
+
 import skillbill.contracts.JsonPayloadContract
 
 data class McpReviewImportSkippedContract(
@@ -8,9 +11,9 @@ data class McpReviewImportSkippedContract(
   val findingCount: Any?,
 ) : JsonPayloadContract {
   override fun toPayload(): Map<String, Any?> = linkedMapOf(
-    "status" to "skipped",
+    SharedPayloadKeys.STATUS to "skipped",
     "reason" to reason,
-    "review_run_id" to reviewRunId,
+    ReviewVerificationSignalKeys.REVIEW_RUN_ID to reviewRunId,
     "finding_count" to findingCount,
   )
 }
@@ -20,9 +23,9 @@ data class McpTriageSkippedContract(
   val reviewRunId: String,
 ) : JsonPayloadContract {
   override fun toPayload(): Map<String, Any?> = linkedMapOf(
-    "status" to "skipped",
+    SharedPayloadKeys.STATUS to "skipped",
     "reason" to reason,
-    "review_run_id" to reviewRunId,
+    ReviewVerificationSignalKeys.REVIEW_RUN_ID to reviewRunId,
   )
 }
 
@@ -30,7 +33,7 @@ data class McpLearningsSkippedContract(
   val reason: String,
 ) : JsonPayloadContract {
   override fun toPayload(): Map<String, Any?> = linkedMapOf(
-    "status" to "skipped",
+    SharedPayloadKeys.STATUS to "skipped",
     "reason" to reason,
     "applied_learnings" to "none",
     "learnings" to emptyList<Any>(),

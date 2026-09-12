@@ -1,5 +1,7 @@
 package skillbill.engine.featuretask
 
+import skillbill.contracts.SharedPayloadKeys
+
 import skillbill.contracts.JsonCodec
 import skillbill.engine.featuretask.model.FeatureTaskRuntimeGoalContinuationContext
 import skillbill.engine.featuretask.model.FeatureTaskRuntimeRunReport
@@ -153,7 +155,7 @@ fun commitShaFromPhaseRecords(
 }
 
 fun Map<String, Any?>.commitShaFromPhasePayload(): String? {
-  val producedOutputs = JsonCodec.anyToStringAnyMap(this["produced_outputs"])
+  val producedOutputs = JsonCodec.anyToStringAnyMap(this[SharedPayloadKeys.PRODUCED_OUTPUTS])
   return (this["commit_push_result"] as? Map<*, *>)?.get("commit_sha")?.toString()?.takeIf(String::isNotBlank)
     ?: (producedOutputs?.get("commit_push_result") as? Map<*, *>)?.get("commit_sha")?.toString()
       ?.takeIf(String::isNotBlank)

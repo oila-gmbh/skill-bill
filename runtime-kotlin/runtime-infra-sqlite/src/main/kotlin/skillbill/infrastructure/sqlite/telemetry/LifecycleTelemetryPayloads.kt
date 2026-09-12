@@ -1,5 +1,7 @@
 package skillbill.infrastructure.sqlite.telemetry
 
+import skillbill.contracts.SharedPayloadKeys
+
 import skillbill.contracts.JsonCodec
 import skillbill.review.normalizeRoutedSkill
 import skillbill.review.normalizeStackLabel
@@ -9,7 +11,7 @@ fun featureTaskRuntimeStartedPayload(row: Map<String, Any?>, level: String, salt
   linkedMapOf<String, Any?>(
     "session_id" to row.stringOrEmpty("session_id"),
     "feature_size" to row.stringOrEmpty("feature_size"),
-    "issue_key" to redactIssueKey(row.stringOrEmpty("issue_key"), level, salt),
+    SharedPayloadKeys.ISSUE_KEY to redactIssueKey(row.stringOrEmpty("issue_key"), level, salt),
   ).apply {
     if (level == "full") {
       put("feature_name", row.stringOrEmpty("feature_name"))

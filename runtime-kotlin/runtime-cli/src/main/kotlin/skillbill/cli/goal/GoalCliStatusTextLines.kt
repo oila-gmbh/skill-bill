@@ -1,5 +1,7 @@
 package skillbill.cli.goal
 
+import skillbill.contracts.SharedPayloadKeys
+
 internal fun StringBuilder.appendOperatorSurfaceLines(payload: Map<*, *>) {
   val blockedAttemptCount = (payload["blocked_attempt_count"] as? Number)?.toInt() ?: 0
   val supervisorKillCount = (payload["supervisor_kill_count"] as? Number)?.toInt() ?: 0
@@ -19,7 +21,7 @@ internal fun StringBuilder.appendOperatorSurfaceLines(payload: Map<*, *>) {
   (payload["out_of_band_acceptances"] as? List<*>)?.takeIf(List<*>::isNotEmpty)?.forEach { raw ->
     val acceptance = raw as? Map<*, *> ?: return@forEach
     appendLine(
-      "accepted_out_of_band: subtask=${acceptance["subtask_id"]} commit=${acceptance["commit_sha"]} " +
+      "accepted_out_of_band: subtask=${acceptance[SharedPayloadKeys.SUBTASK_ID]} commit=${acceptance["commit_sha"]} " +
         "at=${acceptance["accepted_at"]} reason=${acceptance["reason"]}",
     )
   }

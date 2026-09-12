@@ -1,5 +1,7 @@
 package skillbill.workflow.taskruntime.model
 
+import skillbill.contracts.SharedPayloadKeys
+
 import skillbill.boundary.OpenBoundaryMap
 
 /**
@@ -71,7 +73,7 @@ data class FeatureTaskRuntimeGoalPlanningImport(
     "planning_contract_version" to planningContractVersion,
     "phase_output_contract_id" to phaseOutputContractId,
     "phase_output_contract_version" to phaseOutputContractVersion,
-    "subtask_id" to subtaskId,
+    SharedPayloadKeys.SUBTASK_ID to subtaskId,
     "manifest_order" to manifestOrder,
     "governed_sub_spec_path" to governedSubSpecPath,
     "sub_spec_hash" to subSpecHash,

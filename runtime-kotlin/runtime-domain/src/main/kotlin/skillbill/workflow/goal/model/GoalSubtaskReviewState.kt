@@ -1,5 +1,7 @@
 package skillbill.workflow.goal.model
 
+import skillbill.contracts.SharedPayloadKeys
+
 import skillbill.boundary.OpenBoundaryMap
 import skillbill.contracts.workflow.GOAL_SUBTASK_REVIEW_STATE_CONTRACT_VERSION
 import skillbill.error.InvalidFeatureTaskRuntimeRepairReceiptError
@@ -212,7 +214,7 @@ data class GoalSubtaskReviewState(
 
   @OpenBoundaryMap("Goal-review state at the durable workflow-artifact seam")
   fun toArtifactMap(): Map<String, Any?> = linkedMapOf<String, Any?>(
-    "contract_version" to contractVersion,
+    SharedPayloadKeys.CONTRACT_VERSION to contractVersion,
     "review_base_sha" to reviewBaseSha,
     "code_review_mode" to codeReviewMode.wireValue,
     "completed_pass_count" to completedPassCount,

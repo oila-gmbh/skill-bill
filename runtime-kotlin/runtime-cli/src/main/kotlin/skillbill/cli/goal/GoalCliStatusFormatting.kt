@@ -1,5 +1,7 @@
 package skillbill.cli.goal
 
+import skillbill.contracts.SharedPayloadKeys
+
 import skillbill.cli.kernel.detectInvokingAgentId
 import skillbill.cli.model.CliRunInputs
 import skillbill.engine.goalrunner.model.GoalRunnerStatusRequest
@@ -52,8 +54,8 @@ internal fun CliRunInputs.goalStatusRequest(options: GoalStatusCliRequestOptions
 
 internal fun GoalRunnerStatusProjection?.toGoalStatusCliMap(issueKey: String): Map<String, Any?> = this?.let {
   linkedMapOf<String, Any?>(
-    "status" to "ok",
-    "issue_key" to it.issueKey,
+    SharedPayloadKeys.STATUS to "ok",
+    SharedPayloadKeys.ISSUE_KEY to it.issueKey,
     "complete_count" to it.completeCount,
     "pending_count" to it.pendingCount,
     "blocked_count" to it.blockedCount,
@@ -88,8 +90,8 @@ internal fun GoalRunnerStatusProjection?.toGoalStatusCliMap(issueKey: String): M
     it.outOfBandAcceptances.toGoalAcceptanceCliList()?.let { list -> put("out_of_band_acceptances", list) }
   }
 } ?: linkedMapOf(
-  "status" to "not_found",
-  "issue_key" to issueKey,
+  SharedPayloadKeys.STATUS to "not_found",
+  SharedPayloadKeys.ISSUE_KEY to issueKey,
   "complete_count" to 0,
   "pending_count" to 0,
   "blocked_count" to 0,
@@ -115,15 +117,15 @@ internal fun GoalRunnerStatusProjection?.toBoundedGoalStatusCliMap(issueKey: Str
     "resumable_state" to it.monitorResumableState(),
   )
 } ?: linkedMapOf(
-  "status" to "not_found",
-  "issue_key" to singleLineBounded(issueKey),
+  SharedPayloadKeys.STATUS to "not_found",
+  SharedPayloadKeys.ISSUE_KEY to singleLineBounded(issueKey),
   "resumable_state" to "not_found",
 )
 
 internal fun databaseUnavailableGoalStatusCliMap(issueKey: String, error: DatabaseAccessError): Map<String, Any?> =
   linkedMapOf(
-    "status" to GOAL_STATUS_DATABASE_UNAVAILABLE,
-    "issue_key" to singleLineBounded(issueKey),
+    SharedPayloadKeys.STATUS to GOAL_STATUS_DATABASE_UNAVAILABLE,
+    SharedPayloadKeys.ISSUE_KEY to singleLineBounded(issueKey),
     "resumable_state" to GOAL_STATUS_DATABASE_UNAVAILABLE,
     "reason" to singleLineBounded(error.condition),
   )
@@ -153,7 +155,7 @@ internal fun List<GoalRunnerAcceptedSubtask>.toGoalAcceptanceCliList(): List<Map
   it.isNotEmpty()
 }?.map { acceptance ->
   linkedMapOf(
-    "subtask_id" to acceptance.subtaskId,
+    SharedPayloadKeys.SUBTASK_ID to acceptance.subtaskId,
     "commit_sha" to acceptance.commitSha,
     "reason" to acceptance.reason,
     "accepted_at" to acceptance.acceptedAt,
@@ -161,8 +163,8 @@ internal fun List<GoalRunnerAcceptedSubtask>.toGoalAcceptanceCliList(): List<Map
 }
 
 internal fun goalStatusText(payload: Map<String, Any?>): String = buildString {
-  appendLine("goal: ${payload["issue_key"]}")
-  appendLine("status: ${payload["status"]}")
+  appendLine("goal: ${payload[SharedPayloadKeys.ISSUE_KEY]}")
+  appendLine("status: ${payload[SharedPayloadKeys.STATUS]}")
   appendLine("complete: ${payload["complete_count"]}")
   appendLine("pending: ${payload["pending_count"]}")
   appendLine("blocked: ${payload["blocked_count"]}")
@@ -200,15 +202,15 @@ private fun planningWaveText(waveSize: Int): String = when (waveSize) {
   else -> " wave=$waveSize subtasks"
 }
 
-internal fun goalMonitorStatusText(payload: Map<String, Any?>): String = if (payload["status"] == "not_found") {
+internal fun goalMonitorStatusText(payload: Map<String, Any?>): String = if (payload[SharedPayloadKeys.STATUS] == "not_found") {
   buildString {
-    appendLine("goal: ${payload["issue_key"]}")
+    appendLine("goal: ${payload[SharedPayloadKeys.ISSUE_KEY]}")
     appendLine("status: not_found")
     appendLine("resumable_state: not_found")
   }
-} else if (payload["status"] == GOAL_STATUS_DATABASE_UNAVAILABLE) {
+} else if (payload[SharedPayloadKeys.STATUS] == GOAL_STATUS_DATABASE_UNAVAILABLE) {
   buildString {
-    appendLine("goal: ${payload["issue_key"]}")
+    appendLine("goal: ${payload[SharedPayloadKeys.ISSUE_KEY]}")
     appendLine("status: $GOAL_STATUS_DATABASE_UNAVAILABLE")
     appendLine("resumable_state: $GOAL_STATUS_DATABASE_UNAVAILABLE")
     appendLine("reason: ${payload["reason"]}")

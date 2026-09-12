@@ -1,5 +1,7 @@
 package skillbill.workflow.taskruntime.model
 
+import skillbill.contracts.SharedPayloadKeys
+
 import skillbill.boundary.OpenBoundaryMap
 import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_PHASE_HANDOFF_CONTRACT_VERSION
 import skillbill.error.InvalidFeatureTaskRuntimePhaseHandoffSchemaError
@@ -61,7 +63,7 @@ data class PhaseHandoffProjectionDeclaration(
 
   @OpenBoundaryMap("Feature-task-runtime phase-handoff declaration wire seam")
   fun toArtifactMap(): Map<String, Any?> = linkedMapOf(
-    "contract_version" to FEATURE_TASK_RUNTIME_PHASE_HANDOFF_CONTRACT_VERSION,
+    SharedPayloadKeys.CONTRACT_VERSION to FEATURE_TASK_RUNTIME_PHASE_HANDOFF_CONTRACT_VERSION,
     "consumer_phase_id" to consumerPhaseId,
     "projection_name" to projectionName,
     "source" to sourceRef.toDeclarationMap(),
@@ -73,7 +75,7 @@ data class PhaseHandoffProjectionDeclaration(
     ),
     "checkpoint_policy" to checkpointPolicy.wireValue,
     "producer_iteration" to mapOf(
-      "phase_id" to producerIteration.phaseId,
+      SharedPayloadKeys.PHASE_ID to producerIteration.phaseId,
       "iteration" to producerIteration.iteration,
     ),
     "declared_fields" to declaredFieldNames,
@@ -100,7 +102,7 @@ data class PhaseHandoffProjectionDeclaration(
       )
       invalidIf(
         raw.keys.any { it !in allowed } ||
-          raw["contract_version"] != FEATURE_TASK_RUNTIME_PHASE_HANDOFF_CONTRACT_VERSION,
+          raw[SharedPayloadKeys.CONTRACT_VERSION] != FEATURE_TASK_RUNTIME_PHASE_HANDOFF_CONTRACT_VERSION,
       )
       val source = raw["source"] as? Map<*, *> ?: invalid()
       val sourceRef = sourceRefOf(source)

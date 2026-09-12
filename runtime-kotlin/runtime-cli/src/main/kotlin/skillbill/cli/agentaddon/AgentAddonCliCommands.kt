@@ -1,5 +1,7 @@
 package skillbill.cli.agentaddon
 
+import skillbill.contracts.SharedPayloadKeys
+
 import com.github.ajalt.clikt.core.UsageError
 import com.github.ajalt.clikt.core.subcommands
 import com.github.ajalt.clikt.parameters.options.default
@@ -61,7 +63,7 @@ class AgentAddonResolveSelectionCommand(
         ).sources.map { source -> source.path.toPath() },
       )
       linkedMapOf(
-        "contract_version" to "0.1",
+        SharedPayloadKeys.CONTRACT_VERSION to "0.1",
         "entries" to selection.entries.map { entry ->
           linkedMapOf(
             "slug" to entry.persisted.slug,
@@ -78,7 +80,7 @@ class AgentAddonResolveSelectionCommand(
     try {
       state.complete(block(), format)
     } catch (error: ShellContentContractException) {
-      state.complete(mapOf("status" to "failed", "error" to error.message.orEmpty()), format, exitCode = 1)
+      state.complete(mapOf(SharedPayloadKeys.STATUS to "failed", "error" to error.message.orEmpty()), format, exitCode = 1)
     }
   }
 }
@@ -107,7 +109,7 @@ class AgentAddonVerifySelectionCommand(
       )
       state.complete(
         linkedMapOf(
-          "contract_version" to "0.1",
+          SharedPayloadKeys.CONTRACT_VERSION to "0.1",
           "entries" to hydrated.entries.map { entry ->
             linkedMapOf(
               "slug" to entry.persisted.slug,
@@ -121,7 +123,7 @@ class AgentAddonVerifySelectionCommand(
         format,
       )
     } catch (error: ShellContentContractException) {
-      state.complete(mapOf("status" to "failed", "error" to error.message.orEmpty()), format, exitCode = 1)
+      state.complete(mapOf(SharedPayloadKeys.STATUS to "failed", "error" to error.message.orEmpty()), format, exitCode = 1)
     }
   }
 }

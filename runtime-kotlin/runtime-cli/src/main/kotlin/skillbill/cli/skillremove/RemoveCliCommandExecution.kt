@@ -1,6 +1,7 @@
 
 package skillbill.cli.skillremove
 
+import skillbill.contracts.SharedPayloadKeys
 import skillbill.cli.kernel.CliOutput
 import skillbill.cli.model.CliExecutionResult
 import skillbill.cli.model.CliFormat
@@ -85,7 +86,7 @@ internal fun refusalErrorMessage(
 
 internal fun previewResult(preview: SkillRemovalResult.Preview, format: CliFormat): CliExecutionResult {
   val payload = mapOf(
-    "status" to "preview",
+    SharedPayloadKeys.STATUS to "preview",
     "filesystem_paths" to preview.preview.filesystemPaths,
     "manifest_edits" to preview.preview.manifestEdits.map {
       mapOf("manifest" to it.manifestPath, "kind" to it.editKind.name, "detail" to it.detail)
@@ -104,7 +105,7 @@ internal fun previewResult(preview: SkillRemovalResult.Preview, format: CliForma
 
 internal fun successResult(success: SkillRemovalResult.Success, format: CliFormat): CliExecutionResult {
   val payload = mapOf(
-    "status" to "ok",
+    SharedPayloadKeys.STATUS to "ok",
     "removed_paths" to success.removedPaths,
     "edited_manifests" to success.editedManifests,
     "unlinked_symlinks" to success.unlinkedSymlinks,
@@ -118,7 +119,7 @@ internal fun failedResult(
   format: CliFormat,
 ): CliExecutionResult {
   val payload = mapOf(
-    "status" to "error",
+    SharedPayloadKeys.STATUS to "error",
     "exception" to failed.exceptionName,
     "error" to SkillRemoveErrorSanitizer.sanitize(failed.exceptionMessage, repoRootAbsolutePath),
     "rollback_complete" to failed.rollbackComplete,
@@ -127,7 +128,7 @@ internal fun failedResult(
 }
 
 internal fun errorResult(message: String, format: CliFormat): CliExecutionResult {
-  val payload = mapOf("status" to "error", "error" to message)
+  val payload = mapOf(SharedPayloadKeys.STATUS to "error", "error" to message)
   return CliExecutionResult(exitCode = 1, stdout = CliOutput.emit(payload, format), payload = payload)
 }
 

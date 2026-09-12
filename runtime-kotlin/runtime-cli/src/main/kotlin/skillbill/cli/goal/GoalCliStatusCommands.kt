@@ -1,5 +1,7 @@
 package skillbill.cli.goal
 
+import skillbill.contracts.SharedPayloadKeys
+
 import com.github.ajalt.clikt.core.UsageError
 import com.github.ajalt.clikt.parameters.arguments.argument
 import com.github.ajalt.clikt.parameters.options.default
@@ -208,8 +210,8 @@ class GoalWatchCommand(
       }
     }
     val payload = linkedMapOf<String, Any?>(
-      "status" to latestRefresh.get("status"),
-      "issue_key" to issueKey,
+      SharedPayloadKeys.STATUS to latestRefresh.get(SharedPayloadKeys.STATUS),
+      SharedPayloadKeys.ISSUE_KEY to issueKey,
       "refresh_count" to refreshCount,
       "interval_seconds" to intervalSeconds,
       "latest_refresh" to latestRefresh,

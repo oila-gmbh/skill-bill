@@ -1,5 +1,11 @@
 package skillbill.infrastructure.sqlite.goal
 
+import skillbill.contracts.review.ReviewVerificationSignalKeys
+
+import skillbill.contracts.review.ReviewFindingPayloadKeys
+
+import skillbill.contracts.SharedPayloadKeys
+
 import skillbill.goalrunner.model.ReviewFindingOutcome
 import skillbill.goalrunner.model.ReviewFindingOutcomeRecord
 import java.sql.Connection
@@ -53,12 +59,12 @@ internal class UnaddressedFindingsOutcomeRuntime(private val connection: Connect
         while (rows.next()) {
           add(
             ReviewFindingOutcomeRecord(
-              workflowId = rows.getString("workflow_id"),
+              workflowId = rows.getString(SharedPayloadKeys.WORKFLOW_ID),
               reviewPassNumber = rows.getInt("review_pass_number"),
               findingOrdinal = rows.getInt("finding_ordinal"),
               outcome = ReviewFindingOutcome.fromWireValue(rows.getString("outcome")),
-              reviewRunId = rows.getString("review_run_id"),
-              findingId = rows.getString("finding_id"),
+              reviewRunId = rows.getString(ReviewVerificationSignalKeys.REVIEW_RUN_ID),
+              findingId = rows.getString(ReviewFindingPayloadKeys.FINDING_ID),
               findingKey = rows.getString("finding_key"),
             ),
           )

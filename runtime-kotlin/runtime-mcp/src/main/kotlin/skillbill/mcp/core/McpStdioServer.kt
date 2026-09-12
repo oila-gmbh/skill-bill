@@ -1,5 +1,7 @@
 package skillbill.mcp.core
 
+import skillbill.contracts.SharedPayloadKeys
+
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import skillbill.SkillBillVersion
@@ -55,7 +57,7 @@ object McpStdioServer {
     val arguments = JsonCodec.anyToStringAnyMap(params["arguments"]).orEmpty()
     validateStrictArguments(params)?.let { strictError ->
       return mcpToolResult(
-        mapOf("status" to "error", "tool" to toolName, "error" to strictError),
+        mapOf(SharedPayloadKeys.STATUS to "error", "tool" to toolName, "error" to strictError),
         isError = true,
       )
     }
@@ -105,7 +107,7 @@ private fun dispatchMcpToolCall(
 }
 
 private fun mcpToolErrorResult(toolName: String, error: Exception): Map<String, Any?> = mcpToolResult(
-  mapOf("status" to "error", "tool" to toolName, "error" to error.message.orEmpty()),
+  mapOf(SharedPayloadKeys.STATUS to "error", "tool" to toolName, "error" to error.message.orEmpty()),
   isError = true,
 )
 

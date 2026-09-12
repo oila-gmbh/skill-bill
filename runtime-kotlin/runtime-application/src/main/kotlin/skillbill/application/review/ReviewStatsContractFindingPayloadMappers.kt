@@ -1,5 +1,7 @@
 package skillbill.application.review
 
+import skillbill.contracts.review.ReviewFindingPayloadKeys
+
 import skillbill.review.model.ReviewFindingDetail
 import skillbill.review.model.ReviewFindingStats
 import skillbill.review.model.ReviewHealthStats
@@ -48,8 +50,8 @@ internal fun ReviewHealthStats.toPayload(): Map<String, Any?> = linkedMapOf(
 )
 
 internal fun ReviewFindingDetail.toPayload(): Map<String, Any?> = linkedMapOf<String, Any?>(
-  "finding_id" to findingId,
-  "issue_category" to issueCategory,
+  ReviewFindingPayloadKeys.FINDING_ID to findingId,
+  ReviewFindingPayloadKeys.ISSUE_CATEGORY to issueCategory,
   "severity" to severity,
   "confidence" to confidence,
   "location" to location,

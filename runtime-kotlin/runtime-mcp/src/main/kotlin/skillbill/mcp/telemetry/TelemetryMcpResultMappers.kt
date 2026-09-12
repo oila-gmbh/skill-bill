@@ -1,10 +1,12 @@
 package skillbill.mcp.telemetry
 
+import skillbill.contracts.SharedPayloadKeys
+
 import skillbill.telemetry.model.TelemetryProxyCapabilities
 import skillbill.telemetry.model.TelemetryRemoteStatsResult
 
 internal fun TelemetryProxyCapabilities.toMcpMap(): Map<String, Any?> = linkedMapOf<String, Any?>(
-  "contract_version" to contractVersion,
+  SharedPayloadKeys.CONTRACT_VERSION to contractVersion,
   "source" to source,
   "proxy_url" to proxyUrl,
   "capabilities_url" to capabilitiesUrl,

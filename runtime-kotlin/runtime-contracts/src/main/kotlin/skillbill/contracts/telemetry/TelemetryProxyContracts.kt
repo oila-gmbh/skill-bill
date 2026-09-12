@@ -1,5 +1,7 @@
 package skillbill.contracts.telemetry
 
+import skillbill.contracts.SharedPayloadKeys
+
 data class TelemetryProxyBatchEvent(
   val event: String,
   val distinctId: String,
@@ -37,7 +39,7 @@ data class RemoteStatsQueryPayload(
 }
 
 fun defaultProxyCapabilities(proxyUrl: String, capabilitiesUrl: String): Map<String, Any?> = mapOf(
-  "contract_version" to "0",
+  SharedPayloadKeys.CONTRACT_VERSION to "0",
   "source" to "remote_proxy",
   "proxy_url" to proxyUrl,
   "capabilities_url" to capabilitiesUrl,

@@ -1,11 +1,13 @@
 package skillbill.goalrunner
 
+import skillbill.contracts.SharedPayloadKeys
+
 import skillbill.goalrunner.model.GoalObservabilityProgressEvent
 import skillbill.goalrunner.model.GoalRunnerProgressEvent
 import skillbill.workflow.goal.model.GoalObservabilityEvent
 
 fun Map<*, *>.toGoalRunnerProgressEventOrNull(): GoalRunnerProgressEvent? {
-  val stepId = this["step_id"]?.toString()?.takeIf(String::isNotBlank)
+  val stepId = this[SharedPayloadKeys.STEP_ID]?.toString()?.takeIf(String::isNotBlank)
   val kind = this["kind"]?.toString()?.takeIf(String::isNotBlank)
   val timestamp = this["timestamp"]?.toString()?.takeIf(String::isNotBlank)
   return if (stepId != null && kind != null && timestamp != null) {

@@ -1,5 +1,9 @@
 package skillbill.goalrunner.subtaskreview
 
+import skillbill.contracts.review.ReviewFindingPayloadKeys
+
+import skillbill.contracts.SharedPayloadKeys
+
 import skillbill.contracts.JsonCodec
 import skillbill.goalrunner.model.ReviewFindingOutcome
 import skillbill.goalrunner.model.ReviewFindingOutcomeRecord
@@ -42,7 +46,7 @@ object GoalSubtaskReviewOutcomeDispositionReduction {
     output: Map<String, Any?>,
     priorBlockerFindingIds: List<String> = emptyList(),
   ): List<GoalSubtaskBlockerDisposition> {
-    val dispositions = output["produced_outputs"]
+    val dispositions = output[SharedPayloadKeys.PRODUCED_OUTPUTS]
       ?.let(JsonCodec::anyToStringAnyMap)
       ?.get("blocker_dispositions")
       ?.let { it as? List<*> }
@@ -101,10 +105,10 @@ private fun blockerDisposition(index: Int, entry: Any?): GoalSubtaskBlockerDispo
     reviewStateError("$path.evidence", "must cite the specific changed lines that settle the Blocker.")
   }
   return GoalSubtaskBlockerDisposition(
-    findingId = (disposition["finding_id"] as? String)?.trim()?.takeIf(String::isNotBlank)
+    findingId = (disposition[ReviewFindingPayloadKeys.FINDING_ID] as? String)?.trim()?.takeIf(String::isNotBlank)
       ?: reviewStateError("$path.finding_id", "must be a non-blank prior Blocker finding id."),
     verdict = GoalSubtaskBlockerDispositionVerdict.fromWire(
-      (disposition["verdict"] as? String)?.trim()
+      (disposition[SharedPayloadKeys.VERDICT] as? String)?.trim()
         ?: reviewStateError("$path.verdict", "must be resolved or unresolved."),
     ),
     evidence = evidence,
