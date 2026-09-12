@@ -16,7 +16,9 @@ object AgentAddonPromptFormatter {
       appendLine(guard)
       selection.entries.forEachIndexed { index, entry ->
         appendLine()
-        appendLine("### ${index + 1}. ${entry.persisted.slug}")
+        val slug = entry.persisted.slug
+        appendLine("### agent_addon_${slug.replace('-', '_')} (addon_content:$slug)")
+        appendLine("### ${index + 1}. $slug")
         appendLine("Source: ${entry.persisted.sourceIdentity}")
         appendLine("SHA-256: ${entry.persisted.contentSha256}")
         require(!entry.content.contains(BEGIN) && !entry.content.contains(END)) {
