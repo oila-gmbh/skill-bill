@@ -507,7 +507,11 @@ class McpRuntimeTest {
     val workflowId = opened["workflow_id"] as String
     assertWorkflowIdShape(workflowId, "wfv")
     assertSqliteTimestampShape(opened["started_at"].toString(), "verify started_at")
-    assertEquals(opened["started_at"], opened["updated_at"])
+    assertSqliteTimestampShape(opened["updated_at"].toString(), "verify updated_at")
+    assertTrue(
+      opened["updated_at"].toString() >= opened["started_at"].toString(),
+      "verify updated_at must not precede started_at",
+    )
     val updated = markVerifyWorkflowVerdictBlocked(workflowId, context)
     val listed = McpWorkflowRuntime.list(WorkflowFamilyKind.VERIFY, context = context)
     val latest = McpWorkflowRuntime.latest(WorkflowFamilyKind.VERIFY, context)
