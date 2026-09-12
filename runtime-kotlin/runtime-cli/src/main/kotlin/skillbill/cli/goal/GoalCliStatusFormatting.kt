@@ -3,6 +3,7 @@ package skillbill.cli.goal
 import skillbill.cli.kernel.detectInvokingAgentId
 import skillbill.cli.model.CliRunInputs
 import skillbill.contracts.SharedPayloadKeys
+import skillbill.contracts.workflow.ValidationEvidencePayloadKeys
 import skillbill.engine.goalrunner.model.GoalRunnerStatusRequest
 import skillbill.error.DatabaseAccessError
 import skillbill.goalrunner.model.ExecutionLiveness
@@ -87,6 +88,12 @@ internal fun GoalRunnerStatusProjection?.toGoalStatusCliMap(issueKey: String): M
     it.selectedDiffHunks?.let { hunks -> put("selected_diff_hunks", hunks.toGoalSelectedDiffHunksCliMap()) }
     putGoalLedgerCliEntries(it)
     it.outOfBandAcceptances.toGoalAcceptanceCliList()?.let { list -> put("out_of_band_acceptances", list) }
+    if (it.completedSubtaskValidation.isNotEmpty()) {
+      put(
+        ValidationEvidencePayloadKeys.COMPLETED_SUBTASK_VALIDATION,
+        it.completedSubtaskValidation.map { evidence -> evidence.toStatusMap() },
+      )
+    }
   }
 } ?: linkedMapOf(
   SharedPayloadKeys.STATUS to "not_found",
@@ -162,6 +169,15 @@ internal fun List<GoalRunnerAcceptedSubtask>.toGoalAcceptanceCliList(): List<Map
 }
 
 internal fun goalStatusText(payload: Map<String, Any?>): String = buildString {
+  appendGoalStatusSummary(payload)
+  appendPlanningStatusLines(payload)
+  appendObservabilityStatusLines(payload)
+  appendOperatorSurfaceLines(payload)
+  appendValidationStatusLines(payload)
+  appendDiffStatusLines(payload)
+}
+
+private fun StringBuilder.appendGoalStatusSummary(payload: Map<String, Any?>) {
   appendLine("goal: ${payload[SharedPayloadKeys.ISSUE_KEY]}")
   appendLine("status: ${payload[SharedPayloadKeys.STATUS]}")
   appendLine("complete: ${payload["complete_count"]}")
@@ -176,6 +192,9 @@ internal fun goalStatusText(payload: Map<String, Any?>): String = buildString {
   appendLine("pause_requested: ${payload["pause_requested"]}")
   appendLine("pause_reason: ${payload["pause_reason"] ?: "none"}")
   appendLine("stop_after_subtask: ${payload["stop_after_subtask"] ?: "none"}")
+}
+
+private fun StringBuilder.appendPlanningStatusLines(payload: Map<String, Any?>) {
   (payload["planning"] as? Map<*, *>)?.let { planning ->
     appendLine(
       "planning: state=${planning["state"]} shared_preplan=${planning["shared_preplan_prepared"]} " +
@@ -185,14 +204,35 @@ internal fun goalStatusText(payload: Map<String, Any?>): String = buildString {
     )
     planning["reason"]?.let { appendLine("planning_reason: $it") }
   }
+}
+
+private fun StringBuilder.appendObservabilityStatusLines(payload: Map<String, Any?>) {
   (payload["latest_observability_event"] as? Map<*, *>)?.let { event ->
     appendLine(
       "latest_observability: phase=${event["workflow_phase"]} role=${event["worker_role"]} " +
         "liveness=${event["liveness_class"]} sequence=${event["sequence_number"]}",
     )
   }
-  appendOperatorSurfaceLines(payload)
-  appendDiffStatusLines(payload)
+}
+
+private fun StringBuilder.appendValidationStatusLines(payload: Map<String, Any?>) {
+  (payload[ValidationEvidencePayloadKeys.COMPLETED_SUBTASK_VALIDATION] as? List<*>)?.forEach { raw ->
+    val evidence = raw as? Map<*, *> ?: return@forEach
+    val subtaskId = evidence[SharedPayloadKeys.SUBTASK_ID]
+    val validation = evidence[ValidationEvidencePayloadKeys.VALIDATION_EVIDENCE] as? Map<*, *>
+    val results = validation?.get(ValidationEvidencePayloadKeys.RESULTS) as? List<*>
+    val integrity = evidence[ValidationEvidencePayloadKeys.INTEGRITY_PROBLEM]
+    when {
+      integrity != null -> appendLine("validation_integrity: subtask=$subtaskId problem=$integrity")
+      results != null -> results.forEach { rawResult ->
+        val result = rawResult as? Map<*, *> ?: return@forEach
+        appendLine(
+          "validation: subtask=$subtaskId command=${result[ValidationEvidencePayloadKeys.COMMAND]} " +
+            "exit_code=${result[ValidationEvidencePayloadKeys.EXIT_CODE]}",
+        )
+      }
+    }
+  }
 }
 
 private fun planningWaveText(waveSize: Int): String = when (waveSize) {

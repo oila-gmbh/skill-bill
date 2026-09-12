@@ -12,6 +12,7 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutput
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseRecord
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeReviewFinding
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeTransitionDeclaration
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeValidationEvidence
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeVerdict
 import skillbill.workflow.taskruntime.model.requireAcceptedOutput
 
@@ -21,6 +22,9 @@ class FeatureTaskRuntimeRunState(
   val initialLedger: List<FeatureTaskRuntimePhaseLedgerEntry> = emptyList(),
   val outputValidator: FeatureTaskRuntimePhaseOutputValidator,
   initialReviewGeneration: Int = 0,
+  private val validationEvidenceCommandResolver: (FeatureTaskRuntimeValidationEvidence?) -> String? = {
+    it?.results?.lastOrNull()?.command
+  },
 ) {
   internal var reviewGeneration: Int = initialReviewGeneration
     private set
@@ -55,6 +59,21 @@ class FeatureTaskRuntimeRunState(
           it,
           gateInvalidatedPhases,
           ::durableVerdictFor,
+        )
+      }
+      .also { completedPhases ->
+        invalidateIncompleteValidationSettlement(
+          state = ValidationSettlementState(
+            completed = completedPhases,
+            initialRecords = initialRecords,
+            transitions = transitions,
+            gateInvalidatedPhases = gateInvalidatedPhases,
+          ),
+          validation = ValidationSettlementValidation(
+            validatedRecordToOutput = ::validatedRecordToOutput,
+            validationEvidenceCommandResolver = validationEvidenceCommandResolver,
+            durableVerdictFor = ::durableVerdictFor,
+          ),
         )
       }
   val outputs: MutableList<FeatureTaskRuntimePhaseOutput> =

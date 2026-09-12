@@ -1,5 +1,14 @@
 # featuretask runtime boundary history
 
+## [2026-09-12] 0AC-16 — Evidence-backed validation settlement
+Areas: orchestration/contracts, runtime-kotlin/{runtime-cli,runtime-contracts,runtime-domain,runtime-engine,runtime-infra-fs}
+- Validation settlement now requires schema-valid command identity and integer exit-code evidence, with missing, malformed, or non-zero required results unable to advance completion.
+- Evidence persists through settlement and resume, remains readable for supported legacy records, and appears in goal status with visible integrity failures for absent or invalid evidence.
+- Pattern: make validation evidence a runtime-owned projection enforced at the producer boundary and reuse the same command validation for live and persisted settlement. reusable
+- Known limitations: platform validation commands and routing are unchanged; finalized subtasks are not re-executed automatically.
+Feature flag: N/A
+Acceptance criteria: 7/7 implemented
+
 ## [2026-09-11] SKILL-233 — last-commit review phase, caller-scoped standalone
 Areas: runtime-engine/featuretask, runtime-cli/codereview, application/review, skills/bill-code-review
 - Feature-task and goal `review` always diffs `HEAD^..HEAD`. It no longer sends a worktree-from-base packet or a pre-baked diff blob.

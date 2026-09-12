@@ -6,6 +6,8 @@ import skillbill.engine.featuretask.model.FeatureTaskRuntimeRunReport
 import skillbill.engine.featuretask.model.FeatureTaskRuntimeRunRequest
 import skillbill.engine.featuretask.model.RemediationBaseBlocked
 import skillbill.engine.featuretask.model.RemediationBaseCoherent
+import skillbill.engine.featuretask.validation.durableValidationChangedPaths
+import skillbill.engine.featuretask.validation.resolveRequiredValidationCommand
 import skillbill.error.FeatureTaskRuntimeOperatorDecisionRejectedError
 import skillbill.workflow.decomposition.model.SpecSource
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeTransitionDeclaration
@@ -52,13 +54,7 @@ fun FeatureTaskRuntimeRunner.driveExecutePreparedRunLoop(
       is RemediationBaseCoherent -> Unit
     }
   }
-  val state = FeatureTaskRuntimeRunState(
-    recorder.loadPhaseRecords(runRequest.workflowId).orEmpty(),
-    transitions,
-    recorder.loadPhaseLedger(runRequest.workflowId).orEmpty(),
-    outputValidator,
-    recorder.reconcileReviewGeneration(runRequest.workflowId),
-  )
+  val state = createExecutePreparedRunState(runRequest, transitions)
   val loop = FeatureTaskRuntimeRunLoop(
     recorder = recorder,
     goalContinuationRecorder = goalContinuationRecorder,
@@ -86,6 +82,32 @@ fun FeatureTaskRuntimeRunner.driveExecutePreparedRunLoop(
   loop.drive()
   return loop.report()
 }
+
+private fun FeatureTaskRuntimeRunner.createExecutePreparedRunState(
+  runRequest: FeatureTaskRuntimeRunRequest,
+  transitions: FeatureTaskRuntimeTransitionDeclaration,
+): FeatureTaskRuntimeRunState = FeatureTaskRuntimeRunState(
+  initialRecords = recorder.loadPhaseRecords(runRequest.workflowId).orEmpty(),
+  transitions = transitions,
+  initialLedger = recorder.loadPhaseLedger(runRequest.workflowId).orEmpty(),
+  outputValidator = outputValidator,
+  initialReviewGeneration = recorder.reconcileReviewGeneration(runRequest.workflowId),
+  validationEvidenceCommandResolver = { validationEvidence ->
+    resolveRequiredValidationCommand(
+      resolver = phaseGates.validationGateResolver,
+      requiredCommandForDeclaration = { declaration ->
+        phaseGates.validationGateCoordinator.requiredValidationCommand(
+          runRequest.repoRoot,
+          runRequest.workflowId,
+          declaration,
+        )
+      },
+      changedPaths = durableValidationChangedPaths(recorder, runRequest.workflowId),
+      evidence = validationEvidence,
+      sourceLabel = "validate",
+    )
+  },
+)
 
 fun FeatureTaskRuntimeRunner.finalizeExecutePreparedRunReport(
   runRequest: FeatureTaskRuntimeRunRequest,

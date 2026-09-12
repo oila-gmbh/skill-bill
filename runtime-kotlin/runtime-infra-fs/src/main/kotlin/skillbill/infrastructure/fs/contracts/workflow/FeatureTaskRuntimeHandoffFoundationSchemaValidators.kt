@@ -14,11 +14,13 @@ import skillbill.contracts.workflow.FeatureTaskRuntimePersistenceSchemaPaths
 import skillbill.contracts.workflow.FeatureTaskRuntimePhaseHandoffSchemaPaths
 import skillbill.contracts.workflow.FeatureTaskRuntimeProjectionMeasurementSchemaPaths
 import skillbill.contracts.workflow.FeatureTaskRuntimeSharedEvidenceProjectionSchemaPaths
+import skillbill.contracts.workflow.FeatureTaskRuntimeValidationEvidenceSchemaPaths
 import skillbill.error.InvalidFeatureTaskRuntimeBuildReceiptSchemaError
 import skillbill.error.InvalidFeatureTaskRuntimePersistenceSchemaError
 import skillbill.error.InvalidFeatureTaskRuntimePhaseHandoffSchemaError
 import skillbill.error.InvalidFeatureTaskRuntimeProjectionMeasurementSchemaError
 import skillbill.error.InvalidFeatureTaskRuntimeSharedEvidenceProjectionSchemaError
+import skillbill.error.InvalidFeatureTaskRuntimeValidationEvidenceSchemaError
 import skillbill.error.ShellContentContractException
 import skillbill.infrastructure.fs.contracts.LOCALE_STABLE_SCHEMA_CONFIG
 import java.io.IOException
@@ -62,6 +64,15 @@ object FeatureTaskRuntimeSharedEvidenceProjectionSchemaValidator {
     FeatureTaskRuntimeSharedEvidenceProjectionSchemaPaths.CLASSPATH_RESOURCE,
     FeatureTaskRuntimeSharedEvidenceProjectionSchemaPaths.EXPECTED_SCHEMA_ID,
   ) { reason -> InvalidFeatureTaskRuntimeSharedEvidenceProjectionSchemaError(sourceLabel, reason) }
+}
+
+object FeatureTaskRuntimeValidationEvidenceSchemaValidator {
+  fun validate(payload: Map<String, Any?>, sourceLabel: String) = validateAgainst(
+    payload,
+    FeatureTaskRuntimeValidationEvidenceSchemaPaths.REPO_RELATIVE_PATH,
+    FeatureTaskRuntimeValidationEvidenceSchemaPaths.CLASSPATH_RESOURCE,
+    FeatureTaskRuntimeValidationEvidenceSchemaPaths.EXPECTED_SCHEMA_ID,
+  ) { reason -> InvalidFeatureTaskRuntimeValidationEvidenceSchemaError(sourceLabel, reason) }
 }
 
 object FeatureTaskRuntimeBuildReceiptSchemaValidator {

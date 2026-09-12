@@ -457,6 +457,7 @@ class FeatureTaskRuntimeHandoffProjectionValidatorContractTest {
       "repository_checkpoint",
       "gate_run_count",
       "gate_runs",
+      "validation_evidence",
     )
     listOf(
       FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_WRITE_HISTORY,

@@ -73,6 +73,7 @@ internal fun assembleGoalRunnerStatusProjection(
     reAttemptCauseCounts = extras.reAttemptCauseCounts,
     findingsInScope = extras.findingsInScope,
     outOfBandAcceptances = extras.outOfBandAcceptances,
+    completedSubtaskValidation = extras.completedSubtaskValidation,
     paused = extras.paused,
     pauseRequested = extras.pauseRequested,
     pauseReason = extras.pauseReason,

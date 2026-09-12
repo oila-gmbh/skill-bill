@@ -4,6 +4,7 @@ import me.tatarka.inject.annotations.Inject
 import skillbill.boundary.OpenBoundaryMap
 import skillbill.contracts.JsonCodec
 import skillbill.contracts.SharedPayloadKeys
+import skillbill.contracts.workflow.ValidationEvidencePayloadKeys
 import skillbill.engine.featuretask.model.FeatureTaskPhaseSettlementAuditRequest
 import skillbill.engine.featuretask.model.FeatureTaskPhaseSettlementBlockRequest
 import skillbill.engine.featuretask.model.FeatureTaskPhaseSettlementCompleteRequest
@@ -12,6 +13,7 @@ import skillbill.ports.featuretask.model.FeatureTaskPhaseSettlement
 import skillbill.ports.featuretask.model.FeatureTaskPhaseSettlementKind
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import skillbill.workflow.taskruntime.ProsePhaseOutputSynthesizer
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeValidationEvidence
 import skillbill.workflow.taskruntime.model.SettlementEnvelopeRequest
 import java.time.Clock
 
@@ -102,8 +104,19 @@ class FeatureTaskPhaseSettlementService(
   @OpenBoundaryMap("Durable MCP phase-settlement envelope wire map for gate consumption")
   fun findEnvelope(workflowId: String, phaseId: String, attempt: Int): Map<String, Any?>? {
     val settlement = repository.find(workflowId, phaseId, attempt) ?: return null
-    return JsonCodec.parseObjectOrNull(settlement.envelopeJson)
+    val envelope = JsonCodec.parseObjectOrNull(settlement.envelopeJson)
       ?.let { JsonCodec.anyToStringAnyMap(JsonCodec.jsonElementToValue(it)) }
+    val evidence = envelope
+      ?.get(SharedPayloadKeys.PRODUCED_OUTPUTS)
+      ?.let(JsonCodec::anyToStringAnyMap)
+      ?.get(ValidationEvidencePayloadKeys.VALIDATION_RESULT)
+      ?.let(JsonCodec::anyToStringAnyMap)
+      ?.get(ValidationEvidencePayloadKeys.VALIDATION_EVIDENCE)
+      ?.let(JsonCodec::anyToStringAnyMap)
+    if (evidence != null) {
+      FeatureTaskRuntimeValidationEvidence.fromArtifactMap(evidence, "$phaseId settlement")
+    }
+    return envelope
   }
 
   fun clear(workflowId: String, phaseId: String, attempt: Int): Boolean =

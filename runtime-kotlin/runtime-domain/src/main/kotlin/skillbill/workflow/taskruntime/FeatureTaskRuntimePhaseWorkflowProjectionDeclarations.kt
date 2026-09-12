@@ -1,5 +1,6 @@
 package skillbill.workflow.taskruntime
 
+import skillbill.contracts.workflow.ValidationEvidencePayloadKeys
 import skillbill.workflow.engine.model.WorkflowDefinition
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeHandoffProjectionBudget
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeHandoffPromptVisibility
@@ -277,6 +278,7 @@ internal object FeatureTaskRuntimePhaseWorkflowProjectionDeclarations {
             "repository_checkpoint",
             "gate_run_count",
             "gate_runs",
+            ValidationEvidencePayloadKeys.VALIDATION_EVIDENCE,
           ),
           checkpointPolicy = FeatureTaskRuntimeRepositoryCheckpointPolicy.REFRESH_FROM_REPOSITORY,
           required = true,
@@ -294,6 +296,7 @@ internal object FeatureTaskRuntimePhaseWorkflowProjectionDeclarations {
             "repository_checkpoint",
             "gate_run_count",
             "gate_runs",
+            ValidationEvidencePayloadKeys.VALIDATION_EVIDENCE,
           ),
           checkpointPolicy = FeatureTaskRuntimeRepositoryCheckpointPolicy.REFRESH_FROM_REPOSITORY,
           required = false,
@@ -334,6 +337,7 @@ internal object FeatureTaskRuntimePhaseWorkflowProjectionDeclarations {
             "repository_checkpoint",
             "gate_run_count",
             "gate_runs",
+            ValidationEvidencePayloadKeys.VALIDATION_EVIDENCE,
           ),
           checkpointPolicy = FeatureTaskRuntimeRepositoryCheckpointPolicy.REFRESH_FROM_REPOSITORY,
           required = true,

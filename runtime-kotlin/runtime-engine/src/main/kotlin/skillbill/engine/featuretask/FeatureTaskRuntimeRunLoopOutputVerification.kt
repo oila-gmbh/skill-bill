@@ -4,6 +4,7 @@ import skillbill.application.reviewevidence.FeatureTaskRuntimeSharedReviewEviden
 import skillbill.application.reviewevidence.model.FeatureTaskRuntimeSharedReviewEvidenceResolved
 import skillbill.contracts.JsonCodec
 import skillbill.contracts.SharedPayloadKeys
+import skillbill.contracts.workflow.ValidationEvidencePayloadKeys
 import skillbill.engine.featuretask.model.FeatureTaskRuntimeFindingBoundaryMemoryRequest
 import skillbill.engine.featuretask.model.FeatureTaskRuntimeFindingBoundaryMemorySection
 import skillbill.engine.featuretask.model.FeatureTaskRuntimeImplementationContinuation
@@ -60,13 +61,15 @@ object FeatureTaskRuntimeRunLoopOutputVerification {
     val produced = JsonCodec.anyToStringAnyMap(normalizedOutput.envelope[SharedPayloadKeys.PRODUCED_OUTPUTS])
       ?.toMutableMap()
       ?: return normalizedOutput
-    val validationResult = JsonCodec.anyToStringAnyMap(produced["validation_result"])
+    val validationResult = JsonCodec.anyToStringAnyMap(
+      produced[ValidationEvidencePayloadKeys.VALIDATION_RESULT],
+    )
       ?.toMutableMap()
       ?: return normalizedOutput
     validationResult["gate_run_count"] = 0
     validationResult["gate_runs"] = emptyList<Any?>()
     validationResult.remove("suppression_justifications")
-    produced["validation_result"] = validationResult
+    produced[ValidationEvidencePayloadKeys.VALIDATION_RESULT] = validationResult
     val envelope = normalizedOutput.envelope.toMutableMap()
     envelope[SharedPayloadKeys.PRODUCED_OUTPUTS] = produced
     return runLoop.outputValidator.validatePhaseOutput(

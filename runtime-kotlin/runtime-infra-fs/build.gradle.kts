@@ -577,6 +577,11 @@ val canonicalFeatureTaskRuntimeBuildReceiptSchemaPath: String =
     .resolve("orchestration/contracts/feature-task-runtime-build-receipt.yaml")
     .absolutePath
 
+val canonicalFeatureTaskRuntimeValidationEvidenceSchemaPath: String =
+  rootProject.projectDir.parentFile
+    .resolve("orchestration/contracts/feature-task-runtime-validation-evidence-schema.yaml")
+    .absolutePath
+
 val copyFeatureTaskRuntimeBuildReceiptSchema =
   tasks.register<Copy>("copyFeatureTaskRuntimeBuildReceiptSchema") {
     val schemaPath = canonicalFeatureTaskRuntimeBuildReceiptSchemaPath
@@ -590,6 +595,23 @@ val copyFeatureTaskRuntimeBuildReceiptSchema =
     doFirst {
       require(File(schemaPath).exists()) {
         "SKILL-204: canonical build-receipt schema is missing at $schemaPath."
+      }
+    }
+  }
+
+val copyFeatureTaskRuntimeValidationEvidenceSchema =
+  tasks.register<Copy>("copyFeatureTaskRuntimeValidationEvidenceSchema") {
+    val schemaPath = canonicalFeatureTaskRuntimeValidationEvidenceSchemaPath
+    from(schemaPath)
+    into(
+      layout.buildDirectory.dir(
+        "generated/skillbill-infrastructure-fs/skillbill/infrastructure/fs/contracts",
+      ),
+    )
+    inputs.file(schemaPath)
+    doFirst {
+      require(File(schemaPath).exists()) {
+        "SKILL-360: canonical validation-evidence schema is missing at $schemaPath."
       }
     }
   }
@@ -732,6 +754,7 @@ tasks.named("processResources") {
   dependsOn(copyFeatureTaskRuntimeProjectionMeasurementSchema)
   dependsOn(copyFeatureTaskRuntimeSharedEvidenceProjectionSchema)
   dependsOn(copyFeatureTaskRuntimeBuildReceiptSchema)
+  dependsOn(copyFeatureTaskRuntimeValidationEvidenceSchema)
   dependsOn(copyFeatureTaskExecutionIdentitySchema)
   dependsOn(copyFeatureTaskRuntimeWorkerOwnershipSchema)
   dependsOn(copyGoalPlanningPreparationSchema)
@@ -763,6 +786,7 @@ tasks.named("processTestResources") {
   dependsOn(copyFeatureTaskRuntimeProjectionMeasurementSchema)
   dependsOn(copyFeatureTaskRuntimeSharedEvidenceProjectionSchema)
   dependsOn(copyFeatureTaskRuntimeBuildReceiptSchema)
+  dependsOn(copyFeatureTaskRuntimeValidationEvidenceSchema)
   dependsOn(copyFeatureTaskExecutionIdentitySchema)
   dependsOn(copyFeatureTaskRuntimeWorkerOwnershipSchema)
   dependsOn(copyGoalPlanningPreparationSchema)

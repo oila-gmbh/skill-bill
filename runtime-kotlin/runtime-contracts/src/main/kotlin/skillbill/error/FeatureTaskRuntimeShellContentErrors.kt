@@ -314,6 +314,15 @@ class InvalidFeatureTaskRuntimeBuildReceiptSchemaError(
   cause,
 )
 
+class InvalidFeatureTaskRuntimeValidationEvidenceSchemaError(
+  val sourceLabel: String,
+  val reason: String,
+  cause: Throwable? = null,
+) : ShellContentContractException(
+  "Feature-task-runtime validation evidence '$sourceLabel' fails schema validation: $reason",
+  cause,
+)
+
 /**
  * Surfaced when a feature-task-runtime path would enter a gated phase before its gating phase
  * settled with the required verdict — for example entering `review` before `audit` reached
