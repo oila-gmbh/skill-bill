@@ -1,6 +1,7 @@
 package skillbill.goalrunner.subtaskreview
 
 import skillbill.contracts.JsonCodec
+import skillbill.contracts.SharedPayloadKeys
 import skillbill.goalrunner.model.ReviewFindingOutcomeRecord
 import skillbill.goalrunner.model.UnaddressedFinding
 import skillbill.goalrunner.model.normalizedUnaddressedFindingCategory
@@ -103,13 +104,13 @@ object GoalSubtaskReviewSummaryReducer {
   }
 
   fun commitFocusedAccounting(output: Map<String, Any?>): GoalSubtaskCommitFocusedAccounting? =
-    output["produced_outputs"]
+    output[SharedPayloadKeys.PRODUCED_OUTPUTS]
       ?.let(JsonCodec::anyToStringAnyMap)
       ?.get("commit_focused_accounting")
       ?.let(JsonCodec::anyToStringAnyMap)
       ?.let { GoalSubtaskCommitFocusedAccounting.fromArtifactMap(it, "produced_outputs.commit_focused_accounting") }
 
-  fun evidenceCoverageComplete(output: Map<String, Any?>): Boolean? = output["produced_outputs"]
+  fun evidenceCoverageComplete(output: Map<String, Any?>): Boolean? = output[SharedPayloadKeys.PRODUCED_OUTPUTS]
     ?.let(JsonCodec::anyToStringAnyMap)
     ?.get(FeatureTaskRuntimeVerificationSignalKeys.EVIDENCE_COVERAGE_COMPLETE) as? Boolean
 
@@ -184,7 +185,7 @@ fun reviewPassVerdict(
   if (GoalSubtaskReviewSummaryReducer.evidenceCoverageComplete(output) == false) {
     return FeatureTaskRuntimeVerdict.CHANGES_REQUESTED
   }
-  val declaredVerdict = (output["verdict"] as? String)?.trim()
+  val declaredVerdict = (output[SharedPayloadKeys.VERDICT] as? String)?.trim()
   val changesRequested = declaredVerdict in setOf("needs_fix", FeatureTaskRuntimeVerdict.CHANGES_REQUESTED.wireValue)
   val reportedFindingsWereFiltered = findings.isEmpty() &&
     GoalSubtaskReviewStructuredFindingsParse.structuredFindings(output).isNotEmpty()

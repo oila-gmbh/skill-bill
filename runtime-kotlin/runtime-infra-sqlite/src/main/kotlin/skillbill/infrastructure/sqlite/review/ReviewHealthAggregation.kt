@@ -1,5 +1,7 @@
 package skillbill.infrastructure.sqlite.review
 
+import skillbill.contracts.review.ReviewFindingPayloadKeys
+
 private val reviewHealthSources = listOf("standalone", "embedded", "malformed")
 private val reviewHealthOutcomes =
   listOf("finding_accepted", "fix_applied", "finding_edited", "fix_rejected", "false_positive")
@@ -61,7 +63,7 @@ fun aggregateCategorySeverityCrossTab(payloads: List<ReviewHealthPayload>): Map<
   val crossTab = mutableMapOf<String, MutableMap<String, Int>>()
   payloads.forEach { payload ->
     reviewFindingDetails(payload.payload).forEach { detail ->
-      val category = detail["issue_category"]?.toString().orEmpty()
+      val category = detail[ReviewFindingPayloadKeys.ISSUE_CATEGORY]?.toString().orEmpty()
       val severity = normalizeFindingDetailValue("severity", detail["severity"]?.toString().orEmpty())
       if (category.isNotBlank() && severity.isNotBlank()) {
         crossTab.getOrPut(category) { mutableMapOf() }[severity] =

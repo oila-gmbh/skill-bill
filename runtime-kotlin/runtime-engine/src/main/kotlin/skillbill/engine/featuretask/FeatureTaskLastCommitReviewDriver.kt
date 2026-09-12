@@ -70,12 +70,11 @@ class FeatureTaskLastCommitReviewDriver(
     else -> null
   }
 
-  private fun droppedCandidateDiagnostic(rejected: Int, candidateCount: Int): String? =
-    if (rejected == 0) {
-      null
-    } else {
-      "dropped $rejected of $candidateCount [F-XXX] candidate line(s)"
-    }
+  private fun droppedCandidateDiagnostic(rejected: Int, candidateCount: Int): String? = if (rejected == 0) {
+    null
+  } else {
+    "dropped $rejected of $candidateCount [F-XXX] candidate line(s)"
+  }
 
   private fun lastCommitReviewFixPrompt(
     request: ParallelCodeReviewRequest,

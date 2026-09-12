@@ -2,6 +2,7 @@ package skillbill.engine.featuretask
 
 import skillbill.agentaddon.model.AgentAddonSelection
 import skillbill.application.workflow.model.WorkflowFamily
+import skillbill.contracts.SharedPayloadKeys
 import skillbill.error.InvalidGoalSubtaskReviewStateSchemaError
 import skillbill.ports.workflow.WorkflowStateRepository
 import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewBaseline
@@ -81,7 +82,7 @@ fun continuationPatch(
   existing == null -> mapOf(
     FEATURE_TASK_RUNTIME_GOAL_CONTINUATION_ARTIFACT_KEY to continuation.toArtifactMap(),
     "install_sync_result" to mapOf(
-      "status" to "deferred",
+      SharedPayloadKeys.STATUS to "deferred",
       "reason" to
         "goal-continuation defers installer, uninstall, and install-sync flows until the parent goal exits; " +
         "deferred install sync must not block subtask completion",

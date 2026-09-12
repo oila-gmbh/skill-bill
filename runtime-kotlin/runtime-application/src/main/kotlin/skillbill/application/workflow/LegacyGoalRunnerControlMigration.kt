@@ -5,6 +5,7 @@ import skillbill.agentaddon.model.PersistedAgentAddonSelectionEntry
 import skillbill.application.decomposition.decodeArtifacts
 import skillbill.boundary.OpenBoundaryMap
 import skillbill.contracts.JsonCodec
+import skillbill.contracts.SharedPayloadKeys
 import skillbill.ports.goalrunner.GoalRunnerPersistenceSession
 import skillbill.ports.goalrunner.runner.model.GoalRunnerOutOfBandAcceptance
 import skillbill.ports.goalrunner.runner.model.GoalRunnerReviewPolicy
@@ -61,7 +62,7 @@ fun outOfBandAcceptancesFromLegacyArtifacts(artifacts: Map<String, Any?>): Map<I
     val entry = JsonCodec.anyToStringAnyMap(element)
       ?: error("Goal acceptance artifact '$GOAL_OUT_OF_BAND_ACCEPTANCE_ARTIFACT_KEY' entries must be maps.")
     val acceptance = GoalRunnerOutOfBandAcceptance(
-      subtaskId = (entry["subtask_id"] as? Number)?.toInt()
+      subtaskId = (entry[SharedPayloadKeys.SUBTASK_ID] as? Number)?.toInt()
         ?: error("Goal acceptance artifact entry is missing a numeric subtask_id."),
       commitSha = entry["commit_sha"] as? String
         ?: error("Goal acceptance artifact entry is missing commit_sha."),

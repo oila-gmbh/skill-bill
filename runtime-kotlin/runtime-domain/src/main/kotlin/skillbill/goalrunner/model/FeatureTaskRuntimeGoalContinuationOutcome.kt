@@ -1,6 +1,7 @@
 package skillbill.goalrunner.model
 
 import skillbill.boundary.OpenBoundaryMap
+import skillbill.contracts.SharedPayloadKeys
 import skillbill.workflow.taskruntime.model.optionalStringField
 import skillbill.workflow.taskruntime.model.optionalStringListField
 import skillbill.workflow.taskruntime.model.requireIntField
@@ -52,10 +53,10 @@ data class FeatureTaskRuntimeGoalContinuationOutcome(
 
   @OpenBoundaryMap("Feature-task-runtime goal-continuation outcome artifact map at the durable workflow-artifact seam")
   fun toArtifactMap(): Map<String, Any?> = linkedMapOf<String, Any?>(
-    "issue_key" to issueKey,
-    "subtask_id" to subtaskId,
-    "status" to status.wireValue,
-    "workflow_id" to workflowId,
+    SharedPayloadKeys.ISSUE_KEY to issueKey,
+    SharedPayloadKeys.SUBTASK_ID to subtaskId,
+    SharedPayloadKeys.STATUS to status.wireValue,
+    SharedPayloadKeys.WORKFLOW_ID to workflowId,
     "last_resumable_step" to lastResumableStep,
     "participating_agent_ids" to participatingAgentIds,
   ).apply {
@@ -72,7 +73,7 @@ data class FeatureTaskRuntimeGoalContinuationOutcome(
         issueKey = raw.requireStringField("issue_key"),
         subtaskId = raw.requireIntField("subtask_id"),
         status = requireNotNull(GoalRunnerTerminalStatus.fromWire(raw.requireStringField("status"))) {
-          "Unknown goal-continuation outcome status '${raw["status"]}'."
+          "Unknown goal-continuation outcome status '${raw[SharedPayloadKeys.STATUS]}'."
         },
         workflowId = raw.requireStringField("workflow_id"),
         commitSha = raw.optionalStringField("commit_sha"),

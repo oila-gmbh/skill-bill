@@ -1,5 +1,6 @@
 package skillbill.application.review
 
+import skillbill.contracts.review.ReviewFindingPayloadKeys
 import skillbill.review.model.ReviewStageMetrics
 import skillbill.review.model.ReviewStageVerdictDistribution
 
@@ -23,12 +24,12 @@ internal fun ReviewStageMetrics.toStageMetricsPayload(): Map<String, Any?> = lin
 )
 
 internal fun ReviewStageVerdictDistribution.toStageMetricsPayload(): Map<String, Any?> = linkedMapOf(
-  "claim_verdict" to linkedMapOf(
+  ReviewFindingPayloadKeys.CLAIM_VERDICT to linkedMapOf(
     "confirmed" to confirmed,
     "refuted" to refuted,
     "unresolved" to unresolved,
   ),
-  "scope_disposition" to linkedMapOf(
+  ReviewFindingPayloadKeys.SCOPE_DISPOSITION to linkedMapOf(
     "in_scope" to inScope,
     "out_of_scope_preexisting" to outOfScopePreexisting,
     "spec_deviation" to specDeviation,

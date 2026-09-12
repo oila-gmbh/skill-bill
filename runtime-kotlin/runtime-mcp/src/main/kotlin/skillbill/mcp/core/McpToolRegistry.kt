@@ -1,5 +1,8 @@
 package skillbill.mcp.core
 
+import skillbill.contracts.SharedPayloadKeys
+import skillbill.contracts.review.ReviewVerificationSignalKeys
+
 data class McpToolSpec(
   val name: String,
   val description: String,
@@ -99,22 +102,22 @@ object McpToolRegistry {
       "feature_task_phase_complete" to objectSchema(
         required = listOf("workflow_id", "phase_id", "attempt", "value"),
         properties = mapOf(
-          "workflow_id" to stringSchema(minLength = 1),
-          "phase_id" to stringSchema(enum = listOf("preplan", "plan", "implement")),
+          SharedPayloadKeys.WORKFLOW_ID to stringSchema(minLength = 1),
+          SharedPayloadKeys.PHASE_ID to stringSchema(enum = listOf("preplan", "plan", "implement")),
           "attempt" to mapOf("type" to "integer", "minimum" to 1),
-          "value" to stringSchema(minLength = 1),
-          "prompt" to stringSchema(minLength = 1),
-          "summary" to stringSchema(minLength = 1),
+          SharedPayloadKeys.VALUE to stringSchema(minLength = 1),
+          SharedPayloadKeys.PROMPT to stringSchema(minLength = 1),
+          SharedPayloadKeys.SUMMARY to stringSchema(minLength = 1),
         ),
       ),
       "feature_task_phase_block" to objectSchema(
         required = listOf("workflow_id", "phase_id", "attempt", "reason"),
         properties = mapOf(
-          "workflow_id" to stringSchema(minLength = 1),
-          "phase_id" to stringSchema(enum = listOf("preplan", "plan", "implement", "audit")),
+          SharedPayloadKeys.WORKFLOW_ID to stringSchema(minLength = 1),
+          SharedPayloadKeys.PHASE_ID to stringSchema(enum = listOf("preplan", "plan", "implement", "audit")),
           "attempt" to mapOf("type" to "integer", "minimum" to 1),
           "reason" to stringSchema(minLength = 1),
-          "failure_disposition" to stringSchema(
+          SharedPayloadKeys.FAILURE_DISPOSITION to stringSchema(
             enum = listOf(
               "retryable",
               "non_retryable_policy_conflict",
@@ -128,12 +131,12 @@ object McpToolRegistry {
       "feature_task_audit_settle" to objectSchema(
         required = listOf("workflow_id", "attempt", "verdict", "value"),
         properties = mapOf(
-          "workflow_id" to stringSchema(minLength = 1),
-          "phase_id" to stringSchema(enum = listOf("audit")),
+          SharedPayloadKeys.WORKFLOW_ID to stringSchema(minLength = 1),
+          SharedPayloadKeys.PHASE_ID to stringSchema(enum = listOf("audit")),
           "attempt" to mapOf("type" to "integer", "minimum" to 1),
-          "verdict" to stringSchema(enum = listOf("satisfied", "gaps_found")),
-          "value" to stringSchema(minLength = 1),
-          "summary" to stringSchema(minLength = 1),
+          SharedPayloadKeys.VERDICT to stringSchema(enum = listOf("satisfied", "gaps_found")),
+          SharedPayloadKeys.VALUE to stringSchema(minLength = 1),
+          SharedPayloadKeys.SUMMARY to stringSchema(minLength = 1),
         ),
       ),
       "feature_verify_started" to objectSchema(
@@ -295,7 +298,7 @@ object McpToolRegistry {
       "triage_findings" to objectSchema(
         required = listOf("review_run_id", "decisions"),
         properties = mapOf(
-          "review_run_id" to stringSchema(),
+          ReviewVerificationSignalKeys.REVIEW_RUN_ID to stringSchema(),
           "decisions" to arraySchema(stringSchema()),
           "orchestrated" to booleanSchema,
         ),

@@ -18,6 +18,7 @@ import skillbill.cli.kernel.toPayload
 import skillbill.cli.model.CliExecutionResult
 import skillbill.cli.model.CliRunInputs
 import skillbill.cli.model.ExternalCommand
+import skillbill.contracts.SharedPayloadKeys
 
 @Inject
 class VersionCommand(
@@ -140,7 +141,7 @@ class UpdateCommand(
   }
 
   private fun UpdateCommandPlan.toPayload(status: String): Map<String, Any?> = linkedMapOf(
-    "status" to status,
+    SharedPayloadKeys.STATUS to status,
     "command" to command,
     "installer_args" to installerArgs,
   )
@@ -245,7 +246,7 @@ private fun UpdateCheckResult.toText(): String = buildString {
 }
 
 private fun UpdateCheckResult.toPayload(): Map<String, Any?> = linkedMapOf(
-  "status" to status.wireName,
+  SharedPayloadKeys.STATUS to status.wireName,
   "installed_version" to installedVersion,
   "latest_version" to latestVersion,
   "release_url" to releaseUrl,

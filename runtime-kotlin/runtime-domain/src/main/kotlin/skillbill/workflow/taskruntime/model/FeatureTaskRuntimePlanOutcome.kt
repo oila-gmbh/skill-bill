@@ -1,6 +1,7 @@
 package skillbill.workflow.taskruntime.model
 
 import skillbill.boundary.OpenBoundaryMap
+import skillbill.contracts.SharedPayloadKeys
 import skillbill.workflow.decomposition.model.SpecSource
 
 private const val DECOMPOSE_MODE: String = "decompose"
@@ -68,7 +69,7 @@ fun featureTaskRuntimeDecomposePlanOutcomeOrNull(
   val producedOutputs = phaseOutput.stringAnyMap("produced_outputs") ?: return null
   val packageMap = producedOutputs.stringAnyMap("decomposition_package") ?: return null
   if (packageMap["mode"]?.toString() != DECOMPOSE_MODE) return null
-  val summary = phaseOutput["summary"]?.toString().orEmpty()
+  val summary = phaseOutput[SharedPayloadKeys.SUMMARY]?.toString().orEmpty()
   return FeatureTaskRuntimeDecomposePlanOutcome(
     reason = packageMap.firstString("reason", "decomposition_reason").ifBlank { summary },
     featureName = packageMap.firstString("feature_name", "name").ifBlank { "feature" },

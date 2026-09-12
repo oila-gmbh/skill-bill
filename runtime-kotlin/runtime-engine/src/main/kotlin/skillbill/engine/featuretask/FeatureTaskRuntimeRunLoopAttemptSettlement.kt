@@ -3,6 +3,7 @@ package skillbill.engine.featuretask
 import skillbill.application.diagnostics.model.FeatureTaskRuntimeRejectedOutputWrite
 import skillbill.application.diagnostics.model.RejectedOutputDiagnosticRequest
 import skillbill.contracts.JsonCodec
+import skillbill.contracts.SharedPayloadKeys
 import skillbill.engine.featuretask.model.FeatureTaskRuntimeCommitPushHandoffInvalid
 import skillbill.engine.featuretask.model.FeatureTaskRuntimeCommitPushHandoffValid
 import skillbill.engine.featuretask.model.FeatureTaskRuntimeSubtaskFinalisationBlocked
@@ -660,7 +661,8 @@ object FeatureTaskRuntimeRunLoopAttemptSettlement {
   ): CommitPushFinalisation {
     if (
       run.phaseId != FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_COMMIT_PUSH ||
-      (normalizedOutput.envelope["status"] as? String).workflowStepStatus() != WorkflowStepStatus.COMPLETED
+      (normalizedOutput.envelope[SharedPayloadKeys.STATUS] as? String)
+        .workflowStepStatus() != WorkflowStepStatus.COMPLETED
     ) {
       return CommitPushNotApplicable
     }

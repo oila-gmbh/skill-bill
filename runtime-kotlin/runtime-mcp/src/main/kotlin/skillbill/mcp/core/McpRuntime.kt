@@ -1,6 +1,7 @@
 package skillbill.mcp.core
 
 import skillbill.application.review.toReviewFinishedTelemetryPayload
+import skillbill.contracts.SharedPayloadKeys
 import skillbill.contracts.mcp.McpLearningsSkippedContract
 import skillbill.contracts.mcp.McpOrchestratedPayloadContract
 import skillbill.contracts.mcp.McpReviewImportSkippedContract
@@ -112,7 +113,7 @@ object McpRuntime {
   fun updateCheck(context: McpRuntimeContext = McpRuntimeContext()): Map<String, Any?> {
     val result = services(context).updateCheckService.check(includePrereleases = false)
     return mapOf(
-      "status" to result.status.wireName,
+      SharedPayloadKeys.STATUS to result.status.wireName,
       "installed_version" to result.installedVersion,
       "latest_version" to result.latestVersion,
       "recommended_install_command" to result.recommendedInstallCommand,

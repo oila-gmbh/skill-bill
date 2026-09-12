@@ -5,6 +5,7 @@ import skillbill.application.install.ExternalAddonOverlayService
 import skillbill.cli.kernel.CliRunState
 import skillbill.cli.kernel.DocumentedCliCommand
 import skillbill.cli.model.CliRunInputs
+import skillbill.contracts.SharedPayloadKeys
 import skillbill.error.ShellContentContractException
 
 @Inject
@@ -22,7 +23,7 @@ class ConfigResolveExternalAddonsCommand(
     } catch (error: ShellContentContractException) {
       state.completeText(
         "${error.message}\n",
-        mapOf("status" to "failed", "error" to error.message.orEmpty()),
+        mapOf(SharedPayloadKeys.STATUS to "failed", "error" to error.message.orEmpty()),
         exitCode = 1,
       )
       return
@@ -31,7 +32,7 @@ class ConfigResolveExternalAddonsCommand(
     state.completeText(
       text,
       mapOf(
-        "status" to "ok",
+        SharedPayloadKeys.STATUS to "ok",
         "sources" to sources.map { source ->
           mapOf("platform" to source.platform, "path" to source.path.toString())
         },

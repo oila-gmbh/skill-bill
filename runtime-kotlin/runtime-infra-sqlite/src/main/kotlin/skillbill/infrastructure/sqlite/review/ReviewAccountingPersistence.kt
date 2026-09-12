@@ -1,5 +1,6 @@
 package skillbill.infrastructure.sqlite.review
 import skillbill.contracts.JsonCodec
+import skillbill.contracts.SharedPayloadKeys
 import skillbill.contracts.review.REVIEW_CONTEXT_CONTRACT_VERSION
 import skillbill.infrastructure.sqlite.PARAM_FOUR
 import skillbill.infrastructure.sqlite.PARAM_ONE
@@ -43,7 +44,7 @@ fun loadReviewAccounting(connection: Connection, reviewId: String): ReviewAccoun
       val payload = requireNotNull(decodeBoundedAccounting(rows.getString("bounded_payload_json"))) {
         "Malformed bounded review accounting for '$reviewId'."
       }
-      val declaredVersion = payload["contract_version"]?.toString()
+      val declaredVersion = payload[SharedPayloadKeys.CONTRACT_VERSION]?.toString()
       if (
         declaredVersion != REVIEW_CONTEXT_CONTRACT_VERSION &&
         declaredVersion != LEGACY_REVIEW_CONTEXT_CONTRACT_VERSION

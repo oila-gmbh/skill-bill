@@ -2,6 +2,7 @@ package skillbill.mcp.workflow
 
 import skillbill.application.workflow.model.WorkflowFamilyKind
 import skillbill.application.workflow.model.WorkflowUpdateRequest
+import skillbill.contracts.SharedPayloadKeys
 import skillbill.mcp.shared.McpRuntimeContext
 import skillbill.mcp.shared.int
 import skillbill.mcp.shared.optionalInt
@@ -69,7 +70,7 @@ internal fun workflowContinue(
 ): Map<String, Any?> {
   val workflowIdOrIssueKey = arguments.optionalString("workflow_id")
     ?: arguments.optionalString("issue_key")
-    ?: return mapOf("status" to "error", "error" to "Provide workflow_id or issue_key.")
+    ?: return mapOf(SharedPayloadKeys.STATUS to "error", "error" to "Provide workflow_id or issue_key.")
   return McpWorkflowRuntime.continueWorkflow(
     kind,
     workflowIdOrIssueKey,

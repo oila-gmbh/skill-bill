@@ -1,5 +1,6 @@
 package skillbill.infrastructure.sqlite.workflow
 
+import skillbill.contracts.SharedPayloadKeys
 import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_WORKER_OWNERSHIP_CONTRACT_VERSION
 import skillbill.error.InvalidFeatureTaskExecutionIdentitySchemaError
 import skillbill.error.InvalidFeatureTaskRuntimeWorkerOwnershipSchemaError
@@ -132,7 +133,7 @@ internal fun Connection.featureTaskIdentity(workflowId: String): FeatureTaskExec
     if (!row.next()) return null
     FeatureTaskExecutionIdentity(
       workflowId = workflowId,
-      contractVersion = row.getString("contract_version"),
+      contractVersion = row.getString(SharedPayloadKeys.CONTRACT_VERSION),
       normalizedIssueKey = row.getString("normalized_issue_key"),
       repositoryIdentity = row.getString("repository_identity"),
       governedSpecPath = row.getString("governed_spec_path"),

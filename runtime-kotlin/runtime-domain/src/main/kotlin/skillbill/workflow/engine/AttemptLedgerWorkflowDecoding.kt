@@ -1,6 +1,7 @@
 package skillbill.workflow.engine
 
 import skillbill.contracts.JsonCodec
+import skillbill.contracts.SharedPayloadKeys
 import skillbill.error.InvalidWorkflowStateSchemaError
 import skillbill.error.MalformedJsonTextError
 import skillbill.workflow.engine.model.WorkflowStateSnapshot
@@ -34,8 +35,8 @@ private fun decodeWorkflowStepAt(index: Int, raw: Any?): WorkflowStepState {
   val item = raw as? Map<*, *>
     ?: throw InvalidWorkflowStateSchemaError("Workflow steps[$index] must be an object.")
   return WorkflowStepState(
-    stepId = item["step_id"]?.toString().orEmpty(),
-    status = item["status"]?.toString().orEmpty(),
+    stepId = item[SharedPayloadKeys.STEP_ID]?.toString().orEmpty(),
+    status = item[SharedPayloadKeys.STATUS]?.toString().orEmpty(),
     attemptCount = item["attempt_count"].asLenientIntOrNull() ?: 0,
   )
 }

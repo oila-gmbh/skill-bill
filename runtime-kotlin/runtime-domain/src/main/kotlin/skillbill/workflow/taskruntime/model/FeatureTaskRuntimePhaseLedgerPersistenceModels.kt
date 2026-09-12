@@ -1,6 +1,7 @@
 package skillbill.workflow.taskruntime.model
 
 import skillbill.boundary.OpenBoundaryMap
+import skillbill.contracts.SharedPayloadKeys
 import skillbill.error.InvalidWorkflowStateSchemaError
 
 enum class FeatureTaskRuntimePhaseExecutionOrigin(val wireValue: String) {
@@ -97,7 +98,7 @@ data class FeatureTaskRuntimePhaseLedgerEntry(
     "action" to action.wireValue,
     "sequence_number" to sequenceNumber,
     "timestamp" to timestamp,
-    "phase_id" to phaseId,
+    SharedPayloadKeys.PHASE_ID to phaseId,
     "attempt_count" to attemptCount,
   ).apply {
     resolvedAgentId?.let { put("resolved_agent_id", it) }

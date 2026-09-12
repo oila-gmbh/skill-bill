@@ -1,6 +1,7 @@
 package skillbill.infrastructure.fs.scaffold.runtime
 
 import skillbill.agentaddon.model.AgentAddonConsumer
+import skillbill.contracts.SharedPayloadKeys
 import skillbill.error.InvalidScaffoldPayloadError
 import skillbill.error.MissingPlatformPackError
 import skillbill.error.UnknownPreShellFamilyError
@@ -80,7 +81,7 @@ internal fun planAgentAddon(payload: Map<String, Any?>, repoRoot: Path): Scaffol
   val consumers = requireStringListPayload(payload["consumers"], "consumers")
   AgentAddonSchemaValidator().validate(
     mapOf(
-      "contract_version" to "1.0",
+      SharedPayloadKeys.CONTRACT_VERSION to "1.0",
       "slug" to slug,
       "description" to description,
       "agent_ids" to agentIds,

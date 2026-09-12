@@ -1,5 +1,6 @@
 package skillbill.mcp.scaffold
 
+import skillbill.contracts.SharedPayloadKeys
 import skillbill.scaffold.model.ScaffoldResult
 
 private const val SCAFFOLD_TELEMETRY_DURATION_SECONDS = 0
@@ -33,7 +34,7 @@ internal fun scaffoldSuccessMap(
     )
   } else {
     mapOf(
-      "status" to "ok",
+      SharedPayloadKeys.STATUS to "ok",
       "session_id" to sessionId,
       "skill_path" to result.skillPath.toString(),
       "notes" to result.notes,
@@ -66,7 +67,7 @@ internal fun scaffoldFailureMap(
   )
 } else {
   mapOf(
-    "status" to "error",
+    SharedPayloadKeys.STATUS to "error",
     "session_id" to sessionId,
     "error" to error.message.orEmpty(),
   )

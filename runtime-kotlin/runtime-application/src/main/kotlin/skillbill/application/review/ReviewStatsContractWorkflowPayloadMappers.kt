@@ -1,5 +1,6 @@
 package skillbill.application.review
 
+import skillbill.contracts.SharedPayloadKeys
 import skillbill.review.model.FeatureTaskRuntimeWorkflowStats
 import skillbill.review.model.FeatureVerifyWorkflowStats
 import skillbill.review.model.GoalBlockedSubtaskSummary
@@ -60,10 +61,10 @@ internal fun GoalModeStats.toPayload(): Map<String, Any?> = linkedMapOf(
 )
 
 internal fun GoalRunSummary.toPayload(): Map<String, Any?> = linkedMapOf(
-  "workflow_id" to workflowId,
-  "issue_key" to issueKey,
+  SharedPayloadKeys.WORKFLOW_ID to workflowId,
+  SharedPayloadKeys.ISSUE_KEY to issueKey,
   "feature_name" to featureName,
-  "status" to status,
+  SharedPayloadKeys.STATUS to status,
   "started_at" to startedAt,
   "finished_at" to finishedAt,
   "duration_ms" to durationMs,
@@ -72,9 +73,9 @@ internal fun GoalRunSummary.toPayload(): Map<String, Any?> = linkedMapOf(
 )
 
 internal fun GoalBlockedSubtaskSummary.toPayload(): Map<String, Any?> = linkedMapOf(
-  "subtask_id" to subtaskId,
+  SharedPayloadKeys.SUBTASK_ID to subtaskId,
   "subtask_name" to subtaskName,
-  "issue_key" to issueKey,
+  SharedPayloadKeys.ISSUE_KEY to issueKey,
   "blocked_reason" to blockedReason,
   "attempt_count" to attemptCount,
 )

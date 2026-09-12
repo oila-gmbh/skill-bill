@@ -1,6 +1,7 @@
 package skillbill.engine.featuretask
 
 import skillbill.application.agentoutput.agentFailureExcerpt
+import skillbill.contracts.SharedPayloadKeys
 import skillbill.engine.featuretask.model.FeatureTaskRuntimeGoalContinuationContext
 import skillbill.engine.featuretask.model.FeatureTaskRuntimeRunReport
 import skillbill.engine.featuretask.model.FeatureTaskRuntimeRunRequest
@@ -25,14 +26,14 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeProviderLimitSigna
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeQualityGateSelection
 
 fun terminalBlockedReasonFrom(phaseId: String, outputMap: Map<String, Any?>): String? {
-  val status = outputMap["status"] as? String
+  val status = outputMap[SharedPayloadKeys.STATUS] as? String
   if (status.workflowStepStatus() != WorkflowStepStatus.BLOCKED &&
     status.workflowStepStatus() != WorkflowStepStatus.FAILED
   ) {
     return null
   }
-  val summary = (outputMap["summary"] as? String).orEmpty().trim()
-  val blockingReasons = (outputMap["produced_outputs"] as? Map<*, *>)
+  val summary = (outputMap[SharedPayloadKeys.SUMMARY] as? String).orEmpty().trim()
+  val blockingReasons = (outputMap[SharedPayloadKeys.PRODUCED_OUTPUTS] as? Map<*, *>)
     ?.get("blocking_reasons")
     ?.let { value ->
       when (value) {

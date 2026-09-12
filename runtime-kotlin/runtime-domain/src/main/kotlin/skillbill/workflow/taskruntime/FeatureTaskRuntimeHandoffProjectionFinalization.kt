@@ -1,6 +1,8 @@
 package skillbill.workflow.taskruntime
 
 import skillbill.contracts.JsonCodec
+import skillbill.contracts.SharedPayloadKeys
+import skillbill.contracts.review.ReviewVerificationSignalKeys
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeHandoffProjectionInputs
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutput
 import skillbill.workflow.taskruntime.model.PhaseHandoffProjectionDeclaration
@@ -14,7 +16,7 @@ internal object FeatureTaskRuntimeHandoffProjectionFinalization {
     return when (declaration.projectionContractId) {
       FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.VALIDATION_REQUEST -> mapOf(
         "changed_paths" to context.changedPaths,
-        "repository_checkpoint" to context.checkpoint,
+        ReviewVerificationSignalKeys.REPOSITORY_CHECKPOINT to context.checkpoint,
       )
       FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.BOUNDARY_CANDIDATES -> mapOf(
         "changed_paths" to context.changedPaths,
@@ -28,7 +30,7 @@ internal object FeatureTaskRuntimeHandoffProjectionFinalization {
         "required_inclusions" to context.changedPaths,
         "branch_identity" to context.branch,
         "gate_attestations" to listOf("audit", "review", "validate", "write_history"),
-        "repository_checkpoint" to context.checkpoint,
+        ReviewVerificationSignalKeys.REPOSITORY_CHECKPOINT to context.checkpoint,
       )
       FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.PR_REQUEST ->
         prRequestProjection(context)
@@ -41,7 +43,7 @@ internal object FeatureTaskRuntimeHandoffProjectionFinalization {
       ?: JsonCodec.parseObjectOrNull(output.payload)?.let(JsonCodec::jsonElementToValue)
         ?.let(JsonCodec::anyToStringAnyMap)
       ?: return emptyMap()
-    return JsonCodec.anyToStringAnyMap(envelope["produced_outputs"]).orEmpty()
+    return JsonCodec.anyToStringAnyMap(envelope[SharedPayloadKeys.PRODUCED_OUTPUTS]).orEmpty()
   }
 
   private fun finalizationProjectionContext(
@@ -51,7 +53,9 @@ internal object FeatureTaskRuntimeHandoffProjectionFinalization {
     val validation = outputs[FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VALIDATE]?.let {
       genericProducedOutputs(it)
     }.orEmpty()
-    val checkpoint = inputs.resolvedCheckpoint?.let { mapOf("fingerprint" to it.fingerprint) }
+    val checkpoint = inputs.resolvedCheckpoint?.let {
+      mapOf(ReviewVerificationSignalKeys.REPOSITORY_CHECKPOINT_FINGERPRINT to it.fingerprint)
+    }
     val changedPaths = inputs.resolvedCheckpoint?.workingTreeOwnedPaths.orEmpty()
       .distinct()
       .sorted()
@@ -70,7 +74,7 @@ internal object FeatureTaskRuntimeHandoffProjectionFinalization {
     "validation_summary" to (
       context.validation["validation_result"]
         ?: context.validation["validation_summary"]
-        ?: context.validation["summary"]
+        ?: context.validation[SharedPayloadKeys.SUMMARY]
         ?: "completed"
       ),
     "base_branch" to context.base,

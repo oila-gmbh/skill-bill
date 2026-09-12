@@ -1,5 +1,6 @@
 package skillbill.infrastructure.sqlite.goal
 
+import skillbill.contracts.SharedPayloadKeys
 import skillbill.goalrunner.model.UnaddressedFinding
 import skillbill.review.model.ReviewFindingCitation
 import java.sql.Connection
@@ -62,7 +63,7 @@ internal class UnaddressedFindingsLedgerRuntime(private val connection: Connecti
     statement.executeQuery().use { rows ->
       buildList {
         while (rows.next()) {
-          rows.getString("workflow_id")?.takeIf(String::isNotBlank)?.let(::add)
+          rows.getString(SharedPayloadKeys.WORKFLOW_ID)?.takeIf(String::isNotBlank)?.let(::add)
         }
       }
     }

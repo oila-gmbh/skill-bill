@@ -1,6 +1,7 @@
 
 package skillbill.infrastructure.fs.scaffold.platformpack
 
+import skillbill.contracts.review.ReviewVerificationSignalKeys
 import skillbill.error.InvalidValidationGateDeclarationError
 import skillbill.scaffold.model.ValidationGateCompilerDiagnosticsFormat
 import skillbill.scaffold.model.ValidationGateCompilerDiagnosticsLocator
@@ -117,7 +118,7 @@ internal fun parseGateArgv(raw: Any?, slug: String, key: String): List<String> {
 }
 
 internal fun parseValidationGateFindings(gate: Map<*, *>, slug: String): ValidationGateFindingsLocator {
-  val raw = gate["findings"] ?: invalidValidationGateDeclaration(
+  val raw = gate[ReviewVerificationSignalKeys.REVIEW_FINDINGS] ?: invalidValidationGateDeclaration(
     "Platform pack '$slug': 'validation_gate.findings' is required when validation_gate is present.",
   )
   val findings = raw as? Map<*, *> ?: invalidValidationGateDeclaration(

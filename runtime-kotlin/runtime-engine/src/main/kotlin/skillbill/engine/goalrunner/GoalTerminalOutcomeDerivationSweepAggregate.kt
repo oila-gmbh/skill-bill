@@ -2,6 +2,7 @@ package skillbill.engine.goalrunner
 
 import skillbill.boundary.OpenBoundaryMap
 import skillbill.contracts.JsonCodec
+import skillbill.contracts.SharedPayloadKeys
 import skillbill.engine.goalrunner.model.GoalContinuationCandidate
 import skillbill.goalrunner.asGoalRunnerIntOrNull
 import skillbill.goalrunner.goalContinuationTerminalStatus
@@ -56,14 +57,14 @@ fun missingResultPrefixTerminalOutcomeArtifact(
 ): Map<String, Any?>? = (JsonCodec.anyToStringAnyMap(output["subtask_outcome"]) ?: output)
   .takeIf { candidate -> candidate.matchesGoalContinuation(issueKey, subtaskId) }
   ?.let { candidate ->
-    candidate["status"]?.toString()?.let(::goalContinuationTerminalStatus)?.let { status ->
+    candidate[SharedPayloadKeys.STATUS]?.toString()?.let(::goalContinuationTerminalStatus)?.let { status ->
       candidate.toMissingResultPrefixOutcomeArtifact(issueKey, subtaskId, workflowId, status)
     }
   }
 
 fun Map<String, Any?>.matchesGoalContinuation(issueKey: String, subtaskId: Int): Boolean {
-  val candidateIssueKey = this["issue_key"]?.toString()?.takeIf(String::isNotBlank) ?: issueKey
-  val candidateSubtaskId = this["subtask_id"].asGoalRunnerIntOrNull() ?: subtaskId
+  val candidateIssueKey = this[SharedPayloadKeys.ISSUE_KEY]?.toString()?.takeIf(String::isNotBlank) ?: issueKey
+  val candidateSubtaskId = this[SharedPayloadKeys.SUBTASK_ID].asGoalRunnerIntOrNull() ?: subtaskId
   return candidateIssueKey == issueKey && candidateSubtaskId == subtaskId
 }
 
@@ -73,10 +74,12 @@ fun Map<String, Any?>.toMissingResultPrefixOutcomeArtifact(
   workflowId: String,
   status: GoalRunnerTerminalStatus,
 ): Map<String, Any?> = linkedMapOf<String, Any?>(
-  "issue_key" to issueKey,
-  "subtask_id" to subtaskId,
-  "status" to status.toGoalContinuationWireStatus(),
-  "workflow_id" to (this["workflow_id"]?.toString()?.takeIf(String::isNotBlank) ?: workflowId),
+  SharedPayloadKeys.ISSUE_KEY to issueKey,
+  SharedPayloadKeys.SUBTASK_ID to subtaskId,
+  SharedPayloadKeys.STATUS to status.toGoalContinuationWireStatus(),
+  SharedPayloadKeys.WORKFLOW_ID to (
+    this[SharedPayloadKeys.WORKFLOW_ID]?.toString()?.takeIf(String::isNotBlank) ?: workflowId
+    ),
   "last_resumable_step" to (
     this["last_resumable_step"]?.toString()?.takeIf(String::isNotBlank) ?: "preplan"
     ),

@@ -1,6 +1,7 @@
 package skillbill.infrastructure.sqlite
 
 import skillbill.contracts.JsonCodec
+import skillbill.contracts.SharedPayloadKeys
 import skillbill.learnings.LearningsRuntime
 import skillbill.learnings.model.CreateLearningRequest
 import skillbill.learnings.model.LearningRecord
@@ -322,7 +323,7 @@ private fun ResultSet.toLearningRecord(): LearningRecord = LearningRecord(
   title = getString("title"),
   ruleText = getString("rule_text"),
   rationale = getString("rationale").orEmpty(),
-  status = getString("status"),
+  status = getString(SharedPayloadKeys.STATUS),
   sourceReviewRunId = getString("source_review_run_id"),
   sourceFindingId = getString("source_finding_id"),
   createdAt = getString("created_at"),

@@ -1,6 +1,7 @@
 package skillbill.infrastructure.fs.scaffold.substance
 
 import com.fasterxml.jackson.databind.ObjectMapper
+import skillbill.contracts.SharedPayloadKeys
 import java.nio.file.Path
 
 fun main(arguments: Array<String>) {
@@ -41,7 +42,7 @@ internal fun PlatformPackSubstanceReport.toHumanReadable(): String = buildString
 }
 
 internal fun PlatformPackSubstanceReport.toWireMap(): Map<String, Any?> = linkedMapOf(
-  "contract_version" to contractVersion,
+  SharedPayloadKeys.CONTRACT_VERSION to contractVersion,
   "packs" to packs.map { pack ->
     linkedMapOf(
       "pack" to pack.pack,

@@ -1,6 +1,8 @@
 package skillbill.goalrunner.subtaskreview
 
 import skillbill.contracts.JsonCodec
+import skillbill.contracts.SharedPayloadKeys
+import skillbill.contracts.review.ReviewFindingPayloadKeys
 import skillbill.goalrunner.model.UNADDRESSED_FINDING_DEFAULT_CATEGORY
 import skillbill.goalrunner.model.UNADDRESSED_FINDING_DEFAULT_SEVERITY
 import skillbill.goalrunner.model.UNADDRESSED_FINDING_REJECTED_DISPOSITION
@@ -24,7 +26,7 @@ object GoalSubtaskReviewVerificationRejection {
     val reviewRunId = GoalSubtaskReviewStructuredFindingsParse.reviewRunIdOf(reviewOutput)
     val reviewFindings = GoalSubtaskReviewStructuredFindingsParse.structuredFindings(reviewOutput, recordedVerdicts)
     val reviewById = reviewFindings.associateBy { it.findingId.orEmpty() }
-    val dispositionsRaw = verifyOutput["produced_outputs"]
+    val dispositionsRaw = verifyOutput[SharedPayloadKeys.PRODUCED_OUTPUTS]
       ?.let(JsonCodec::anyToStringAnyMap)
       ?.get(FeatureTaskRuntimeVerificationSignalKeys.FINDINGS_VERIFICATION_DISPOSITIONS) as? List<*>
       ?: return emptyList()
@@ -47,7 +49,7 @@ object GoalSubtaskReviewVerificationRejection {
     val map = JsonCodec.anyToStringAnyMap(input.entry) ?: return null
     val disposition = (map["disposition"] as? String)?.trim()?.lowercase()
     if (disposition != UNADDRESSED_FINDING_REJECTED_DISPOSITION) return null
-    val findingId = (map["finding_id"] as? String)?.takeIf(String::isNotBlank) ?: return null
+    val findingId = (map[ReviewFindingPayloadKeys.FINDING_ID] as? String)?.takeIf(String::isNotBlank) ?: return null
     val reviewFinding = input.reviewById[findingId]
     val existingOrdinal = reviewFinding?.let {
       input.reviewFindings.indexOfFirst { candidate -> candidate.findingId == findingId }

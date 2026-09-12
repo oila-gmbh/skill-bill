@@ -1,5 +1,7 @@
 package skillbill.infrastructure.sqlite.telemetry
 
+import skillbill.contracts.SharedPayloadKeys
+import skillbill.contracts.review.ReviewVerificationSignalKeys
 import skillbill.ports.telemetry.FeatureTaskRuntimeTelemetryMeasurementRepository
 import skillbill.ports.telemetry.ReviewStageTelemetryMeasurementRepository
 import skillbill.review.model.REVIEW_STAGE_DEGRADATION_CONTRACT_VERSION
@@ -43,8 +45,8 @@ internal class LifecycleTelemetryMeasurementAdapter(
 
 private fun ReviewStageDegradationMeasurement.toStageDegradationPayload(): Map<String, Any?> = linkedMapOf(
   "event_name" to REVIEW_STAGE_DEGRADATION_EVENT_NAME,
-  "contract_version" to REVIEW_STAGE_DEGRADATION_CONTRACT_VERSION,
-  "review_run_id" to reviewRunId,
+  SharedPayloadKeys.CONTRACT_VERSION to REVIEW_STAGE_DEGRADATION_CONTRACT_VERSION,
+  ReviewVerificationSignalKeys.REVIEW_RUN_ID to reviewRunId,
   "seam" to seam,
   "expected" to expected,
   "actual" to actual,

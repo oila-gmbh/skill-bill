@@ -1,5 +1,6 @@
 package skillbill.workflow.engine
 
+import skillbill.contracts.SharedPayloadKeys
 import skillbill.workflow.engine.model.WorkflowContinueDecision
 import skillbill.workflow.engine.model.WorkflowDefinition
 import skillbill.workflow.engine.model.WorkflowInputProjection
@@ -103,7 +104,7 @@ class WorkflowEngine(
     workflowName = snapshot.workflowName,
     workflowStatus = snapshot.workflowStatus,
     currentStepId = snapshot.currentStepId,
-    updatedStepIds = input.stepUpdates.orEmpty().mapNotNull { it["step_id"] as? String },
+    updatedStepIds = input.stepUpdates.orEmpty().mapNotNull { it[SharedPayloadKeys.STEP_ID] as? String },
     updatedArtifactKeys = input.artifactsPatch.orEmpty().keys.sorted(),
     readOnlyFullStateGuidance =
     "Update returns a compact acknowledgement. Use explicit read-only workflow get/show for full state, " +

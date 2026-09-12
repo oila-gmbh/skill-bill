@@ -2,6 +2,7 @@ package skillbill.workflow.taskruntime.model
 
 import skillbill.boundary.OpenBoundaryMap
 import skillbill.contracts.JsonCodec
+import skillbill.contracts.review.ReviewFindingPayloadKeys
 import skillbill.error.InvalidFeatureTaskRuntimeFindingVerificationRecordError
 
 enum class FeatureTaskRuntimeFindingVerificationDispositionVerdict(val wireValue: String) {
@@ -35,7 +36,7 @@ data class FeatureTaskRuntimeFindingVerificationDisposition(
 
   @OpenBoundaryMap("Finding verification disposition at the durable workflow-artifact seam")
   fun toArtifactMap(): Map<String, Any?> = buildMap {
-    put("finding_id", findingId)
+    put(ReviewFindingPayloadKeys.FINDING_ID, findingId)
     put("disposition", disposition.wireValue)
     reason?.let { put("reason", it) }
     if (selectedBoundaryHeadings.isNotEmpty()) {
@@ -47,7 +48,11 @@ data class FeatureTaskRuntimeFindingVerificationDisposition(
   companion object {
     @OpenBoundaryMap("Finding verification disposition decode from the durable workflow-artifact map")
     fun fromArtifactMap(raw: Map<String, Any?>, path: String): FeatureTaskRuntimeFindingVerificationDisposition {
-      val findingId = (raw["finding_id"] as? String)?.trim()?.takeIf(String::isNotBlank) ?: invalid(path, "finding_id")
+      val findingId =
+        (raw[ReviewFindingPayloadKeys.FINDING_ID] as? String)
+          ?.trim()
+          ?.takeIf(String::isNotBlank)
+          ?: invalid(path, "finding_id")
       val disposition = (raw["disposition"] as? String)
         ?.let(FeatureTaskRuntimeFindingVerificationDispositionVerdict::fromWire)
         ?: invalid(path, "disposition")

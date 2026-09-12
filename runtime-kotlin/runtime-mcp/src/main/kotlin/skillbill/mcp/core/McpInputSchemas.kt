@@ -1,5 +1,6 @@
 package skillbill.mcp.core
 
+import skillbill.contracts.SharedPayloadKeys
 import skillbill.ports.workflow.FeatureTaskExecutionIdentityPolicy
 
 internal val emptyObjectSchema: Map<String, Any?> = McpToolSpec.strictObjectSchema()
@@ -35,7 +36,7 @@ internal fun objectSchema(
 
 internal fun workflowIdSchema(): Map<String, Any?> = objectSchema(
   required = listOf("workflow_id"),
-  properties = mapOf("workflow_id" to stringSchema()),
+  properties = mapOf(SharedPayloadKeys.WORKFLOW_ID to stringSchema()),
 )
 
 internal fun workflowOpenSchema(required: List<String> = emptyList()): Map<String, Any?> = objectSchema(
@@ -43,7 +44,7 @@ internal fun workflowOpenSchema(required: List<String> = emptyList()): Map<Strin
   properties = mapOf(
     "session_id" to stringSchema(),
     "current_step_id" to stringSchema(),
-    "issue_key" to stringSchema(),
+    SharedPayloadKeys.ISSUE_KEY to stringSchema(),
     "repository_identity" to repositoryIdentitySchema,
     "governed_spec_path" to stringSchema(),
   ),
@@ -57,7 +58,7 @@ internal fun workflowUpdateSchema(workflowStatusEnum: List<String>, stepIdEnum: 
   objectSchema(
     required = listOf("workflow_id", "workflow_status", "current_step_id"),
     properties = mapOf(
-      "workflow_id" to stringSchema(),
+      SharedPayloadKeys.WORKFLOW_ID to stringSchema(),
       "workflow_status" to stringSchema(enum = workflowStatusEnum),
       "current_step_id" to stringSchema(enum = stepIdEnum),
       "step_updates" to arraySchema(stepUpdateSchema(stepIdEnum)),

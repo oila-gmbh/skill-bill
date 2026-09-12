@@ -2,6 +2,7 @@ package skillbill.engine.goalplanning
 
 import me.tatarka.inject.annotations.Inject
 import skillbill.contracts.JsonCodec
+import skillbill.contracts.SharedPayloadKeys
 import skillbill.engine.planningprojection.producerProjectionGateReason
 import skillbill.engine.planningprojection.requireValidPlanningProjection
 import skillbill.error.IncompatibleGoalPlanningPreparationRecoveryError
@@ -176,8 +177,8 @@ class GoalPlanningPreparationCheckpoint(
         val parsed = JsonCodec.parseObjectOrNull(plan.planPayload)
           ?.let(JsonCodec::jsonElementToValue)
           ?.let(JsonCodec::anyToStringAnyMap)
-        val status = parsed?.get("status")?.toString()
-        val produced = parsed?.get("produced_outputs") as? Map<*, *>
+        val status = parsed?.get(SharedPayloadKeys.STATUS)?.toString()
+        val produced = parsed?.get(SharedPayloadKeys.PRODUCED_OUTPUTS) as? Map<*, *>
         if (status.workflowStepStatus() != WorkflowStepStatus.COMPLETED || produced?.isEmpty() != false) {
           throw IncompatibleGoalPlanningPreparationRecoveryError(
             identity.parentGoalWorkflowId,
@@ -381,8 +382,8 @@ private fun planningRecordRejection(compute: () -> String?): String? = try {
 }
 
 private fun Map<String, Any?>.requirePrepared(label: String) {
-  if (get("status").workflowStepStatus() != WorkflowStepStatus.COMPLETED ||
-    (get("produced_outputs") as? Map<*, *>)?.isEmpty() != false
+  if (get(SharedPayloadKeys.STATUS).workflowStepStatus() != WorkflowStepStatus.COMPLETED ||
+    (get(SharedPayloadKeys.PRODUCED_OUTPUTS) as? Map<*, *>)?.isEmpty() != false
   ) {
     throw InvalidGoalPlanningPreparationSchemaError(
       label,
@@ -393,7 +394,7 @@ private fun Map<String, Any?>.requirePrepared(label: String) {
 }
 
 private fun SharedGoalPreplanCheckpoint.toEnvelopeMap(): Map<String, Any?> = linkedMapOf(
-  "contract_version" to contractVersion,
+  SharedPayloadKeys.CONTRACT_VERSION to contractVersion,
   "record_type" to "shared_preplan",
   "identity" to identity.asMap(),
   "preparation_status" to preparationStatus.wireValue,
@@ -404,8 +405,12 @@ private fun SharedGoalPreplanCheckpoint.toEnvelopeMap(): Map<String, Any?> = lin
 ).filterValues { it != null }
 
 private fun GoalSubtaskPlanCheckpoint.toEnvelopeMap(): Map<String, Any?> = linkedMapOf(
-  "contract_version" to contractVersion, "record_type" to "subtask_plan", "identity" to identity.asMap(),
-  "subtask_id" to subtaskId, "manifest_order" to manifestOrder, "governed_sub_spec_path" to governedSubSpecPath,
+  SharedPayloadKeys.CONTRACT_VERSION to contractVersion,
+  "record_type" to "subtask_plan",
+  "identity" to identity.asMap(),
+  SharedPayloadKeys.SUBTASK_ID to subtaskId,
+  "manifest_order" to manifestOrder,
+  "governed_sub_spec_path" to governedSubSpecPath,
   "sub_spec_hash" to subSpecHash, "preparation_status" to preparationStatus.wireValue,
   "provenance" to provenance.asMap(), "payload_sha256" to payloadSha256, "plan_payload" to planPayload,
   "repair_evidence" to repairEvidence?.toArtifactMap(),

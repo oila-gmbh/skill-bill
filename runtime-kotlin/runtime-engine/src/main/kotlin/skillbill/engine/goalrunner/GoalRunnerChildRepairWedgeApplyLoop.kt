@@ -3,6 +3,7 @@ import skillbill.application.decomposition.decodeArtifacts
 import skillbill.application.workflow.model.WorkflowFamily
 import skillbill.application.workflow.updateGoalParentForBlockedPhaseRetry
 import skillbill.contracts.JsonCodec
+import skillbill.contracts.SharedPayloadKeys
 import skillbill.engine.featuretask.buildCompletedUpstreamMissingOutputRepair
 import skillbill.engine.featuretask.diagnoseUnsettledCompletedUpstreamPhaseId
 import skillbill.engine.featuretask.featureSizeFromArtifacts
@@ -369,8 +370,8 @@ fun childRepairWedgeEvidenceMap(repair: GoalRunnerAppliedRepair, clock: Clock): 
   "field" to repair.field,
   "prior_value" to repair.priorValue,
   "new_value" to repair.newValue,
-  "subtask_id" to repair.subtaskId,
-  "workflow_id" to repair.workflowId,
+  SharedPayloadKeys.SUBTASK_ID to repair.subtaskId,
+  SharedPayloadKeys.WORKFLOW_ID to repair.workflowId,
   "repaired_at" to clock.instant().toString(),
 )
 

@@ -7,6 +7,7 @@ import skillbill.application.install.ExternalAddonOverlayService
 import skillbill.cli.kernel.CliRunState
 import skillbill.cli.kernel.DocumentedCliCommand
 import skillbill.cli.model.CliRunInputs
+import skillbill.contracts.SharedPayloadKeys
 import skillbill.error.ShellContentContractException
 import java.nio.file.Path
 
@@ -40,7 +41,7 @@ class InstallApplyExternalAddonsCommand(
     } catch (error: ShellContentContractException) {
       state.completeText(
         "${error.message}\n",
-        mapOf("status" to "failed", "error" to error.message.orEmpty()),
+        mapOf(SharedPayloadKeys.STATUS to "failed", "error" to error.message.orEmpty()),
         exitCode = 1,
       )
       return
@@ -48,7 +49,7 @@ class InstallApplyExternalAddonsCommand(
     if (result.appliedSources.isEmpty() && result.skippedSources.isEmpty()) {
       state.completeText(
         "no external addon sources\n",
-        mapOf("status" to "ok", "touched" to false),
+        mapOf(SharedPayloadKeys.STATUS to "ok", "touched" to false),
       )
       return
     }
@@ -61,7 +62,7 @@ class InstallApplyExternalAddonsCommand(
     state.completeText(
       applied + skipped,
       mapOf(
-        "status" to "ok",
+        SharedPayloadKeys.STATUS to "ok",
         "touched" to result.touched,
         "applied" to result.appliedSources.map { it.platform },
         "skipped" to result.skippedSources.map { it.platform },

@@ -1,6 +1,7 @@
 package skillbill.infrastructure.sqlite.telemetry
 
 import skillbill.contracts.JsonCodec
+import skillbill.contracts.SharedPayloadKeys
 import java.time.Duration
 import java.time.Instant
 import java.time.LocalDateTime
@@ -37,12 +38,12 @@ private fun Map<String, Any?>.redactedWorkflowId(column: String, level: String, 
 
 fun goalStartedPayload(row: Map<String, Any?>, level: String, salt: String): Map<String, Any?> =
   linkedMapOf<String, Any?>(
-    "workflow_id" to row.redactedWorkflowId("workflow_id", level, salt),
-    "issue_key" to redactIssueKey(row.stringOrEmpty("issue_key"), level, salt),
+    SharedPayloadKeys.WORKFLOW_ID to row.redactedWorkflowId("workflow_id", level, salt),
+    SharedPayloadKeys.ISSUE_KEY to redactIssueKey(row.stringOrEmpty("issue_key"), level, salt),
     "subtask_total" to row.intOrZero("subtask_total"),
     "resumed" to row.booleanFromInt("resumed"),
     "started_at" to row.stringOrEmpty("started_at"),
-    "status" to "running",
+    SharedPayloadKeys.STATUS to "running",
     "mode" to row.stringOrEmpty("mode").ifBlank { "runtime" },
   ).apply {
     if (level == "full") {
@@ -52,9 +53,9 @@ fun goalStartedPayload(row: Map<String, Any?>, level: String, salt: String): Map
 
 fun goalFinishedPayload(row: Map<String, Any?>, level: String, salt: String): Map<String, Any?> =
   linkedMapOf<String, Any?>(
-    "workflow_id" to row.redactedWorkflowId("workflow_id", level, salt),
-    "issue_key" to redactIssueKey(row.stringOrEmpty("issue_key"), level, salt),
-    "status" to row.stringOrEmpty("status"),
+    SharedPayloadKeys.WORKFLOW_ID to row.redactedWorkflowId("workflow_id", level, salt),
+    SharedPayloadKeys.ISSUE_KEY to redactIssueKey(row.stringOrEmpty("issue_key"), level, salt),
+    SharedPayloadKeys.STATUS to row.stringOrEmpty("status"),
     "started_at" to row.stringOrEmpty("started_at"),
     "finished_at" to row.stringOrEmpty("finished_at"),
     "duration_seconds" to secondsFromMillis(row.longOrZero("finished_duration_ms")),
@@ -70,8 +71,8 @@ fun goalIssueFinishedPayload(row: Map<String, Any?>, level: String, salt: String
   val finishedAt = row.stringOrEmpty("finished_at")
   return linkedMapOf<String, Any?>(
     "parent_workflow_id" to row.redactedWorkflowId("parent_workflow_id", level, salt),
-    "issue_key" to redactIssueKey(row.stringOrEmpty("issue_key"), level, salt),
-    "status" to row.stringOrEmpty("status"),
+    SharedPayloadKeys.ISSUE_KEY to redactIssueKey(row.stringOrEmpty("issue_key"), level, salt),
+    SharedPayloadKeys.STATUS to row.stringOrEmpty("status"),
     "subtasks_complete" to row.intOrZero("subtasks_complete"),
     "subtasks_blocked" to row.intOrZero("subtasks_blocked"),
     "subtasks_skipped" to row.intOrZero("subtasks_skipped"),
@@ -87,10 +88,10 @@ fun goalIssueFinishedPayload(row: Map<String, Any?>, level: String, salt: String
 
 fun goalSubtaskFinishedPayload(row: Map<String, Any?>, level: String, salt: String): Map<String, Any?> =
   linkedMapOf<String, Any?>(
-    "workflow_id" to row.redactedWorkflowId("workflow_id", level, salt),
-    "issue_key" to redactIssueKey(row.stringOrEmpty("issue_key"), level, salt),
-    "subtask_id" to row.intOrZero("subtask_id"),
-    "status" to row.stringOrEmpty("status"),
+    SharedPayloadKeys.WORKFLOW_ID to row.redactedWorkflowId("workflow_id", level, salt),
+    SharedPayloadKeys.ISSUE_KEY to redactIssueKey(row.stringOrEmpty("issue_key"), level, salt),
+    SharedPayloadKeys.SUBTASK_ID to row.intOrZero("subtask_id"),
+    SharedPayloadKeys.STATUS to row.stringOrEmpty("status"),
     "started_at" to row.stringOrEmpty("started_at"),
     "finished_at" to row.stringOrEmpty("finished_at"),
     "duration_seconds" to secondsFromMillis(row.longOrZero("duration_ms")),

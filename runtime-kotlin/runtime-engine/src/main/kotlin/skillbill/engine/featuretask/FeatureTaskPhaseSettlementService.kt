@@ -3,6 +3,7 @@ package skillbill.engine.featuretask
 import me.tatarka.inject.annotations.Inject
 import skillbill.boundary.OpenBoundaryMap
 import skillbill.contracts.JsonCodec
+import skillbill.contracts.SharedPayloadKeys
 import skillbill.engine.featuretask.model.FeatureTaskPhaseSettlementAuditRequest
 import skillbill.engine.featuretask.model.FeatureTaskPhaseSettlementBlockRequest
 import skillbill.engine.featuretask.model.FeatureTaskPhaseSettlementCompleteRequest
@@ -121,9 +122,9 @@ class FeatureTaskPhaseSettlementService(
       ),
     )
     return linkedMapOf(
-      "status" to "ok",
-      "workflow_id" to request.workflowId,
-      "phase_id" to request.phaseId,
+      SharedPayloadKeys.STATUS to "ok",
+      SharedPayloadKeys.WORKFLOW_ID to request.workflowId,
+      SharedPayloadKeys.PHASE_ID to request.phaseId,
       "attempt" to request.attempt,
       "kind" to request.kind.wireValue,
       "envelope" to request.envelope,

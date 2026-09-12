@@ -1,5 +1,6 @@
 package skillbill.infrastructure.sqlite.goalrunner
 
+import skillbill.contracts.SharedPayloadKeys
 import skillbill.goalrunner.model.GoalRunnerSupervisionEvent
 import skillbill.goalrunner.toArtifactsMap
 import skillbill.infrastructure.sqlite.decomposition.decodeArtifacts
@@ -71,7 +72,11 @@ internal class WorkflowGoalRunnerBlockWrites(
         workflowStatus = "blocked",
         currentStepId = stepId,
         stepUpdates = listOf(
-          mapOf("step_id" to stepId, "status" to "blocked", "attempt_count" to attemptCount),
+          mapOf(
+            SharedPayloadKeys.STEP_ID to stepId,
+            SharedPayloadKeys.STATUS to "blocked",
+            "attempt_count" to attemptCount,
+          ),
         ),
         artifactsPatch = buildMap {
           put("blocked_reason", write.blockedReason)
@@ -148,8 +153,8 @@ internal class WorkflowGoalRunnerBlockWrites(
       currentStepId = blockedRecord.phaseId,
       stepUpdates = listOf(
         mapOf(
-          "step_id" to blockedRecord.phaseId,
-          "status" to "pending",
+          SharedPayloadKeys.STEP_ID to blockedRecord.phaseId,
+          SharedPayloadKeys.STATUS to "pending",
           "attempt_count" to 0,
         ),
       ),
@@ -161,7 +166,7 @@ internal class WorkflowGoalRunnerBlockWrites(
             FEATURE_TASK_RUNTIME_PHASE_LEDGER_LIMIT,
           ),
         FEATURE_TASK_RUNTIME_OPERATOR_BLOCK_RETRY_ARTIFACT_KEY to mapOf(
-          "phase_id" to blockedRecord.phaseId,
+          SharedPayloadKeys.PHASE_ID to blockedRecord.phaseId,
           "reason" to reason,
           "retried_at" to OffsetDateTime.now(ZoneOffset.UTC).toString(),
           "previous_blocked_reason" to blockedRecord.blockedReason,

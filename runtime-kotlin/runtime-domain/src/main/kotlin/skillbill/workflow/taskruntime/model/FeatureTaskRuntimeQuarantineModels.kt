@@ -2,6 +2,7 @@ package skillbill.workflow.taskruntime.model
 
 import skillbill.boundary.OpenBoundaryMap
 import skillbill.contracts.JsonCodec
+import skillbill.contracts.SharedPayloadKeys
 import skillbill.error.InvalidWorkflowStateSchemaError
 
 /**
@@ -160,7 +161,7 @@ data class FeatureTaskRuntimeQuarantineEntry(
 @OpenBoundaryMap("Feature-task-runtime quarantine record artifact map at the durable workflow-artifact seam")
 fun featureTaskRuntimeQuarantineRecordToWire(entries: List<FeatureTaskRuntimeQuarantineEntry>): Map<String, Any?> =
   linkedMapOf(
-    "contract_version" to FEATURE_TASK_RUNTIME_QUARANTINE_ARTIFACT_CONTRACT_VERSION,
+    SharedPayloadKeys.CONTRACT_VERSION to FEATURE_TASK_RUNTIME_QUARANTINE_ARTIFACT_CONTRACT_VERSION,
     "entries" to entries.map { it.toArtifactMap() },
   )
 
@@ -178,7 +179,7 @@ fun featureTaskRuntimeQuarantineEntriesFromWire(raw: Any?): List<FeatureTaskRunt
         "the store is left untouched rather than rewritten without that evidence.",
     )
   }
-  val version = map["contract_version"] as? String
+  val version = map[SharedPayloadKeys.CONTRACT_VERSION] as? String
   if (version != FEATURE_TASK_RUNTIME_QUARANTINE_ARTIFACT_CONTRACT_VERSION) {
     quarantineSchemaError(
       "Feature-task-runtime quarantine record uses unsupported contract version " +

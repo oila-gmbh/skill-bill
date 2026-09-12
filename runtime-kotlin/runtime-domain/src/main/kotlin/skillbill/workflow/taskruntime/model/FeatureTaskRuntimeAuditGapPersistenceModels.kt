@@ -1,6 +1,7 @@
 package skillbill.workflow.taskruntime.model
 
 import skillbill.boundary.OpenBoundaryMap
+import skillbill.contracts.SharedPayloadKeys
 import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_PERSISTENCE_CONTRACT_VERSION
 import skillbill.error.InvalidWorkflowStateSchemaError
 
@@ -53,7 +54,7 @@ data class FeatureTaskRuntimeAuditGapPause(
 
   @OpenBoundaryMap("Feature-task-runtime audit-gap pause artifact map at the durable workflow-artifact seam")
   fun toArtifactMap(): Map<String, Any?> = linkedMapOf<String, Any?>(
-    "contract_version" to FEATURE_TASK_RUNTIME_PERSISTENCE_CONTRACT_VERSION,
+    SharedPayloadKeys.CONTRACT_VERSION to FEATURE_TASK_RUNTIME_PERSISTENCE_CONTRACT_VERSION,
     "record_kind" to "audit_gap_pause",
     "pause_kind" to pauseKind.wireValue,
     "reason" to reason,
@@ -68,10 +69,10 @@ data class FeatureTaskRuntimeAuditGapPause(
     @OpenBoundaryMap("Feature-task-runtime audit-gap pause decode from the durable workflow-artifact map")
     fun fromArtifactMap(raw: Map<String, Any?>): FeatureTaskRuntimeAuditGapPause {
       requireExactAuditGapPauseFields(raw)
-      if (raw["contract_version"] != FEATURE_TASK_RUNTIME_PERSISTENCE_CONTRACT_VERSION) {
+      if (raw[SharedPayloadKeys.CONTRACT_VERSION] != FEATURE_TASK_RUNTIME_PERSISTENCE_CONTRACT_VERSION) {
         throw InvalidWorkflowStateSchemaError(
           "Feature-task-runtime audit-gap pause artifact uses unsupported persistence contract " +
-            "version '${raw["contract_version"]}'; $FEATURE_TASK_RUNTIME_INCOMPATIBLE_RECORD_GUIDANCE.",
+            "version '${raw[SharedPayloadKeys.CONTRACT_VERSION]}'; $FEATURE_TASK_RUNTIME_INCOMPATIBLE_RECORD_GUIDANCE.",
         )
       }
       if (raw["record_kind"] != "audit_gap_pause") {
@@ -123,7 +124,7 @@ data class FeatureTaskRuntimeAuditGapProgress(
 
   @OpenBoundaryMap("Feature-task-runtime audit-gap progress artifact map at the durable workflow-artifact seam")
   fun toArtifactMap(): Map<String, Any?> = linkedMapOf<String, Any?>(
-    "contract_version" to FEATURE_TASK_RUNTIME_PERSISTENCE_CONTRACT_VERSION,
+    SharedPayloadKeys.CONTRACT_VERSION to FEATURE_TASK_RUNTIME_PERSISTENCE_CONTRACT_VERSION,
     "record_kind" to "audit_gap_progress",
     "previous_criterion_refs" to criterionRefs.sorted(),
   ).apply {
@@ -137,10 +138,10 @@ data class FeatureTaskRuntimeAuditGapProgress(
     @OpenBoundaryMap("Feature-task-runtime audit-gap progress decode from the durable workflow-artifact map")
     fun fromArtifactMap(raw: Map<String, Any?>): FeatureTaskRuntimeAuditGapProgress {
       requireExactAuditGapProgressFields(raw)
-      if (raw["contract_version"] != FEATURE_TASK_RUNTIME_PERSISTENCE_CONTRACT_VERSION) {
+      if (raw[SharedPayloadKeys.CONTRACT_VERSION] != FEATURE_TASK_RUNTIME_PERSISTENCE_CONTRACT_VERSION) {
         throw InvalidWorkflowStateSchemaError(
           "Feature-task-runtime audit-gap progress artifact uses unsupported persistence contract " +
-            "version '${raw["contract_version"]}'; $FEATURE_TASK_RUNTIME_INCOMPATIBLE_RECORD_GUIDANCE.",
+            "version '${raw[SharedPayloadKeys.CONTRACT_VERSION]}'; $FEATURE_TASK_RUNTIME_INCOMPATIBLE_RECORD_GUIDANCE.",
         )
       }
       if (raw["record_kind"] != "audit_gap_progress") {

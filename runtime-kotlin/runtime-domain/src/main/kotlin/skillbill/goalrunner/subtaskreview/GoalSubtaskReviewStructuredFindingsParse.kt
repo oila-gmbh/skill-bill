@@ -1,6 +1,9 @@
 package skillbill.goalrunner.subtaskreview
 
 import skillbill.contracts.JsonCodec
+import skillbill.contracts.SharedPayloadKeys
+import skillbill.contracts.review.ReviewFindingPayloadKeys
+import skillbill.contracts.review.ReviewVerificationSignalKeys
 import skillbill.goalrunner.subtaskreview.model.StructuredGoalReviewFinding
 import skillbill.review.ReviewFindingActionability
 import skillbill.review.ReviewFindingFieldCodec
@@ -13,9 +16,9 @@ object GoalSubtaskReviewStructuredFindingsParse {
     output: Map<String, Any?>,
     recordedVerdicts: List<ReviewFindingVerdict> = emptyList(),
   ): List<StructuredGoalReviewFinding> {
-    val findings = output["produced_outputs"]
+    val findings = output[SharedPayloadKeys.PRODUCED_OUTPUTS]
       ?.let(JsonCodec::anyToStringAnyMap)
-      ?.get("findings") as? List<*>
+      ?.get(ReviewVerificationSignalKeys.REVIEW_FINDINGS) as? List<*>
       ?: return emptyList()
     return findings.mapNotNull { entry ->
       val finding = JsonCodec.anyToStringAnyMap(entry) ?: return@mapNotNull null
@@ -26,31 +29,31 @@ object GoalSubtaskReviewStructuredFindingsParse {
       val overlay = ReviewFindingActionability.overlayOf(
         findingRef = ReviewFindingFieldCodec.findingRefOf(
           finding["id"],
-          finding["finding_id"],
-          finding["f_number"],
+          finding[ReviewFindingPayloadKeys.FINDING_ID],
+          finding[ReviewFindingPayloadKeys.F_NUMBER],
         ),
         recordedVerdicts = recordedVerdicts,
         encoded = ReviewFindingFieldCodec.recordedFieldsOf(
-          claimVerdict = finding["claim_verdict"],
-          scopeDisposition = finding["scope_disposition"],
-          citations = finding["citations"],
-          severityAdjustment = finding["severity_adjustment"],
+          claimVerdict = finding[ReviewFindingPayloadKeys.CLAIM_VERDICT],
+          scopeDisposition = finding[ReviewFindingPayloadKeys.SCOPE_DISPOSITION],
+          citations = finding[ReviewFindingPayloadKeys.CITATIONS],
+          severityAdjustment = finding[ReviewFindingPayloadKeys.SEVERITY_ADJUSTMENT],
         ),
       )
       StructuredGoalReviewFinding(
         severity = severity,
         message = message,
-        issueCategory = sequenceOf(finding["issue_category"], finding["category"])
+        issueCategory = sequenceOf(finding[ReviewFindingPayloadKeys.ISSUE_CATEGORY], finding["category"])
           .filterIsInstance<String>().firstOrNull()?.trim()?.lowercase() ?: "other",
-        location = sequenceOf(finding["location"], finding["artifact_ref"])
+        location = sequenceOf(finding["location"], finding[ReviewFindingPayloadKeys.ARTIFACT_REF])
           .filterIsInstance<String>().firstOrNull()?.trim()?.takeIf(String::isNotBlank) ?: "<unknown>",
         compactLabel = GoalSubtaskReviewSummarySanitize.labelFor(finding, message),
         findingId = ReviewFindingFieldCodec.findingRefOf(
           finding["id"],
-          finding["finding_id"],
-          finding["f_number"],
+          finding[ReviewFindingPayloadKeys.FINDING_ID],
+          finding[ReviewFindingPayloadKeys.F_NUMBER],
         ),
-        repositoryPath = admissibleRepositoryPath(finding["repository_path"] as? String),
+        repositoryPath = admissibleRepositoryPath(finding[ReviewFindingPayloadKeys.REPOSITORY_PATH] as? String),
         claimVerdict = overlay.claimVerdict,
         scopeDisposition = overlay.scopeDisposition,
         citations = overlay.citations,
@@ -60,7 +63,7 @@ object GoalSubtaskReviewStructuredFindingsParse {
   }
 
   fun reviewRunIdOf(output: Map<String, Any?>): String? = (
-    output["produced_outputs"]
+    output[SharedPayloadKeys.PRODUCED_OUTPUTS]
       ?.let(JsonCodec::anyToStringAnyMap)
       ?.get(FeatureTaskRuntimeVerificationSignalKeys.REVIEW_RUN_ID) as? String
     )?.trim()?.takeIf(String::isNotBlank)

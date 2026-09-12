@@ -23,6 +23,7 @@ import skillbill.cli.kernel.formatOption
 import skillbill.cli.kernel.toPayload
 import skillbill.cli.model.CliRunInputs
 import skillbill.contracts.JsonCodec
+import skillbill.contracts.SharedPayloadKeys
 import skillbill.ports.workflow.model.FeatureTaskRouteScope
 
 @Inject
@@ -322,7 +323,7 @@ private fun parseArtifactsPatch(rawValue: String): Map<String, Any?> = JsonCodec
     emptyMap()
   }
 
-private fun Map<String, Any?>.exitCode(): Int = if (this["status"] == "error") 1 else 0
+private fun Map<String, Any?>.exitCode(): Int = if (this[SharedPayloadKeys.STATUS] == "error") 1 else 0
 
 private fun resolveWorkflowId(
   workflowId: String?,

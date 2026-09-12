@@ -1,5 +1,6 @@
 package skillbill.engine.featuretask
 
+import skillbill.contracts.SharedPayloadKeys
 import skillbill.error.InvalidFeatureTaskRuntimePhaseOutputSchemaError
 import skillbill.workflow.model.WorkflowStepStatus
 import skillbill.workflow.model.workflowStepStatus
@@ -340,9 +341,9 @@ class FeatureTaskRuntimeRunState(
       validatedOutput == null ->
         "Audit-gap remediation requires a valid completed original '$phaseId' output; " +
           "its durable record carries no normalized output."
-      validatedOutput["phase_id"] != phaseId ->
+      validatedOutput[SharedPayloadKeys.PHASE_ID] != phaseId ->
         "Audit-gap remediation requires a valid completed original '$phaseId' output; " +
-          "the persisted record declares phase_id '${validatedOutput["phase_id"]}'."
+          "the persisted record declares phase_id '${validatedOutput[SharedPayloadKeys.PHASE_ID]}'."
       record?.loopId != null || record?.edgeIteration != null ->
         "Audit-gap remediation cannot prove original planning-context identity because '$phaseId' " +
           "carries legacy backward-edge metadata. Migrate or restart this experimental durable workflow; " +

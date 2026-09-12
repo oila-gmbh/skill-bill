@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.databind.node.ArrayNode
 import com.fasterxml.jackson.databind.node.ObjectNode
+import skillbill.contracts.SharedPayloadKeys
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutputFailureCode
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutputFormat
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutputRepairEvidence
@@ -199,7 +200,7 @@ internal object PhaseOutputExpectedShape {
 
   fun align(node: JsonNode, phaseId: String): Pair<JsonNode, Boolean> {
     val root = (node as? ObjectNode)?.deepCopy() ?: return node to false
-    val produced = root.get("produced_outputs") as? ObjectNode ?: return node to false
+    val produced = root.get(SharedPayloadKeys.PRODUCED_OUTPUTS) as? ObjectNode ?: return node to false
     var changed = false
     requiredFields(phaseId).forEach { field ->
       if (!root.hasNonNull(field) && produced.hasNonNull(field)) {

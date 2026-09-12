@@ -2,6 +2,7 @@ package skillbill.workflow.taskruntime.model
 
 import skillbill.boundary.OpenBoundaryMap
 import skillbill.contracts.JsonCodec
+import skillbill.contracts.SharedPayloadKeys
 
 /** One validated projection actually delivered to a consumer phase. */
 data class FeatureTaskRuntimeHandoffProjection(
@@ -62,7 +63,7 @@ data class FeatureTaskRuntimeHandoffProjection(
     "projection_contract_version" to projectionContractVersion,
     "prompt_visibility" to promptVisibility.wireValue,
     "producer_iteration" to mapOf(
-      "phase_id" to producerIteration.phaseId,
+      SharedPayloadKeys.PHASE_ID to producerIteration.phaseId,
       "iteration" to producerIteration.iteration,
     ),
     "fields" to fields.map { field ->

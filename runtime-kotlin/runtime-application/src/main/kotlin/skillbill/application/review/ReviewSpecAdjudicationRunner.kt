@@ -3,6 +3,7 @@ package skillbill.application.review
 import skillbill.application.review.model.ReviewSpecAdjudicationOutcome
 import skillbill.application.review.model.ReviewSpecAdjudicationRunRequest
 import skillbill.contracts.JsonCodec
+import skillbill.contracts.review.ReviewFindingPayloadKeys
 import skillbill.ports.agentrun.model.AgentRunLaunchFacts
 import skillbill.ports.agentrun.model.SkillRunRequest
 import skillbill.ports.agentrun.model.UnsupportedAgentRunLaunch
@@ -298,15 +299,15 @@ private data class PreparedAdjudicationRejected(val verdict: ReviewFindingVerdic
 internal fun parseAdjudicationWorkerResult(stdout: String): ReviewSpecAdjudicationWorkerResult? {
   val payload = parseJsonObject(stdout) ?: return null
   val finding = JsonCodec.anyToStringAnyMap(payload["finding"])
-  val adjustment = JsonCodec.anyToStringAnyMap(payload["severity_adjustment"])
-  val dispositionField = stringList(payload["scope_disposition"])
+  val adjustment = JsonCodec.anyToStringAnyMap(payload[ReviewFindingPayloadKeys.SEVERITY_ADJUSTMENT])
+  val dispositionField = stringList(payload[ReviewFindingPayloadKeys.SCOPE_DISPOSITION])
   val extraDispositions = stringList(payload["dispositions"])
   val primary = dispositionField.firstOrNull()
   return ReviewSpecAdjudicationWorkerResult(
     scopeDisposition = primary,
     dispositionValues = (dispositionField.drop(1) + extraDispositions),
     citedSpecElement = payload["cited_spec_element"] as? String,
-    citations = parseCitations(payload["citations"]),
+    citations = parseCitations(payload[ReviewFindingPayloadKeys.CITATIONS]),
     severityAdjustmentDirection = adjustment?.get("direction") as? String,
     severityAdjustmentJustification = adjustment?.get("justification") as? String,
     adjustedSeverity = (adjustment?.get("adjusted_severity") as? String) ?: payload["adjusted_severity"] as? String,

@@ -1,6 +1,7 @@
 package skillbill.workflow.taskruntime.model
 
 import skillbill.boundary.OpenBoundaryMap
+import skillbill.contracts.review.ReviewVerificationSignalKeys
 
 enum class FeatureTaskRuntimeRepositoryCheckpointPolicy(val wireValue: String) {
   NOT_REQUIRED("not_required"),
@@ -41,9 +42,10 @@ data class FeatureTaskRuntimeRepositoryCheckpoint(
   }
 
   @OpenBoundaryMap("Feature-task-runtime repository checkpoint at the handoff-envelope wire seam")
-  fun toEnvelopeMap(): Map<String, Any?> = linkedMapOf<String, Any?>("fingerprint" to fingerprint).apply {
-    baseRef?.let { put("base_ref", it) }
-    headRef?.let { put("head_ref", it) }
-    if (workingTreeOwnedPaths.isNotEmpty()) put("working_tree_owned_paths", workingTreeOwnedPaths)
-  }
+  fun toEnvelopeMap(): Map<String, Any?> =
+    linkedMapOf<String, Any?>(ReviewVerificationSignalKeys.REPOSITORY_CHECKPOINT_FINGERPRINT to fingerprint).apply {
+      baseRef?.let { put("base_ref", it) }
+      headRef?.let { put("head_ref", it) }
+      if (workingTreeOwnedPaths.isNotEmpty()) put("working_tree_owned_paths", workingTreeOwnedPaths)
+    }
 }

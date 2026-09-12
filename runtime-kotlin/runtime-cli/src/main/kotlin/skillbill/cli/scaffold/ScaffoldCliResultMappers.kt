@@ -1,6 +1,7 @@
 package skillbill.cli.scaffold
 
 import skillbill.cli.kernel.CliOutput
+import skillbill.contracts.SharedPayloadKeys
 import skillbill.ports.scaffold.catalog.model.ScaffoldExplainResult
 import skillbill.ports.scaffold.catalog.model.ScaffoldListResult
 import skillbill.ports.scaffold.catalog.model.ScaffoldShowResult
@@ -55,7 +56,7 @@ internal fun ScaffoldValidateResult.toCliMap(): Map<String, Any?> {
   if (mode == ScaffoldValidationMode.SELECTED) {
     map["skill_names"] = skillNames ?: emptyList<String>()
   }
-  map["status"] = status.wireValue
+  map[SharedPayloadKeys.STATUS] = status.wireValue
   map["issues"] = issues
   if (mode == ScaffoldValidationMode.SELECTED) {
     map["suggested_commands"] = suggestedCommands ?: emptyList<String>()

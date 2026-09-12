@@ -6,6 +6,7 @@ import com.fasterxml.jackson.dataformat.yaml.YAMLMapper
 import com.networknt.schema.JsonSchema
 import com.networknt.schema.JsonSchemaFactory
 import com.networknt.schema.SpecVersion
+import skillbill.contracts.SharedPayloadKeys
 import skillbill.contracts.workflow.REJECTED_OUTPUT_DIAGNOSTIC_CONTRACT_VERSION
 import skillbill.contracts.workflow.RejectedOutputDiagnosticSchemaPaths
 import skillbill.error.InvalidRejectedOutputDiagnosticSchemaError
@@ -18,10 +19,10 @@ object RejectedOutputDiagnosticSchemaValidator {
 
   fun validate(metadata: RejectedOutputDiagnostic) {
     val instance = mapper.createObjectNode().apply {
-      put("contract_version", REJECTED_OUTPUT_DIAGNOSTIC_CONTRACT_VERSION)
+      put(SharedPayloadKeys.CONTRACT_VERSION, REJECTED_OUTPUT_DIAGNOSTIC_CONTRACT_VERSION)
       put("identity", metadata.identity)
-      put("workflow_id", metadata.workflowId)
-      put("phase_id", metadata.phaseId)
+      put(SharedPayloadKeys.WORKFLOW_ID, metadata.workflowId)
+      put(SharedPayloadKeys.PHASE_ID, metadata.phaseId)
       put("attempt", metadata.attempt)
       put("repair_turn", metadata.repairTurn)
       put("rule", metadata.rule)

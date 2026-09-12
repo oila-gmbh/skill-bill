@@ -1,6 +1,7 @@
 package skillbill.learnings
 
 import skillbill.contracts.JsonCodec
+import skillbill.contracts.SharedPayloadKeys
 import skillbill.learnings.model.LearningRecord
 import skillbill.learnings.model.LearningScope
 
@@ -10,7 +11,7 @@ fun learningPayload(record: LearningRecord): Map<String, Any?> = mapOf(
   "reference" to learningReference(record),
   "scope" to record.scope,
   "scope_key" to record.scopeKey,
-  "status" to record.status,
+  SharedPayloadKeys.STATUS to record.status,
   "title" to record.title,
   "rule_text" to record.ruleText,
   "rationale" to record.rationale,

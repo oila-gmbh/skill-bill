@@ -8,6 +8,7 @@ import skillbill.application.workflow.model.AdvanceCompletedSubtasksRequest
 import skillbill.application.workflow.model.CheckoutAndValidateBranchRequest
 import skillbill.application.workflow.model.GoalContinuationOutcome
 import skillbill.application.workflow.model.WorkflowContinueResult
+import skillbill.contracts.SharedPayloadKeys
 import skillbill.ports.workflow.gitops.WorkflowGitOperations
 import skillbill.ports.workflow.gitops.model.WorkflowGitOperationResult
 import skillbill.workflow.decomposition.DecompositionManifestValidator
@@ -124,8 +125,8 @@ fun subtaskStartArtifacts(
   "assessment" to mapOf(
     "spec_path" to selection.subtask.specPath,
     "goal_continuation" to true,
-    "issue_key" to manifest.issueKey,
-    "subtask_id" to selection.subtask.id,
+    SharedPayloadKeys.ISSUE_KEY to manifest.issueKey,
+    SharedPayloadKeys.SUBTASK_ID to selection.subtask.id,
     "accepted_without_user_confirmation" to true,
   ),
   "branch" to mapOf(
@@ -135,8 +136,8 @@ fun subtaskStartArtifacts(
   ),
   "goal_continuation" to mapOf(
     "enabled" to true,
-    "issue_key" to manifest.issueKey,
-    "subtask_id" to selection.subtask.id,
+    SharedPayloadKeys.ISSUE_KEY to manifest.issueKey,
+    SharedPayloadKeys.SUBTASK_ID to selection.subtask.id,
     "suppress_pr" to true,
     "outcome_authority" to "workflow_store",
   ),

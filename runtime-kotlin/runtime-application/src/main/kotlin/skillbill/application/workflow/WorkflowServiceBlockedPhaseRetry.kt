@@ -3,6 +3,7 @@ package skillbill.application.workflow
 import skillbill.application.decomposition.DecompositionManifestWriteGuard
 import skillbill.application.decomposition.DecompositionManifestWriter
 import skillbill.application.workflow.model.WorkflowUpdateResult
+import skillbill.contracts.SharedPayloadKeys
 import skillbill.model.RepositoryRoot
 import skillbill.ports.db.DatabaseSessionFactory
 import skillbill.ports.persistence.UnitOfWork
@@ -151,8 +152,8 @@ class WorkflowServiceBlockedPhaseRetry(
       currentStepId = request.phaseId,
       stepUpdates = listOf(
         mapOf(
-          "step_id" to request.phaseId,
-          "status" to "pending",
+          SharedPayloadKeys.STEP_ID to request.phaseId,
+          SharedPayloadKeys.STATUS to "pending",
           "attempt_count" to 0,
         ),
       ),
@@ -164,7 +165,7 @@ class WorkflowServiceBlockedPhaseRetry(
             FEATURE_TASK_RUNTIME_PHASE_LEDGER_LIMIT,
           ),
         FEATURE_TASK_RUNTIME_OPERATOR_BLOCK_RETRY_ARTIFACT_KEY to mapOf(
-          "phase_id" to request.phaseId,
+          SharedPayloadKeys.PHASE_ID to request.phaseId,
           "reason" to request.reason,
           "retried_at" to OffsetDateTime.now(ZoneOffset.UTC).toString(),
           "previous_blocked_reason" to state.blockedRecord.blockedReason,

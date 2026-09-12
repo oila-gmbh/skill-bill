@@ -10,6 +10,7 @@ import skillbill.cli.kernel.DocumentedCliCommand
 import skillbill.cli.kernel.DocumentedNoOpCliCommand
 import skillbill.config.model.SpecType
 import skillbill.config.model.parseSpecType
+import skillbill.contracts.SharedPayloadKeys
 import skillbill.error.ShellContentContractException
 import java.nio.file.Path
 
@@ -58,7 +59,7 @@ class ConfigResolveSpecTypeCommand(
     }
     state.completeText(
       "${resolved.id}\n",
-      mapOf("status" to "ok", "spec_type" to resolved.id),
+      mapOf(SharedPayloadKeys.STATUS to "ok", "spec_type" to resolved.id),
     )
   }
 
@@ -77,7 +78,7 @@ class ConfigResolveSpecTypeCommand(
   }
 
   private fun failurePayload(message: String?): Map<String, Any?> =
-    mapOf("status" to "failed", "error" to message.orEmpty())
+    mapOf(SharedPayloadKeys.STATUS to "failed", "error" to message.orEmpty())
 
   private data class ExplicitArg(
     val value: SpecType?,

@@ -1,6 +1,9 @@
 package skillbill.workflow.goal.model
 
 import skillbill.boundary.OpenBoundaryMap
+import skillbill.contracts.SharedPayloadKeys
+import skillbill.contracts.review.ReviewFindingPayloadKeys
+import skillbill.contracts.review.ReviewVerificationSignalKeys
 import skillbill.error.InvalidGoalSubtaskReviewStateSchemaError
 import skillbill.error.InvalidWorkflowStateSchemaError
 import skillbill.review.context.model.CodeReviewExecutionMode
@@ -47,7 +50,7 @@ data class GoalSubtaskReviewCompactFinding(
     "severity" to severity,
     "label" to label,
     "text" to text,
-  ).apply { findingId?.let { put("finding_id", it) } }
+  ).apply { findingId?.let { put(ReviewFindingPayloadKeys.FINDING_ID, it) } }
 
   companion object {
     @OpenBoundaryMap("Compact goal-review finding decode from the durable workflow-artifact map")
@@ -103,10 +106,10 @@ data class GoalSubtaskReviewPassResult(
   @OpenBoundaryMap("Goal-review pass result at the durable workflow-artifact seam")
   fun toArtifactMap(): Map<String, Any?> = linkedMapOf<String, Any?>(
     "pass_number" to passNumber,
-    "verdict" to verdict.wireValue,
+    SharedPayloadKeys.VERDICT to verdict.wireValue,
     "review_result_artifact" to reviewResultArtifact,
     "unresolved_finding_count" to unresolvedFindingCount,
-    "findings" to findings.map(GoalSubtaskReviewCompactFinding::toArtifactMap),
+    ReviewVerificationSignalKeys.REVIEW_FINDINGS to findings.map(GoalSubtaskReviewCompactFinding::toArtifactMap),
   ).apply {
     executedMode?.let { put("executed_mode", it.wireValue) }
     commitFocusedAccounting?.let { put("commit_focused_accounting", it.toArtifactMap()) }

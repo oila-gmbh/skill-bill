@@ -1,6 +1,7 @@
 package skillbill.engine.goalrunner
 
 import skillbill.contracts.JsonCodec
+import skillbill.contracts.SharedPayloadKeys
 import skillbill.goalrunner.goalContinuationTerminalStatus
 import skillbill.goalrunner.model.GoalRunnerReconciledOutcome
 import skillbill.goalrunner.model.GoalRunnerStopReason
@@ -106,8 +107,8 @@ fun Map<String, Any?>.isImplementationReturnContract(): Boolean = keys.containsA
 )
 
 fun Map<String, Any?>.isRuntimeTerminalEnvelope(): Boolean =
-  goalContinuationTerminalStatus(this["status"]?.toString()) != null &&
-    this["workflow_id"]?.toString().orEmpty().isNotBlank()
+  goalContinuationTerminalStatus(this[SharedPayloadKeys.STATUS]?.toString()) != null &&
+    this[SharedPayloadKeys.WORKFLOW_ID]?.toString().orEmpty().isNotBlank()
 
 fun topLevelJsonObjectCandidates(text: String): List<String> {
   val candidates = mutableListOf<String>()

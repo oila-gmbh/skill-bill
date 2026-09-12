@@ -15,6 +15,9 @@ import skillbill.cli.kernel.formatOption
 import skillbill.cli.kernel.invokingAgentResolutionHelp
 import skillbill.cli.kernel.requireSupportedOptionalAgentId
 import skillbill.cli.model.CliRunInputs
+import skillbill.contracts.SharedPayloadKeys
+import skillbill.contracts.review.ReviewFindingPayloadKeys
+import skillbill.contracts.review.ReviewVerificationSignalKeys
 import skillbill.engine.featuretask.model.FeatureTaskContinuationCandidate
 import skillbill.engine.goalrunner.GoalPreflightService
 import skillbill.engine.goalrunner.findings.UnaddressedFindingsLedgerService
@@ -92,36 +95,36 @@ internal fun parseCodeReviewMode(raw: String?) = raw?.let { value ->
 }
 
 internal fun GoalPreflightResult.toGoalPreflightCliMap(): Map<String, Any?> = linkedMapOf(
-  "verdict" to verdict,
-  "issue_key" to issueKey,
+  SharedPayloadKeys.VERDICT to verdict,
+  SharedPayloadKeys.ISSUE_KEY to issueKey,
   "candidate" to candidate?.toGoalPreflightCandidateMap(),
   "candidates" to candidates.map { it.toGoalPreflightCandidateMap() },
   "goal" to goal?.let {
     linkedMapOf(
       "parent_workflow_id" to it.parentWorkflowId,
-      "issue_key" to it.issueKey,
-      "status" to it.status,
+      SharedPayloadKeys.ISSUE_KEY to it.issueKey,
+      SharedPayloadKeys.STATUS to it.status,
       "current_subtask_id" to it.currentSubtaskId,
       "current_action" to it.currentAction,
       "complete_count" to it.completeCount,
       "pending_count" to it.pendingCount,
       "blocked_count" to it.blockedCount,
       "updated_at" to it.updatedAt,
-      "summary" to it.summary,
+      SharedPayloadKeys.SUMMARY to it.summary,
     )
   },
   "gate_block" to gateBlock?.let { block ->
     linkedMapOf(
-      "issue_key" to block.issueKey,
+      SharedPayloadKeys.ISSUE_KEY to block.issueKey,
       "feature_name" to block.featureName,
       "subtasks" to block.subtasks.map { subtask ->
         linkedMapOf(
           "id" to subtask.id,
           "name" to subtask.name,
-          "status" to subtask.status,
+          SharedPayloadKeys.STATUS to subtask.status,
           "dependencies" to subtask.dependencies.map { dependency ->
             linkedMapOf(
-              "subtask_id" to dependency.subtaskId,
+              SharedPayloadKeys.SUBTASK_ID to dependency.subtaskId,
               "optional" to dependency.optional,
               "skipped" to dependency.skipped,
               "note" to dependency.note,
@@ -143,7 +146,7 @@ internal fun GoalPreflightResult.toGoalPreflightCliMap(): Map<String, Any?> = li
   },
   "rehydrate_targets" to rehydrateTargets.map {
     linkedMapOf(
-      "issue_key" to it.issueKey,
+      SharedPayloadKeys.ISSUE_KEY to it.issueKey,
       "linear_issue_id" to it.linearIssueId,
       "target_path" to it.targetPath,
     )
@@ -152,9 +155,9 @@ internal fun GoalPreflightResult.toGoalPreflightCliMap(): Map<String, Any?> = li
 )
 
 internal fun FeatureTaskContinuationCandidate.toGoalPreflightCandidateMap(): Map<String, Any?> = linkedMapOf(
-  "workflow_id" to workflowId,
+  SharedPayloadKeys.WORKFLOW_ID to workflowId,
   "mode" to mode.wireValue,
-  "status" to status,
+  SharedPayloadKeys.STATUS to status,
   "current_step" to currentStep,
   "governed_spec_path" to governedSpecPath,
   "updated_at" to updatedAt,
@@ -165,7 +168,7 @@ internal fun FeatureTaskContinuationCandidate.toGoalPreflightCandidateMap(): Map
       "evidence" to it.evidence,
     )
   },
-  "summary" to summary,
+  SharedPayloadKeys.SUMMARY to summary,
 )
 
 @Inject
@@ -198,7 +201,7 @@ class GoalPlanningLogCommand(
       ),
     )
     val payload = linkedMapOf<String, Any?>(
-      "issue_key" to log.issueKey,
+      SharedPayloadKeys.ISSUE_KEY to log.issueKey,
       "parent_workflow_id" to log.parentWorkflowId,
       "total_attempts" to log.totalAttempts,
       "succeeded_attempts" to log.succeededAttempts,
@@ -208,8 +211,8 @@ class GoalPlanningLogCommand(
       "total_planning_ms" to log.totalPlanningMs,
       "attempts" to log.attempts.map { attempt ->
         linkedMapOf<String, Any?>(
-          "phase_id" to attempt.phaseId,
-          "subtask_id" to attempt.subtaskId,
+          SharedPayloadKeys.PHASE_ID to attempt.phaseId,
+          SharedPayloadKeys.SUBTASK_ID to attempt.subtaskId,
           "attempt" to attempt.attempt,
           "started_at" to attempt.startedAt?.toString(),
           "finished_at" to attempt.finishedAt?.toString(),
@@ -291,25 +294,25 @@ class GoalFindingsCommand(
     repairLedgers: Map<String, FeatureTaskRuntimeRepairLedger>,
     verificationDispositions: List<FeatureTaskRuntimeFindingVerificationDisposition>,
   ): LinkedHashMap<String, Any?> = linkedMapOf(
-    "issue_key" to ledger.issueKey,
+    SharedPayloadKeys.ISSUE_KEY to ledger.issueKey,
     "unaddressed_findings" to ledger.findings.size,
     "severity_breakdown" to ledger.severityBreakdown,
-    "findings" to ledger.findings.map { finding ->
+    ReviewVerificationSignalKeys.REVIEW_FINDINGS to ledger.findings.map { finding ->
       linkedMapOf(
-        "subtask_id" to finding.subtaskId,
-        "workflow_id" to finding.workflowId,
+        SharedPayloadKeys.SUBTASK_ID to finding.subtaskId,
+        SharedPayloadKeys.WORKFLOW_ID to finding.workflowId,
         "review_pass_number" to finding.reviewPassNumber,
         "finding_ordinal" to finding.findingOrdinal,
         "severity" to finding.severity,
-        "issue_category" to finding.issueCategory,
+        ReviewFindingPayloadKeys.ISSUE_CATEGORY to finding.issueCategory,
         "location" to finding.location,
-        "summary" to finding.summary,
-        "claim_verdict" to finding.claimVerdict?.wireValue,
-        "scope_disposition" to finding.scopeDisposition?.wireValue,
-        "citations" to finding.citations.map { citation ->
+        SharedPayloadKeys.SUMMARY to finding.summary,
+        ReviewFindingPayloadKeys.CLAIM_VERDICT to finding.claimVerdict?.wireValue,
+        ReviewFindingPayloadKeys.SCOPE_DISPOSITION to finding.scopeDisposition?.wireValue,
+        ReviewFindingPayloadKeys.CITATIONS to finding.citations.map { citation ->
           linkedMapOf("path" to citation.path, "line" to citation.line)
         },
-        "severity_adjustment" to finding.severityAdjustment?.let { adjustment ->
+        ReviewFindingPayloadKeys.SEVERITY_ADJUSTMENT to finding.severityAdjustment?.let { adjustment ->
           linkedMapOf(
             "direction" to adjustment.direction.wireValue,
             "justification" to adjustment.justification,
@@ -321,13 +324,13 @@ class GoalFindingsCommand(
     },
     "repair_ledger" to repairLedgers.map { (workflowId, repairLedger) ->
       linkedMapOf<String, Any?>(
-        "workflow_id" to workflowId,
+        SharedPayloadKeys.WORKFLOW_ID to workflowId,
         "entries" to repairLedger.entries.map(FeatureTaskRuntimeRepairLedgerEntry::toProjectionMap),
       )
     },
     "finding_verification_dispositions" to verificationDispositions.map { disposition ->
       linkedMapOf(
-        "finding_id" to disposition.findingId,
+        ReviewFindingPayloadKeys.FINDING_ID to disposition.findingId,
         "disposition" to disposition.disposition.wireValue,
         "reason" to disposition.reason,
         "boundary_context_unavailable" to disposition.boundaryContextUnavailable,

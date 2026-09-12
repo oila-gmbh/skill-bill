@@ -1,6 +1,7 @@
 package skillbill.engine.featuretask
 
 import skillbill.contracts.JsonCodec
+import skillbill.contracts.SharedPayloadKeys
 import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_CONTRACT_VERSION
 import skillbill.engine.featuretask.validation.FeatureTaskRuntimeBuildGateCoordinator
 import skillbill.engine.featuretask.validation.model.ValidationGateAgentRepairLauncher
@@ -76,7 +77,9 @@ object FeatureTaskRuntimeRunLoopValidationGate {
     val accepted = runLoop.outputValidator.validatePhaseOutput(outputText, sourceLabel = run.phaseId)
       .requireAcceptedOutput(run.phaseId)
     val buildReceipt = JsonCodec.anyToStringAnyMap(
-      JsonCodec.anyToStringAnyMap(accepted.normalizedOutput.envelope["produced_outputs"])?.get("build_receipt"),
+      JsonCodec.anyToStringAnyMap(
+        accepted.normalizedOutput.envelope[SharedPayloadKeys.PRODUCED_OUTPUTS],
+      )?.get("build_receipt"),
     )
     runLoop.buildReceiptValidator.validateBuildReceipt(buildReceipt ?: emptyMap(), sourceLabel = run.phaseId)
     accepted
@@ -273,10 +276,10 @@ object FeatureTaskRuntimeRunLoopValidationGate {
 
   fun gateTriageCapturedProducedOutputs(outputText: String): Map<String, Any?> {
     val produced = looseOutputEnvelope(outputText)
-      ?.let { JsonCodec.anyToStringAnyMap(it["produced_outputs"]) }
+      ?.let { JsonCodec.anyToStringAnyMap(it[SharedPayloadKeys.PRODUCED_OUTPUTS]) }
       ?: return emptyMap()
     return buildMap {
-      produced["value"]?.let { put("value", it) }
+      produced[SharedPayloadKeys.VALUE]?.let { put(SharedPayloadKeys.VALUE, it) }
       produced["validation_repair_plan"]?.let { put("validation_repair_plan", it) }
     }
   }
@@ -297,11 +300,11 @@ object FeatureTaskRuntimeRunLoopValidationGate {
   ): FeatureTaskRuntimePhaseOutput {
     val captured = gateTriageCapturedProducedOutputs(outputText)
     val payload = mapOf(
-      "contract_version" to FEATURE_TASK_RUNTIME_CONTRACT_VERSION,
-      "phase_id" to run.phaseId,
-      "status" to "completed",
-      "summary" to "Gate triage segment.",
-      "produced_outputs" to captured,
+      SharedPayloadKeys.CONTRACT_VERSION to FEATURE_TASK_RUNTIME_CONTRACT_VERSION,
+      SharedPayloadKeys.PHASE_ID to run.phaseId,
+      SharedPayloadKeys.STATUS to "completed",
+      SharedPayloadKeys.SUMMARY to "Gate triage segment.",
+      SharedPayloadKeys.PRODUCED_OUTPUTS to captured,
     )
     return FeatureTaskRuntimePhaseOutput(
       phaseId = run.phaseId,
@@ -313,9 +316,9 @@ object FeatureTaskRuntimeRunLoopValidationGate {
   fun extractValidationGateTriagePlan(output: FeatureTaskRuntimePhaseOutput): ValidationGateTriageResult {
     val envelope = FeatureTaskRuntimeRunLoopLaunch.outputEnvelopeOf(output)
       ?: return ValidationGateTriageResult.Empty
-    val produced = JsonCodec.anyToStringAnyMap(envelope["produced_outputs"])
+    val produced = JsonCodec.anyToStringAnyMap(envelope[SharedPayloadKeys.PRODUCED_OUTPUTS])
       ?: return ValidationGateTriageResult.Empty
-    FeatureTaskRuntimeRunLoopValidationGate.planFromProducedValue(produced["value"])?.let { return it }
+    FeatureTaskRuntimeRunLoopValidationGate.planFromProducedValue(produced[SharedPayloadKeys.VALUE])?.let { return it }
     val directPlan = FeatureTaskRuntimeRunLoopValidationGate
       .extractTriagePlanProse(produced["validation_repair_plan"])
     return if (!directPlan.isNullOrBlank()) {

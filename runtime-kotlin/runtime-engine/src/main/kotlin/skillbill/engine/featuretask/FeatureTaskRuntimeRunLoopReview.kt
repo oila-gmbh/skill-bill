@@ -11,16 +11,16 @@ import skillbill.contracts.JsonCodec
 import skillbill.contracts.SharedPayloadKeys
 import skillbill.error.InvalidReviewContextSchemaError
 import skillbill.error.UnreadableSpecIntentProjectionError
-import skillbill.goalrunner.subtaskreview.GoalSubtaskReviewSummaryReducer
 import skillbill.goalrunner.subtaskreview.FeatureTaskRuntimeVerificationSignalKeys
+import skillbill.goalrunner.subtaskreview.GoalSubtaskReviewSummaryReducer
 import skillbill.goalrunner.subtaskreview.model.UnaddressedFindingLedgerScope
 import skillbill.ports.diagnostics.model.ProducerOutputEvidence
 import skillbill.ports.workflow.gitops.model.WorkflowGitOperationResult
 import skillbill.ports.workflow.gitops.repositoryFingerprint
 import skillbill.review.context.model.ReviewContextBudgetExceededException
 import skillbill.workflow.goal.model.GoalSubtaskBlockerDisposition
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFailureDisposition
 import skillbill.workflow.taskruntime.model.AcceptedFeatureTaskRuntimePhaseOutput
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFailureDisposition
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutput
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseRecord
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeReviewPassSequence
@@ -502,13 +502,12 @@ private fun AcceptedFeatureTaskRuntimePhaseOutput.withReviewRepositoryFingerprin
   )
 }
 
-private fun String.repositoryCheckpointFingerprint(): String? =
-  FeatureTaskRuntimeReviewEnvelope.envelopeMap(this)
-    .let { JsonCodec.anyToStringAnyMap(it[SharedPayloadKeys.PRODUCED_OUTPUTS]).orEmpty() }
-    .let { JsonCodec.anyToStringAnyMap(it[FeatureTaskRuntimeVerificationSignalKeys.REPOSITORY_CHECKPOINT]) }
-    ?.get(FeatureTaskRuntimeVerificationSignalKeys.REPOSITORY_CHECKPOINT_FINGERPRINT)
-    ?.toString()
-    ?.takeIf(String::isNotBlank)
+private fun String.repositoryCheckpointFingerprint(): String? = FeatureTaskRuntimeReviewEnvelope.envelopeMap(this)
+  .let { JsonCodec.anyToStringAnyMap(it[SharedPayloadKeys.PRODUCED_OUTPUTS]).orEmpty() }
+  .let { JsonCodec.anyToStringAnyMap(it[FeatureTaskRuntimeVerificationSignalKeys.REPOSITORY_CHECKPOINT]) }
+  ?.get(FeatureTaskRuntimeVerificationSignalKeys.REPOSITORY_CHECKPOINT_FINGERPRINT)
+  ?.toString()
+  ?.takeIf(String::isNotBlank)
 
 object FeatureTaskRuntimeRunLoopReviewDriverSettlement {
   internal fun FeatureTaskRuntimeRunLoopReview.retainRuntimeOwnedReviewEvidence(

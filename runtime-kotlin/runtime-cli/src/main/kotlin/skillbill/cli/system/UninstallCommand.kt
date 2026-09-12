@@ -9,6 +9,7 @@ import skillbill.cli.kernel.CliRunState
 import skillbill.cli.kernel.DocumentedCliCommand
 import skillbill.cli.kernel.formatOption
 import skillbill.cli.model.CliRunInputs
+import skillbill.contracts.SharedPayloadKeys
 import skillbill.ports.diagnostics.RuntimeDiagnostics
 import skillbill.ports.install.mcp.InstallMcpRegistrationPort
 import skillbill.ports.install.nativeagent.InstallNativeAgentLinkPort
@@ -40,7 +41,11 @@ class UninstallCommand(
           "Goal workers must preserve the active workflow store; uninstall after the goal completes."
       state.completeText(
         message,
-        mapOf("status" to "error", "error" to message, "exit_code" to GOAL_CONTINUATION_REFUSAL_EXIT_CODE),
+        mapOf(
+          SharedPayloadKeys.STATUS to "error",
+          "error" to message,
+          "exit_code" to GOAL_CONTINUATION_REFUSAL_EXIT_CODE,
+        ),
         exitCode = GOAL_CONTINUATION_REFUSAL_EXIT_CODE,
       )
       return
@@ -340,7 +345,7 @@ internal data class UninstallPlan(
     skipped: List<String>,
     warnings: List<String>,
   ): Map<String, Any?> = linkedMapOf(
-    "status" to status,
+    SharedPayloadKeys.STATUS to status,
     "state_root" to stateRoot.toString(),
     "skill_names" to skillNames,
     "legacy_names" to legacyNames,
@@ -381,7 +386,7 @@ internal data class UninstallResult(
   }
 
   fun toPayload(): Map<String, Any?> = linkedMapOf(
-    "status" to status,
+    SharedPayloadKeys.STATUS to status,
     "removed" to removed,
     "skipped" to skipped,
     "warnings" to warnings,

@@ -2,6 +2,7 @@ package skillbill.workflow.taskruntime.model
 
 import skillbill.boundary.OpenBoundaryMap
 import skillbill.contracts.JsonCodec
+import skillbill.contracts.SharedPayloadKeys
 import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_CHECKPOINT_IDENTITY_CONTRACT_VERSION
 import skillbill.error.InvalidFeatureTaskRuntimeCheckpointIdentityVersionError
 import skillbill.error.InvalidWorkflowStateSchemaError
@@ -114,11 +115,11 @@ data class FeatureTaskRuntimeCheckpointIdentity(
   @OpenBoundaryMap("Feature-task-runtime checkpoint-identity entry at the durable workflow-artifact seam")
   fun toArtifactMap(): Map<String, Any?> = linkedMapOf<String, Any?>(
     "sequence_number" to sequenceNumber,
-    "issue_key" to issueKey,
-    "subtask_id" to subtaskId,
+    SharedPayloadKeys.ISSUE_KEY to issueKey,
+    SharedPayloadKeys.SUBTASK_ID to subtaskId,
     "checkpoint_ref" to checkpointRef,
     "branch" to branch,
-    "phase_id" to phaseId,
+    SharedPayloadKeys.PHASE_ID to phaseId,
     "generation" to generation,
     "owned_path_digest" to ownedPathDigest,
     "owned_path_count" to ownedPathCount,
@@ -207,7 +208,7 @@ fun featureTaskRuntimeOwnedPathDigest(ownedPaths: List<String>): String {
 fun featureTaskRuntimeCheckpointIdentitiesToArtifact(
   identities: List<FeatureTaskRuntimeCheckpointIdentity>,
 ): Map<String, Any?> = linkedMapOf(
-  "contract_version" to FEATURE_TASK_RUNTIME_CHECKPOINT_IDENTITY_CONTRACT_VERSION,
+  SharedPayloadKeys.CONTRACT_VERSION to FEATURE_TASK_RUNTIME_CHECKPOINT_IDENTITY_CONTRACT_VERSION,
   "checkpoints" to identities.map { it.toArtifactMap() },
 )
 
@@ -221,7 +222,7 @@ fun featureTaskRuntimeCheckpointIdentitiesFromArtifact(raw: Any?): List<FeatureT
   if (raw == null) return emptyList()
   val map = JsonCodec.anyToStringAnyMap(raw)
     ?: checkpointIdentityError("Feature-task-runtime checkpoint-identity record must be an object.")
-  val version = map["contract_version"] as? String
+  val version = map[SharedPayloadKeys.CONTRACT_VERSION] as? String
   if (version != FEATURE_TASK_RUNTIME_CHECKPOINT_IDENTITY_CONTRACT_VERSION) {
     throw InvalidFeatureTaskRuntimeCheckpointIdentityVersionError(
       expectedContractVersion = FEATURE_TASK_RUNTIME_CHECKPOINT_IDENTITY_CONTRACT_VERSION,

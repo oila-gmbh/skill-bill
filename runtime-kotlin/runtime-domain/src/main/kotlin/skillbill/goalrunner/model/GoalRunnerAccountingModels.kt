@@ -1,6 +1,7 @@
 package skillbill.goalrunner.model
 
 import skillbill.boundary.OpenBoundaryMap
+import skillbill.contracts.SharedPayloadKeys
 import skillbill.workflow.model.WorkflowStatus
 
 const val GOAL_ATTEMPT_LEDGER_ARTIFACT_KEY: String = "goal_attempt_ledger"
@@ -103,8 +104,8 @@ data class GoalAttemptLedgerEntry(
   @OpenBoundaryMap("Goal attempt ledger entry artifact map at durable workflow-artifact/schema seams")
   fun toArtifactMap(): Map<String, Any?> {
     val optional = linkedMapOf<String, Any?>(
-      "issue_key" to issueKey,
-      "subtask_id" to subtaskId,
+      SharedPayloadKeys.ISSUE_KEY to issueKey,
+      SharedPayloadKeys.SUBTASK_ID to subtaskId,
       "previous_workflow_id" to previousWorkflowId,
       "previous_status" to previousStatus?.wireValue,
       "previous_step" to previousStep,

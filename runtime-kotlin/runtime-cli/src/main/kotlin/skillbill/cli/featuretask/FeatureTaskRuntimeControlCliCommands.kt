@@ -14,6 +14,7 @@ import skillbill.cli.kernel.DocumentedCliCommand
 import skillbill.cli.kernel.formatOption
 import skillbill.cli.kernel.toPayload
 import skillbill.cli.model.CliRunInputs
+import skillbill.contracts.SharedPayloadKeys
 import skillbill.engine.featuretask.FeatureTaskContinuationLookupService
 import skillbill.engine.featuretask.FeatureTaskRuntimeStatusService
 import skillbill.engine.featuretask.model.FeatureTaskContinuationCandidate
@@ -56,28 +57,28 @@ private fun FeatureTaskContinuationLookupResult.toCliPayload(): Map<String, Any?
     mapOf("result" to "goal_continuation", "goal" to candidate.toMap())
   is FeatureTaskContinuationLookupResult.NeedsIdentityRepair -> mapOf(
     "result" to "needs_identity_repair",
-    "workflow_id" to workflowId,
-    "summary" to summary,
+    SharedPayloadKeys.WORKFLOW_ID to workflowId,
+    SharedPayloadKeys.SUMMARY to summary,
   )
 }
 
 private fun GoalContinuationCandidate.toMap(): Map<String, Any?> = mapOf(
   "parent_workflow_id" to parentWorkflowId,
-  "issue_key" to issueKey,
-  "status" to status,
+  SharedPayloadKeys.ISSUE_KEY to issueKey,
+  SharedPayloadKeys.STATUS to status,
   "current_subtask_id" to currentSubtaskId,
   "current_action" to currentAction,
   "complete_count" to completeCount,
   "pending_count" to pendingCount,
   "blocked_count" to blockedCount,
   "updated_at" to updatedAt,
-  "summary" to summary,
+  SharedPayloadKeys.SUMMARY to summary,
 )
 
 private fun FeatureTaskContinuationCandidate.toMap(): Map<String, Any?> = mapOf(
-  "workflow_id" to workflowId,
+  SharedPayloadKeys.WORKFLOW_ID to workflowId,
   "mode" to mode.wireValue,
-  "status" to status,
+  SharedPayloadKeys.STATUS to status,
   "current_step" to currentStep,
   "governed_spec_path" to governedSpecPath,
   "updated_at" to updatedAt,
@@ -88,7 +89,7 @@ private fun FeatureTaskContinuationCandidate.toMap(): Map<String, Any?> = mapOf(
       "evidence" to it.evidence,
     )
   },
-  "summary" to summary,
+  SharedPayloadKeys.SUMMARY to summary,
 )
 
 @Inject

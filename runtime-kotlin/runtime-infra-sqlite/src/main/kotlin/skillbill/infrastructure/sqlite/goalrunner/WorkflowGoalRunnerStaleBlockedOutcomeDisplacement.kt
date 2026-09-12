@@ -1,5 +1,6 @@
 package skillbill.infrastructure.sqlite.goalrunner
 
+import skillbill.contracts.SharedPayloadKeys
 import skillbill.goalrunner.GOAL_CONTINUATION_OUTCOME_DISPLACEMENT_ARTIFACT_KEY
 import skillbill.goalrunner.derivedTerminalOutcomeFor
 import skillbill.goalrunner.goalContinuationOutcome
@@ -74,9 +75,9 @@ internal class WorkflowGoalRunnerStaleBlockedOutcomeDisplacement(
             put(
               GOAL_CONTINUATION_OUTCOME_DISPLACEMENT_ARTIFACT_KEY,
               linkedMapOf(
-                "workflow_id" to context.workflowId,
-                "issue_key" to context.issueKey,
-                "subtask_id" to context.subtaskId,
+                SharedPayloadKeys.WORKFLOW_ID to context.workflowId,
+                SharedPayloadKeys.ISSUE_KEY to context.issueKey,
+                SharedPayloadKeys.SUBTASK_ID to context.subtaskId,
                 "displaced_status" to "blocked",
                 "original_blocked_reason" to context.stored.blockedReason,
                 "failed_corroboration" to linkedMapOf(

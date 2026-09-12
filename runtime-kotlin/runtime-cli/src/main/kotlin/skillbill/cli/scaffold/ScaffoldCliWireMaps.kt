@@ -1,5 +1,6 @@
 package skillbill.cli.scaffold
 
+import skillbill.contracts.SharedPayloadKeys
 import skillbill.ports.scaffold.catalog.model.ScaffoldExplainSkill
 import skillbill.ports.scaffold.model.ScaffoldReviewComposition
 import skillbill.ports.scaffold.model.ScaffoldSectionStatus
@@ -49,14 +50,14 @@ internal fun ScaffoldSkillStatus.toWireMap(): Map<String, Any?> {
 
 internal fun ScaffoldSectionStatus.toWireMap(): Map<String, Any?> = linkedMapOf(
   "heading" to heading,
-  "status" to status.wireValue,
+  SharedPayloadKeys.STATUS to status.wireValue,
   "line_count" to lineCount,
   "preview" to preview,
 )
 
 internal fun ScaffoldReviewComposition.toWireMap(): Map<String, Any?> = linkedMapOf(
   "source" to source,
-  "summary" to summary,
+  SharedPayloadKeys.SUMMARY to summary,
   "baseline_layers" to baselineLayers.map { layer ->
     linkedMapOf<String, Any?>(
       "platform" to layer.platform,

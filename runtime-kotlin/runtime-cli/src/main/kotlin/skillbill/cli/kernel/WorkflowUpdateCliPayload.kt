@@ -2,6 +2,7 @@ package skillbill.cli.kernel
 
 import skillbill.application.workflow.WorkflowWireProjections
 import skillbill.application.workflow.model.WorkflowUpdateResult
+import skillbill.contracts.SharedPayloadKeys
 
 /**
  * Wire shape for every workflow-mutating CLI command, whichever command area owns it. The key order
@@ -20,8 +21,8 @@ internal fun WorkflowUpdateResult.toPayload(): Map<String, Any?> = when (this) {
     put("db_path", dbPath)
   }
   is WorkflowUpdateResult.Error -> linkedMapOf<String, Any?>(
-    "status" to "error",
-    "workflow_id" to workflowId,
+    SharedPayloadKeys.STATUS to "error",
+    SharedPayloadKeys.WORKFLOW_ID to workflowId,
     "error" to error,
   ).apply { dbPath?.let { put("db_path", it) } }
 }

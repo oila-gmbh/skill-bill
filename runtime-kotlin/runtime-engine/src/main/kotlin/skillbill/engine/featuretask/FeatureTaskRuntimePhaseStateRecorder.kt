@@ -3,6 +3,7 @@ package skillbill.engine.featuretask
 import skillbill.application.decomposition.decodeArtifacts
 import skillbill.application.workflow.model.WorkflowFamily
 import skillbill.contracts.JsonCodec
+import skillbill.contracts.SharedPayloadKeys
 import skillbill.engine.featuretask.model.FeatureTaskRuntimePhaseStateRequest
 import skillbill.ports.db.DatabaseSessionFactory
 import skillbill.ports.workflow.get
@@ -211,10 +212,10 @@ fun FeatureTaskRuntimePhaseStateRecorder.implementationAttemptPatch(
 ): Map<String, Any?> {
   if (!FeatureTaskRuntimePhaseWorkflowDefinition.isMutatingPhase(request.phaseId)) return emptyMap()
   val produced = request.normalizedOutput?.envelope
-    ?.let { JsonCodec.anyToStringAnyMap(it["produced_outputs"]) }
-  val value = produced?.get("value")?.toString()?.trim().orEmpty()
+    ?.let { JsonCodec.anyToStringAnyMap(it[SharedPayloadKeys.PRODUCED_OUTPUTS]) }
+  val value = produced?.get(SharedPayloadKeys.VALUE)?.toString()?.trim().orEmpty()
   if (produced == null || value.isBlank()) return emptyMap()
-  val prompt = produced["prompt"]?.toString()?.trim()?.takeIf(String::isNotBlank)
+  val prompt = produced[SharedPayloadKeys.PROMPT]?.toString()?.trim()?.takeIf(String::isNotBlank)
   val existing = implementationAttemptsFrom(artifacts)
   val appended = featureTaskRuntimeAppendImplementationAttempt(
     existing = existing,

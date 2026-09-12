@@ -2,6 +2,7 @@ package skillbill.contracts.goalplanning
 
 import org.yaml.snakeyaml.Yaml
 import org.yaml.snakeyaml.error.YAMLException
+import skillbill.contracts.SharedPayloadKeys
 import skillbill.error.InvalidGoalPlanningDiscoveryExclusionsSchemaError
 import kotlin.coroutines.cancellation.CancellationException
 
@@ -68,7 +69,7 @@ object GoalPlanningDiscoveryExclusions {
   internal fun parse(document: String): Contract {
     val root = loadRootMapping(document)
     requireKnownKeysOnly(root)
-    requireSupportedVersion(root["contract_version"])
+    requireSupportedVersion(root[SharedPayloadKeys.CONTRACT_VERSION])
     return Contract(
       roots = requiredStringList(root, "excluded_roots").onEach(::requireNormalizedRoot),
       directoryNames = requiredStringList(root, "excluded_directory_names").onEach(::requireBareDirectoryName),

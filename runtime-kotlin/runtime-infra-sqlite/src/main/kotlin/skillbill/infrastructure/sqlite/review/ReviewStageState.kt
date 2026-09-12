@@ -1,4 +1,6 @@
 package skillbill.infrastructure.sqlite.review
+import skillbill.contracts.SharedPayloadKeys
+import skillbill.contracts.review.ReviewFindingPayloadKeys
 import skillbill.contracts.time.JvmSystemClock
 import skillbill.infrastructure.sqlite.PARAM_FOUR
 import skillbill.infrastructure.sqlite.PARAM_ONE
@@ -82,11 +84,11 @@ fun fetchFindingVerdicts(connection: Connection, reviewRunId: String): List<Revi
           add(
             ReviewFindingVerdict(
               stage = ReviewStage.fromWire(resultSet.getString("stage")),
-              findingRef = resultSet.getString("finding_id"),
-              claimVerdict = ReviewClaimVerdict.fromWire(resultSet.getString("claim_verdict")),
-              scopeDisposition = resultSet.getString("scope_disposition")
+              findingRef = resultSet.getString(ReviewFindingPayloadKeys.FINDING_ID),
+              claimVerdict = ReviewClaimVerdict.fromWire(resultSet.getString(ReviewFindingPayloadKeys.CLAIM_VERDICT)),
+              scopeDisposition = resultSet.getString(ReviewFindingPayloadKeys.SCOPE_DISPOSITION)
                 ?.let(ReviewScopeDisposition::fromWire),
-              citations = decodeCitations(resultSet.getString("citations")),
+              citations = decodeCitations(resultSet.getString(ReviewFindingPayloadKeys.CITATIONS)),
               severityAdjustment = if (direction == null || justification == null) {
                 null
               } else {
@@ -96,7 +98,7 @@ fun fetchFindingVerdicts(connection: Connection, reviewRunId: String): List<Revi
                 )
               },
               recordedAt = resultSet.getString("recorded_at"),
-              contractVersion = resultSet.getString("contract_version"),
+              contractVersion = resultSet.getString(SharedPayloadKeys.CONTRACT_VERSION),
               rejectionReason = resultSet.getString("rejection_reason"),
             ),
           )
@@ -180,7 +182,7 @@ fun fetchStageBoundaries(connection: Connection, reviewRunId: String): List<Revi
               stage = ReviewStage.fromWire(resultSet.getString("stage")),
               reached = ReviewStageReached.fromWire(resultSet.getString("reached")),
               recordedAt = resultSet.getString("recorded_at"),
-              contractVersion = resultSet.getString("contract_version"),
+              contractVersion = resultSet.getString(SharedPayloadKeys.CONTRACT_VERSION),
             ),
           )
         }

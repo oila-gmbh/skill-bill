@@ -11,6 +11,7 @@ import skillbill.cli.kernel.DocumentedCliCommand
 import skillbill.cli.kernel.formatOption
 import skillbill.cli.model.CliFormat
 import skillbill.cli.model.CliRunInputs
+import skillbill.contracts.SharedPayloadKeys
 import skillbill.ports.validation.RepoValidationGateway
 import java.nio.file.Path
 
@@ -90,7 +91,10 @@ class ValidateReleaseRefCommand(
     if (rawRef == null) {
       state.completeText(
         "No release ref supplied. Pass a tag or set GITHUB_REF_NAME.\n",
-        mapOf("status" to "failed", "error" to "No release ref supplied. Pass a tag or set GITHUB_REF_NAME."),
+        mapOf(
+          SharedPayloadKeys.STATUS to "failed",
+          "error" to "No release ref supplied. Pass a tag or set GITHUB_REF_NAME.",
+        ),
         exitCode = 1,
       )
       return
@@ -99,7 +103,7 @@ class ValidateReleaseRefCommand(
     val metadata = try {
       repoValidationGateway.validateReleaseRef(Path.of(repoRoot), rawRef, forcePrerelease)
     } catch (error: IllegalArgumentException) {
-      val payload = mapOf("status" to "failed", "error" to error.message.orEmpty())
+      val payload = mapOf(SharedPayloadKeys.STATUS to "failed", "error" to error.message.orEmpty())
       if (format == CliFormat.JSON) {
         state.complete(payload, format, exitCode = 1)
       } else {

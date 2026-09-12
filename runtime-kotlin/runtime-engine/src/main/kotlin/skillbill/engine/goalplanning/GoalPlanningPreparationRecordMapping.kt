@@ -1,15 +1,16 @@
 package skillbill.engine.goalplanning
 
+import skillbill.contracts.SharedPayloadKeys
 import skillbill.ports.goalrunner.model.GoalPlanningPreparationProvenance
 import skillbill.ports.goalrunner.model.GoalPlanningPreparationRecord
 import skillbill.ports.goalrunner.model.GoalPlanningPreparationState
 
 fun GoalPlanningPreparationRecord.toEnvelopeMap(): Map<String, Any?> = linkedMapOf(
-  "contract_version" to contractVersion,
+  SharedPayloadKeys.CONTRACT_VERSION to contractVersion,
   "parent_goal_workflow_id" to parentGoalWorkflowId,
   "normalized_issue_key" to normalizedIssueKey,
   "repository_identity" to repositoryIdentity,
-  "subtask_id" to subtaskId,
+  SharedPayloadKeys.SUBTASK_ID to subtaskId,
   "governed_sub_spec_path" to governedSubSpecPath,
   "preparation_status" to preparationStatus.wireValue,
   "provenance" to linkedMapOf(
@@ -29,7 +30,7 @@ fun Map<String, Any?>.toGoalPlanningPreparationRecord(): GoalPlanningPreparation
     parentGoalWorkflowId = stringValue("parent_goal_workflow_id"),
     normalizedIssueKey = stringValue("normalized_issue_key"),
     repositoryIdentity = stringValue("repository_identity"),
-    subtaskId = (this["subtask_id"] as Number).toInt(),
+    subtaskId = (this[SharedPayloadKeys.SUBTASK_ID] as Number).toInt(),
     governedSubSpecPath = stringValue("governed_sub_spec_path"),
     preparationStatus = GoalPlanningPreparationState.fromWireValue(stringValue("preparation_status")),
     provenance = GoalPlanningPreparationProvenance(

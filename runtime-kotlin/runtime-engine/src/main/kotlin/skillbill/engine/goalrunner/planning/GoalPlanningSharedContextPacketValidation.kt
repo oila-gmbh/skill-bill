@@ -1,5 +1,6 @@
 package skillbill.engine.goalrunner.planning
 import skillbill.contracts.JsonCodec
+import skillbill.contracts.SharedPayloadKeys
 import skillbill.ports.goalrunner.planning.model.GoalPlanningBoundaryHeadingKind
 import skillbill.ports.goalrunner.planning.model.GoalPlanningContext
 import skillbill.text.sha256HexUtf8
@@ -75,8 +76,8 @@ object GoalPlanningSharedContextPacketValidation {
       val dependency = entry as? Map<*, *> ?: error("shared context subtask dependency must be an object")
       require(dependency.keys == DEPENDENCY_FIELDS) { "shared context subtask dependency fields are invalid" }
       linkedMapOf(
-        "subtask_id" to (
-          (dependency["subtask_id"] as? Number)?.toInt()
+        SharedPayloadKeys.SUBTASK_ID to (
+          (dependency[SharedPayloadKeys.SUBTASK_ID] as? Number)?.toInt()
             ?: error("shared context dependency subtask id is invalid")
           ),
         "optional" to (

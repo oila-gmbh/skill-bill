@@ -1,5 +1,6 @@
 package skillbill.infrastructure.sqlite
 
+import skillbill.contracts.SharedPayloadKeys
 import skillbill.error.InvalidProducerOutputEvidenceSchemaError
 import skillbill.ports.diagnostics.RejectedOutputDiagnosticRepository
 import skillbill.ports.diagnostics.model.ProducerOutputEvidence
@@ -221,8 +222,8 @@ private fun ResultSet.toRecord(): RejectedOutputDiagnosticRecord {
     RejectedOutputDiagnosticRecord(
       metadata = RejectedOutputDiagnostic(
         identity = identity,
-        workflowId = getString("workflow_id"),
-        phaseId = getString("phase_id"),
+        workflowId = getString(SharedPayloadKeys.WORKFLOW_ID),
+        phaseId = getString(SharedPayloadKeys.PHASE_ID),
         attempt = getInt("attempt"),
         rule = getString("rule"),
         path = getString("rejection_path"),
@@ -296,8 +297,8 @@ private fun Connection.queryProducerEvidence(lookup: ProducerEvidenceLookup): Pr
 }
 
 private fun ResultSet.toProducerEvidence(): ProducerOutputEvidence {
-  val workflowId = getString("workflow_id")
-  val phaseId = getString("phase_id")
+  val workflowId = getString(SharedPayloadKeys.WORKFLOW_ID)
+  val phaseId = getString(SharedPayloadKeys.PHASE_ID)
   val attempt = getInt("attempt")
   val generation = getInt("generation")
   if (getObject("generation") == null || generation < 0) {

@@ -1,6 +1,7 @@
 package skillbill.goalrunner
 
 import skillbill.boundary.OpenBoundaryMap
+import skillbill.contracts.SharedPayloadKeys
 import skillbill.goalrunner.model.GoalObservabilityProgressInput
 import skillbill.goalrunner.model.GoalObservabilityRuntimeEventInput
 import skillbill.workflow.goal.GoalObservabilityEventValidator
@@ -70,8 +71,8 @@ object GoalObservabilityArtifacts {
   private fun requiredProgressFields(input: GoalObservabilityProgressInput): RequiredProgressFields? {
     val progressEvent = input.artifacts["progress_event"] as? Map<*, *>
     val continuation = input.artifacts["goal_continuation"] as? Map<*, *>
-    val issueKey = continuation?.get("issue_key")?.toString()?.takeIf(String::isNotBlank)
-    val subtaskId = continuation?.get("subtask_id").asGoalObservabilityIntOrNull()
+    val issueKey = continuation?.get(SharedPayloadKeys.ISSUE_KEY)?.toString()?.takeIf(String::isNotBlank)
+    val subtaskId = continuation?.get(SharedPayloadKeys.SUBTASK_ID).asGoalObservabilityIntOrNull()
     val timestamp = progressEvent?.get("timestamp")?.toString()?.takeIf(String::isNotBlank)
     return when {
       progressEvent == null -> null
@@ -94,7 +95,7 @@ object GoalObservabilityArtifacts {
       issueKey = issueKey,
       subtaskId = subtaskId,
       workflowId = input.workflowId,
-      workflowPhase = progressEvent["step_id"]?.toString()?.takeIf(String::isNotBlank)
+      workflowPhase = progressEvent[SharedPayloadKeys.STEP_ID]?.toString()?.takeIf(String::isNotBlank)
         ?: input.currentStepId.takeIf(String::isNotBlank)
         ?: "unknown",
       workerRole = progressEvent["source"]?.toString()?.takeIf(String::isNotBlank) ?: "unknown",

@@ -1,5 +1,7 @@
 package skillbill.infrastructure.sqlite.review
 import skillbill.contracts.JsonCodec
+import skillbill.contracts.SharedPayloadKeys
+import skillbill.contracts.review.ReviewVerificationSignalKeys
 import skillbill.infrastructure.sqlite.PARAM_ONE
 import skillbill.infrastructure.sqlite.PARAM_TWO
 import skillbill.infrastructure.sqlite.telemetry.enqueueTelemetry
@@ -16,7 +18,7 @@ fun materializeReviewFinishedPayload(connection: Connection, payload: Map<String
   if (reviewRunRowExists(connection, reviewRunId)) {
     return regenerateReviewFinishedPayload(connection, payload, reviewRunId)
   }
-  return if (payload["contract_version"]?.toString() == REVIEW_FINISHED_LEGACY_CONTRACT_VERSION) {
+  return if (payload[SharedPayloadKeys.CONTRACT_VERSION]?.toString() == REVIEW_FINISHED_LEGACY_CONTRACT_VERSION) {
     emptyMap()
   } else {
     payload
@@ -35,16 +37,18 @@ internal fun persistLegacyReviewFinishedRow(connection: Connection, outboxId: Lo
     REVIEW_FINISHED_LEGACY_REGENERATED_EVENT_NAME,
     linkedMapOf(
       "event_name" to REVIEW_FINISHED_LEGACY_REGENERATED_EVENT_NAME,
-      "contract_version" to REVIEW_STAGE_DEGRADATION_CONTRACT_VERSION,
-      "review_run_id" to reviewRunId,
-      "from_version" to (payload["contract_version"]?.toString() ?: REVIEW_FINISHED_LEGACY_CONTRACT_VERSION),
+      SharedPayloadKeys.CONTRACT_VERSION to REVIEW_STAGE_DEGRADATION_CONTRACT_VERSION,
+      ReviewVerificationSignalKeys.REVIEW_RUN_ID to reviewRunId,
+      "from_version" to (
+        payload[SharedPayloadKeys.CONTRACT_VERSION]?.toString() ?: REVIEW_FINISHED_LEGACY_CONTRACT_VERSION
+        ),
       "to_version" to REVIEW_STAGE_DEGRADATION_CONTRACT_VERSION,
     ),
   )
 }
 
 private fun isLegacyReviewFinished(payload: Map<String, Any?>): Boolean {
-  val version = payload["contract_version"]?.toString()
+  val version = payload[SharedPayloadKeys.CONTRACT_VERSION]?.toString()
   return version == REVIEW_FINISHED_LEGACY_CONTRACT_VERSION ||
     !payload.containsKey("verification") ||
     !payload.containsKey("adjudication") ||
@@ -66,7 +70,7 @@ private fun regenerateReviewFinishedPayload(
     .toPayload()
   return LinkedHashMap(payload).apply {
     putAll(regenerated)
-    put("contract_version", REVIEW_STAGE_DEGRADATION_CONTRACT_VERSION)
+    put(SharedPayloadKeys.CONTRACT_VERSION, REVIEW_STAGE_DEGRADATION_CONTRACT_VERSION)
   }
 }
 

@@ -15,6 +15,7 @@ import skillbill.cli.kernel.CliRunState
 import skillbill.cli.kernel.DocumentedCliCommand
 import skillbill.cli.kernel.DocumentedNoOpCliCommand
 import skillbill.cli.model.CliFormat
+import skillbill.contracts.SharedPayloadKeys
 import skillbill.engine.work.IdeStatusService
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
@@ -81,9 +82,9 @@ private fun WorkListResult.toPayload(): Map<String, Any?> = mapOf(
 )
 
 private fun WorkListItem.toPayload(): Map<String, Any?> = linkedMapOf(
-  "issue_key" to issueKey,
+  SharedPayloadKeys.ISSUE_KEY to issueKey,
   "workflow_kind" to workflowKind.wireValue,
-  "workflow_id" to workflowId,
+  SharedPayloadKeys.WORKFLOW_ID to workflowId,
   "started_at" to startedAt.toString(),
   "current_state" to currentState,
   "state_entered_at" to stateEnteredAt.toString(),

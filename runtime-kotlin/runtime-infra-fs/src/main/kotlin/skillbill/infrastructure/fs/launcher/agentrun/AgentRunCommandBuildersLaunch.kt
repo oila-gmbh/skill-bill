@@ -1,6 +1,7 @@
 package skillbill.infrastructure.fs.launcher.agentrun
 
 import com.fasterxml.jackson.databind.ObjectMapper
+import skillbill.contracts.SharedPayloadKeys
 import skillbill.error.GovernedReviewLaunchCapabilityError
 import skillbill.install.model.InstallAgent
 import skillbill.ports.agentrun.model.ConversationIsolation
@@ -124,7 +125,7 @@ internal fun MutableList<String>.addGoalContinuationArguments(context: SkillRunG
     add(
       ObjectMapper().writeValueAsString(
         linkedMapOf(
-          "contract_version" to "0.1",
+          SharedPayloadKeys.CONTRACT_VERSION to "0.1",
           "entries" to context.agentAddonSelection.entries.map { entry ->
             linkedMapOf(
               "slug" to entry.slug,

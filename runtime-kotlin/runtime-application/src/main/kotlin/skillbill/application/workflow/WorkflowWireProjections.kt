@@ -1,6 +1,8 @@
 package skillbill.application.workflow
 
 import skillbill.boundary.OpenBoundaryMap
+import skillbill.contracts.SharedPayloadKeys
+import skillbill.contracts.review.ReviewVerificationSignalKeys
 import skillbill.contracts.workflow.WorkflowContracts
 import skillbill.workflow.engine.model.WorkflowCompactContinueView
 import skillbill.workflow.engine.model.WorkflowContinuationArtifactSummary
@@ -16,11 +18,11 @@ object WorkflowWireProjections {
   @OpenBoundaryMap("Wire-shape ordered snapshot map for CLI/MCP adapters")
   fun snapshotMap(view: WorkflowSnapshotView): Map<String, Any?> = WorkflowContracts.fullWorkflowPayload(
     linkedMapOf(
-      "workflow_id" to view.workflowId,
+      SharedPayloadKeys.WORKFLOW_ID to view.workflowId,
       "session_id" to view.sessionId,
       "workflow_name" to view.workflowName,
       "mode" to view.mode,
-      "contract_version" to view.contractVersion,
+      SharedPayloadKeys.CONTRACT_VERSION to view.contractVersion,
       "workflow_status" to view.workflowStatus,
       "current_step_id" to view.currentStepId,
       "steps" to view.steps.map(::workflowStepWireMap),
@@ -34,11 +36,11 @@ object WorkflowWireProjections {
   @OpenBoundaryMap("Wire-shape ordered summary map for CLI/MCP adapters")
   fun summaryMap(view: WorkflowSummaryView): Map<String, Any?> = WorkflowContracts.summaryWorkflowPayload(
     linkedMapOf(
-      "workflow_id" to view.workflowId,
+      SharedPayloadKeys.WORKFLOW_ID to view.workflowId,
       "session_id" to view.sessionId,
       "workflow_name" to view.workflowName,
       "mode" to view.mode,
-      "contract_version" to view.contractVersion,
+      SharedPayloadKeys.CONTRACT_VERSION to view.contractVersion,
       "workflow_status" to view.workflowStatus,
       "current_step_id" to view.currentStepId,
       "started_at" to view.startedAt,
@@ -84,7 +86,7 @@ object WorkflowWireProjections {
 
   @OpenBoundaryMap("Compact wire-shape ordered continue map for CLI/MCP adapters")
   fun compactContinueMap(view: WorkflowCompactContinueView): Map<String, Any?> = linkedMapOf(
-    "workflow_id" to view.workflowId,
+    SharedPayloadKeys.WORKFLOW_ID to view.workflowId,
     "skill_name" to view.skillName,
     "workflow_status_before_continue" to view.workflowStatusBeforeContinue,
     "started_at" to view.startedAt,
@@ -111,8 +113,8 @@ object WorkflowWireProjections {
 
   @OpenBoundaryMap("Compact wire-shape ordered workflow-update acknowledgement map for CLI/MCP adapters")
   fun updateAcknowledgementMap(view: WorkflowUpdateAcknowledgementView): Map<String, Any?> = linkedMapOf(
-    "status" to view.status,
-    "workflow_id" to view.workflowId,
+    SharedPayloadKeys.STATUS to view.status,
+    SharedPayloadKeys.WORKFLOW_ID to view.workflowId,
     "workflow_name" to view.workflowName,
     "workflow_status" to view.workflowStatus,
     "current_step_id" to view.currentStepId,
@@ -123,9 +125,9 @@ object WorkflowWireProjections {
 
   @OpenBoundaryMap("Bounded workflow launch projection map for CLI/MCP adapters")
   fun inputProjectionMap(projection: WorkflowInputProjection): Map<String, Any?> = linkedMapOf(
-    "step_id" to projection.stepId,
+    SharedPayloadKeys.STEP_ID to projection.stepId,
     "producer_iteration" to projection.producerIteration,
-    "repository_checkpoint" to projection.repositoryCheckpoint,
+    ReviewVerificationSignalKeys.REPOSITORY_CHECKPOINT to projection.repositoryCheckpoint,
     "artifacts" to projection.artifacts,
     "utf8_bytes" to projection.utf8Bytes,
   )
@@ -136,7 +138,7 @@ object WorkflowWireProjections {
     "present" to summary.present,
     "inline" to summary.inline,
     "size_bytes" to summary.sizeBytes,
-    "value" to summary.value,
+    SharedPayloadKeys.VALUE to summary.value,
     "preview" to summary.preview,
     "truncated" to summary.truncated,
     "omitted" to summary.omitted,
@@ -145,7 +147,7 @@ object WorkflowWireProjections {
 }
 
 private fun workflowStepWireMap(step: WorkflowStepState): Map<String, Any?> = linkedMapOf(
-  "step_id" to step.stepId,
-  "status" to step.status,
+  SharedPayloadKeys.STEP_ID to step.stepId,
+  SharedPayloadKeys.STATUS to step.status,
   "attempt_count" to step.attemptCount,
 )

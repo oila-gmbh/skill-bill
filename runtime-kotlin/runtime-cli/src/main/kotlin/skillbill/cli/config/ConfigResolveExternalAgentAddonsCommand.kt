@@ -4,6 +4,7 @@ import me.tatarka.inject.annotations.Inject
 import skillbill.cli.kernel.CliRunState
 import skillbill.cli.kernel.DocumentedCliCommand
 import skillbill.cli.model.CliRunInputs
+import skillbill.contracts.SharedPayloadKeys
 import skillbill.error.ShellContentContractException
 import skillbill.ports.agentaddon.ExternalAgentAddonSourceConfigPort
 import skillbill.ports.agentaddon.model.ExternalAgentAddonSourceConfigRequest
@@ -25,7 +26,7 @@ class ConfigResolveExternalAgentAddonsCommand(
     } catch (error: ShellContentContractException) {
       state.completeText(
         "${error.message}\n",
-        mapOf("status" to "failed", "error" to error.message.orEmpty()),
+        mapOf(SharedPayloadKeys.STATUS to "failed", "error" to error.message.orEmpty()),
         exitCode = 1,
       )
       return
@@ -34,7 +35,7 @@ class ConfigResolveExternalAgentAddonsCommand(
     state.completeText(
       text,
       mapOf(
-        "status" to "ok",
+        SharedPayloadKeys.STATUS to "ok",
         "sources" to sources.map { source -> mapOf("path" to source.path.toString()) },
       ),
     )

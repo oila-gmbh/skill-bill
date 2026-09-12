@@ -1,5 +1,6 @@
 package skillbill.review
 
+import skillbill.contracts.review.ReviewFindingPayloadKeys
 import skillbill.review.model.ImportedFinding
 
 fun isTableHeaderLine(line: String): Boolean {
@@ -14,7 +15,7 @@ fun buildColumnMap(headerCells: List<String>): Map<String, Int> = buildMap {
       "#", "id", "no", "no." -> put("number", index)
       "severity", "sev" -> put("severity", index)
       "confidence", "conf" -> put("confidence", index)
-      "category", "issue category", "issue_category" -> put("issue_category", index)
+      "category", "issue category", "issue_category" -> put(ReviewFindingPayloadKeys.ISSUE_CATEGORY, index)
       "file", "filename" -> put("file", index)
       "line", "lines", "line(s)" -> put("lines", index)
       "finding", "description", "issue" -> put("description", index)
@@ -55,7 +56,9 @@ fun parseTableFindingLine(stripped: String, columnMap: Map<String, Int>): Import
       findingId = "F-%03d".format(number),
       severity = normalizeSeverity(tableCell(cells, columnMap.getValue("severity"))),
       confidence = normalizeConfidence(confidenceValue),
-      issueCategory = normalizeReviewIssueCategory(tableCell(cells, columnMap["issue_category"])),
+      issueCategory = normalizeReviewIssueCategory(
+        tableCell(cells, columnMap[ReviewFindingPayloadKeys.ISSUE_CATEGORY]),
+      ),
       location = buildLocation(tableCell(cells, columnMap["file"]), tableCell(cells, columnMap["lines"])),
       description = description,
       findingText = stripped,

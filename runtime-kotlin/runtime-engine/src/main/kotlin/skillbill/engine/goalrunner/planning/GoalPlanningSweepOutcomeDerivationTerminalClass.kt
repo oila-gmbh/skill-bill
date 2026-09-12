@@ -1,6 +1,7 @@
 package skillbill.engine.goalrunner.planning
 
 import skillbill.application.agentoutput.stderrExcerpt
+import skillbill.contracts.SharedPayloadKeys
 import skillbill.engine.goalrunner.planning.model.GoalPlanningEmptyTurnEvidence
 import skillbill.engine.goalrunner.planning.model.GoalPlanningPhaseProduction
 import skillbill.error.IncompatibleGoalPlanningPreparationRecoveryError
@@ -32,11 +33,11 @@ fun unexpectedPlanningFailureReason(phaseId: String, error: Throwable): String =
     "${error::class.simpleName ?: "Throwable"}: ${error.message.orEmpty()}"
 
 fun unsuccessfulStatusReason(phaseId: String, payload: Map<String, Any?>): String {
-  val status = payload["status"] ?: "missing"
-  val disposition = (payload["failure_disposition"] as? String)
+  val status = payload[SharedPayloadKeys.STATUS] ?: "missing"
+  val disposition = (payload[SharedPayloadKeys.FAILURE_DISPOSITION] as? String)
     ?.let { " disposition '$it'" }
     .orEmpty()
-  val summary = (payload["summary"] as? String)
+  val summary = (payload[SharedPayloadKeys.SUMMARY] as? String)
     ?.trim()
     ?.takeIf { it.isNotEmpty() }
     ?.let { " Agent reported: ${it.take(GoalPlanningSweepConstants.PLANNING_STOP_DETAIL_MAX_CHARS)}" }

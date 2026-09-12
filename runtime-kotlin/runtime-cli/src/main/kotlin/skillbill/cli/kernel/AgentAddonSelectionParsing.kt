@@ -4,6 +4,7 @@ import com.github.ajalt.clikt.core.UsageError
 import skillbill.agentaddon.model.AgentAddonSelection
 import skillbill.agentaddon.model.PersistedAgentAddonSelectionEntry
 import skillbill.contracts.JsonCodec
+import skillbill.contracts.SharedPayloadKeys
 
 internal fun parseAgentAddonSelection(raw: String?): AgentAddonSelection {
   if (raw == null) return AgentAddonSelection()
@@ -11,7 +12,7 @@ internal fun parseAgentAddonSelection(raw: String?): AgentAddonSelection {
     ?: invalidAgentAddonSelection("--agent-addon-selection-json must be a JSON object.")
   val map = JsonCodec.anyToStringAnyMap(JsonCodec.jsonElementToValue(root))
     ?: invalidAgentAddonSelection("--agent-addon-selection-json must decode to an object.")
-  if (map.keys != setOf("contract_version", "entries") || map["contract_version"] != "0.1") {
+  if (map.keys != setOf("contract_version", "entries") || map[SharedPayloadKeys.CONTRACT_VERSION] != "0.1") {
     invalidAgentAddonSelection("Agent add-on selection must contain only contract_version=0.1 and entries.")
   }
   val entries = map["entries"] as? List<*>

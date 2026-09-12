@@ -3,6 +3,7 @@ package skillbill.engine.featuretask
 import skillbill.application.reviewevidence.FeatureTaskRuntimeSharedReviewEvidenceResolver
 import skillbill.application.reviewevidence.model.FeatureTaskRuntimeSharedReviewEvidenceResolved
 import skillbill.contracts.JsonCodec
+import skillbill.contracts.SharedPayloadKeys
 import skillbill.engine.featuretask.model.FeatureTaskRuntimeFindingBoundaryMemoryRequest
 import skillbill.engine.featuretask.model.FeatureTaskRuntimeFindingBoundaryMemorySection
 import skillbill.engine.featuretask.model.FeatureTaskRuntimeImplementationContinuation
@@ -53,9 +54,10 @@ object FeatureTaskRuntimeRunLoopOutputVerification {
   ): NormalizedFeatureTaskRuntimePhaseOutput {
     val eligible = run.agentRunValidateFallback &&
       run.phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VALIDATE &&
-      (normalizedOutput.envelope["status"] as? String).workflowStepStatus() == WorkflowStepStatus.COMPLETED
+      (normalizedOutput.envelope[SharedPayloadKeys.STATUS] as? String)
+        .workflowStepStatus() == WorkflowStepStatus.COMPLETED
     if (!eligible) return normalizedOutput
-    val produced = JsonCodec.anyToStringAnyMap(normalizedOutput.envelope["produced_outputs"])
+    val produced = JsonCodec.anyToStringAnyMap(normalizedOutput.envelope[SharedPayloadKeys.PRODUCED_OUTPUTS])
       ?.toMutableMap()
       ?: return normalizedOutput
     val validationResult = JsonCodec.anyToStringAnyMap(produced["validation_result"])
@@ -66,7 +68,7 @@ object FeatureTaskRuntimeRunLoopOutputVerification {
     validationResult.remove("suppression_justifications")
     produced["validation_result"] = validationResult
     val envelope = normalizedOutput.envelope.toMutableMap()
-    envelope["produced_outputs"] = produced
+    envelope[SharedPayloadKeys.PRODUCED_OUTPUTS] = produced
     return runLoop.outputValidator.validatePhaseOutput(
       JsonCodec.mapToJsonString(envelope),
       sourceLabel = run.phaseId,
@@ -355,8 +357,8 @@ object FeatureTaskRuntimeRunLoopOutputVerification {
     val envelope = JsonCodec.parseObjectOrNull(auditOutputArtifact)
       ?.let(JsonCodec::jsonElementToValue)
       ?.let(JsonCodec::anyToStringAnyMap)
-    val produced = envelope?.let { JsonCodec.anyToStringAnyMap(it["produced_outputs"]) }
-    val value = when (val raw = produced?.get("value")) {
+    val produced = envelope?.let { JsonCodec.anyToStringAnyMap(it[SharedPayloadKeys.PRODUCED_OUTPUTS]) }
+    val value = when (val raw = produced?.get(SharedPayloadKeys.VALUE)) {
       is String -> JsonCodec.parseObjectOrNull(raw)
         ?.let(JsonCodec::jsonElementToValue)
         ?.let(JsonCodec::anyToStringAnyMap)

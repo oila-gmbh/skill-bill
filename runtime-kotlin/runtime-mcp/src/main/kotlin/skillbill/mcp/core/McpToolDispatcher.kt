@@ -1,6 +1,7 @@
 package skillbill.mcp.core
 
 import skillbill.application.workflow.model.WorkflowFamilyKind
+import skillbill.contracts.SharedPayloadKeys
 import skillbill.mcp.featuretask.featureTaskAuditSettle
 import skillbill.mcp.featuretask.featureTaskPhaseBlock
 import skillbill.mcp.featuretask.featureTaskPhaseComplete
@@ -122,7 +123,7 @@ object McpToolDispatcher {
   internal fun telemetryEnvelope(toolName: String, arguments: Map<String, Any?>): Map<String, Any?> {
     val envelope = linkedMapOf<String, Any?>(
       "event_name" to toolName,
-      "contract_version" to TELEMETRY_EVENT_CONTRACT_VERSION,
+      SharedPayloadKeys.CONTRACT_VERSION to TELEMETRY_EVENT_CONTRACT_VERSION,
     )
     arguments.forEach { (key, value) ->
       // The wire envelope keeps caller-supplied `event_name` /

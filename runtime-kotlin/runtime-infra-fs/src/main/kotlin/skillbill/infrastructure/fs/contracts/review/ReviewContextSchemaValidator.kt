@@ -9,6 +9,7 @@ import com.networknt.schema.JsonSchema
 import com.networknt.schema.JsonSchemaFactory
 import com.networknt.schema.SpecVersion
 import com.networknt.schema.ValidationMessage
+import skillbill.contracts.SharedPayloadKeys
 import skillbill.contracts.logSchemaLoadFailure
 import skillbill.contracts.review.REVIEW_CONTEXT_CONTRACT_VERSION
 import skillbill.contracts.review.ReviewContextSchemaPaths
@@ -111,7 +112,7 @@ private fun validateExpectedKind(
 }
 
 private fun requireMatchingContractVersion(payload: Map<String, Any?>, sourceLabel: String, definitionName: String?) {
-  val declared = payload["contract_version"] ?: return
+  val declared = payload[SharedPayloadKeys.CONTRACT_VERSION] ?: return
   val declaredText = declared as? String ?: declared.toString()
   if (declaredText == REVIEW_CONTEXT_CONTRACT_VERSION) return
   throw InvalidReviewContextSchemaError(

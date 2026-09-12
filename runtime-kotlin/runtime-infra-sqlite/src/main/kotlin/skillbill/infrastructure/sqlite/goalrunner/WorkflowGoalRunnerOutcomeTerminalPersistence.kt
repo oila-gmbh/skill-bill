@@ -1,5 +1,6 @@
 package skillbill.infrastructure.sqlite.goalrunner
 
+import skillbill.contracts.SharedPayloadKeys
 import skillbill.goalrunner.commitShaFrom
 import skillbill.goalrunner.goalContinuationOutcome
 import skillbill.goalrunner.model.GoalRunnerStoredOutcome
@@ -129,10 +130,10 @@ internal class WorkflowGoalRunnerOutcomeTerminalPersistence(
             stepUpdates = null,
             artifactsPatch = mapOf(
               "goal_continuation_outcome" to mapOf(
-                "issue_key" to issueKey,
-                "subtask_id" to subtaskId,
-                "status" to "complete",
-                "workflow_id" to workflowId,
+                SharedPayloadKeys.ISSUE_KEY to issueKey,
+                SharedPayloadKeys.SUBTASK_ID to subtaskId,
+                SharedPayloadKeys.STATUS to "complete",
+                SharedPayloadKeys.WORKFLOW_ID to workflowId,
                 "commit_sha" to outcome.commitSha,
                 "last_resumable_step" to (outcome.lastResumableStep ?: "commit_push"),
               ),
@@ -168,9 +169,9 @@ internal class WorkflowGoalRunnerOutcomeTerminalPersistence(
     val existingArtifacts = decodeArtifacts(record.artifactsJson)
     val artifactsPatch = linkedMapOf<String, Any?>(
       "goal_runner_missing_result_prefix_recovery" to linkedMapOf(
-        "issue_key" to issueKey,
-        "subtask_id" to subtaskId,
-        "workflow_id" to workflowId,
+        SharedPayloadKeys.ISSUE_KEY to issueKey,
+        SharedPayloadKeys.SUBTASK_ID to subtaskId,
+        SharedPayloadKeys.WORKFLOW_ID to workflowId,
         "output" to output,
       ),
     )

@@ -2,6 +2,7 @@ package skillbill.engine.featuretask.model
 
 import skillbill.boundary.OpenBoundaryMap
 import skillbill.contracts.JsonCodec
+import skillbill.contracts.SharedPayloadKeys
 import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_PHASE_LAUNCH_BRIEFING_CONTRACT_VERSION
 import skillbill.error.InvalidWorkflowStateSchemaError
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeHandoffEnvelope
@@ -56,8 +57,8 @@ data class FeatureTaskRuntimePhaseLaunchBriefing(
   /** Serializes the briefing for the durable artifact store, preserving all three handoff layers. */
   @OpenBoundaryMap("Feature-task-runtime per-phase launch briefing artifact map at the durable workflow-artifact seam")
   fun toArtifactMap(): Map<String, Any?> = linkedMapOf(
-    "contract_version" to CONTRACT_VERSION,
-    "phase_id" to phaseId,
+    SharedPayloadKeys.CONTRACT_VERSION to CONTRACT_VERSION,
+    SharedPayloadKeys.PHASE_ID to phaseId,
     "spec_reference" to specReference,
     "feature_size" to featureSize,
     "acceptance_criteria" to acceptanceCriteria,
@@ -88,7 +89,7 @@ data class FeatureTaskRuntimePhaseLaunchBriefing(
             "to briefing contract $CONTRACT_VERSION before retrying.",
         )
       }
-      val version = raw["contract_version"]
+      val version = raw[SharedPayloadKeys.CONTRACT_VERSION]
       if (version != CONTRACT_VERSION) {
         schemaError(
           "Feature-task-runtime briefing artifact contract_version must be '$CONTRACT_VERSION', was " +

@@ -1,5 +1,6 @@
 package skillbill.cli.goal
 
+import skillbill.contracts.SharedPayloadKeys
 import skillbill.engine.goalrunner.model.GoalRunnerStopStatus
 import skillbill.goalrunner.model.GoalRunnerTerminalStatus
 
@@ -19,21 +20,21 @@ internal fun goalRunExitCode(status: String?, reason: String?): Int {
 }
 
 internal fun Map<String, Any?>.goalExitCode(): Int =
-  goalRunExitCode(this["status"]?.toString(), this["reason"]?.toString())
+  goalRunExitCode(this[SharedPayloadKeys.STATUS]?.toString(), this["reason"]?.toString())
 
 internal fun Map<String, Any?>.goalStatusExitCode(): Int = if (!containsKey(
     "status",
-  ) || this["status"] == "ok"
+  ) || this[SharedPayloadKeys.STATUS] == "ok"
 ) {
   0
 } else {
   1
 }
 
-internal fun Map<String, Any?>.goalPauseExitCode(): Int = if (this["status"] != "not_found") 0 else 1
+internal fun Map<String, Any?>.goalPauseExitCode(): Int = if (this[SharedPayloadKeys.STATUS] != "not_found") 0 else 1
 
 // Idempotent outcomes exit 0; a refused stop is a non-zero failure the operator must act on.
-internal fun Map<String, Any?>.goalStopExitCode(): Int = when (this["status"]) {
+internal fun Map<String, Any?>.goalStopExitCode(): Int = when (this[SharedPayloadKeys.STATUS]) {
   GoalRunnerStopStatus.STOPPED.wireValue,
   GoalRunnerStopStatus.ALREADY_STOPPED.wireValue,
   GoalRunnerStopStatus.NO_LIVE_LEASE.wireValue,

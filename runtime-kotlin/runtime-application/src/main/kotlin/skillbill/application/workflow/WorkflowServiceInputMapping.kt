@@ -9,6 +9,7 @@ import skillbill.application.workflow.model.WorkflowServiceOpenFeatureTaskArgs
 import skillbill.application.workflow.model.WorkflowUpdateRequest
 import skillbill.application.workflow.model.WorkflowUpdateResult
 import skillbill.contracts.JsonCodec
+import skillbill.contracts.SharedPayloadKeys
 import skillbill.contracts.issuekey.normalizeIssueKey
 import skillbill.goalrunner.GoalObservabilityArtifacts
 import skillbill.ports.workflow.get
@@ -107,8 +108,8 @@ fun WorkflowContinueDecision.toReopenInput(sessionId: String): WorkflowUpdateInp
   stepUpdates =
   listOf(
     mapOf(
-      "step_id" to resumeStepId,
-      "status" to "running",
+      SharedPayloadKeys.STEP_ID to resumeStepId,
+      SharedPayloadKeys.STATUS to "running",
       "attempt_count" to nextAttemptCount,
     ),
   ),

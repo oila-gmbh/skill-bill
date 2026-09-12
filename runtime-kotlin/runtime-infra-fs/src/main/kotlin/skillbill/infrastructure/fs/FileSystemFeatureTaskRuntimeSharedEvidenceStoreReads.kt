@@ -3,6 +3,7 @@ package skillbill.infrastructure.fs
 import com.fasterxml.jackson.core.JsonProcessingException
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.databind.node.ObjectNode
+import skillbill.contracts.SharedPayloadKeys
 import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_SHARED_EVIDENCE_PROJECTION_CONTRACT_VERSION
 import skillbill.error.InvalidFeatureTaskRuntimeSharedEvidenceProjectionSchemaError
 import skillbill.infrastructure.fs.contracts.workflow.FeatureTaskRuntimeSharedEvidenceProjectionSchemaValidator
@@ -96,8 +97,8 @@ private fun resolutionOf(
     diffPayload = stored.payloadRef,
   )
   val projection = linkedMapOf<String, Any?>(
-    "contract_version" to contractVersion,
-    "workflow_id" to context.workflowId,
+    SharedPayloadKeys.CONTRACT_VERSION to contractVersion,
+    SharedPayloadKeys.WORKFLOW_ID to context.workflowId,
     "repository_checkpoint_fingerprint" to stored.recorded,
     "store_path" to context.storePath,
     "changed_file_count" to files.size,

@@ -1,6 +1,8 @@
 package skillbill.workflow.taskruntime.model
 
 import skillbill.boundary.OpenBoundaryMap
+import skillbill.contracts.SharedPayloadKeys
+import skillbill.contracts.review.ReviewVerificationSignalKeys
 import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_PERSISTENCE_CONTRACT_VERSION
 import skillbill.error.InvalidWorkflowStateSchemaError
 import skillbill.workflow.model.WorkflowStepStatus
@@ -142,10 +144,10 @@ data class FeatureTaskRuntimePhaseRecord(
 
   @OpenBoundaryMap("Feature-task-runtime per-phase record artifact map at the durable workflow-artifact seam")
   fun toArtifactMap(): Map<String, Any?> = linkedMapOf<String, Any?>(
-    "contract_version" to FEATURE_TASK_RUNTIME_PERSISTENCE_CONTRACT_VERSION,
+    SharedPayloadKeys.CONTRACT_VERSION to FEATURE_TASK_RUNTIME_PERSISTENCE_CONTRACT_VERSION,
     "record_kind" to "private_phase_record",
-    "phase_id" to phaseId,
-    "status" to status.wireValue,
+    SharedPayloadKeys.PHASE_ID to phaseId,
+    SharedPayloadKeys.STATUS to status.wireValue,
     "attempt_count" to attemptCount,
     "started_at" to startedAt,
     "first_started_at" to firstStartedAt,
@@ -156,7 +158,7 @@ data class FeatureTaskRuntimePhaseRecord(
     durationMillis?.let { put("duration_millis", it) }
     outputArtifact?.let { put("output_artifact", it) }
     blockedReason?.let { put("blocked_reason", it) }
-    failureDisposition?.let { put("failure_disposition", it.wireValue) }
+    failureDisposition?.let { put(SharedPayloadKeys.FAILURE_DISPOSITION, it.wireValue) }
     if (fileManifestBefore.isNotEmpty()) put("file_manifest_before", fileManifestBefore)
     if (fileManifestAfter.isNotEmpty()) put("file_manifest_after", fileManifestAfter)
     if (fileManifestIntroduced.isNotEmpty()) put("file_manifest_introduced", fileManifestIntroduced)
@@ -170,7 +172,7 @@ data class FeatureTaskRuntimePhaseRecord(
   private fun MutableMap<String, Any?>.putLaunchPair() {
     launchedModel?.let { put("launched_model", it) }
     launchedEffort?.let { put("launched_effort", it) }
-    reviewRunId?.let { put("review_run_id", it) }
+    reviewRunId?.let { put(ReviewVerificationSignalKeys.REVIEW_RUN_ID, it) }
   }
 
   companion object {
@@ -183,7 +185,7 @@ data class FeatureTaskRuntimePhaseRecord(
         FeatureTaskRuntimePhaseRecord(
           phaseId = phaseId,
           status = WorkflowStepStatus.fromWire(raw.requireStringField("status"))
-            ?: incompatiblePhaseRecord(listOf("unknown status '${raw["status"]}'")),
+            ?: incompatiblePhaseRecord(listOf("unknown status '${raw[SharedPayloadKeys.STATUS]}'")),
           attemptCount = raw.requireIntField("attempt_count"),
           startedAt = raw.requireStringField("started_at"),
           firstStartedAt = raw.requireStringField("first_started_at"),
@@ -237,8 +239,8 @@ data class FeatureTaskRuntimePhaseRecord(
       val unknown = raw.keys - allowed
       val identityDetail = when {
         raw["record_kind"] != "private_phase_record" -> "record_kind was '${raw["record_kind"]}'"
-        raw["contract_version"] != FEATURE_TASK_RUNTIME_PERSISTENCE_CONTRACT_VERSION ->
-          "contract_version was '${raw["contract_version"]}'"
+        raw[SharedPayloadKeys.CONTRACT_VERSION] != FEATURE_TASK_RUNTIME_PERSISTENCE_CONTRACT_VERSION ->
+          "contract_version was '${raw[SharedPayloadKeys.CONTRACT_VERSION]}'"
 
         else -> null
       }

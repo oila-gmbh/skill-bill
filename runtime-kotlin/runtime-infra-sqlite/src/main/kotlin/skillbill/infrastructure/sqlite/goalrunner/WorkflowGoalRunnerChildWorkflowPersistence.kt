@@ -1,4 +1,5 @@
 package skillbill.infrastructure.sqlite.goalrunner
+import skillbill.contracts.SharedPayloadKeys
 import skillbill.contracts.issuekey.normalizeRequiredIssueKey
 import skillbill.error.IncompatibleGoalPlanningPreparationRecoveryError
 import skillbill.goalrunner.GoalRunnerQualityGateSelectionResolver
@@ -139,8 +140,8 @@ internal class WorkflowGoalRunnerChildWorkflowPersistence(
   ) {
     val continuation = decodeArtifacts(existing.artifactsJson)[FEATURE_TASK_RUNTIME_GOAL_CONTINUATION_ARTIFACT_KEY]
       as? Map<*, *>
-    val matches = continuation?.get("issue_key") == state.manifest.issueKey &&
-      (continuation["subtask_id"] as? Number)?.toInt() == setup.subtaskId &&
+    val matches = continuation?.get(SharedPayloadKeys.ISSUE_KEY) == state.manifest.issueKey &&
+      (continuation[SharedPayloadKeys.SUBTASK_ID] as? Number)?.toInt() == setup.subtaskId &&
       continuation["parent_workflow_id"] == state.parentWorkflowId &&
       continuation["goal_branch"] == setup.goalBranch && continuation["suppress_pr"] == true
     if (!matches) {
@@ -244,7 +245,7 @@ internal class WorkflowGoalRunnerChildWorkflowPersistence(
       codeReviewMode = setup.reviewPolicy.codeReviewMode,
     ).toArtifactMap(),
     "install_sync_result" to mapOf(
-      "status" to "deferred",
+      SharedPayloadKeys.STATUS to "deferred",
       "reason" to
         "goal-continuation defers installer, uninstall, and install-sync flows until the parent goal exits; " +
         "deferred install sync must not block subtask completion",

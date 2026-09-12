@@ -1,5 +1,6 @@
 package skillbill.infrastructure.sqlite.review
 
+import skillbill.contracts.SharedPayloadKeys
 import skillbill.review.model.GoalBlockedSubtaskSummary
 import skillbill.review.model.GoalModeStats
 import skillbill.review.model.GoalRunSummary
@@ -138,7 +139,7 @@ internal data class GoalSubtaskRow(
 )
 
 private fun parseGoalRunRow(row: Map<String, Any?>): GoalRunRow {
-  val identity = "goal_run_sessions[workflow_id=${row["workflow_id"] ?: "<null>"}]"
+  val identity = "goal_run_sessions[workflow_id=${row[SharedPayloadKeys.WORKFLOW_ID] ?: "<null>"}]"
   val finishedAtRaw = row["finished_at"]?.toString().orEmpty()
   val finished = finishedAtRaw.isNotBlank()
   if (finished) {
@@ -164,8 +165,9 @@ private fun parseGoalRunRow(row: Map<String, Any?>): GoalRunRow {
 
 private fun parseGoalSubtaskRow(row: Map<String, Any?>): GoalSubtaskRow {
   val identity =
-    "goal_subtask_events[issue_key=${row["issue_key"] ?: "<null>"}, " +
-      "subtask_id=${row["subtask_id"] ?: "<null>"}, workflow_id=${row["workflow_id"] ?: "<null>"}]"
+    "goal_subtask_events[issue_key=${row[SharedPayloadKeys.ISSUE_KEY] ?: "<null>"}, " +
+      "subtask_id=${row[SharedPayloadKeys.SUBTASK_ID] ?: "<null>"}, " +
+      "workflow_id=${row[SharedPayloadKeys.WORKFLOW_ID] ?: "<null>"}]"
   row.requireNonBlankString("started_at", identity)
   row.requireNonBlankString("finished_at", identity)
   val status = row.requireEnum("status", goalSubtaskStatuses.map { it.wireValue }, identity)

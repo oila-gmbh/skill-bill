@@ -1,6 +1,8 @@
 package skillbill.ports.telemetry.model
 
 import skillbill.contracts.JsonPayloadContract
+import skillbill.contracts.review.ReviewFindingPayloadKeys
+import skillbill.contracts.review.ReviewVerificationSignalKeys
 import skillbill.review.model.ReviewFindingDetail
 import skillbill.review.model.ReviewFinishedFindingStats
 import skillbill.review.model.ReviewFinishedTelemetry
@@ -16,7 +18,7 @@ private class ReviewFinishedTelemetryPayloadContract(
 ) : JsonPayloadContract {
   override fun toPayload(): Map<String, Any?> = LinkedHashMap<String, Any?>().apply {
     putAll(telemetry.findingStats.toPayload())
-    put("review_run_id", telemetry.reviewRunId)
+    put(ReviewVerificationSignalKeys.REVIEW_RUN_ID, telemetry.reviewRunId)
     put("review_session_id", telemetry.reviewSessionId)
     put("routed_skill", telemetry.routedSkill)
     put("review_subskills", telemetry.reviewSubskills)
@@ -47,8 +49,8 @@ private fun ReviewFinishedFindingStats.toPayload(): Map<String, Any?> = linkedMa
 )
 
 private fun ReviewFindingDetail.toReviewFinishedPayload(): Map<String, Any?> = linkedMapOf<String, Any?>(
-  "finding_id" to findingId,
-  "issue_category" to issueCategory,
+  ReviewFindingPayloadKeys.FINDING_ID to findingId,
+  ReviewFindingPayloadKeys.ISSUE_CATEGORY to issueCategory,
   "severity" to severity,
   "confidence" to confidence,
   "outcome_type" to outcomeType,
@@ -94,12 +96,12 @@ private fun ReviewStageMetrics.toStageMetricsPayload(): Map<String, Any?> = link
 )
 
 private fun ReviewStageVerdictDistribution.toStageMetricsPayload(): Map<String, Any?> = linkedMapOf(
-  "claim_verdict" to linkedMapOf(
+  ReviewFindingPayloadKeys.CLAIM_VERDICT to linkedMapOf(
     "confirmed" to confirmed,
     "refuted" to refuted,
     "unresolved" to unresolved,
   ),
-  "scope_disposition" to linkedMapOf(
+  ReviewFindingPayloadKeys.SCOPE_DISPOSITION to linkedMapOf(
     "in_scope" to inScope,
     "out_of_scope_preexisting" to outOfScopePreexisting,
     "spec_deviation" to specDeviation,

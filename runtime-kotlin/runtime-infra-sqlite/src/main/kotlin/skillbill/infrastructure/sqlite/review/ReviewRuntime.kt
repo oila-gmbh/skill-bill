@@ -1,4 +1,5 @@
 package skillbill.infrastructure.sqlite.review
+import skillbill.contracts.review.ReviewFindingPayloadKeys
 import skillbill.infrastructure.sqlite.PARAM_ONE
 import skillbill.infrastructure.sqlite.PARAM_TWO
 import skillbill.review.ReviewParser
@@ -54,7 +55,7 @@ object ReviewRuntime {
       statement.executeQuery().use { resultSet ->
         require(resultSet.next()) { "Unknown finding id '$findingId' for review run '$reviewRunId'." }
         FindingMetadata(
-          findingId = resultSet.getString("finding_id"),
+          findingId = resultSet.getString(ReviewFindingPayloadKeys.FINDING_ID),
           severity = resultSet.getString("severity"),
           confidence = resultSet.getString("confidence"),
         )

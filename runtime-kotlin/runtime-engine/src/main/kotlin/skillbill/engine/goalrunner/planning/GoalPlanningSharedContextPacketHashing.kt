@@ -1,12 +1,13 @@
 package skillbill.engine.goalrunner.planning
 import skillbill.contracts.JsonCodec
+import skillbill.contracts.SharedPayloadKeys
 import skillbill.text.sha256HexUtf8
 import skillbill.workflow.decomposition.model.DecompositionManifest
 
 fun goalPlanningImmutableDecompositionHash(manifest: DecompositionManifest): String {
   val immutable = linkedMapOf<String, Any?>(
-    "contract_version" to manifest.contractVersion,
-    "issue_key" to manifest.issueKey,
+    SharedPayloadKeys.CONTRACT_VERSION to manifest.contractVersion,
+    SharedPayloadKeys.ISSUE_KEY to manifest.issueKey,
     "feature_name" to manifest.featureName,
     "parent_spec_path" to manifest.parentSpecPath,
     "spec_source" to manifest.specSource.wireValue,
@@ -14,7 +15,7 @@ fun goalPlanningImmutableDecompositionHash(manifest: DecompositionManifest): Str
     "base_branch" to manifest.baseBranch,
     "feature_branch" to manifest.featureBranch,
     "stack_branches" to manifest.stackBranches.map {
-      linkedMapOf("subtask_id" to it.subtaskId, "branch" to it.branch, "base_branch" to it.baseBranch)
+      linkedMapOf(SharedPayloadKeys.SUBTASK_ID to it.subtaskId, "branch" to it.branch, "base_branch" to it.baseBranch)
     },
     "subtasks" to manifest.subtasks.map { subtask ->
       linkedMapOf(
@@ -24,7 +25,7 @@ fun goalPlanningImmutableDecompositionHash(manifest: DecompositionManifest): Str
         "linear_issue_id" to subtask.linearIssueId,
         "dependencies" to subtask.dependencies.map { dependency ->
           linkedMapOf(
-            "subtask_id" to dependency.subtaskId,
+            SharedPayloadKeys.SUBTASK_ID to dependency.subtaskId,
             "optional" to dependency.optional,
             "skipped" to dependency.skipped,
           )

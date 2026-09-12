@@ -28,7 +28,7 @@ internal object WireVocabularyArchitectureSupport {
     RuntimeModuleCatalog.declaredGradleModules
       .flatMap { moduleName -> mainSourceRoots(moduleName) }
       .flatMap(::sourceFilesIn),
-    includePayloadKeyAccesses = false,
+    includePayloadKeyAccesses = true,
   )
 
   fun scanSourceFiles(files: List<SourceFile>, includePayloadKeyAccesses: Boolean = false): WireVocabularyScanResult {

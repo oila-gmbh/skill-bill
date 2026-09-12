@@ -11,6 +11,7 @@ import me.tatarka.inject.annotations.Inject
 import skillbill.cli.kernel.CliRunState
 import skillbill.cli.kernel.DocumentedCliCommand
 import skillbill.cli.model.CliRunInputs
+import skillbill.contracts.SharedPayloadKeys
 import skillbill.contracts.issuekey.MAX_ISSUE_KEY_LENGTH
 import skillbill.contracts.issuekey.isWellFormedIssueKey
 import skillbill.engine.goalrunner.GoalRunnerStatusService
@@ -208,8 +209,8 @@ class GoalWatchCommand(
       }
     }
     val payload = linkedMapOf<String, Any?>(
-      "status" to latestRefresh.get("status"),
-      "issue_key" to issueKey,
+      SharedPayloadKeys.STATUS to latestRefresh.get(SharedPayloadKeys.STATUS),
+      SharedPayloadKeys.ISSUE_KEY to issueKey,
       "refresh_count" to refreshCount,
       "interval_seconds" to intervalSeconds,
       "latest_refresh" to latestRefresh,

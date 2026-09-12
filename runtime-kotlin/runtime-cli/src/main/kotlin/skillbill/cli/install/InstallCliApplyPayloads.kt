@@ -1,6 +1,7 @@
 package skillbill.cli.install
 
 import skillbill.application.install.InstallService
+import skillbill.contracts.SharedPayloadKeys
 import skillbill.install.model.InstallAgent
 import skillbill.install.model.InstallAgentSkillLinkOutcome
 import skillbill.install.model.InstallAppliedSkill
@@ -17,7 +18,7 @@ internal fun installApplyPayload(
   result: InstallApplyResult,
   installService: InstallService,
 ): Map<String, Any?> = installPlanPayload(plan, installService) + mapOf(
-  "status" to result.status.name.lowercase(),
+  SharedPayloadKeys.STATUS to result.status.name.lowercase(),
   "skills" to result.skills.map(::appliedSkillPayload),
   "native_agents" to result.nativeAgents.map(::nativeAgentPayload),
   "telemetry" to telemetryPayload(result.telemetryOutcome),
@@ -37,7 +38,7 @@ private fun appliedSkillPayload(skill: InstallAppliedSkill): Map<String, Any?> =
 )
 
 private fun stagingOutcomePayload(staging: InstallSkillStagingOutcome): Map<String, Any?> = mapOf(
-  "status" to staging.status.name.lowercase(),
+  SharedPayloadKeys.STATUS to staging.status.name.lowercase(),
   "staging_dir" to staging.stagingDir?.toString(),
   "rendered_skill_file" to staging.renderedSkillFile?.toString(),
   "content_hash" to staging.contentHash,
@@ -49,7 +50,7 @@ private fun agentSkillLinkPayload(link: InstallAgentSkillLinkOutcome): Map<Strin
   "target_dir" to link.targetDir.toString(),
   "link_path" to link.linkPath.toString(),
   "link_target" to link.linkTarget.toString(),
-  "status" to link.status.name.lowercase(),
+  SharedPayloadKeys.STATUS to link.status.name.lowercase(),
   "message" to link.message,
   "issue" to link.issue?.let(::issuePayload),
 )
@@ -57,7 +58,7 @@ private fun agentSkillLinkPayload(link: InstallAgentSkillLinkOutcome): Map<Strin
 private fun nativeAgentPayload(native: NativeAgentApplyOutcome): Map<String, Any?> = mapOf(
   "provider" to native.provider.id,
   "agent" to native.agent.id,
-  "status" to native.status.name.lowercase(),
+  SharedPayloadKeys.STATUS to native.status.name.lowercase(),
   "path" to native.path?.toString(),
   "message" to native.message,
   "issue" to native.issue?.let(::issuePayload),
@@ -65,7 +66,7 @@ private fun nativeAgentPayload(native: NativeAgentApplyOutcome): Map<String, Any
 
 private fun telemetryPayload(outcome: InstallTelemetryApplyOutcome): Map<String, Any?> = mapOf(
   "level" to outcome.level.id,
-  "status" to outcome.status.name.lowercase(),
+  SharedPayloadKeys.STATUS to outcome.status.name.lowercase(),
   "config_path" to outcome.configPath?.toString(),
   "cleared_events" to outcome.clearedEvents,
   "message" to outcome.message,
@@ -79,7 +80,7 @@ private fun applyMcpRegistrationPayload(result: InstallApplyResult): Map<String,
   "outcomes" to result.mcpRegistrationOutcomes.map { outcome ->
     mapOf(
       "agent" to outcome.agent.id,
-      "status" to outcome.status.name.lowercase(),
+      SharedPayloadKeys.STATUS to outcome.status.name.lowercase(),
       "config_path" to outcome.configPath?.toString(),
       "changed" to outcome.changed,
       "message" to outcome.message,

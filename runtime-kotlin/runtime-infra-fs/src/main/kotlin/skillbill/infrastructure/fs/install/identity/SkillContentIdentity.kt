@@ -1,6 +1,7 @@
 package skillbill.infrastructure.fs.install.identity
 
 import skillbill.contracts.JsonCodec
+import skillbill.contracts.SharedPayloadKeys
 import skillbill.error.InvalidSkillContentIdentityError
 import skillbill.error.SkillContentIdentityMismatchError
 import skillbill.infrastructure.fs.scaffold.validation.parseSkillFrontmatter
@@ -32,7 +33,7 @@ internal data class SkillContentIdentity(
   fun compact(): String = JsonCodec.mapToJsonString(toMap())
 
   fun toMap(): Map<String, Any?> = linkedMapOf(
-    "contract_version" to SKILL_CONTENT_IDENTITY_CONTRACT_VERSION,
+    SharedPayloadKeys.CONTRACT_VERSION to SKILL_CONTENT_IDENTITY_CONTRACT_VERSION,
     "canonical_source_identity" to canonicalSourceIdentity,
     "exact_content_sha256" to exactContentSha256,
     "normalized_metadata" to normalizedMetadata.toSortedMap(),
@@ -81,7 +82,7 @@ internal data class SkillContentIdentity(
       if (parsed.keys != expectedFields) {
         invalidIdentity(stagingDir.toString(), "identity marker fields are invalid")
       }
-      if (parsed["contract_version"] != SKILL_CONTENT_IDENTITY_CONTRACT_VERSION) {
+      if (parsed[SharedPayloadKeys.CONTRACT_VERSION] != SKILL_CONTENT_IDENTITY_CONTRACT_VERSION) {
         invalidIdentity(stagingDir.toString(), "identity marker contract version is invalid")
       }
       val source = parsed["canonical_source_identity"] as? String
@@ -118,7 +119,7 @@ internal data class SkillContentIdentity(
       if (parsed.keys != expectedFields) {
         invalidIdentity(sourceLabel, "compact identity fields are invalid")
       }
-      if (parsed["contract_version"] != SKILL_CONTENT_IDENTITY_CONTRACT_VERSION) {
+      if (parsed[SharedPayloadKeys.CONTRACT_VERSION] != SKILL_CONTENT_IDENTITY_CONTRACT_VERSION) {
         invalidIdentity(sourceLabel, "compact identity contract version is invalid")
       }
       val source = parsed["canonical_source_identity"] as? String

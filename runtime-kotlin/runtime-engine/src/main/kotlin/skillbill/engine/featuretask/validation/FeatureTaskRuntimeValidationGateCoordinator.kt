@@ -3,6 +3,8 @@ package skillbill.engine.featuretask.validation
 import me.tatarka.inject.annotations.Inject
 import skillbill.config.model.applyValidationGateGradleWrapper
 import skillbill.contracts.JsonCodec
+import skillbill.contracts.SharedPayloadKeys
+import skillbill.contracts.review.ReviewVerificationSignalKeys
 import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_CONTRACT_VERSION
 import skillbill.engine.featuretask.FeatureTaskRuntimePhaseRecorder
 import skillbill.engine.featuretask.emitFeatureTaskRuntimeEventSafely
@@ -338,18 +340,19 @@ class FeatureTaskRuntimeValidationGateCoordinator(
       val validationResult = linkedMapOf<String, Any?>(
         "validation_status" to "passed",
         "checks" to checks,
-        "repository_checkpoint" to mapOf("fingerprint" to repositoryCheckpoint),
+        ReviewVerificationSignalKeys.REPOSITORY_CHECKPOINT to
+          mapOf(ReviewVerificationSignalKeys.REPOSITORY_CHECKPOINT_FINGERPRINT to repositoryCheckpoint),
         "gate_run_count" to measurements.size,
         "gate_runs" to measurements.map { it.toArtifactMap() },
       )
       val payload = JsonCodec.mapToJsonString(
         mapOf(
-          "contract_version" to FEATURE_TASK_RUNTIME_CONTRACT_VERSION,
-          "phase_id" to FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VALIDATE,
-          "status" to VALIDATE_PHASE_STATUS_COMPLETED,
-          "summary" to "Validation satisfied by runtime-owned gate execution.",
-          "verdict" to FeatureTaskRuntimeVerdict.SATISFIED.wireValue,
-          "produced_outputs" to mapOf(
+          SharedPayloadKeys.CONTRACT_VERSION to FEATURE_TASK_RUNTIME_CONTRACT_VERSION,
+          SharedPayloadKeys.PHASE_ID to FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VALIDATE,
+          SharedPayloadKeys.STATUS to VALIDATE_PHASE_STATUS_COMPLETED,
+          SharedPayloadKeys.SUMMARY to "Validation satisfied by runtime-owned gate execution.",
+          SharedPayloadKeys.VERDICT to FeatureTaskRuntimeVerdict.SATISFIED.wireValue,
+          SharedPayloadKeys.PRODUCED_OUTPUTS to mapOf(
             "validation_result" to validationResult,
           ),
         ),

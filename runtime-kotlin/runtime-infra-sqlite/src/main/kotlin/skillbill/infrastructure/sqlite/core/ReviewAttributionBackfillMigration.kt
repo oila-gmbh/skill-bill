@@ -1,5 +1,6 @@
 package skillbill.infrastructure.sqlite.core
 
+import skillbill.contracts.review.ReviewVerificationSignalKeys
 import skillbill.review.EXECUTION_MODE_DELEGATED
 import skillbill.review.UNRESOLVED_ATTRIBUTION
 import skillbill.review.canonicalPackSkillNames
@@ -103,7 +104,7 @@ internal object ReviewAttributionBackfillMigration {
         while (rows.next()) {
           add(
             PendingRow(
-              reviewRunId = rows.getString("review_run_id"),
+              reviewRunId = rows.getString(ReviewVerificationSignalKeys.REVIEW_RUN_ID),
               raw = RawAttribution(
                 routedSkill = rows.getString("routed_skill"),
                 stack = rows.getString("detected_stack"),

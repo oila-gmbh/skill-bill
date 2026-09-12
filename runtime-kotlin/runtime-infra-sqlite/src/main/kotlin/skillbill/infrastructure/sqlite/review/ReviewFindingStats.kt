@@ -1,5 +1,7 @@
 package skillbill.infrastructure.sqlite.review
 
+import skillbill.contracts.review.ReviewFindingPayloadKeys
+import skillbill.contracts.review.ReviewVerificationSignalKeys
 import skillbill.review.model.FindingOutcomeRow
 import skillbill.review.model.ReviewFindingDetail
 import skillbill.review.model.ReviewFindingStats
@@ -120,11 +122,11 @@ fun queryLatestFindingOutcomes(connection: Connection, reviewRunId: String?): Li
         while (resultSet.next()) {
           add(
             FindingOutcomeRow(
-              reviewRunId = resultSet.getString("review_run_id"),
-              findingId = resultSet.getString("finding_id"),
+              reviewRunId = resultSet.getString(ReviewVerificationSignalKeys.REVIEW_RUN_ID),
+              findingId = resultSet.getString(ReviewFindingPayloadKeys.FINDING_ID),
               severity = resultSet.getString("severity"),
               confidence = resultSet.getString("confidence"),
-              issueCategory = resultSet.getString("issue_category"),
+              issueCategory = resultSet.getString(ReviewFindingPayloadKeys.ISSUE_CATEGORY),
               location = resultSet.getString("location"),
               description = resultSet.getString("description"),
               outcomeType = resultSet.getString("outcome_type").orEmpty(),

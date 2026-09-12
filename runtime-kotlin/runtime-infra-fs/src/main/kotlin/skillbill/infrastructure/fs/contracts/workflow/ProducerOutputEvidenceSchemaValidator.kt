@@ -6,6 +6,7 @@ import com.fasterxml.jackson.dataformat.yaml.YAMLMapper
 import com.networknt.schema.JsonSchema
 import com.networknt.schema.JsonSchemaFactory
 import com.networknt.schema.SpecVersion
+import skillbill.contracts.SharedPayloadKeys
 import skillbill.contracts.workflow.PRODUCER_OUTPUT_EVIDENCE_CONTRACT_VERSION
 import skillbill.contracts.workflow.ProducerOutputEvidenceSchemaPaths
 import skillbill.error.InvalidProducerOutputEvidenceSchemaError
@@ -18,9 +19,9 @@ object ProducerOutputEvidenceSchemaValidator {
 
   fun validate(evidence: ProducerOutputEvidence) {
     val instance = mapper.createObjectNode().apply {
-      put("contract_version", PRODUCER_OUTPUT_EVIDENCE_CONTRACT_VERSION)
-      put("workflow_id", evidence.workflowId)
-      put("phase_id", evidence.phaseId)
+      put(SharedPayloadKeys.CONTRACT_VERSION, PRODUCER_OUTPUT_EVIDENCE_CONTRACT_VERSION)
+      put(SharedPayloadKeys.WORKFLOW_ID, evidence.workflowId)
+      put(SharedPayloadKeys.PHASE_ID, evidence.phaseId)
       put("generation", evidence.generation)
       put("attempt", evidence.attempt)
       put("repair_turn", evidence.repairTurn)
