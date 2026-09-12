@@ -49,11 +49,11 @@ on `SQLITE_BUSY` when no external process holds the database.
 
 ## Affected Areas
 
-- `runtime-kotlin/runtime-domain` review citation decoding and models.
-- `runtime-kotlin/runtime-application` claim verification ingestion.
-- `runtime-kotlin/runtime-engine` goal repair coordination and child wedge repair
+- `../../../runtime-kotlin/runtime-domain` review citation decoding and models.
+- `../../../runtime-kotlin/runtime-application` claim verification ingestion.
+- `../../../runtime-kotlin/runtime-engine` goal repair coordination and child wedge repair
   persistence.
-- `runtime-kotlin/runtime-cli` repair command messaging.
+- `../../../runtime-kotlin/runtime-cli` repair command messaging.
 - Focused tests in domain, engine, and CLI modules.
 
 ## Validation Strategy

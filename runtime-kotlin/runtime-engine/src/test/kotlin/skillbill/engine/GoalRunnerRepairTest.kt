@@ -287,6 +287,50 @@ internal class GoalRunnerRepairTest : GoalRunnerRepairFixtures() {
   }
 
   @Test
+  fun `repair refusal for unreachable review base points to scoped child reset`() {
+    val unreachable = "a".repeat(40)
+    val workflows = InMemoryWorkflowStates()
+    val workflowId = "wftr-repair-unrecoverable-review"
+    workflows.saveFeatureTaskRuntimeWorkflow(
+      repairChildRecord(
+        RepairChildRecordArgs(
+          workflowId = workflowId,
+          continuation = continuationMap(includeValidationDepth = true),
+          reviewState = healthyReviewState().copy(reviewBaseSha = unreachable),
+        ),
+      ),
+    )
+    val store = repairStore(
+      workflows,
+      git = ReachableGit(
+        unreachableShas = setOf(unreachable),
+        recoveryStatus = WorkflowGitOperationStatus.ERROR,
+      ),
+    )
+    val service = testGoalRunnerStatusService(
+      manifestStore = RepairManifestStore(workflowId),
+      outcomeStore = store,
+      phaseRecorder = goalTestPhaseRecorder(),
+      ports = GoalRunnerStatusTestPorts(childRepairStore = store),
+    )
+
+    val result = service.repair(
+      GoalRunnerRepairRequest(
+        issueKey = ISSUE_KEY,
+        apply = true,
+        subtaskId = 1,
+        repoRoot = Path.of("."),
+      ),
+    )
+
+    assertEquals(GoalRunnerRepairStatus.OPERATOR_REQUIRED, result.status)
+    assertContains(
+      result.refusalReason.orEmpty(),
+      "skill-bill goal reset $ISSUE_KEY --subtask 1 --delete-child-workflow",
+    )
+  }
+
+  @Test
   fun `diagnosis names stale blocked goal_continuation_outcome with the stored reason`() {
     val staleReason = "Persisted review base was orphaned after history rewrite"
     val workflows = InMemoryWorkflowStates()
@@ -1264,6 +1308,7 @@ internal abstract class GoalRunnerRepairFixtures {
   protected class ReachableGit(
     private val unreachableShas: Set<String> = emptySet(),
     private val recoveredSha: String = "b".repeat(40),
+    private val recoveryStatus: WorkflowGitOperationStatus = WorkflowGitOperationStatus.OK,
   ) : WorkflowGitOperations by NoopWorkflowGitOperations {
     override fun headCommitSha(repoRoot: Path): WorkflowGitOperationResult =
       WorkflowGitOperationResult.Ok(value = HEAD_SHA)
@@ -1303,8 +1348,9 @@ internal abstract class GoalRunnerRepairFixtures {
           request: GoalSubtaskReviewBaselineRecoveryRequest,
           expectedBranch: String,
         ): GoalSubtaskReviewBaselineResult = GoalSubtaskReviewBaselineResult(
-          status = WorkflowGitOperationStatus.OK,
-          baseline = request.toRecoveredBaseline(recoveredSha),
+          status = recoveryStatus,
+          baseline = recoveryStatus.takeIf { it == WorkflowGitOperationStatus.OK }
+            ?.let { request.toRecoveredBaseline(recoveredSha) },
         )
       }
   }

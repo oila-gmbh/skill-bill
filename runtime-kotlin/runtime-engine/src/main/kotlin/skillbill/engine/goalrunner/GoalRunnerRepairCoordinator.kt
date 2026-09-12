@@ -8,6 +8,7 @@ import skillbill.engine.goalrunner.model.GoalRunnerChildWedgeRepairRequest
 import skillbill.engine.goalrunner.model.GoalRunnerRepairRequest
 import skillbill.engine.goalrunner.model.GoalRunnerRepairResult
 import skillbill.engine.goalrunner.model.GoalRunnerRepairStatus
+import skillbill.engine.goalrunner.model.GoalRunnerWedgeClass
 import skillbill.engine.goalrunner.planning.goalPlanningHardResetRemedy
 import skillbill.model.RepositoryRoot
 import skillbill.ports.goalrunner.persistence.GoalRunnerChildRepairStore
@@ -131,21 +132,24 @@ class GoalRunnerRepairCoordinator(
     wedged: List<GoalRunnerChildWedgeDiagnosis>,
     repoRoot: Path,
   ): GoalRunnerRepairResult {
+    val liveLeaseDiagnosis = wedged.firstOrNull { diagnosis ->
+      diagnosis.workflowId?.let(::childWorkerLeaseLive) == true
+    }
+    if (liveLeaseDiagnosis != null) {
+      val workflowId = requireNotNull(liveLeaseDiagnosis.workflowId)
+      return GoalRunnerRepairResult(
+        issueKey = request.issueKey,
+        status = GoalRunnerRepairStatus.LIVE_LEASE_REFUSED,
+        parentWorkflowId = parentWorkflowId,
+        diagnoses = diagnoses,
+        liveLeaseWorkflowId = workflowId,
+        refusalReason =
+        "Child workflow '$workflowId' holds a live worker lease; a running worker owns that state.",
+      )
+    }
     val applied = mutableListOf<GoalRunnerAppliedRepair>()
     for (diagnosis in wedged) {
       val workflowId = diagnosis.workflowId ?: continue
-      if (childWorkerLeaseLive(workflowId)) {
-        return GoalRunnerRepairResult(
-          issueKey = request.issueKey,
-          status = GoalRunnerRepairStatus.LIVE_LEASE_REFUSED,
-          parentWorkflowId = parentWorkflowId,
-          diagnoses = diagnoses,
-          appliedRepairs = applied,
-          liveLeaseWorkflowId = workflowId,
-          refusalReason =
-          "Child workflow '$workflowId' holds a live worker lease; a running worker owns that state.",
-        )
-      }
       val repairResult = childRepairStore.applyChildWedgeRepairs(
         GoalRunnerChildWedgeRepairRequest(
           workflowId = workflowId,
@@ -153,9 +157,28 @@ class GoalRunnerRepairCoordinator(
           subtaskId = diagnosis.subtaskId,
           wedgeClasses = diagnosis.wedges.map { it.wedgeClass },
           repoRoot = repoRoot,
+          wedgeFindings = diagnosis.wedges,
         ),
       )
       applied += repairResult.repairs
+      val unrecoverableReviewWedge = diagnosis.wedges.firstOrNull { finding ->
+        finding.wedgeClass in setOf(
+          GoalRunnerWedgeClass.UNREACHABLE_REVIEW_BASE,
+          GoalRunnerWedgeClass.UNREACHABLE_REMEDIATION_BASE,
+        ) && repairResult.repairs.none { repair -> repair.wedgeClass == finding.wedgeClass }
+      }
+      if (unrecoverableReviewWedge != null) {
+        return GoalRunnerRepairResult(
+          issueKey = request.issueKey,
+          status = GoalRunnerRepairStatus.OPERATOR_REQUIRED,
+          parentWorkflowId = parentWorkflowId,
+          diagnoses = diagnoses,
+          appliedRepairs = applied,
+          refusalReason =
+          "Review remediation for subtask ${diagnosis.subtaskId} could not be recovered. " +
+            "Recover with: '${scopedChildRecoveryCommand(request.issueKey, diagnosis.subtaskId)}'.",
+        )
+      }
     }
     return GoalRunnerRepairResult(
       issueKey = request.issueKey,

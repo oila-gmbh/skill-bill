@@ -90,7 +90,13 @@ object ReviewFindingFieldCodec {
 
   private fun parseNumericCitationLine(raw: Number): ParsedCitationLine {
     val value = raw.toDouble()
-    if (!value.isFinite() || value % 1.0 != 0.0 || value < Int.MIN_VALUE || value > Int.MAX_VALUE) {
+    if (!value.isFinite()) {
+      return ParsedCitationLine.Rejected(rawLine = raw.toString(), reason = "non_numeric_line")
+    }
+    if (value % 1.0 != 0.0) {
+      return ParsedCitationLine.Rejected(rawLine = raw.toString(), reason = "non_numeric_line")
+    }
+    if (value < Int.MIN_VALUE || value > Int.MAX_VALUE) {
       return ParsedCitationLine.Rejected(rawLine = raw.toString(), reason = "non_numeric_line")
     }
     val integer = value.toInt()

@@ -73,6 +73,7 @@ data class GoalRunnerChildWedgeRepairRequest(
   val subtaskId: Int,
   val wedgeClasses: List<GoalRunnerWedgeClass>,
   val repoRoot: Path,
+  val wedgeFindings: List<GoalRunnerWedgeFinding> = emptyList(),
 )
 
 data class GoalRunnerChildRepairApplyRequest(
@@ -82,6 +83,7 @@ data class GoalRunnerChildRepairApplyRequest(
   val subtaskId: Int,
   val wedgeClasses: List<GoalRunnerWedgeClass>,
   val repoRoot: Path,
+  val wedgeFindings: List<GoalRunnerWedgeFinding> = emptyList(),
 )
 
 data class GoalRunnerChildRepairApplyResult(

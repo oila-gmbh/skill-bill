@@ -1,5 +1,14 @@
 # goalrunner boundary history
 
+## [2026-09-12] SKILL-340 subtask 2 — Repair apply SQLITE_BUSY lifecycle fix
+Areas: runtime-kotlin/{runtime-cli, runtime-engine/{featuretask,goalrunner}, runtime-infra-sqlite, runtime-ports}
+- Repair diagnoses are materialized before lease preflight, and inspect read scopes close before per-child apply transactions so `goal repair --apply` can persist wedge repairs without `SQLITE_BUSY`.
+- Inspect findings flow into apply; regression coverage exercises the `completed_upstream_missing_output` path, and refusal messages point operators to scoped `goal reset --subtask` recovery.
+- Pattern: separate diagnosis snapshots from write transactions and carry explicit findings through repair. reusable
+- Limitation: wedge classes and review-remediation policy remain unchanged; focused tests and quality validation belong to the validation phase.
+Feature flag: N/A
+Acceptance criteria: 6/6 implemented
+
 ## [2026-09-03] SKILL-230 subtask 2 — Concurrent planning status wire
 Areas: orchestration/contracts/ide-status-schema, runtime-contracts/workflow, runtime-domain/goalrunner.model, runtime-ports/goalrunner, runtime-infra-sqlite/db.workflow, runtime-application/{goalrunner/planning,idestatus,work}, runtime-cli/goal, runtime-mcp/workflow
 - `GoalPlanningStatusSnapshot` carries `planningWaveSubtaskIds` (manifest-ordered missing-plan ids, capped at `GOAL_PLANNING_WAVE_CAP`); the domain `init` requires `currentPlanningSubtaskId` to equal the wave minimum, so the IntelliJ plugin and VS Code extension keep reading one id with no edit.

@@ -26,7 +26,8 @@ class GoalOperatorDecisionService(
           GoalRunnerOperatorDecisionResult.Rejected(
             request.issueKey,
             "Operator decisions over review remediation are removed; " +
-              "the run advances to validate after one implement_fix round.",
+              "the run advances to validate after one implement_fix round. " +
+              "Recover with: '${scopedChildRecoveryCommand(request.issueKey, request.subtaskId)}'.",
           )
         }
       }
