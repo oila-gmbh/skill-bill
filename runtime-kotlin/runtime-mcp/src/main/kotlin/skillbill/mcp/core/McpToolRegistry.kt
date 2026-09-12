@@ -2,6 +2,7 @@ package skillbill.mcp.core
 
 import skillbill.contracts.SharedPayloadKeys
 import skillbill.contracts.review.ReviewVerificationSignalKeys
+import skillbill.contracts.workflow.AuditRepairCycleKeys
 
 data class McpToolSpec(
   val name: String,
@@ -37,6 +38,7 @@ object McpToolRegistry {
     listOf(
       "doctor",
       "feature_task_audit_settle",
+      "feature_task_audit_stage",
       "feature_task_phase_block",
       "feature_task_phase_complete",
       "feature_verify_finished",
@@ -68,6 +70,8 @@ object McpToolRegistry {
       "doctor" to "Check skill-bill installation health.",
       "feature_task_audit_settle" to
         "Settle a feature-task audit phase via durable settlement (preferred over stdout envelope).",
+      "feature_task_audit_stage" to
+        "Record a nonterminal audit-repair stage after its durable commit.",
       "feature_task_phase_block" to
         "Durable-block a prose feature-task phase (preplan|plan|implement|audit).",
       "feature_task_phase_complete" to
@@ -137,6 +141,44 @@ object McpToolRegistry {
           SharedPayloadKeys.VERDICT to stringSchema(enum = listOf("satisfied", "gaps_found")),
           SharedPayloadKeys.VALUE to stringSchema(minLength = 1),
           SharedPayloadKeys.SUMMARY to stringSchema(minLength = 1),
+        ),
+      ),
+      "feature_task_audit_stage" to objectSchema(
+        required = listOf(
+          AuditRepairCycleKeys.WORKFLOW_ID,
+          AuditRepairCycleKeys.AUDIT_ATTEMPT,
+          AuditRepairCycleKeys.EXECUTION_ID,
+          AuditRepairCycleKeys.SESSION_ID,
+          AuditRepairCycleKeys.CYCLE_ID,
+          AuditRepairCycleKeys.OWNER_TOKEN,
+          AuditRepairCycleKeys.FENCING_GENERATION,
+          AuditRepairCycleKeys.EXPECTED_REVISION,
+          AuditRepairCycleKeys.REQUEST_ID,
+          AuditRepairCycleKeys.STAGE,
+        ),
+        properties = mapOf(
+          AuditRepairCycleKeys.WORKFLOW_ID to stringSchema(minLength = 1),
+          AuditRepairCycleKeys.AUDIT_ATTEMPT to mapOf("type" to "integer", "minimum" to 1),
+          AuditRepairCycleKeys.EXECUTION_ID to stringSchema(minLength = 1),
+          AuditRepairCycleKeys.SESSION_ID to stringSchema(minLength = 1),
+          AuditRepairCycleKeys.CYCLE_ID to stringSchema(minLength = 1),
+          AuditRepairCycleKeys.OWNER_TOKEN to stringSchema(minLength = 1),
+          AuditRepairCycleKeys.FENCING_GENERATION to mapOf("type" to "integer", "minimum" to 1),
+          AuditRepairCycleKeys.EXPECTED_REVISION to mapOf("type" to "integer", "minimum" to 0),
+          AuditRepairCycleKeys.REQUEST_ID to stringSchema(minLength = 1),
+          AuditRepairCycleKeys.STAGE to stringSchema(
+            enum = listOf("diagnosis", "authorized_repair", "checkpoint_pending", "final_audit", "satisfied", "paused"),
+          ),
+          AuditRepairCycleKeys.REVISION to mapOf("type" to "integer", "minimum" to 0),
+          AuditRepairCycleKeys.RECORDED_AT to stringSchema(minLength = 1),
+          AuditRepairCycleKeys.CRITERION_REFS to arraySchema(stringSchema(minLength = 1)),
+          AuditRepairCycleKeys.LEGACY_EVIDENCE to stringSchema(minLength = 1),
+          AuditRepairCycleKeys.ASSESSMENT to freeObjectSchema,
+          AuditRepairCycleKeys.REPOSITORY_FINGERPRINT to stringSchema(minLength = 1),
+          AuditRepairCycleKeys.CHECKPOINT_INTENT to stringSchema(minLength = 1),
+          AuditRepairCycleKeys.CHECKPOINT to freeObjectSchema,
+          AuditRepairCycleKeys.REPAIR_OUTCOMES to arraySchema(freeObjectSchema),
+          AuditRepairCycleKeys.REASON to stringSchema(minLength = 1),
         ),
       ),
       "feature_verify_started" to objectSchema(

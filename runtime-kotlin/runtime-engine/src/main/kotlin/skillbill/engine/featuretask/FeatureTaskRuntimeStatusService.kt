@@ -1,17 +1,20 @@
 package skillbill.engine.featuretask
 
 import me.tatarka.inject.annotations.Inject
-import skillbill.engine.featuretask.model.FeatureTaskRuntimeAuditRepairStatus
 import skillbill.engine.featuretask.model.FeatureTaskRuntimeDecomposeTerminalStatus
 import skillbill.engine.featuretask.model.FeatureTaskRuntimeDegradedDiagnosticStatus
 import skillbill.engine.featuretask.model.FeatureTaskRuntimePhaseStatus
 import skillbill.engine.featuretask.model.FeatureTaskRuntimeStatusProjection
 import skillbill.engine.featuretask.model.FeatureTaskRuntimeStatusRequest
+import skillbill.ports.featuretask.AuditRepairCycleRepository
 import skillbill.workflow.model.WorkflowStepStatus
 import skillbill.workflow.model.workflowStepStatus
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
+import skillbill.workflow.taskruntime.model.AuditRepairCycle
+import skillbill.workflow.taskruntime.model.AuditRepairStage
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditGapPause
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditProgress
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditRepairStatus
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeDecomposeTerminal
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerAction
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerEntry
@@ -23,10 +26,15 @@ class FeatureTaskRuntimeStatusService(
   val recorder: FeatureTaskRuntimePhaseRecorder,
   val runInvariantsStore: FeatureTaskRuntimeRunInvariantsStore,
   private val decomposeTerminalRecorder: FeatureTaskRuntimeDecomposeTerminalRecorder,
+  val auditRepairCycles: AuditRepairCycleRepository? = null,
 ) {
   val currentPhaseExecutionDeriver = FeatureTaskRuntimeCurrentPhaseExecutionDeriver()
 
   fun status(request: FeatureTaskRuntimeStatusRequest): FeatureTaskRuntimeStatusProjection? {
+    val snapshot = auditRepairCycles?.statusSnapshot(request.workflowId)?.let(::FeatureTaskRuntimeStatusArtifacts)
+    if (snapshot != null) {
+      return buildStatusProjection(request, snapshot.records, snapshot.decomposeTerminal, snapshot.ledger, snapshot)
+    }
     val records = recorder.loadPhaseRecords(request.workflowId) ?: return null
     val decomposeTerminal = decomposeTerminalRecorder.loadDecomposeTerminal(request.workflowId)
     val ledger = recorder.loadPhaseLedger(request.workflowId).orEmpty()
@@ -50,6 +58,7 @@ fun FeatureTaskRuntimeStatusService.buildStatusProjection(
   records: Map<String, FeatureTaskRuntimePhaseRecord>,
   decomposeTerminal: FeatureTaskRuntimeDecomposeTerminal?,
   ledger: List<FeatureTaskRuntimePhaseLedgerEntry>,
+  snapshot: FeatureTaskRuntimeStatusArtifacts? = null,
 ): FeatureTaskRuntimeStatusProjection {
   val auditRepairProgress = auditProgressFrom(records, ledger)
   val durableBlockedPhaseIds =
@@ -57,9 +66,13 @@ fun FeatureTaskRuntimeStatusService.buildStatusProjection(
   val blockedPhaseIds = durableBlockedPhaseIds + ledgerBlockedPhaseIds(ledger, durableBlockedPhaseIds)
   val phases = phaseStatuses(records, blockedPhaseIds, ledger)
   val terminalDecomposeRecorded = decomposeTerminal != null
-  val qualityGateSelection = recorder
-    .loadGoalContinuationQualityGateSelection(request.workflowId)
-    .orLegacyValidate()
+  val qualityGateSelection = (
+    if (snapshot == null) {
+      recorder.loadGoalContinuationQualityGateSelection(request.workflowId)
+    } else {
+      snapshot.qualityGateSelection
+    }
+    ).orLegacyValidate()
   val currentPhaseId = resolveCurrentPhaseId(
     terminalDecomposeRecorded,
     records,
@@ -67,17 +80,27 @@ fun FeatureTaskRuntimeStatusService.buildStatusProjection(
     ledger,
     qualityGateSelection,
   )
-  val auditGapPause = recorder.loadAuditGapPause(request.workflowId)
-  val effectiveAuditGapIteration = auditGapPause?.edgeIteration
+  val auditGapPause = if (snapshot == null) recorder.loadAuditGapPause(request.workflowId) else snapshot.pause
+  val auditCycle = if (snapshot != null) {
+    snapshot.cycle
+  } else {
+    records[FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT]
+      ?.let { auditRepairCycles?.findForAttempt(request.workflowId, it.attemptCount) }
+      ?: auditRepairCycles?.findActive(request.workflowId)
+  }
+  val effectiveAuditGapIteration = auditCycle?.repairRoundCount
+    ?: auditGapPause?.edgeIteration
     ?: auditRepairProgress?.auditGapIterationCount
     ?: ledgerAuditGapIterationCount(ledger)
   val auditRepair = auditRepairStatus(
     auditRepairProgress?.copy(auditGapIterationCount = effectiveAuditGapIteration),
+    auditCycle,
   )
-  val gateRunCount = gateRunCountFor(request, currentPhaseId)
+  val gateRunCount = gateRunCountFor(request, currentPhaseId, snapshot)
   return statusProjectionFrom(
     StatusProjectionParts(
       request = request,
+      snapshot = snapshot,
       phases = phases,
       terminalDecomposeRecorded = terminalDecomposeRecorded,
       currentPhaseId = currentPhaseId,
@@ -93,6 +116,7 @@ fun FeatureTaskRuntimeStatusService.buildStatusProjection(
 }
 
 private data class StatusProjectionParts(
+  val snapshot: FeatureTaskRuntimeStatusArtifacts?,
   val request: FeatureTaskRuntimeStatusRequest,
   val phases: List<FeatureTaskRuntimePhaseStatus>,
   val terminalDecomposeRecorded: Boolean,
@@ -114,7 +138,11 @@ private fun FeatureTaskRuntimeStatusService.statusProjectionFrom(
   val terminalDecomposeRecorded = parts.terminalDecomposeRecorded
   return FeatureTaskRuntimeStatusProjection(
     workflowId = request.workflowId,
-    featureSize = runInvariantsStore.resolve(request.workflowId)?.featureSize?.name,
+    featureSize = if (parts.snapshot == null) {
+      runInvariantsStore.resolve(request.workflowId)?.featureSize?.name
+    } else {
+      parts.snapshot.featureSize
+    },
     phases = phases,
     completeCount = phases.count { it.status.workflowStepStatus() == WorkflowStepStatus.COMPLETED },
     pendingCount = if (terminalDecomposeRecorded) {
@@ -130,10 +158,14 @@ private fun FeatureTaskRuntimeStatusService.statusProjectionFrom(
       phases.count { it.status.workflowStepStatus() == WorkflowStepStatus.BLOCKED }
     },
     currentPhaseId = parts.currentPhaseId,
-    resolvedBranch = recorder.loadResolvedBranch(request.workflowId)?.branch,
+    resolvedBranch = if (parts.snapshot == null) {
+      recorder.loadResolvedBranch(request.workflowId)?.branch
+    } else {
+      parts.snapshot.branch
+    },
     finalizingAgentId = agentAttributionFromPhaseState(
-      recorder,
-      request.workflowId,
+      parts.ledger,
+      parts.records,
     ).finalizingAgentId,
     decomposeTerminal = decomposeTerminalStatus(parts.decomposeTerminal),
     auditRepair = parts.auditRepair,
@@ -148,7 +180,7 @@ private fun FeatureTaskRuntimeStatusService.statusProjectionFrom(
         gateRunCount = parts.gateRunCount,
       ),
     ),
-    degradedDiagnostic = degradedDiagnosticStatus(request.workflowId),
+    degradedDiagnostic = degradedDiagnosticStatus(request.workflowId, parts.snapshot),
     operatorDecisionPause = operatorDecisionPause(parts.records, parts.auditGapPause),
   )
 }
@@ -156,11 +188,18 @@ private fun FeatureTaskRuntimeStatusService.statusProjectionFrom(
 private fun FeatureTaskRuntimeStatusService.gateRunCountFor(
   request: FeatureTaskRuntimeStatusRequest,
   currentPhaseId: String?,
+  snapshot: FeatureTaskRuntimeStatusArtifacts?,
 ): Int? {
-  val validationGateRunCount = recorder.loadValidationGateProgress(request.workflowId)
-    ?.gateRunCount
-  val buildGateRunCount = recorder.loadBuildGateProgress(request.workflowId)
-    ?.gateRunCount
+  val validationGateRunCount = if (snapshot == null) {
+    recorder.loadValidationGateProgress(request.workflowId)?.gateRunCount
+  } else {
+    snapshot.validationGate?.gateRunCount
+  }
+  val buildGateRunCount = if (snapshot == null) {
+    recorder.loadBuildGateProgress(request.workflowId)?.gateRunCount
+  } else {
+    snapshot.buildGate?.gateRunCount
+  }
   return when (currentPhaseId) {
     FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_BUILD -> buildGateRunCount
     FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VALIDATE -> validationGateRunCount
@@ -170,8 +209,15 @@ private fun FeatureTaskRuntimeStatusService.gateRunCountFor(
 
 fun FeatureTaskRuntimeStatusService.degradedDiagnosticStatus(
   workflowId: String,
+  snapshot: FeatureTaskRuntimeStatusArtifacts? = null,
 ): FeatureTaskRuntimeDegradedDiagnosticStatus? {
-  val diagnosticSignals = recorder.loadDiagnosticSignals(workflowId)
+  val diagnosticSignals = if (snapshot == null) {
+    recorder.loadDiagnosticSignals(
+      workflowId,
+    )
+  } else {
+    snapshot.diagnosticSignals
+  }
   val latest = diagnosticSignals.lastOrNull() ?: return null
   return FeatureTaskRuntimeDegradedDiagnosticStatus(
     count = diagnosticSignals.size,
@@ -205,10 +251,32 @@ fun FeatureTaskRuntimeStatusService.auditProgressFrom(
 
 fun FeatureTaskRuntimeStatusService.auditRepairStatus(
   progress: FeatureTaskRuntimeAuditProgress?,
+  cycle: AuditRepairCycle? = null,
 ): FeatureTaskRuntimeAuditRepairStatus? = progress?.let {
   FeatureTaskRuntimeAuditRepairStatus(
-    firstPassConvergence = it.firstPassConvergence,
-    auditGapIterationCount = it.auditGapIterationCount,
+    firstPassConvergence = cycle?.let {
+      it.current.stage == AuditRepairStage.SATISFIED && it.repairRoundCount == 0
+    } ?: it.firstPassConvergence,
+    auditGapIterationCount = cycle?.repairRoundCount ?: it.auditGapIterationCount,
+    stage = cycle?.current?.stage?.wireValue,
+    unresolvedCriterionRefs = cycle?.latestAssessment?.unmetCriterionRefs?.toList().orEmpty(),
+    repairRoundCount = cycle?.repairRoundCount ?: 0,
+    lastCheckpointId = cycle?.latestCheckpoint?.checkpointId,
+    executionId = cycle?.identity?.executionId,
+    sessionId = cycle?.identity?.sessionId,
+    operatorReason = cycle?.current?.reason,
+  )
+} ?: cycle?.let {
+  FeatureTaskRuntimeAuditRepairStatus(
+    firstPassConvergence = it.current.stage == AuditRepairStage.SATISFIED && it.repairRoundCount == 0,
+    auditGapIterationCount = it.repairRoundCount,
+    stage = it.current.stage.wireValue,
+    unresolvedCriterionRefs = it.latestAssessment?.unmetCriterionRefs?.toList().orEmpty(),
+    repairRoundCount = it.repairRoundCount,
+    lastCheckpointId = it.latestCheckpoint?.checkpointId,
+    executionId = it.identity.executionId,
+    sessionId = it.identity.sessionId,
+    operatorReason = it.current.reason,
   )
 }
 

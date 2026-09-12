@@ -2,6 +2,7 @@ package skillbill.cli.goal
 
 import skillbill.cli.kernel.detectInvokingAgentId
 import skillbill.cli.model.CliRunInputs
+import skillbill.cli.model.toAuditRepairCliMap
 import skillbill.contracts.SharedPayloadKeys
 import skillbill.contracts.workflow.ValidationEvidencePayloadKeys
 import skillbill.engine.goalrunner.model.GoalRunnerStatusRequest
@@ -69,21 +70,9 @@ internal fun GoalRunnerStatusProjection?.toGoalStatusCliMap(issueKey: String): M
     "pause_reason" to it.pauseReason,
     "stop_after_subtask" to it.stopAfterSubtaskId,
   ).apply {
-    it.planning?.let { planning ->
-      put(
-        "planning",
-        linkedMapOf(
-          "state" to planning.state.wireValue,
-          "shared_preplan_prepared" to planning.sharedPreplanPrepared,
-          "planned_subtask_count" to planning.plannedSubtaskCount,
-          "total_subtask_count" to planning.totalSubtaskCount,
-          "current_planning_subtask" to planning.currentPlanningSubtaskId,
-          "planning_wave_subtasks" to planning.planningWaveSubtaskIds,
-          "reason" to planning.reason,
-        ),
-      )
-    }
+    putPlanningStatus(it)
     it.latestObservabilityEvent?.let { event -> put("latest_observability_event", event) }
+    it.auditRepair?.let { audit -> put("audit_repair", audit.toAuditRepairCliMap()) }
     it.requestedDiffStat?.let { stat -> put("diff_stat", stat.toGoalDiffStatCliMap()) }
     it.selectedDiffHunks?.let { hunks -> put("selected_diff_hunks", hunks.toGoalSelectedDiffHunksCliMap()) }
     putGoalLedgerCliEntries(it)
@@ -266,3 +255,20 @@ internal fun goalMonitorStatusText(payload: Map<String, Any?>): String =
       appendLine("resumable_state: ${payload["resumable_state"]}")
     }
   }
+
+private fun MutableMap<String, Any?>.putPlanningStatus(projection: GoalRunnerStatusProjection) {
+  projection.planning?.let { planning ->
+    put(
+      "planning",
+      linkedMapOf(
+        "state" to planning.state.wireValue,
+        "shared_preplan_prepared" to planning.sharedPreplanPrepared,
+        "planned_subtask_count" to planning.plannedSubtaskCount,
+        "total_subtask_count" to planning.totalSubtaskCount,
+        "current_planning_subtask" to planning.currentPlanningSubtaskId,
+        "planning_wave_subtasks" to planning.planningWaveSubtaskIds,
+        "reason" to planning.reason,
+      ),
+    )
+  }
+}

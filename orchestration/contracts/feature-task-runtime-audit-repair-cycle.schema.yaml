@@ -1,0 +1,185 @@
+$schema: https://json-schema.org/draft/2020-12/schema
+$id: feature-task-runtime-audit-repair-cycle.schema.yaml
+title: Feature-task audit repair cycle
+type: object
+additionalProperties: false
+required:
+  - contract_version
+  - workflow_id
+  - audit_attempt
+  - execution_id
+  - session_id
+  - cycle_id
+  - owner_token
+  - fencing_generation
+  - criterion_refs
+  - revisions
+properties:
+  contract_version:
+    const: '0.2'
+  workflow_id:
+    $ref: '#/$defs/nonblank'
+  audit_attempt:
+    type: integer
+    minimum: 1
+  execution_id:
+    $ref: '#/$defs/nonblank'
+  session_id:
+    $ref: '#/$defs/nonblank'
+  cycle_id:
+    $ref: '#/$defs/nonblank'
+  owner_token:
+    $ref: '#/$defs/nonblank'
+  fencing_generation:
+    type: integer
+    minimum: 1
+  criterion_refs:
+    type: array
+    minItems: 1
+    uniqueItems: true
+    items:
+      $ref: '#/$defs/nonblank'
+  legacy_evidence:
+    $ref: '#/$defs/nonblank'
+  revisions:
+    type: array
+    minItems: 1
+    items:
+      $ref: '#/$defs/revision'
+x-coherence-checks:
+  - Revisions start at zero and increase by one; request identities are unique.
+  - Diagnosis and final audit assess exactly the declared criterion census.
+  - Every unmet criterion has nonblank repair guidance and a scoped repair identity.
+  - Repair authorization requires the diagnosis repository identity to remain current.
+  - Only repair outcomes for identities authorized by the diagnosis are accepted.
+  - Checkpoint intent persists the immutable intent and expected content evidence before external attachment.
+  - Repository activity fingerprints are diagnostic and never compared with retained content identities.
+  - Final audit evidence names the attached checkpoint and current repository fingerprint.
+  - Satisfied requires a complete final assessment with no unmet criteria.
+  - Failed final evidence is retained before pausing; a pause never authorizes mutation.
+  - A pause immediately after authorized repair may retain completed repair outcomes without claiming a checkpoint.
+  - Paused repair outcomes name unique authorized repair identities; checkpoint intent requires every authorized outcome.
+  - Session and execution identities remain fixed for the cycle.
+$defs:
+  nonblank:
+    type: string
+    pattern: '\S'
+  checkpoint:
+    type: object
+    additionalProperties: false
+    required: [checkpoint_id, repository_fingerprint]
+    properties:
+      checkpoint_id:
+        $ref: '#/$defs/nonblank'
+      repository_fingerprint:
+        $ref: '#/$defs/nonblank'
+      checkpoint_paths:
+        type: array
+        items:
+          $ref: '#/$defs/nonblank'
+        uniqueItems: true
+  criterion:
+    type: object
+    additionalProperties: false
+    required: [criterion_ref, satisfied, evidence]
+    properties:
+      criterion_ref:
+        $ref: '#/$defs/nonblank'
+      satisfied:
+        type: boolean
+      evidence:
+        $ref: '#/$defs/nonblank'
+      repair_id:
+        $ref: '#/$defs/nonblank'
+      repair_guidance:
+        $ref: '#/$defs/nonblank'
+      pending_validation:
+        $ref: '#/$defs/nonblank'
+    allOf:
+      - if:
+          properties:
+            satisfied: {const: false}
+        then:
+          required: [repair_id, repair_guidance]
+        else:
+          not:
+            anyOf:
+              - required: [repair_id]
+              - required: [repair_guidance]
+  assessment:
+    type: object
+    additionalProperties: false
+    required: [checkpoint, criteria, value]
+    properties:
+      checkpoint:
+        $ref: '#/$defs/checkpoint'
+      criteria:
+        type: array
+        minItems: 1
+        items:
+          $ref: '#/$defs/criterion'
+      value:
+        $ref: '#/$defs/nonblank'
+  repair_outcome:
+    type: object
+    additionalProperties: false
+    required: [repair_id, value, changed_paths]
+    properties:
+      repair_id:
+        $ref: '#/$defs/nonblank'
+      value:
+        $ref: '#/$defs/nonblank'
+      changed_paths:
+        type: array
+        uniqueItems: true
+        items:
+          type: string
+          pattern: '^(?!/)(?!.*(?:^|/)\.\.(?:/|$))(?!.*\\)\S.*$'
+  revision:
+    type: object
+    additionalProperties: false
+    required: [revision, request_id, stage, recorded_at]
+    properties:
+      revision:
+        type: integer
+        minimum: 0
+      request_id:
+        $ref: '#/$defs/nonblank'
+      stage:
+        enum: [diagnosis, authorized_repair, checkpoint_pending, final_audit, satisfied, paused]
+      recorded_at:
+        type: string
+        format: date-time
+      assessment:
+        $ref: '#/$defs/assessment'
+      repository_fingerprint:
+        $ref: '#/$defs/nonblank'
+      checkpoint_intent:
+        $ref: '#/$defs/nonblank'
+      checkpoint:
+        $ref: '#/$defs/checkpoint'
+      repair_outcomes:
+        type: array
+        items:
+          $ref: '#/$defs/repair_outcome'
+      reason:
+        $ref: '#/$defs/nonblank'
+    oneOf:
+      - properties:
+          stage: {const: diagnosis}
+        required: [assessment]
+      - properties:
+          stage: {const: authorized_repair}
+        required: [repository_fingerprint]
+      - properties:
+          stage: {const: checkpoint_pending}
+        required: [checkpoint_intent, repair_outcomes, repository_fingerprint]
+      - properties:
+          stage: {const: final_audit}
+        required: [checkpoint]
+      - properties:
+          stage: {const: satisfied}
+        required: [assessment]
+      - properties:
+          stage: {const: paused}
+        required: [reason]

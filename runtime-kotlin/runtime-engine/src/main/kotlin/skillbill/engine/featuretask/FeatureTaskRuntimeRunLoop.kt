@@ -158,11 +158,6 @@ class FeatureTaskRuntimeRunLoop internal constructor(
         return carriedForward
       }
     }
-    if (phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT && session.auditGapRetryResumePending) {
-      session.auditGapRetryResumePending = false
-      val carried = FeatureTaskRuntimeRunLoopDrive.settleCarriedForwardAuditGapAudit(this)
-      if (carried != null) return carried
-    }
     val reason = FeatureTaskRuntimeRunLoopDrive.advancePhaseReason(this, phaseId)
     return FeatureTaskRuntimeRunLoopDrive.settleAdvanceOutcome(this, phaseId, reason)
   }
@@ -207,7 +202,6 @@ internal class FeatureTaskRuntimeRunLoopSession(
   var checkpointOwnershipDecided: Boolean = false
   var blocked: FeatureTaskRuntimeRunReport.Blocked? = null
   var paused: FeatureTaskRuntimeRunReport.Paused? = null
-  var auditGapRetryResumePending: Boolean = false
   var decomposed: FeatureTaskRuntimeRunReport.Decomposed? = null
   var operatorBlockRetryCompleted: Boolean = false
   var pendingReentry: PendingReentry? = initialPendingReentry

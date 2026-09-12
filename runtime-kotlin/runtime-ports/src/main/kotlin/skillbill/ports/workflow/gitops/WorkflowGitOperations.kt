@@ -48,6 +48,22 @@ fun WorkflowGitOperations.amendHeadCommit(
 ): WorkflowGitOperationResult = checkpointHistoryOperations
   .amendHeadCommit(repoRoot, expectedOwnedHeadSha, replacementMessage, allowUnchangedIndex)
 
+fun WorkflowGitOperations.createScopedCheckpoint(
+  repoRoot: Path,
+  paths: List<String>,
+  message: String,
+): WorkflowGitOperationResult = checkpointHistoryOperations.createScopedCheckpoint(repoRoot, paths, message)
+
+fun WorkflowGitOperations.currentScopedContentFingerprint(
+  repoRoot: Path,
+  paths: List<String>,
+): WorkflowGitOperationResult = checkpointHistoryOperations.currentScopedContentFingerprint(repoRoot, paths)
+
+fun WorkflowGitOperations.retainedScopedContentFingerprint(
+  repoRoot: Path,
+  checkpointId: String,
+): WorkflowGitOperationResult = checkpointHistoryOperations.retainedScopedContentFingerprint(repoRoot, checkpointId)
+
 fun WorkflowGitOperations.headCommitMessage(repoRoot: Path): WorkflowGitOperationResult =
   checkpointHistoryOperations.headCommitMessage(repoRoot)
 

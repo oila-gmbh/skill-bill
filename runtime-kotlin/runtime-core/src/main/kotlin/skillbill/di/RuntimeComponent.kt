@@ -20,6 +20,7 @@ import skillbill.application.telemetry.TelemetryService
 import skillbill.application.work.WorkListService
 import skillbill.application.workflow.WorkflowService
 import skillbill.engine.featuretask.FeatureTaskContinuationLookupService
+import skillbill.engine.featuretask.FeatureTaskPhaseSettlementService
 import skillbill.engine.featuretask.FeatureTaskRuntimePhaseRecorder
 import skillbill.engine.featuretask.FeatureTaskRuntimeRunner
 import skillbill.engine.featuretask.FeatureTaskRuntimeStatusService
@@ -113,6 +114,7 @@ abstract class RuntimeComponent(
   abstract val installService: InstallService
   abstract val externalAddonOverlayService: ExternalAddonOverlayService
   abstract val agentRunService: AgentRunService
+  abstract val featureTaskPhaseSettlementService: FeatureTaskPhaseSettlementService
   abstract val featureTaskRuntimePhaseRecorder: FeatureTaskRuntimePhaseRecorder
   abstract val featureTaskRuntimeRunner: FeatureTaskRuntimeRunner
   abstract val featureTaskRuntimeStatusService: FeatureTaskRuntimeStatusService

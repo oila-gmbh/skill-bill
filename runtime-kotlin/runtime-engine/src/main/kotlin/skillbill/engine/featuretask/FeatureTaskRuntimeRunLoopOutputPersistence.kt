@@ -4,6 +4,7 @@ import skillbill.application.review.RuntimeOwnedReviewMode
 import skillbill.engine.featuretask.model.FeatureTaskRuntimePhasePromptComposeInputs
 import skillbill.engine.featuretask.model.FeatureTaskRuntimePhaseStateRequest
 import skillbill.engine.featuretask.model.GoalReviewPhaseCompletionRequest
+import skillbill.error.AuditRepairCycleConflictError
 import skillbill.goalrunner.subtaskreview.GoalSubtaskReviewSummaryReducer
 import skillbill.goalrunner.subtaskreview.model.UnaddressedFindingLedgerScope
 import skillbill.install.model.InstallAgent
@@ -12,6 +13,10 @@ import skillbill.workflow.goal.model.ValidationDepth
 import skillbill.workflow.taskruntime.FeatureTaskRuntimeHandoffContract
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import skillbill.workflow.taskruntime.model.AcceptedFeatureTaskRuntimePhaseOutput
+import skillbill.workflow.taskruntime.model.AuditRepairCheckpoint
+import skillbill.workflow.taskruntime.model.AuditRepairCycle
+import skillbill.workflow.taskruntime.model.AuditRepairCycleCodec
+import skillbill.workflow.taskruntime.model.AuditRepairLaunchBinding
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeCorrectiveRepairContext
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFailureDisposition
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeHandoffAssemblyRequest
@@ -19,6 +24,7 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutputRepairE
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepositoryCheckpoint
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeReviewPassSequence
 import skillbill.workflow.taskruntime.model.NormalizedFeatureTaskRuntimePhaseOutput
+import skillbill.workflow.taskruntime.model.acceptanceCriterionRefsFor
 
 object FeatureTaskRuntimeRunLoopOutputPersistence {
   internal fun persistRejectedVerificationFindings(
@@ -184,6 +190,7 @@ object FeatureTaskRuntimeRunLoopOutputPersistence {
 
   internal fun prepareLaunch(runLoop: FeatureTaskRuntimeRunLoop, args: PrepareLaunchArgs): PreparedLaunch {
     val run = args.run
+    FeatureTaskRuntimeRunLoopLaunch.prepareAuditLaunch(runLoop, run)
     val state = args.state
     val priorCorrection = args.priorCorrection
     val durablyClosedCriterionRefs = args.durablyClosedCriterionRefs
@@ -291,7 +298,93 @@ object FeatureTaskRuntimeRunLoopOutputPersistence {
         packCollectAllCommand = FeatureTaskRuntimeRunLoopValidationGate.packCollectAllCommand(runLoop, run),
         packBuildCommand = FeatureTaskRuntimeRunLoopValidationGate.packBuildCommand(runLoop, run),
       ),
-    ) + FeatureTaskRuntimeRunLoopLaunch.verifyFindingsSpecIntentSection(runLoop, run)
+    ) + FeatureTaskRuntimeRunLoopLaunch.verifyFindingsSpecIntentSection(runLoop, run) +
+      auditRepairStageChannel(runLoop, run)
+  }
+
+  private fun auditRepairStageChannel(runLoop: FeatureTaskRuntimeRunLoop, run: PhaseRun): String {
+    if (run.phaseId != FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT) return ""
+    val binding = FeatureTaskRuntimeRunLoopLaunch.prepareAuditLaunch(runLoop, run)
+      ?: return "The durable audit channel has no active worker lease. Stop and report blocked."
+    val existing = runLoop.phaseSettlementService.auditRepairCycle(run.request.workflowId, binding.auditAttempt)
+    val activity = runLoop.gitOperations.repositoryFingerprint(run.request.repoRoot).value.takeIf(String::isNotBlank)
+      ?: throw AuditRepairCycleConflictError("The audit repository fingerprint is unavailable.")
+    val initial = existing?.diagnosis?.checkpoint ?: binding.checkpoint ?: initialAuditCheckpoint(
+      runLoop,
+      run,
+      binding,
+      activity,
+    )
+    val pinned = runLoop.phaseSettlementService.bindAuditRepairLaunch(binding.identity, initial)
+    return auditChannelText(run, pinned, existing, initial)
+  }
+
+  private fun initialAuditCheckpoint(
+    runLoop: FeatureTaskRuntimeRunLoop,
+    run: PhaseRun,
+    binding: AuditRepairLaunchBinding,
+    activity: String,
+  ): AuditRepairCheckpoint {
+    val repository = FeatureTaskRuntimeRunLoopOutputVerification.buildRepositoryCheckpoint(runLoop, run)
+      ?: throw AuditRepairCycleConflictError("The audit implementation scope is unavailable.")
+    return runLoop.phaseSettlementService.prepareAuditCheckpoint(
+      binding.cycleId,
+      activity,
+      repository.workingTreeOwnedPaths,
+    )
+  }
+
+  private fun auditChannelText(
+    run: PhaseRun,
+    binding: AuditRepairLaunchBinding,
+    existing: AuditRepairCycle?,
+    initial: AuditRepairCheckpoint,
+  ): String {
+    val criterionRefs = acceptanceCriterionRefsFor(run.request.runInvariants.acceptanceCriteria.size)
+    return """
+      ## Durable audit-repair stage channel
+      Call MCP tool `feature_task_audit_stage` for every stage acknowledgement. If MCP is unavailable,
+      invoke `skill-bill feature-task audit-stage --request-json '<object>'` with the same request.
+      The command returns only after the stage is durable. Use its revision as the next expected_revision.
+      Do not put stage evidence only in the final response.
+
+      workflow_id: ${binding.workflowId}
+      audit_attempt: ${binding.auditAttempt}
+      execution_id: ${binding.executionId}
+      session_id: ${binding.requestedSessionId}
+      cycle_id: ${binding.cycleId}
+      owner_token: ${binding.ownerToken}
+      fencing_generation: ${binding.fencingGeneration}
+      launch_execution_id: ${binding.executionId}
+      requested_session_id: ${binding.requestedSessionId}
+      provider_session_id: ${binding.providerSessionId ?: "captured by runtime at session start"}
+      current_expected_revision: ${existing?.current?.revision ?: 0}
+      criterion_refs: ${criterionRefs.joinToString(prefix = "[", postfix = "]")}
+      diagnosis_checkpoint: ${AuditRepairCycleCodec.encodeCheckpoint(initial)}
+      restored_cycle_evidence: ${existing?.let(AuditRepairCycleCodec::encode) ?: "none"}
+
+      Stage protocol: diagnosis at revision 0, authorized_repair after a complete diagnosis with gaps,
+      checkpoint_pending after every authorized repair outcome, final_audit after the verified checkpoint,
+      satisfied only after a complete gap-free final assessment, or paused when progress cannot continue.
+      For every stage after diagnosis, set revision to current_expected_revision + 1 and
+      expected_revision to current_expected_revision.
+      Use diagnosis_checkpoint unchanged for diagnosis. For authorized_repair, copy repository_fingerprint
+      from the latest assessment checkpoint. For checkpoint_pending, supply the repair
+      outcomes and a unique intent ID. The runtime retains the content and returns its immutable
+      checkpoint, content fingerprint and paths. Use them for final_audit and assess every criterion.
+      After any stage rejection or a paused acknowledgement, stop edits and report blocked.
+
+      Every paused stage requires a fresh retry_fix grant before recovery. Keep the restored diagnosis
+      and repair identities. A paused diagnosis resumes at
+      authorized_repair, or checkpoint_pending if it already had no gaps. A paused repair reconciles
+      partial edits and preserves completed receipts before checkpoint_pending. A checkpoint intent without
+      an attached checkpoint retries its original request while still pending. If paused, submit a new
+      checkpoint_pending transition at the current revision with the original intent and repair outcomes;
+      this consumes the fresh retry_fix grant before attachment. A paused checkpoint with attached content
+      or a paused final audit resumes through final_audit without repeating repairs.
+      A failed final assessment needs a fresh retry_fix grant before another authorized_repair.
+      A satisfied cycle needs only final settlement with its exact final value.
+    """.trimIndent()
   }
 
   internal fun persistPhase(runLoop: FeatureTaskRuntimeRunLoop, args: PersistPhaseArgs) {

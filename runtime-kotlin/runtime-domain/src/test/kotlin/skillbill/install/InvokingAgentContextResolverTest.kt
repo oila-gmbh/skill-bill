@@ -54,9 +54,8 @@ class InvokingAgentContextResolverTest {
   }
 
   @Test
-  fun `ordering is deterministic when multiple markers are present`() {
-    assertEquals(
-      InstallAgent.CLAUDE,
+  fun `conflicting provider markers return no agent`() {
+    assertNull(
       InvokingAgentContextResolver.detect(
         mapOf(
           "CLAUDECODE" to "1",
@@ -65,8 +64,7 @@ class InvokingAgentContextResolverTest {
         ),
       ),
     )
-    assertEquals(
-      InstallAgent.CODEX,
+    assertNull(
       InvokingAgentContextResolver.detect(
         mapOf(
           "CODEX_SANDBOX" to "1",

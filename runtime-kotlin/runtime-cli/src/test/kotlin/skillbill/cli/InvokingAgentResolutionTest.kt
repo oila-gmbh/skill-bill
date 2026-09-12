@@ -52,6 +52,23 @@ class InvokingAgentResolutionTest {
   }
 
   @Test
+  fun `conflicting execution contexts are refused instead of selecting a fallback`() {
+    val error = assertFailsWith<UsageError> {
+      requireInvokingAgentId(
+        null,
+        mapOf(
+          "CODEX_SANDBOX" to "1",
+          "CURSOR_AGENT" to "1",
+        ),
+        "--agent",
+      )
+    }
+
+    assertContains(error.message.orEmpty(), "there is no default")
+    assertContains(error.message.orEmpty(), "--agent <agent-id>")
+  }
+
+  @Test
   fun `unknown agent override is refused`() {
     val error = assertFailsWith<UsageError> {
       requireSupportedOptionalAgentId("claude-code", "--agent-override")

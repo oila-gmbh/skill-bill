@@ -1,6 +1,8 @@
 package skillbill.infrastructure.sqlite.core
 
 import skillbill.infrastructure.sqlite.telemetry.TelemetryOutboxLastErrorMigration
+import skillbill.infrastructure.sqlite.workflow.AuditRepairCycleMigration
+import skillbill.infrastructure.sqlite.workflow.AuditRepairLaunchBindingMigration
 import skillbill.infrastructure.sqlite.workflow.FeatureTaskPhaseSettlementsMigration
 import skillbill.infrastructure.sqlite.workflow.FeatureTaskRuntimeAuditGenerationMigration
 
@@ -177,8 +179,6 @@ internal val databaseMigrationsLate: List<DatabaseMigration> =
         }
         if (!alreadyRekeyed) {
           connection.createStatement().use {
-            // SQLite cannot widen a PRIMARY KEY in place, so the table is rebuilt and every
-            // pre-generation row is carried across at generation 0.
             it.execute(
               "ALTER TABLE producer_output_evidence RENAME TO producer_output_evidence_pre_generation",
             )
@@ -325,6 +325,40 @@ internal val databaseMigrationsLate: List<DatabaseMigration> =
                   )
                 )
               )
+            """.trimIndent(),
+          )
+        }
+      },
+    ),
+    DatabaseMigration(
+      version = 37,
+      name = "add-audit-repair-cycles",
+      operation = AuditRepairCycleMigration::apply,
+    ),
+    DatabaseMigration(
+      version = 38,
+      name = "add-audit-repair-launch-bindings",
+      operation = AuditRepairLaunchBindingMigration::apply,
+    ),
+    DatabaseMigration(
+      version = 39,
+      name = "retain-audit-launch-checkpoint",
+      operation = { connection ->
+        DatabaseColumnMigrations.ensureColumn(connection, "audit_repair_launch_bindings", "checkpoint_json", "TEXT")
+      },
+    ),
+    DatabaseMigration(
+      version = 40,
+      name = "pin-active-audit-cycle",
+      operation = { connection ->
+        DatabaseColumnMigrations.ensureColumn(connection, "feature_task_workflows", "active_audit_cycle_id", "TEXT")
+        connection.createStatement().use { statement ->
+          statement.executeUpdate(
+            """
+            UPDATE feature_task_workflows SET active_audit_cycle_id = (
+              SELECT cycle_id FROM audit_repair_cycles WHERE workflow_id = feature_task_workflows.workflow_id
+              ORDER BY audit_attempt DESC LIMIT 1
+            ) WHERE active_audit_cycle_id IS NULL
             """.trimIndent(),
           )
         }

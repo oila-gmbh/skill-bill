@@ -59,6 +59,10 @@ data class SkillRunRequest(
   val reviewEvidenceEndpoint: GovernedReviewEvidenceEndpointHandle? = null,
   val nativeReviewWorkerName: String? = null,
   val reviewFanOut: Boolean = false,
+  val auditRepairExecutionId: String? = null,
+  val auditRepairSessionId: String? = null,
+  val auditRepairResume: Boolean = false,
+  val auditRepairProviderSessionSink: ((String) -> Unit)? = null,
   val spawnAuthorization: AgentRunSpawnAuthorization? = null,
   val activityStampSink: AgentRunActivityStampSink = AgentRunActivityStampSink.NONE,
 ) {
@@ -67,6 +71,13 @@ data class SkillRunRequest(
     promptOverride?.let { prompt -> require(prompt.isNotBlank()) { "promptOverride must be non-blank when provided." } }
     modelOverride?.let { model -> require(model.isNotBlank()) { "modelOverride must be non-blank when provided." } }
     effortOverride?.let { effort -> require(effort.isNotBlank()) { "effortOverride must be non-blank when provided." } }
+    auditRepairExecutionId?.let {
+      require(it.isNotBlank()) { "auditRepairExecutionId must be non-blank when provided." }
+    }
+    auditRepairSessionId?.let { require(it.isNotBlank()) { "auditRepairSessionId must be non-blank when provided." } }
+    require(!auditRepairResume || auditRepairSessionId != null) {
+      "auditRepairResume requires auditRepairSessionId."
+    }
     subtaskId?.let { id -> require(id > 0) { "subtaskId must be positive when provided." } }
     timeout?.let { maxWallClockTimeout ->
       require(maxWallClockTimeout.isPositive()) { "timeout must be positive when provided." }
@@ -245,6 +256,7 @@ data class AgentRunLaunchFacts(
   val mcpStartupObserved: Boolean = false,
   val childSessionPath: String? = null,
   val childSessionId: String? = null,
+  val providerSessionId: String? = null,
   /**
    * Count of provider assistant turns the decoder observed, when the transport exposes them. A zero
    * count on a zero-exit launch distinguishes "the provider answered nothing" from "the provider

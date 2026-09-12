@@ -150,6 +150,47 @@ class CliFeatureTaskRuntimeModelDirectiveTest {
   }
 
   @Test
+  fun `feature-task runtime detects cursor context before resolving cursor matrix directives`() {
+    val fixture = runtimeFixture()
+    val config = fixture.tempDir.resolve(".config/skill-bill/config.json")
+    Files.createDirectories(config.parent)
+    Files.writeString(
+      config,
+      """
+      {
+        "execution_matrix": {
+          "agents": {
+            "cursor": {
+              "reasoning": {
+                "model": "cursor-reasoning"
+              }
+            },
+            "codex": {
+              "reasoning": {
+                "model": "codex-reasoning"
+              }
+            }
+          }
+        }
+      }
+      """.trimIndent(),
+    )
+    val launcher = RecordingPhaseLauncher()
+
+    val result = CliRuntime.run(
+      fixture.runCommand(),
+      fixture.context(launcher) {
+        environment = mapOf("CURSOR_AGENT" to "1")
+      },
+    )
+
+    assertEquals(0, result.exitCode, result.stdout)
+    val plan = launcher.requests[ALL_PHASES.indexOf("plan")].skillRunRequest
+    assertEquals("cursor", launcher.requests[ALL_PHASES.indexOf("plan")].agentId)
+    assertEquals("cursor-reasoning", plan.modelOverride)
+  }
+
+  @Test
   fun `feature-task runtime rejects a malformed machine execution matrix`() {
     val fixture = runtimeFixture()
     val config = fixture.tempDir.resolve(".config/skill-bill/config.json")

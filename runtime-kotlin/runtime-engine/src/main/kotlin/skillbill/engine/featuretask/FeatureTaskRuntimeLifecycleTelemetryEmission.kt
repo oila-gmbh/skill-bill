@@ -10,6 +10,7 @@ import skillbill.engine.featuretask.model.FeatureTaskRuntimeFinishedTelemetryCon
 import skillbill.engine.featuretask.model.FeatureTaskRuntimeRunReport
 import skillbill.workflow.model.WorkflowStepStatus
 import skillbill.workflow.model.workflowStepStatus
+import skillbill.workflow.taskruntime.model.AuditRepairStage
 
 fun emitFeatureTaskRuntimeFinished(
   lifecycleTelemetryService: LifecycleTelemetryService,
@@ -31,10 +32,10 @@ fun emitFeatureTaskRuntimeFinished(
       reviewFixIterationCount = telemetryPayload.reviewFixIterationCount,
       auditGapIterationCount = telemetryPayload.auditGapIterationCount,
       auditFirstPassConvergence = telemetryPayload.auditFirstPassConvergence,
-      auditRecurringGapCount = 0,
-      auditNewGapCount = 0,
-      auditAttemptedRepairItemCount = 0,
-      auditResolvedRepairItemCount = 0,
+      auditRecurringGapCount = telemetryPayload.auditRecurringGapCount,
+      auditNewGapCount = telemetryPayload.auditNewGapCount,
+      auditAttemptedRepairItemCount = telemetryPayload.auditAttemptedRepairItemCount,
+      auditResolvedRepairItemCount = telemetryPayload.auditResolvedRepairItemCount,
       regenerationActivationCount = telemetryPayload.regeneration.activationCount,
       regenerationAttemptCount = telemetryPayload.regeneration.attemptCount,
       regenerationOutcomeCounts = telemetryPayload.regeneration.outcomeCounts,
@@ -73,10 +74,10 @@ fun emitFeatureTaskRuntimeFinishedError(
       reviewFixIterationCount = telemetryPayload.reviewFixIterationCount,
       auditGapIterationCount = telemetryPayload.auditGapIterationCount,
       auditFirstPassConvergence = telemetryPayload.auditFirstPassConvergence,
-      auditRecurringGapCount = 0,
-      auditNewGapCount = 0,
-      auditAttemptedRepairItemCount = 0,
-      auditResolvedRepairItemCount = 0,
+      auditRecurringGapCount = telemetryPayload.auditRecurringGapCount,
+      auditNewGapCount = telemetryPayload.auditNewGapCount,
+      auditAttemptedRepairItemCount = telemetryPayload.auditAttemptedRepairItemCount,
+      auditResolvedRepairItemCount = telemetryPayload.auditResolvedRepairItemCount,
       regenerationActivationCount = telemetryPayload.regeneration.activationCount,
       regenerationAttemptCount = telemetryPayload.regeneration.attemptCount,
       regenerationOutcomeCounts = telemetryPayload.regeneration.outcomeCounts,
@@ -97,6 +98,10 @@ internal data class ResolvedFeatureTaskRuntimeTelemetryPayload(
   val auditFirstPassConvergence: Boolean,
   val reviewFixIterationCount: Int,
   val auditGapIterationCount: Int,
+  val auditRecurringGapCount: Int,
+  val auditNewGapCount: Int,
+  val auditAttemptedRepairItemCount: Int,
+  val auditResolvedRepairItemCount: Int,
   val verificationTelemetry: FeatureTaskRuntimeFindingVerificationTelemetry,
   val regeneration: FeatureTaskRuntimeRegenerationTelemetry,
   val reconciliation: FeatureTaskRuntimeCrashReconciliationResult,
@@ -106,7 +111,10 @@ internal fun resolvedFeatureTaskRuntimeTelemetryPayload(
   context: FeatureTaskRuntimeFinishedTelemetryContext,
 ): ResolvedFeatureTaskRuntimeTelemetryPayload {
   val (tokenBreakdownJson, totalTokens) = runCatching(context.phaseTokenData).getOrDefault(null to null)
-  val auditProgress = runCatching(context.auditRepairProgress).getOrNull()
+  val auditProgress = context.auditRepairProgress()
+  val auditCycle = context.auditRepairCycle()
+  val diagnosisGaps = auditCycle?.diagnosis?.unmetCriterionRefs.orEmpty()
+  val currentGaps = auditCycle?.latestAssessment?.unmetCriterionRefs.orEmpty()
   val verificationTelemetry = runCatching(context.findingVerificationTelemetry)
     .getOrDefault(FeatureTaskRuntimeFindingVerificationTelemetry())
   val regeneration = runCatching(context.regenerationTelemetry).getOrNull() ?: FeatureTaskRuntimeRegenerationTelemetry()
@@ -115,9 +123,20 @@ internal fun resolvedFeatureTaskRuntimeTelemetryPayload(
   return ResolvedFeatureTaskRuntimeTelemetryPayload(
     tokenBreakdownJson = tokenBreakdownJson,
     totalTokens = totalTokens,
-    auditFirstPassConvergence = auditProgress?.firstPassConvergence ?: false,
+    auditFirstPassConvergence = auditCycle?.let {
+      it.current.stage == AuditRepairStage.SATISFIED &&
+        it.repairRoundCount == 0
+    } ?: auditProgress?.firstPassConvergence ?: false,
     reviewFixIterationCount = runCatching(context.reviewFixIterationCount).getOrDefault(0),
-    auditGapIterationCount = runCatching(context.auditGapIterationCount).getOrDefault(0),
+    auditGapIterationCount = maxOf(
+      runCatching(context.auditGapIterationCount).getOrDefault(0),
+      auditCycle?.repairRoundCount ?: 0,
+    ),
+    auditRecurringGapCount = (currentGaps intersect diagnosisGaps).size,
+    auditNewGapCount = (currentGaps - diagnosisGaps).size,
+    auditAttemptedRepairItemCount = auditCycle?.revisions.orEmpty()
+      .flatMap { it.repairOutcomes.orEmpty() }.map { it.repairId }.distinct().size,
+    auditResolvedRepairItemCount = (diagnosisGaps - currentGaps).size,
     verificationTelemetry = verificationTelemetry,
     regeneration = regeneration,
     reconciliation = reconciliation,

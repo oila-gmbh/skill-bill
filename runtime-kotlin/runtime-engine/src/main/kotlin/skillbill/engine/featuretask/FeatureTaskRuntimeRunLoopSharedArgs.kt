@@ -452,6 +452,7 @@ internal data class ShouldRetryPersistedBlockArgs(
   val retryReviewPreparation: Boolean,
   val reenterableRecordRejection: Boolean,
   val persistedReason: String,
+  val auditRepairRetry: Boolean = false,
 )
 
 internal data class RecordFinalisedCheckpointIdentityArgs(

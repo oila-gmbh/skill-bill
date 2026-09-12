@@ -34,6 +34,7 @@ fun phasePromptLeadingSections(inputs: FeatureTaskRuntimePhasePromptComposeInput
       inputs.briefing.acceptanceCriteria,
       auditGapImplement,
     ),
+    auditRepairCycleDirective(inputs.briefing.phaseId),
     minimalismDisciplineDirective(inputs.briefing.phaseId),
     testValueDisciplineDirective(inputs.briefing.phaseId),
     priorGapMemoryRemediationDirective(inputs.briefing.phaseId, inputs.briefing.priorGapMemory),

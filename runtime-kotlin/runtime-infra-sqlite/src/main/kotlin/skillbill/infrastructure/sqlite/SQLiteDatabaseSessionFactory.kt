@@ -91,12 +91,7 @@ private fun <T> Connection.inTransaction(dbPath: Path, block: () -> T): T {
   }
 }
 
-/**
- * BEGIN DEFERRED — never IMMEDIATE — gives every statement in the block one consistent snapshot
- * without taking a write lock, so a concurrent goal-runtime writer is not blocked for the read's
- * duration. Acquisition and release failures classify as READ, not OPEN.
- */
-private fun <T> Connection.inReadTransaction(dbPath: Path, block: () -> T): T {
+internal fun <T> Connection.inReadTransaction(dbPath: Path, block: () -> T): T {
   typedStatement(dbPath, "BEGIN DEFERRED", DatabaseAccessOperation.READ)
   var committed = false
   return try {

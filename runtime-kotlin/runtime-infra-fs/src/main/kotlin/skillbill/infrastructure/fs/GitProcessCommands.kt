@@ -39,6 +39,22 @@ internal fun runGitCommand(repoRoot: Path, args: List<String>): WorkflowGitOpera
   }
 }
 
+internal fun runGitCommandWithEnvironment(
+  repoRoot: Path,
+  args: List<String>,
+  environment: Map<String, String>,
+): WorkflowGitOperationResult {
+  val result = runGitProcess(repoRoot, args, extraEnvironment = environment)
+  return when {
+    result.timedOut -> WorkflowGitOperationResult.Failed(error = gitTimedOutError(args))
+    result.readFailure != null -> WorkflowGitOperationResult.Failed(error = result.readFailure.message.orEmpty())
+    result.exitCode == 0 -> WorkflowGitOperationResult.Ok(value = result.output)
+    else -> WorkflowGitOperationResult.Failed(
+      error = "git ${args.joinToString(" ")} failed with exit code ${result.exitCode}: ${result.output}",
+    )
+  }
+}
+
 internal fun runGitForActivity(repoRoot: Path, args: List<String>): WorkflowGitOperationResult {
   val result = runGitProcess(repoRoot, args)
   return when {
@@ -74,9 +90,15 @@ internal fun runGitCommandWithStdin(repoRoot: Path, args: List<String>, stdin: B
   }
 }
 
-internal fun runGitProcess(repoRoot: Path, args: List<String>, stdin: ByteArray? = null): GitProcessResult {
+internal fun runGitProcess(
+  repoRoot: Path,
+  args: List<String>,
+  stdin: ByteArray? = null,
+  extraEnvironment: Map<String, String> = emptyMap(),
+): GitProcessResult {
   val process = ProcessBuilder(listOf("git", "-C", repoRoot.toString()) + args)
     .redirectErrorStream(true)
+    .apply { extraEnvironment.forEach { (key, value) -> environment()[key] = value } }
     .start()
   if (stdin != null) {
     try {

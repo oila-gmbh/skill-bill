@@ -107,14 +107,11 @@ fun supportsModelDirective(agentId: String?): Boolean {
  *
  * Detection is conservative: it returns `null` when the invoking agent cannot
  * be determined, and callers refuse to launch rather than guessing an agent.
- * Agent-specific markers are checked in a stable order; if multiple markers are
- * present the first matching agent in [INVOKING_AGENT_CONTEXT_SIGNALS] order
- * wins.
+ * Multiple provider markers are ambiguous and return `null`.
  */
 object InvokingAgentContextResolver {
   /**
-   * Ordered context signals mapping environment-variable markers to agents.
-   * Order is significant: earlier entries win when several markers are present.
+   * Context signals mapping environment-variable markers to agents.
    * Markers are matched only when the variable is present with a non-blank
    * value, mirroring how each agent populates its own execution context.
    *
@@ -132,11 +129,15 @@ object InvokingAgentContextResolver {
 
   /**
    * Resolve the invoking agent from [environment]. Returns `null` when no
-   * agent-specific marker is present.
+   * unique agent-specific marker is present.
    */
-  fun detect(environment: Map<String, String>): InstallAgent? = INVOKING_AGENT_CONTEXT_SIGNALS
-    .firstOrNull { signal -> signal.markerKeys.any { key -> environment[key]?.isNotBlank() == true } }
-    ?.agent
+  fun detect(environment: Map<String, String>): InstallAgent? {
+    val matches = INVOKING_AGENT_CONTEXT_SIGNALS
+      .filter { signal -> signal.markerKeys.any { key -> environment[key]?.isNotBlank() == true } }
+      .map(InvokingAgentContextSignal::agent)
+      .distinct()
+    return matches.singleOrNull()
+  }
 }
 
 data class InvokingAgentContextSignal(

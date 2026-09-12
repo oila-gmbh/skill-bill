@@ -21,6 +21,7 @@ internal fun decodeCursorStreamJson(stdout: String): DecodedAgentRunOutput {
   val harvested = pickCursorHarvest(parsed.terminalText, parsed.lastAssistantText, parsed.longestAssistantText)
   return DecodedAgentRunOutput(
     text = harvested,
+    providerSessionId = parsed.providerSessionId,
     assistantEventCount = parsed.assistantEventCount.takeIf { parsed.decodedEnvelope },
     rawOutputPreview = stdout.take(RAW_OUTPUT_PREVIEW_MAX_CHARS).takeIf { harvested.isBlank() },
   )
@@ -31,6 +32,7 @@ private data class CursorStreamParse(
   val longestAssistantText: String?,
   val lastAssistantText: String?,
   val assistantEventCount: Int,
+  val providerSessionId: String?,
   val decodedEnvelope: Boolean,
   val error: Throwable?,
 )
@@ -40,6 +42,7 @@ private fun parseCursorStreamLines(lines: List<String>): CursorStreamParse {
   var longestAssistantText: String? = null
   var lastAssistantText: String? = null
   var assistantEventCount = 0
+  var providerSessionId: String? = null
   var decodedEnvelope = false
   var errorEvent = false
   var errorType: String? = null
@@ -56,6 +59,7 @@ private fun parseCursorStreamLines(lines: List<String>): CursorStreamParse {
       )
     }
     decodedEnvelope = true
+    providerSessionId = sequenceSessionId(event) ?: providerSessionId
     when (event.path("type").takeIf { it.isTextual }?.asText()) {
       "error" -> {
         errorEvent = true
@@ -80,10 +84,16 @@ private fun parseCursorStreamLines(lines: List<String>): CursorStreamParse {
     longestAssistantText = longestAssistantText,
     lastAssistantText = lastAssistantText,
     assistantEventCount = assistantEventCount,
+    providerSessionId = providerSessionId,
     decodedEnvelope = decodedEnvelope,
     error = error,
   )
 }
+
+private fun sequenceSessionId(event: JsonNode): String? =
+  listOf("session_id", "thread_id").firstNotNullOfOrNull { key ->
+    event.path(key).takeIf { it.isTextual }?.asText()?.takeIf(String::isNotBlank)
+  }
 
 private fun cursorStreamError(errorType: String?, errorMessage: String?): Throwable = when (errorType) {
   "forbidden_operation" -> CursorReviewStreamForbiddenOperationError(

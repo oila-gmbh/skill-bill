@@ -11,7 +11,9 @@ import skillbill.engine.featuretask.model.FeatureTaskRuntimeSubtaskFinalisationB
 import skillbill.engine.featuretask.model.FeatureTaskRuntimeSubtaskFinaliseRequest
 import skillbill.engine.featuretask.model.FeatureTaskRuntimeSubtaskFinalised
 import skillbill.engine.featuretask.validation.durableValidationChangedPaths
+import skillbill.error.AuditRepairCycleConflictError
 import skillbill.error.FeatureTaskRuntimePhaseOutputFailureKind
+import skillbill.error.InvalidAuditRepairCycleSchemaError
 import skillbill.error.InvalidFeatureTaskRuntimePhaseOutputSchemaError
 import skillbill.error.InvalidFeatureTaskRuntimeValidationEvidenceSchemaError
 import skillbill.ports.diagnostics.model.ProducerOutputEvidence
@@ -232,9 +234,34 @@ object FeatureTaskRuntimeRunLoopAttemptSettlement {
   }
 
   internal fun settleFromPersistedEnvelope(runLoop: FeatureTaskRuntimeRunLoop, args: GateOutputArgs): AttemptResult? {
-    val settlementEnvelope = loadPersistedSettlementEnvelope(runLoop, args) ?: return null
-    return settlePersistedEnvelope(runLoop, args, settlementEnvelope)
+    return try {
+      val settlementEnvelope = loadPersistedSettlementEnvelope(runLoop, args) ?: return null
+      settlePersistedEnvelope(runLoop, args, settlementEnvelope)
+    } catch (error: AuditRepairCycleConflictError) {
+      rejectPersistedAuditCycle(runLoop, args, "audit-cycle-settlement", error.message.orEmpty())
+    } catch (error: InvalidAuditRepairCycleSchemaError) {
+      rejectPersistedAuditCycle(runLoop, args, "audit-cycle-evidence", error.message.orEmpty())
+    }
   }
+
+  private fun rejectPersistedAuditCycle(
+    runLoop: FeatureTaskRuntimeRunLoop,
+    args: GateOutputArgs,
+    rule: String,
+    reason: String,
+  ): AttemptResult = rejectValidatedOutput(
+    runLoop,
+    ValidatedOutputCapture(
+      run = args.run,
+      iteration = args.iteration,
+      captured = args.captured,
+      repairEvidence = null,
+      fileManifest = args.fileManifest,
+    ),
+    emptyMap(),
+    rule,
+    reason,
+  )
 
   private fun loadPersistedSettlementEnvelope(
     runLoop: FeatureTaskRuntimeRunLoop,
@@ -587,9 +614,9 @@ object FeatureTaskRuntimeRunLoopAttemptSettlement {
     val outputMap = args.outputMap
     val attested = args.attested
     val repairEvidence = args.repairEvidence
-    val observability = args.observability
     val repositoryFingerprint = args.repositoryFingerprint
     val reject = args.reject
+    auditCompletionRejection(runLoop, args)?.let { return it }
     settleValidatedOutputPauseOrTerminal(
       runLoop,
       SettleValidatedOutputPauseArgs(
@@ -613,7 +640,7 @@ object FeatureTaskRuntimeRunLoopAttemptSettlement {
         repositoryFingerprint = repositoryFingerprint,
       ),
     )?.let { (rule, reason) -> return reject(rule, reason) }
-    FeatureTaskRuntimeRunLoopRepairReceipt.settleCompletedImplementationOutput(
+    return FeatureTaskRuntimeRunLoopRepairReceipt.settleCompletedImplementationOutput(
       runLoop,
       CompletedImplementationOutputArgs(
         run = run,
@@ -623,17 +650,43 @@ object FeatureTaskRuntimeRunLoopAttemptSettlement {
         observability = runLoop.observability,
         fileManifest = capture.fileManifest,
       ),
-    )?.let { return it }
-    return finalizeValidatedOutputAcceptance(
-      runLoop,
-      FinalizeValidatedOutputAcceptanceArgs(
-        capture = capture,
-        attested = attested,
-        repairEvidence = repairEvidence,
-        observability = runLoop.observability,
-        repositoryFingerprint = repositoryFingerprint,
-      ),
     )
+      ?: finalizeValidatedOutputAcceptance(
+        runLoop,
+        FinalizeValidatedOutputAcceptanceArgs(
+          capture = capture,
+          attested = attested,
+          repairEvidence = repairEvidence,
+          observability = runLoop.observability,
+          repositoryFingerprint = repositoryFingerprint,
+        ),
+      )
+  }
+
+  private fun auditCompletionRejection(
+    runLoop: FeatureTaskRuntimeRunLoop,
+    args: SettleValidatedOutputAfterFingerprintArgs,
+  ): AttemptResult? {
+    val capture = args.capture
+    val outputMap = args.outputMap
+    val repositoryFingerprint = args.repositoryFingerprint
+    val reject = args.reject
+    if (capture.run.phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT) {
+      try {
+        runLoop.phaseSettlementService.assertAuditCompletion(
+          capture.run.request.workflowId,
+          capture.iteration,
+          outputMap,
+          repositoryFingerprint,
+          FeatureTaskRuntimeRunLoopPhaseRunner.declaredCriterionRefs(runLoop),
+        )
+      } catch (error: AuditRepairCycleConflictError) {
+        return reject("audit-cycle-settlement", error.message.orEmpty())
+      } catch (error: InvalidAuditRepairCycleSchemaError) {
+        return reject("audit-cycle-evidence", error.message.orEmpty())
+      }
+    }
+    return null
   }
 
   internal fun finalizeValidatedOutputAcceptance(

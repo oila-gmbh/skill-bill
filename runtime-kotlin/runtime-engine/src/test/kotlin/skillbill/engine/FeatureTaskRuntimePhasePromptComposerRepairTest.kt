@@ -20,7 +20,7 @@ import kotlin.test.assertTrue
 class FeatureTaskRuntimePhasePromptComposerRepairTest {
 
   @Test
-  fun `audit after remediation requires re-justification while first audit keeps blank-slate wording`() {
+  fun `audit requires new evidence for recurring gaps and reads restored state before diagnosing`() {
     val memory = FeatureTaskRuntimePriorGapMemory(
       round = 2,
       priorAuditValues = listOf("""{"gaps":[{"criterion":"AC-002","note":"$AUDIT_GAP_MESSAGE"}]}"""),
@@ -32,13 +32,15 @@ class FeatureTaskRuntimePhasePromptComposerRepairTest {
         PromptComposerBriefingOptions(priorGapMemory = memory, auditGapReentry = true),
       ),
     )
-    assertContains(remediation, "explicit re-justification")
+    assertContains(remediation, "why it failed")
+    assertContains(remediation, "new evidence")
     assertContains(remediation, "prior_audit_values")
     assertContains(remediation, "AC-002")
     assertTrue(!remediation.contains("nothing to carry forward"))
 
     val firstAudit = composePromptForPhase("audit")
-    assertContains(firstAudit, "nothing to carry forward")
+    assertContains(firstAudit, "restored_cycle_evidence")
+    assertTrue(!firstAudit.contains("nothing to carry forward"))
   }
 
   @Test

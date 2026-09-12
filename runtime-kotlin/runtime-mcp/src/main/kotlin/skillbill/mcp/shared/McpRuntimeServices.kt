@@ -9,6 +9,7 @@ import skillbill.application.telemetry.TelemetryService
 import skillbill.application.updatecheck.UpdateCheckService
 import skillbill.application.workflow.WorkflowService
 import skillbill.engine.featuretask.FeatureTaskPhaseSettlementService
+import java.time.Clock
 
 @Inject
 data class McpInsightServices(
@@ -30,6 +31,7 @@ data class McpOperationsServices(
 class McpRuntimeServices(
   insight: McpInsightServices,
   operations: McpOperationsServices,
+  val clock: Clock,
 ) {
   val learningService = insight.learningService
   val lifecycleTelemetryService = insight.lifecycleTelemetryService

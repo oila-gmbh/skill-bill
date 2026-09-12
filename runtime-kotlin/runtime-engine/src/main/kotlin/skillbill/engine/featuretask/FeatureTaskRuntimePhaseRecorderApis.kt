@@ -124,6 +124,7 @@ interface FeatureTaskRuntimePhaseGateApi {
   fun loadAuditGapProgress(workflowId: String): FeatureTaskRuntimeAuditGapProgress?
   fun persistAuditGapProgress(workflowId: String, progress: FeatureTaskRuntimeAuditGapProgress)
   fun loadAuditGapPause(workflowId: String): FeatureTaskRuntimeAuditGapPause?
+  fun consumeAuditGapRetryGrant(workflowId: String, expected: FeatureTaskRuntimeAuditGapPause): Boolean
   fun persistAuditGapPause(workflowId: String, pause: FeatureTaskRuntimeAuditGapPause)
   fun loadBuildGateProgress(workflowId: String): FeatureTaskRuntimeValidationGateProgress?
   fun loadGoalContinuationQualityGateSelection(workflowId: String): FeatureTaskRuntimeQualityGateSelection?

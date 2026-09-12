@@ -13,12 +13,6 @@ import kotlin.test.assertEquals
 import kotlin.test.assertIs
 import kotlin.test.assertTrue
 
-/**
- * SKILL-157 subtask 2: the semantic remediation loops warn once when they pass the shared warning
- * threshold, and warning is all they do. Every case drives the production topology through the runner
- * with a fake diagnostics port, because a warning asserted against the definition object alone would
- * stay green while the run loop never emitted it.
- */
 class FeatureTaskRuntimeLoopWarningThresholdTest {
   private val threshold = FeatureTaskRuntimePhaseWorkflowDefinition.SEMANTIC_LOOP_WARNING_THRESHOLD
   private val crossingIteration = threshold + 1
@@ -46,7 +40,7 @@ class FeatureTaskRuntimeLoopWarningThresholdTest {
     val diagnostics = RecordingDiagnostics()
     val harness = runnerHarness(
       RuntimeHarnessConfig(
-        launcher = auditGapLauncher(convergeOnAudit = crossingIteration + 1),
+        launcher = auditGapLauncher(convergeOnAudit = crossingIteration + 1, progressiveGaps = true),
         diagnostics = diagnostics,
       ),
     )
@@ -84,7 +78,7 @@ class FeatureTaskRuntimeLoopWarningThresholdTest {
     val auditDiagnostics = RecordingDiagnostics()
     val auditHarness = runnerHarness(
       RuntimeHarnessConfig(
-        launcher = auditGapLauncher(convergeOnAudit = threshold + 1),
+        launcher = auditGapLauncher(convergeOnAudit = threshold + 1, progressiveGaps = true),
         diagnostics = auditDiagnostics,
       ),
     )
@@ -101,7 +95,7 @@ class FeatureTaskRuntimeLoopWarningThresholdTest {
     val diagnostics = RecordingDiagnostics()
     val harness = runnerHarness(
       RuntimeHarnessConfig(
-        launcher = auditGapLauncher(convergeOnAudit = 9),
+        launcher = auditGapLauncher(convergeOnAudit = 9, progressiveGaps = true),
         diagnostics = diagnostics,
       ),
     )
@@ -208,7 +202,7 @@ class FeatureTaskRuntimeLoopWarningThresholdTest {
     val diagnostics = RecordingDiagnostics()
     val harness = runnerHarness(
       RuntimeHarnessConfig(
-        launcher = auditGapLauncher(convergeOnAudit = crossingIteration + 2),
+        launcher = auditGapLauncher(convergeOnAudit = crossingIteration + 2, progressiveGaps = true),
         diagnostics = diagnostics,
       ),
     )
@@ -248,7 +242,9 @@ class FeatureTaskRuntimeLoopWarningThresholdTest {
   @Test
   fun `status reports the honest iteration count after a warn-threshold crossing`() {
     val harness = runnerHarness(
-      RuntimeHarnessConfig(launcher = auditGapLauncher(convergeOnAudit = crossingIteration + 1)),
+      RuntimeHarnessConfig(
+        launcher = auditGapLauncher(convergeOnAudit = crossingIteration + 1, progressiveGaps = true),
+      ),
     )
 
     assertIs<FeatureTaskRuntimeRunReport.Completed>(harness.runner.run(harness.request()))
@@ -280,7 +276,7 @@ class FeatureTaskRuntimeLoopWarningThresholdTest {
     assertIs<FeatureTaskRuntimeRunReport.Completed>(reviewHarness.runner.run(reviewHarness.request))
     assertEquals(1, reviewHarness.lifecycle.finishedRecords.single().reviewFixIterationCount)
 
-    val auditHarness = telemetryRunnerHarness(launcher = auditGapLauncher(convergeOnAudit = 2))
+    val auditHarness = telemetryRunnerHarness(launcher = auditGapLauncher(convergeOnAudit = 2, progressiveGaps = true))
     assertIs<FeatureTaskRuntimeRunReport.Completed>(auditHarness.runner.run(auditHarness.request))
     assertEquals(1, auditHarness.lifecycle.finishedRecords.single().auditGapIterationCount)
   }
@@ -315,8 +311,6 @@ internal class RecordingDiagnostics : RuntimeDiagnostics {
   override fun error(message: String, error: Throwable?) = Unit
 }
 
-// Models the diagnostics port itself faulting at the moment of the crossing warning: the run must
-// finish exactly as it would have with a silent port.
 private class ThrowingDiagnostics : RuntimeDiagnostics {
   override fun warning(message: String, error: Throwable?): Nothing = kotlin.error("diagnostics sink unavailable")
 
@@ -336,9 +330,6 @@ private fun assertSingleCrossingWarning(diagnostics: RecordingDiagnostics, cross
   assertEquals(1, diagnostics.warnings.distinct().size, "the crossing warning text is stable")
 }
 
-// Drives both semantic loops in one run: the audit reports gaps until [convergeOnAudit], then the
-// review raises a Blocker until [convergeOnReview]. Review sits outside the audit_gap span, so every
-// review pass runs against the tree the final satisfied audit cleared.
 private fun bothLoopsLauncher(convergeOnAudit: Int, convergeOnReview: Int): RuntimeRecordingLauncher {
   var auditLaunches = 0
   var reviewLaunches = 0
@@ -348,7 +339,7 @@ private fun bothLoopsLauncher(convergeOnAudit: Int, convergeOnReview: Int): Runt
         auditLaunches += 1
         facts(
           if (auditLaunches < convergeOnAudit) {
-            auditGapsOutput()
+            shrinkingAuditGaps(convergeOnAudit - auditLaunches)
           } else {
             auditSatisfiedOutput()
           },
@@ -385,7 +376,7 @@ private fun crashingAuditGapLauncher(
         } else {
           facts(
             if (auditLaunches < convergeOnAudit) {
-              auditGapsOutput()
+              shrinkingAuditGaps(convergeOnAudit - auditLaunches)
             } else {
               auditSatisfiedOutput()
             },

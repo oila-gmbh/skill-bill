@@ -1,6 +1,8 @@
 package skillbill.cli.featuretask
 
+import skillbill.cli.model.toAuditRepairCliMap
 import skillbill.contracts.SharedPayloadKeys
+import skillbill.contracts.workflow.AuditRepairCycleStatusKeys
 import skillbill.engine.featuretask.model.FeatureTaskRuntimePhaseStatus
 import skillbill.engine.featuretask.model.FeatureTaskRuntimeStatusProjection
 
@@ -17,12 +19,7 @@ internal fun FeatureTaskRuntimeStatusProjection?.toRuntimeStatusCliMap(workflowI
       "resolved_branch" to it.resolvedBranch,
       "finalizing_agent_id" to it.finalizingAgentId,
       "gate_run_count" to it.gateRunCount,
-      "audit_repair" to it.auditRepair?.let { progress ->
-        linkedMapOf(
-          "first_pass_convergence" to progress.firstPassConvergence,
-          "audit_gap_iteration_count" to progress.auditGapIterationCount,
-        )
-      },
+      "audit_repair" to it.auditRepair?.toAuditRepairCliMap(),
       "degraded_diagnostic" to it.degradedDiagnostic?.let { degraded ->
         linkedMapOf(
           "count" to degraded.count,
@@ -81,14 +78,7 @@ internal fun runtimeStatusText(payload: Map<String, Any?>): String = buildString
   appendLine("current_phase: ${payload["current_phase"] ?: "none"}")
   appendLine("resolved_branch: ${payload["resolved_branch"] ?: "none"}")
   appendLine("finalizing_agent: ${payload["finalizing_agent_id"] ?: "none"}")
-  (payload["audit_repair"] as? Map<*, *>)?.let { progress ->
-    appendLine("audit_first_pass_convergence: ${progress["first_pass_convergence"]}")
-    appendLine("audit_recurring_gap_count: ${progress["recurring_gap_count"]}")
-    appendLine("audit_new_gap_count: ${progress["new_gap_count"]}")
-    appendLine("audit_attempted_repair_item_count: ${progress["attempted_repair_item_count"]}")
-    appendLine("audit_resolved_repair_item_count: ${progress["resolved_repair_item_count"]}")
-    appendLine("audit_gap_iteration_count: ${progress["audit_gap_iteration_count"]}")
-  }
+  appendAuditStatus(payload)
   (payload["degraded_diagnostic"] as? Map<*, *>)?.let { degraded ->
     appendLine("degraded_diagnostic_count: ${degraded["count"]}")
     appendLine("degraded_diagnostic_failure_class: ${degraded["failure_class"]}")
@@ -113,5 +103,27 @@ internal fun runtimeStatusText(payload: Map<String, Any?>): String = buildString
         "origin=${phase["execution_origin"] ?: "none"} " +
         "finished=${phase["finished"]}",
     )
+  }
+}
+
+private fun StringBuilder.appendAuditStatus(payload: Map<String, Any?>) {
+  (payload["audit_repair"] as? Map<*, *>)?.let { progress ->
+    appendLine("audit_first_pass_convergence: ${progress["first_pass_convergence"]}")
+    appendLine("audit_stage: ${progress[AuditRepairCycleStatusKeys.STAGE] ?: "none"}")
+    appendLine(
+      "audit_unresolved_criterion_refs: ${progress[AuditRepairCycleStatusKeys.UNRESOLVED_CRITERION_REFS]}",
+    )
+    appendLine("audit_repair_round_count: ${progress[AuditRepairCycleStatusKeys.REPAIR_ROUND_COUNT]}")
+    appendLine(
+      "audit_last_checkpoint_id: ${progress[AuditRepairCycleStatusKeys.LAST_CHECKPOINT_ID] ?: "none"}",
+    )
+    appendLine("audit_execution_id: ${progress[AuditRepairCycleStatusKeys.EXECUTION_ID] ?: "none"}")
+    appendLine("audit_session_id: ${progress[AuditRepairCycleStatusKeys.SESSION_ID] ?: "none"}")
+    appendLine("audit_operator_reason: ${progress[AuditRepairCycleStatusKeys.OPERATOR_REASON] ?: "none"}")
+    appendLine("audit_recurring_gap_count: ${progress["recurring_gap_count"]}")
+    appendLine("audit_new_gap_count: ${progress["new_gap_count"]}")
+    appendLine("audit_attempted_repair_item_count: ${progress["attempted_repair_item_count"]}")
+    appendLine("audit_resolved_repair_item_count: ${progress["resolved_repair_item_count"]}")
+    appendLine("audit_gap_iteration_count: ${progress["audit_gap_iteration_count"]}")
   }
 }

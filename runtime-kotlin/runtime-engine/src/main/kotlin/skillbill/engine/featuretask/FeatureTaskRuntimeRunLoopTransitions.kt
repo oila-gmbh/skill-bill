@@ -36,6 +36,18 @@ object FeatureTaskRuntimeRunLoopTransitions {
     return when {
       loopId == null && !establishForwardCheckpoint(runLoop, phaseId, transition.phaseId) -> null
       loopId == null -> transition.phaseId
+      loopId == FeatureTaskRuntimePhaseWorkflowDefinition.AUDIT_GAP_LOOP_ID &&
+        (
+          runLoop.phaseSettlementService.requiresAuditRepairCycle(runLoop.request.workflowId) ||
+            auditRepairCyclePresent(runLoop, phaseId)
+          ) -> {
+        FeatureTaskRuntimeRunLoopPlanningBranch.blockAt(
+          runLoop,
+          phaseId,
+          "Durable audit-repair evidence is incomplete; resume the owning audit session before advancing.",
+        )
+        null
+      }
       reentersMutatingPhase(runLoop, requireNotNull(edge), transition.phaseId) &&
         !FeatureTaskRuntimeRunLoopCheckpointRemediation.establishRemediationCheckpoint(runLoop, phaseId, loopId) -> null
       loopId == FeatureTaskRuntimePhaseWorkflowDefinition.AUDIT_GAP_LOOP_ID &&
@@ -66,6 +78,12 @@ object FeatureTaskRuntimeRunLoopTransitions {
   fun authoritativeAuditRepairPlanMatches(runLoop: FeatureTaskRuntimeRunLoop, auditPhaseId: String): Boolean =
     runLoop.state.verdictFor(auditPhaseId) == FeatureTaskRuntimeVerdict.GAPS_FOUND
 
+  private fun auditRepairCyclePresent(runLoop: FeatureTaskRuntimeRunLoop, auditPhaseId: String): Boolean =
+    runLoop.phaseSettlementService.auditRepairCycle(
+      runLoop.request.workflowId,
+      runLoop.state.recordFor(auditPhaseId)?.attemptCount ?: 1,
+    ) != null
+
   fun reentersMutatingPhase(
     runLoop: FeatureTaskRuntimeRunLoop,
     edge: FeatureTaskRuntimeBackwardEdge,
@@ -90,17 +108,40 @@ object FeatureTaskRuntimeRunLoopTransitions {
     precedingPhaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT &&
     destinationPhaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW
   ) {
-    FeatureTaskRuntimeRunLoopCheckpointRemediation.checkpointEstablished(
-      runLoop,
-      precedingPhaseId = precedingPhaseId,
-      loopId = null,
-      intent = FeatureTaskRuntimeCheckpointMessage.INTENT_AUDITED_IMPLEMENTATION,
-      blockedReason = { branch,
-                        error,
-        ->
-        FeatureTaskRuntimeRunLoopPlanningBranch.auditReviewCheckpointBlockedReason(branch, error)
-      },
-    )
+    val attempt = runLoop.state.recordFor(precedingPhaseId)?.attemptCount ?: 1
+    if (!runLoop.phaseSettlementService.auditRepairReady(runLoop.request.workflowId, attempt)) {
+      FeatureTaskRuntimeRunLoopPlanningBranch.blockAt(
+        runLoop,
+        precedingPhaseId,
+        "Audit-repair final assessment and verified checkpoint are incomplete.",
+      )
+      false
+    } else {
+      FeatureTaskRuntimeRunLoopCheckpointRemediation.checkpointEstablished(
+        runLoop,
+        precedingPhaseId = precedingPhaseId,
+        loopId = null,
+        intent = FeatureTaskRuntimeCheckpointMessage.INTENT_AUDITED_IMPLEMENTATION,
+        blockedReason = { branch,
+                          error,
+          ->
+          FeatureTaskRuntimeRunLoopPlanningBranch.auditReviewCheckpointBlockedReason(branch, error)
+        },
+      ).let { established ->
+        if (!established) {
+          false
+        } else if (!runLoop.phaseSettlementService.auditRepairReady(runLoop.request.workflowId, attempt)) {
+          FeatureTaskRuntimeRunLoopPlanningBranch.blockAt(
+            runLoop,
+            precedingPhaseId,
+            "The review checkpoint no longer matches the satisfied final audit.",
+          )
+          false
+        } else {
+          true
+        }
+      }
+    }
   } else {
     true
   }

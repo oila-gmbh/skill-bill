@@ -39,7 +39,7 @@ class InstallApplyTest : InstallApplyTestSupport() {
 
     val result = applyInstallForTest(plan)
 
-    assertEquals(InstallApplyStatus.SUCCESS, result.status)
+    assertEquals(InstallApplyStatus.SUCCESS, result.status, result.toString())
     assertTrue(result.failures.isEmpty(), "unexpected failures: ${result.failures}")
     assertEquals(InstallTelemetryLevel.ANONYMOUS, result.telemetryLevel)
     assertEquals(InstallTelemetryApplyStatus.SUCCESS, result.telemetryOutcome.status)
@@ -112,7 +112,7 @@ class InstallApplyTest : InstallApplyTestSupport() {
 
     val result = applyInstallForTest(plan)
 
-    assertEquals(InstallApplyStatus.SUCCESS, result.status)
+    assertEquals(InstallApplyStatus.SUCCESS, result.status, result.toString())
     assertEquals(listOf(InstallAgent.CODEX), result.mcpRegistrationOutcomes.map { outcome -> outcome.agent })
     assertTrue(result.mcpRegistrationOutcomes.all { outcome -> outcome.status == McpRegistrationApplyStatus.SKIPPED })
     assertTrue(result.mcpRegistrationOutcomes.all { outcome -> outcome.configPath == null && !outcome.changed })
@@ -288,7 +288,7 @@ class InstallApplyTest : InstallApplyTestSupport() {
 
     val result = applyInstallForTest(plan)
 
-    assertEquals(InstallApplyStatus.SUCCESS, result.status)
+    assertEquals(InstallApplyStatus.SUCCESS, result.status, result.toString())
     val nativeArtifactNames = result.nativeAgents.mapNotNull { native -> native.path?.fileName }
     assertTrue(nativeArtifactNames.any { name -> "bill-kotlin-code-review-worker" in name })
     assertFalse(nativeArtifactNames.any { name -> "bill-kmp-code-review-worker" in name })
@@ -321,7 +321,7 @@ class InstallApplyTest : InstallApplyTestSupport() {
 
     val result = applyInstallForTest(plan)
 
-    assertEquals(InstallApplyStatus.SUCCESS, result.status)
+    assertEquals(InstallApplyStatus.SUCCESS, result.status, result.toString())
     val nativeArtifactNames = result.nativeAgents.mapNotNull { native -> native.path?.fileName }
     assertFalse(nativeArtifactNames.any { name -> "bill-kmp-legacy-worker" in name })
   }
@@ -354,7 +354,7 @@ class InstallApplyTest : InstallApplyTestSupport() {
 
     val result = applyInstallForTest(plan)
 
-    assertEquals(InstallApplyStatus.SUCCESS, result.status)
+    assertEquals(InstallApplyStatus.SUCCESS, result.status, result.toString())
     val nativeArtifactNames = result.nativeAgents.mapNotNull { native -> native.path?.fileName }
     assertFalse(nativeArtifactNames.any { name -> "bill-kotlin-unplanned-worker" in name })
   }
@@ -375,7 +375,7 @@ class InstallApplyTest : InstallApplyTestSupport() {
 
     val result = applyInstallForTest(tampered)
 
-    assertEquals(InstallApplyStatus.SUCCESS, result.status)
+    assertEquals(InstallApplyStatus.SUCCESS, result.status, result.toString())
     result.nativeAgents
       .filter { native -> native.status == NativeAgentApplyStatus.LINKED }
       .mapNotNull { native -> native.path }

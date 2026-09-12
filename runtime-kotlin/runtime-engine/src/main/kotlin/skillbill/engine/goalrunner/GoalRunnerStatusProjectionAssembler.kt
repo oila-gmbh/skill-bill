@@ -42,11 +42,13 @@ import skillbill.workflow.decomposition.model.DecompositionSubtask
 import skillbill.workflow.model.DecompositionStatus
 import skillbill.workflow.model.decompositionStatus
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditRepairStatus
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeValidationEvidence
 import java.io.IOException
 import java.nio.file.Path
 import java.time.Clock
 import java.time.Instant
+import java.util.concurrent.CancellationException
 
 private const val MAX_STATUS_ERROR_LENGTH = 240
 
@@ -136,6 +138,7 @@ internal fun GoalRunnerStatusProjectionAssembler.statusProjectionRuntimeInputs(
     currentWorkflowStatus = progress?.workflowStatus,
     latestLivenessSignal = progress?.latestLivenessSignal,
     latestObservabilityEvent = progress?.latestGoalObservabilityEvent?.toStatusMap(),
+    auditRepair = childWorkflowId?.let(::auditRepairStatusFor),
     requestedDiffStat = requestedDiffStat(request),
     selectedDiffHunks = requestedSelectedDiffHunks(request),
     blockedAttemptCount = ledgerSummary?.blockedAttemptCount ?: 0,
@@ -391,3 +394,18 @@ internal fun GoalRunnerStatusProjectionAssembler.requestedSelectedDiffHunks(requ
   } else {
     null
   }
+
+private fun GoalRunnerStatusProjectionAssembler.auditRepairStatusFor(
+  workflowId: String,
+): FeatureTaskRuntimeAuditRepairStatus? = runCatching {
+  runtimeStatusService?.status(FeatureTaskRuntimeStatusRequest(workflowId))?.auditRepair
+}.getOrElse { error ->
+  if (error is CancellationException) throw error
+  diagnostics.warning("Goal status could not read audit-repair state for workflow '$workflowId'.", error)
+  FeatureTaskRuntimeAuditRepairStatus(
+    firstPassConvergence = false,
+    auditGapIterationCount = 0,
+    stage = "recovery_required",
+    operatorReason = "Durable audit-repair status could not be read: ${error.javaClass.simpleName}",
+  )
+}

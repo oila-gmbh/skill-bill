@@ -8,6 +8,7 @@ import skillbill.workflow.goal.model.GoalObservabilityDiffStat
 import skillbill.workflow.goal.model.GoalObservabilitySelectedDiffHunks
 import skillbill.workflow.model.DecompositionStatus
 import skillbill.workflow.model.WorkflowStatus
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditRepairStatus
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeValidationEvidence
 
 enum class GoalPlanningStatusState(val wireValue: String) {
@@ -24,7 +25,6 @@ enum class GoalPlanningStatusState(val wireValue: String) {
   }
 }
 
-/** Shared planning-status reason phrases so store projection and launch-aligned overlays stay in lockstep. */
 object GoalPlanningStatusReasons {
   const val RESUME_MARKER: String = "planning can resume"
 
@@ -74,7 +74,6 @@ data class GoalRunnerStatusProjection(
   val pendingCount: Int,
   val blockedCount: Int,
   val currentSubtaskId: Int?,
-  /** Launched child workflow id for [currentSubtaskId], when the subtask has one. */
   val currentChildWorkflowId: String? = null,
   val currentSubtaskStatus: DecompositionStatus? = null,
   val currentSubtaskBlockedReason: String? = null,
@@ -85,6 +84,7 @@ data class GoalRunnerStatusProjection(
   val latestLivenessSignal: String? = null,
   @OpenBoundaryMap("Compact latest goal observability event passthrough for goal status rendering")
   val latestObservabilityEvent: Map<String, Any?>? = null,
+  val auditRepair: FeatureTaskRuntimeAuditRepairStatus? = null,
   val requestedDiffStat: GoalObservabilityDiffStat? = null,
   val selectedDiffHunks: GoalObservabilitySelectedDiffHunks? = null,
   val blockedAttemptCount: Int = 0,
@@ -120,11 +120,6 @@ data class GoalRunnerSubtaskValidationEvidence(
   )
 }
 
-/**
- * A subtask an operator recorded as landed outside the runtime. The git-tracked manifest projection
- * deliberately omits commit SHAs to keep that file churn-free, so this read-only status surface is
- * where a human sees which commit an accepted subtask actually points at.
- */
 data class GoalRunnerAcceptedSubtask(
   val subtaskId: Int,
   val commitSha: String,
@@ -136,15 +131,11 @@ data class GoalRunnerStatusProjectionRuntimeInputs(
   val executionLiveness: ExecutionLiveness = ExecutionLiveness.UNKNOWN,
   val planning: GoalPlanningStatusSnapshot? = null,
   val currentStepOverride: String? = null,
-  /**
-   * Live workflow status of the current subtask's child. The manifest projection is only rewritten at
-   * reconciliation points, so a subtask relaunched from a durable block still reads `blocked` there for
-   * the whole run; this reports what the child is actually doing.
-   */
   val currentWorkflowStatus: WorkflowStatus? = null,
   val latestLivenessSignal: String? = null,
   @OpenBoundaryMap("Compact latest goal observability event passthrough for goal status rendering")
   val latestObservabilityEvent: Map<String, Any?>? = null,
+  val auditRepair: FeatureTaskRuntimeAuditRepairStatus? = null,
   val requestedDiffStat: GoalObservabilityDiffStat? = null,
   val selectedDiffHunks: GoalObservabilitySelectedDiffHunks? = null,
   val blockedAttemptCount: Int = 0,

@@ -43,3 +43,8 @@ internal fun featureTaskAuditSettle(arguments: Map<String, Any?>, context: McpRu
       summary = arguments.optionalString("summary"),
     ),
   )
+
+internal fun featureTaskAuditStage(arguments: Map<String, Any?>, context: McpRuntimeContext): Map<String, Any?> {
+  val runtimeServices = services(context)
+  return runtimeServices.featureTaskPhaseSettlementService.auditStage(arguments)
+}

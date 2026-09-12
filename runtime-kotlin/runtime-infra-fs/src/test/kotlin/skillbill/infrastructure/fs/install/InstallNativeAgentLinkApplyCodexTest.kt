@@ -174,7 +174,7 @@ class InstallNativeAgentLinkApplyCodexTest : InstallNativeAgentLinkApplyTestSupp
       fixture.request(selectedPlatforms = setOf("kotlin"), agents = setOf(InstallAgent.CODEX)),
     )
     val result = applyInstallForTest(plan)
-    assertEquals(InstallApplyStatus.SUCCESS, result.status)
+    assertEquals(InstallApplyStatus.SUCCESS, result.status, result.toString())
 
     FileSystemReviewNativeAgentPreflight(preflightContext(fixture.home)).verify(
       ReviewNativeAgentPreflightRequest(
@@ -199,7 +199,7 @@ class InstallNativeAgentLinkApplyCodexTest : InstallNativeAgentLinkApplyTestSupp
 
     val result = applyInstallForTest(plan)
 
-    assertEquals(InstallApplyStatus.SUCCESS, result.status)
+    assertEquals(InstallApplyStatus.SUCCESS, result.status, result.toString())
     val linked = result.nativeAgents.filter { native -> native.status == NativeAgentApplyStatus.LINKED }
     assertTrue(linked.isNotEmpty(), "cursor apply linked nothing: ${result.nativeAgents}")
     assertEquals(setOf(NativeAgentProviderId.CURSOR), linked.map { native -> native.provider }.toSet())
@@ -263,7 +263,7 @@ class InstallNativeAgentLinkApplyCodexTest : InstallNativeAgentLinkApplyTestSupp
       ),
     )
 
-    assertEquals(InstallApplyStatus.SUCCESS, result.status)
+    assertEquals(InstallApplyStatus.SUCCESS, result.status, result.toString())
     val currentRoot = currentNativeAgentApplyCacheRoot(
       fixture.home,
       fixture.repoRoot.resolve("platform-packs"),
@@ -308,7 +308,7 @@ class InstallNativeAgentLinkApplyCodexTest : InstallNativeAgentLinkApplyTestSupp
       fixture.request(selectedPlatforms = setOf("kotlin"), agents = setOf(InstallAgent.CODEX)),
     )
     val result = applyInstallForTest(plan)
-    assertEquals(InstallApplyStatus.SUCCESS, result.status)
+    assertEquals(InstallApplyStatus.SUCCESS, result.status, result.toString())
     Files.walk(fixture.repoRoot).use { paths ->
       paths.sorted(Comparator.reverseOrder()).forEach(Files::deleteIfExists)
     }

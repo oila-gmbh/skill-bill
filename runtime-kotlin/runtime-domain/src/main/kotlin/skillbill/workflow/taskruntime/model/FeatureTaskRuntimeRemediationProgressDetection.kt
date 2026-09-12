@@ -23,25 +23,31 @@ fun detectAuditRepairNonProgress(
   if (!previous.hasGaps) {
     return FeatureTaskRuntimeAuditRepairProgressDecision(blocked = false, reason = null)
   }
-  val criterionSetUnchanged = previous.criterionRefs.isNotEmpty() &&
-    current.criterionRefs.isNotEmpty() &&
-    previous.criterionRefs == current.criterionRefs
-  val repositoryUnchanged = previous.repositoryFingerprint == current.repositoryFingerprint
-  val previousUnproven = previous.repositoryFingerprint == UNPROVEN_REPOSITORY_FINGERPRINT
-  val criterionRefsAvailable = previous.criterionRefs.isNotEmpty() && current.criterionRefs.isNotEmpty()
-  val blocked = previousUnproven || (repositoryUnchanged && (!criterionRefsAvailable || criterionSetUnchanged))
+  val criteriaReduced = current.criterionRefs.isNotEmpty() &&
+    current.criterionRefs.size < previous.criterionRefs.size &&
+    previous.criterionRefs.containsAll(current.criterionRefs)
   return FeatureTaskRuntimeAuditRepairProgressDecision(
-    blocked = blocked,
-    reason = if (blocked) {
-      if (criterionSetUnchanged) {
-        "Audit made no progress: the envelope verdict is still gaps_found, the unresolved criterion " +
-          "set is unchanged, and the repository fingerprint is unchanged."
-      } else {
-        "Audit made no progress: the envelope verdict is still gaps_found and the repository fingerprint " +
-          "is unchanged."
-      }
-    } else {
+    blocked = !criteriaReduced,
+    reason = if (criteriaReduced) {
       null
+    } else {
+      "Audit made no progress: the unresolved acceptance criteria did not strictly decrease. " +
+        "Repository changes alone do not establish criterion closure."
     },
   )
 }
+
+fun AuditRepairAssessment.progressSince(
+  previous: AuditRepairAssessment,
+): FeatureTaskRuntimeAuditRepairProgressDecision = detectAuditRepairNonProgress(
+  previous = FeatureTaskRuntimeAuditRepairSnapshot(
+    hasGaps = previous.unmetCriterionRefs.isNotEmpty(),
+    repositoryFingerprint = previous.checkpoint.repositoryFingerprint,
+    criterionRefs = previous.unmetCriterionRefs,
+  ),
+  current = FeatureTaskRuntimeAuditRepairSnapshot(
+    hasGaps = unmetCriterionRefs.isNotEmpty(),
+    repositoryFingerprint = checkpoint.repositoryFingerprint,
+    criterionRefs = unmetCriterionRefs,
+  ),
+)

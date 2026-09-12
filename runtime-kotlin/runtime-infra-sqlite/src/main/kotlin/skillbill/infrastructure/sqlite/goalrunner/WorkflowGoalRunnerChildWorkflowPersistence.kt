@@ -200,7 +200,7 @@ internal class WorkflowGoalRunnerChildWorkflowPersistence(
     val openedChild = engine.openRecord(
       WorkflowFamily.TASK_RUNTIME.definition,
       setup.workflowId,
-      "${WorkflowFamily.TASK_RUNTIME.definition.defaultSessionPrefix}-${state.manifest.issueKey}",
+      "${WorkflowFamily.TASK_RUNTIME.definition.defaultSessionPrefix}-${setup.workflowId}",
       WorkflowFamily.TASK_RUNTIME.definition.defaultInitialStepId,
     )
     val hydration = planningHydrator.hydrate(

@@ -4,7 +4,6 @@ import skillbill.ports.agentrun.model.AgentRunLivenessSnapshot
 import skillbill.ports.agentrun.model.AgentRunOutputSink
 import skillbill.ports.agentrun.model.AgentRunOutputStream
 import java.io.ByteArrayOutputStream
-import java.io.IOException
 import java.io.InputStream
 import java.nio.ByteBuffer
 import java.nio.CharBuffer
@@ -69,16 +68,19 @@ internal class CappedUtf8Drain(
   internal val outputStream: AgentRunOutputStream,
   internal val outputSink: AgentRunOutputSink,
   internal val onChunkRead: (String) -> Unit,
+  private val onFailure: (Throwable) -> Unit = {},
 ) {
   internal val output = ByteArrayOutputStream(
     limitBytes?.coerceAtMost(INITIAL_OUTPUT_BUFFER_BYTES) ?: INITIAL_OUTPUT_BUFFER_BYTES,
   )
 
+  @Volatile internal var failure: Throwable? = null
+
   @Volatile internal var truncated = false
   internal var totalByteSize = 0L
   internal val digest = MessageDigest.getInstance("SHA-256")
   internal val worker = thread(start = false, isDaemon = true, name = "skillbill-agent-run-output-drain") {
-    try {
+    runCatching {
       input.use { stream ->
         val buffer = ByteArray(DEFAULT_DRAIN_BUFFER_BYTES)
         var remaining = limitBytes
@@ -109,7 +111,9 @@ internal class CappedUtf8Drain(
         decodeAvailable(decoded, withinCap) { decoder.decode(carry, decoded, true) }
         decodeAvailable(decoded, withinCap) { decoder.flush(decoded) }
       }
-    } catch (_: IOException) {
+    }.onFailure { error ->
+      failure = error
+      onFailure(error)
     }
   }
 

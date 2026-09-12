@@ -1,8 +1,8 @@
 package skillbill.engine.featuretask.model
 
 import skillbill.application.idestatus.model.IdeStatusCurrentPhaseExecution
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditRepairStatus
 
-/** Request for the read-only status projection of one runtime workflow. */
 data class FeatureTaskRuntimeStatusRequest(
   val workflowId: String,
 ) {
@@ -11,10 +11,6 @@ data class FeatureTaskRuntimeStatusRequest(
   }
 }
 
-/**
- * One ordered phase's read-only status. [resolvedAgentId] is null when no record exists yet for
- * the phase (it has not started).
- */
 data class FeatureTaskRuntimePhaseStatus(
   val phaseId: String,
   val status: String,
@@ -22,21 +18,11 @@ data class FeatureTaskRuntimePhaseStatus(
   val resolvedAgentId: String?,
   val finished: Boolean,
   val executionOrigin: String? = null,
-  /**
-   * Why this phase last re-entered, when it did. Null when the phase never re-ran. Reported instead
-   * of leaving an operator to guess from a bare attempt count whether the runtime was correcting
-   * malformed output or carrying partial implementation work forward.
-   */
   val continuationKind: String? = null,
-  /** The model/effort the phase's child was launched with; null when the phase ran with no directive. */
   val launchedModel: String? = null,
   val launchedEffort: String? = null,
 )
 
-/**
- * The read-only status projection for one workflow. [phases] follow the definition's `stepIds`
- * order; the counts and [currentPhaseId] are derived from them.
- */
 data class FeatureTaskRuntimeStatusProjection(
   val workflowId: String,
   val featureSize: String?,
@@ -44,30 +30,13 @@ data class FeatureTaskRuntimeStatusProjection(
   val completeCount: Int,
   val pendingCount: Int,
   val blockedCount: Int,
-  /** First not-yet-complete phase in definition order, or null when all complete. */
   val currentPhaseId: String?,
-  /** The run's resolved feature branch, or null when branch setup has not run yet. */
   val resolvedBranch: String? = null,
-  /**
-   * The ledger-derived finalizing agent (Seam A rollup), computed even for a single-spec run where
-   * no goal-continuation outcome is persisted. Null when no terminal agent attribution exists yet.
-   */
   val finalizingAgentId: String? = null,
   val decomposeTerminal: FeatureTaskRuntimeDecomposeTerminalStatus? = null,
   val auditRepair: FeatureTaskRuntimeAuditRepairStatus? = null,
-  /** Runtime-measured validation gate runs while validate is active; null when not yet started. */
   val gateRunCount: Int? = null,
-  /**
-   * Authoritative current-phase execution measure for [currentPhaseId] only. Null when there is no
-   * current phase or no reliable durable counter for it. Never carries a completed neighbouring
-   * phase's historical loop or pass.
-   */
   val currentPhaseExecution: IdeStatusCurrentPhaseExecution? = null,
-  /**
-   * Degraded diagnostic-persistence signals for this workflow. Null when none exist; never a
-   * count-zero object. [count] is the durable list size and the remaining fields are the most
-   * recently appended signal.
-   */
   val degradedDiagnostic: FeatureTaskRuntimeDegradedDiagnosticStatus? = null,
   val operatorDecisionPause: FeatureTaskRuntimeOperatorDecisionPause? = null,
 )
@@ -99,11 +68,6 @@ data class FeatureTaskRuntimeDegradedDiagnosticStatus(
     require(attempt >= 0) { "FeatureTaskRuntimeDegradedDiagnosticStatus.attempt must be >= 0." }
   }
 }
-
-data class FeatureTaskRuntimeAuditRepairStatus(
-  val firstPassConvergence: Boolean,
-  val auditGapIterationCount: Int,
-)
 
 data class FeatureTaskRuntimeDecomposeTerminalStatus(
   val reason: String,

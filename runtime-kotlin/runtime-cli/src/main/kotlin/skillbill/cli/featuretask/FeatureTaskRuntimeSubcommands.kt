@@ -5,6 +5,7 @@ import me.tatarka.inject.annotations.Inject
 @Inject
 data class FeatureTaskRuntimeControlSubcommands(
   val status: FeatureTaskRuntimeStatusCommand,
+  val auditStage: FeatureTaskAuditRepairStageCommand,
   val resume: FeatureTaskRuntimeResumeCommand,
   val abandon: FeatureTaskRuntimeAbandonCommand,
   val retryBlocked: FeatureTaskRuntimeRetryBlockedCommand,

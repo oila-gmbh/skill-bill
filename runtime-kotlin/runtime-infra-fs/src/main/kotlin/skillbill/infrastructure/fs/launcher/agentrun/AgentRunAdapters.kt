@@ -1,5 +1,7 @@
 package skillbill.infrastructure.fs.launcher.agentrun
 
+import com.fasterxml.jackson.core.JsonProcessingException
+import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.databind.ObjectMapper
 import skillbill.infrastructure.fs.launcher.process.AgentRunProcessEnvironmentFields
 import skillbill.infrastructure.fs.launcher.process.AgentRunProcessLaunchFields
@@ -14,6 +16,7 @@ import skillbill.install.model.InstallAgent
 import skillbill.install.model.agentLauncherUnavailableMessage
 import skillbill.ports.agentrun.ExecutableLookup
 import skillbill.ports.agentrun.model.AgentRunLaunchFacts
+import skillbill.ports.agentrun.model.AgentRunOutputSink
 import skillbill.ports.agentrun.model.SkillRunRequest
 import java.nio.file.Path
 import java.security.MessageDigest
@@ -40,20 +43,17 @@ class ProcessAgentRunAdapter(
       is LauncherResolution.Resolved -> built.copy(command = resolution.command)
       is LauncherResolution.Missing -> return unavailableLauncherFacts(request, built, resolution.message)
     }
-    val result = processRunner.run(processRequest(command, request))
     val decoder = command.outputDecoder ?: commandBuilder.outputDecoder
+    val capture = request.auditRepairProviderSessionSink?.let {
+      ProviderSessionOutputSink(decoder, it, request.outputSink)
+    }
+    val result = processRunner.run(processRequest(command, request, capture ?: request.outputSink))
+    capture?.finish()
+    val providerSessionId = capture?.requireSessionId()
     val decoded = runCatching { decoder.decode(result.stdout) }.getOrElse { error ->
       if (!decoder.undecodable(error)) throw error
-      // A stream we could not decode is not phase output. Handing the raw transport back made the
-      // phase schema gate see several conflicting envelopes instead of one undecodable turn, so the
-      // operator was told the agent wrote bad output when it had written none we could read.
       DecodedAgentRunOutput(text = "", rawOutputPreview = result.stdout.take(RAW_OUTPUT_PREVIEW_MAX_CHARS))
     }
-    // The two flags are one fact read two ways, and downstream code depends on that: the run loop
-    // decides whether a settled phase keeps its launched-model stamp from `spawnFailed`, while
-    // `processStarted` is the field documented as the process-start boundary. A runner that reports
-    // a pre-start failure as anything but a spawn failure would silently attribute a model to a
-    // child that never ran, so the disagreement fails here rather than becoming a durable lie.
     require(result.spawnFailed != result.processStarted) {
       "AgentRunProcessRunner result must report exactly one of spawnFailed/processStarted; got " +
         "spawnFailed=${result.spawnFailed}, processStarted=${result.processStarted}."
@@ -81,17 +81,12 @@ class ProcessAgentRunAdapter(
       stdoutSha256 = if (result.stdoutTruncated) result.stdoutSha256 else sha256(decodedBodyBytes),
       childSessionPath = command.workingDirectory.toString(),
       childSessionId = childSessionId(agent, request, command.workingDirectory),
+      providerSessionId = providerSessionId ?: decoded.providerSessionId,
       assistantEventCount = decoded.assistantEventCount,
       rawOutputPreview = decoded.rawOutputPreview,
     )
   }
 
-  /**
-   * Resolves the executable the built command execs. A declared alternate is substituted when the
-   * preferred name is absent, which keeps older agent installs that ship only the legacy binary
-   * working. Anything else — including the skill-bill goal-continuation driver — has no alternate
-   * and is reported by name.
-   */
   private fun resolveLauncherExecutable(command: List<String>, launcher: AgentLauncherCli): LauncherResolution {
     val requested = command.firstOrNull()
     return when {
@@ -126,43 +121,44 @@ class ProcessAgentRunAdapter(
       childSessionId = childSessionId(agent, request, command.workingDirectory),
     )
 
-  private fun processRequest(command: AgentRunCommand, request: SkillRunRequest) = AgentRunProcessRequest(
-    launch = AgentRunProcessLaunchFields(
-      command = command.command,
-      workingDirectory = command.workingDirectory,
-      stdinText = command.stdinText,
-      outputSink = request.outputSink,
-    ),
-    timing = AgentRunProcessTimingFields(
-      timeout = command.timeout,
-      progressIdleTimeout = request.progressIdleTimeout,
-      operationDeadline = request.timeout,
-    ),
-    probes = AgentRunProcessProbeFields(
-      progressProbe = request.progressProbe,
-      declaredProgressProbe = request.declaredProgressProbe,
-      mcpStartupProbe = request.mcpStartupProbe,
-      progressEmitter = request.progressEmitter,
-      activityProbe = WorktreeActivityProbe(command.workingDirectory),
-      activityStampSink = request.activityStampSink,
-      idlePolicy = command.idlePolicy,
-    ),
-    environmentFields = AgentRunProcessEnvironmentFields(
-      environment = command.environment,
-      inheritEnvironment = command.inheritEnvironment,
-      environmentPassthroughKeys = command.environmentPassthroughKeys,
-    ),
-    review = AgentRunProcessReviewFields(
-      conversationIsolation = command.conversationIsolation,
-      reviewEvidenceBroker = request.reviewEvidenceBroker,
-      nativeReviewOperations = request.nativeReviewOperations,
-      reviewEvidenceEndpoint = request.reviewEvidenceEndpoint,
-      spawnAuthorization = request.spawnAuthorization,
-    ),
-  )
+  private fun processRequest(command: AgentRunCommand, request: SkillRunRequest, outputSink: AgentRunOutputSink) =
+    AgentRunProcessRequest(
+      launch = AgentRunProcessLaunchFields(
+        command = command.command,
+        workingDirectory = command.workingDirectory,
+        stdinText = command.stdinText,
+        outputSink = outputSink,
+      ),
+      timing = AgentRunProcessTimingFields(
+        timeout = command.timeout,
+        progressIdleTimeout = request.progressIdleTimeout,
+        operationDeadline = request.timeout,
+      ),
+      probes = AgentRunProcessProbeFields(
+        progressProbe = request.progressProbe,
+        declaredProgressProbe = request.declaredProgressProbe,
+        mcpStartupProbe = request.mcpStartupProbe,
+        progressEmitter = request.progressEmitter,
+        activityProbe = WorktreeActivityProbe(command.workingDirectory),
+        activityStampSink = request.activityStampSink,
+        idlePolicy = command.idlePolicy,
+      ),
+      environmentFields = AgentRunProcessEnvironmentFields(
+        environment = command.environment,
+        inheritEnvironment = command.inheritEnvironment,
+        environmentPassthroughKeys = command.environmentPassthroughKeys,
+      ),
+      review = AgentRunProcessReviewFields(
+        conversationIsolation = command.conversationIsolation,
+        reviewEvidenceBroker = request.reviewEvidenceBroker,
+        nativeReviewOperations = request.nativeReviewOperations,
+        reviewEvidenceEndpoint = request.reviewEvidenceEndpoint,
+        spawnAuthorization = request.spawnAuthorization,
+      ),
+    )
 
   private fun childSessionId(agent: InstallAgent, request: SkillRunRequest, workingDirectory: Path): String =
-    buildString {
+    request.auditRepairSessionId ?: request.auditRepairExecutionId ?: buildString {
       append(agent.id)
       append(':')
       append(request.issueKey)
@@ -180,42 +176,40 @@ private fun sha256(bytes: ByteArray): String =
 
 data class DecodedAgentRunOutput(
   val text: String,
-  /** Assistant turns observed on transports that expose them; null when the transport has no such event. */
+  val providerSessionId: String? = null,
   val assistantEventCount: Int? = null,
-  /** Bounded raw-transport excerpt, set only when decoding produced no usable text. */
   val rawOutputPreview: String? = null,
 )
 
 interface AgentRunOutputDecoder {
   fun decode(stdout: String): DecodedAgentRunOutput
 
-  /**
-   * Decoder-declared classification of a decode failure. A decoder that owns a transport it cannot
-   * always parse says so here; the launcher then degrades that launch to an empty harvest with a
-   * bounded preview instead of promoting undecodable bytes to phase output. Decoders that treat
-   * every failure as fatal inherit the default and keep propagating.
-   */
+  fun sessionStarted(line: String): String? = null
+
   fun undecodable(error: Throwable): Boolean = false
 
   companion object {
     val PLAIN = decoder { DecodedAgentRunOutput(it) }
     val CLAUDE_JSON = decoder { stdout -> decodeClaudeJson(stdout) }
-    val CLAUDE_STREAM_JSON = decoder { stdout -> decodeClaudeStreamJson(stdout) }
-    val CODEX_JSONL = decoder { stdout -> decodeCodexJsonl(stdout) }
+    val CLAUDE_STREAM_JSON = decoder(::decodeClaudeStreamJson, ::claudeSessionStarted)
+    val CODEX_JSONL = decoder(::decodeCodexJsonl, ::codexSessionStarted)
     val CURSOR_STREAM_JSON: AgentRunOutputDecoder = object : AgentRunOutputDecoder {
       override fun decode(stdout: String): DecodedAgentRunOutput = decodeCursorStreamJson(stdout)
 
-      /**
-       * A truncated or interleaved Cursor stream is a transport defect, not a provider verdict: the
-       * remaining envelopes carry no answer we can read, so the launch is an empty harvest.
-       */
+      override fun sessionStarted(line: String): String? = structuredSession(line, ::claudeSessionStarted)
+
       override fun undecodable(error: Throwable): Boolean = error is CursorReviewStreamMalformedError
     }
 
-    private fun decoder(body: (String) -> DecodedAgentRunOutput): AgentRunOutputDecoder =
-      object : AgentRunOutputDecoder {
-        override fun decode(stdout: String): DecodedAgentRunOutput = body(stdout)
-      }
+    private fun decoder(body: (String) -> DecodedAgentRunOutput): AgentRunOutputDecoder = decoder(body) { null }
+
+    private fun decoder(
+      body: (String) -> DecodedAgentRunOutput,
+      session: (JsonNode) -> String?,
+    ): AgentRunOutputDecoder = object : AgentRunOutputDecoder {
+      override fun decode(stdout: String): DecodedAgentRunOutput = body(stdout)
+      override fun sessionStarted(line: String): String? = structuredSession(line, session)
+    }
   }
 }
 
@@ -225,48 +219,58 @@ private fun decodeClaudeJson(stdout: String): DecodedAgentRunOutput = runCatchin
   val root = structuredOutputMapper.readTree(stdout.trim())
   DecodedAgentRunOutput(
     text = root.path("result").takeIf { it.isTextual }?.asText().orEmpty(),
+    providerSessionId = root.path("session_id").takeIf { it.isTextual }?.asText()?.takeIf(String::isNotBlank),
   )
 }.getOrElse { DecodedAgentRunOutput(stdout) }
 
-/**
- * `--output-format stream-json` emits the same object `--output-format json` would have buffered as
- * its terminal `type: "result"` event, preceded by per-turn events. Decode that event and nothing
- * else so a streamed launch yields byte-identical phase output to a buffered one.
- */
 private fun decodeClaudeStreamJson(stdout: String): DecodedAgentRunOutput {
+  val providerSessionId = stdout.lineSequence()
+    .filter(String::isNotBlank)
+    .mapNotNull { line -> runCatching { structuredOutputMapper.readTree(line) }.getOrNull() }
+    .mapNotNull(::claudeSessionStarted)
+    .firstOrNull { it.isNotBlank() }
   val terminal = stdout.lineSequence()
     .filter(String::isNotBlank)
     .mapNotNull { line ->
-      // open agent stdout NDJSON: skip malformed lines
       runCatching { structuredOutputMapper.readTree(line) }.getOrNull()
     }
     .lastOrNull { event -> event.path("type").takeIf { it.isTextual }?.asText() == "result" }
-    // No terminal event means the stream was cut before Claude finished, not that the raw NDJSON is
-    // the answer. Handing the transport back makes the phase schema gate read a run of per-turn
-    // envelopes as conflicting candidates and blame the agent for output it never wrote, so this
-    // degrades to an empty harvest with a bounded excerpt, as the Cursor decoder already does.
     ?: return DecodedAgentRunOutput(
       text = "",
+      providerSessionId = providerSessionId,
       rawOutputPreview = stdout.take(RAW_OUTPUT_PREVIEW_MAX_CHARS),
     )
   return DecodedAgentRunOutput(
     text = terminal.path("result").takeIf { it.isTextual }?.asText().orEmpty(),
+    providerSessionId = providerSessionId,
   )
 }
 
 private fun decodeCodexJsonl(stdout: String): DecodedAgentRunOutput {
   var text: String? = null
+  var providerSessionId: String? = null
   var decodedEnvelope = false
   stdout.lineSequence().filter(String::isNotBlank).forEach { line ->
-    // open agent stdout NDJSON: skip malformed lines
     runCatching { structuredOutputMapper.readTree(line) }.getOrNull()?.let { event ->
       decodedEnvelope = true
+      providerSessionId = codexSessionStarted(event) ?: providerSessionId
       event.path("item").path("text").takeIf { it.isTextual }?.asText()?.let { text = it }
     }
   }
   return DecodedAgentRunOutput(
     text = text ?: if (decodedEnvelope) "" else stdout,
+    providerSessionId = providerSessionId,
   )
+}
+
+private fun structuredSession(line: String, session: (JsonNode) -> String?): String? {
+  if (line.isBlank()) return null
+  val event = try {
+    structuredOutputMapper.readTree(line)
+  } catch (_: JsonProcessingException) {
+    return null
+  }
+  return session(event)
 }
 
 internal const val RAW_OUTPUT_PREVIEW_MAX_CHARS = 2_000

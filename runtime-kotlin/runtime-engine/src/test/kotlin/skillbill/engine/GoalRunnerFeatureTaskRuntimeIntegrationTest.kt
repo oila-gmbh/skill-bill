@@ -303,7 +303,7 @@ class GoalRunnerFeatureTaskRuntimeIntegrationTest {
     assertIs<GoalRunnerRunReport.Stopped>(parity.report)
     val blocked = assertNotNull(parity.blockedChildReason())
     assertContains(blocked, "Audit made no progress")
-    assertContains(blocked, "repository fingerprint is unchanged")
+    assertContains(blocked, "unresolved acceptance criteria did not strictly decrease")
     assertTrue(parity.runtime.recorder.loadPhaseRecords(WORKFLOW_ID).orEmpty()["validate"] == null)
   }
 

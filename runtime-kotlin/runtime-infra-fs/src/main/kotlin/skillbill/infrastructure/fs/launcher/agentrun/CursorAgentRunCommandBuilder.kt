@@ -22,16 +22,8 @@ class CursorAgentRunCommandBuilder(
   override fun build(request: SkillRunRequest): AgentRunCommand {
     requireProcessLaunch(request, reviewIsolation)
     requireGovernedReviewLaunch(request, agent, governedReviewLaunchCapability)
-    // --stream-partial-output turns one answer into a run of incremental assistant deltas. That is
-    // what a caller asking for provider output wants, and precisely what a caller asking only for a
-    // liveness signal does not: the deltas are indistinguishable from finished turns at harvest
-    // time. Liveness falls back to process heartbeat instead, as Codex already does.
     val streamPartialOutput = request.streamProviderOutput
-    // stream-json carries the whole session — every turn, tool call and tool result — and its only
-    // harvestable event is the terminal one. A launch nobody is streaming pays that transport cost
-    // to have the answer arrive last, behind a capped drain that keeps the head. Buffer instead,
-    // exactly as Claude does, so an unstreamed launch harvests one small object.
-    val streaming = streamPartialOutput || request.streamOutputForLiveness
+    val streaming = streamPartialOutput || request.streamOutputForLiveness || request.auditRepairExecutionId != null
     val isReviewLaunch = request.reviewEvidenceBroker != null
     val reviewLaunchDirectory = request.reviewEvidenceEndpoint?.descriptor?.mcpConfigPath?.parent
 
@@ -69,17 +61,13 @@ class CursorAgentRunCommandBuilder(
     streaming: Boolean,
   ): List<String> = buildList {
     add("agent")
+    if (request.auditRepairResume) {
+      add("--resume")
+      add(requireNotNull(request.auditRepairSessionId))
+    }
     add("--print")
 
     if (isReviewLaunch) {
-      // --approve-mcps only admits the server; every tools/call still needs approval, and a
-      // --print launch auto-rejects what it cannot prompt for. Without --force the governed lane
-      // loads the evidence server, lists its tools, and is refused every read it attempts.
-      //
-      // --force also unlocks this agent's own file and shell tools, and the CLI honours no
-      // workspace-scoped permission file that could deny them back, so unlike the other agents
-      // this lane cannot be confined to broker-supplied evidence. What keeps it honest is the
-      // evidence accounting: a lane that answers without reading fails as unread.
       add("--force")
       add("--trust")
       add("--approve-mcps")
@@ -145,12 +133,6 @@ internal fun codexLivenessPolicy(request: SkillRunRequest): AgentRunIdlePolicy =
   AgentRunIdlePolicy.DB_PROGRESS_ONLY
 }
 
-/**
- * Fallback for a builder that cannot honor [SkillRunRequest.streamOutputForLiveness]. Such a launch
- * can never satisfy a durable-progress watchdog, so process liveness stands in and its wall-clock
- * budget remains the real bound. A read-only phase also qualifies for heartbeat extension because it
- * produces no durable workflow rows by construction.
- */
 internal fun unstreamedLivenessPolicy(request: SkillRunRequest): AgentRunIdlePolicy =
   if (request.streamOutputForLiveness || request.readOnlyPhase) {
     AgentRunIdlePolicy.HEARTBEAT_EXTENDED

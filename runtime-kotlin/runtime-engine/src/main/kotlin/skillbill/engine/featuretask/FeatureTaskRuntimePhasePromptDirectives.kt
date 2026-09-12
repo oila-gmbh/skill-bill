@@ -11,10 +11,6 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePriorGapMemory
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePriorReviewContext
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairLedger
 
-// Phase-scoped prompt directives and the per-phase task directive table, split out of
-// FeatureTaskRuntimePhasePromptComposer so the composer object stays within its size budget.
-// Validate Task-line specialization lives in FeatureTaskRuntimePhasePromptValidateDirectives.
-
 fun implementationContinuationDirective(
   phaseId: String,
   continuation: FeatureTaskRuntimeImplementationContinuation?,
@@ -42,18 +38,6 @@ fun implementationContinuationDirective(
   """.trimIndent()
 }
 
-/**
- * Why the previous attempt at a phase must be corrected, kept typed rather than as a bare string.
- *
- * A schema-gate rejection and a retryable `blocked`/`failed` envelope both re-enter the same bounded
- * semantic budget, but they are different events and must not be prompted, reported or dispositioned
- * alike: only the first is a rejection. Threading one nullable string made them indistinguishable at
- * the composer seam, which is how a schema-valid terminal envelope came to be told it was rejected.
- *
- * [correctiveRepairContext] is schema-gate only: the authorized bounded repair projection of the
- * rejected response. Retryable-terminal and incomplete-work paths must not carry it, so they never
- * receive a raw-output repair section.
- */
 class PriorAttemptCorrection private constructor(
   private val reason: String,
   private val kind: Kind,
@@ -87,13 +71,6 @@ class PriorAttemptCorrection private constructor(
   }
 }
 
-/**
- * Emitted when the prior attempt's repair receipt left carried review findings out.
- *
- * Deliberately not the schema-correction directive: the receipt validated. Telling its author the
- * output was rejected invites a re-serialization of the same two entries, which is exactly what has
- * to stop happening — what is missing is repair work on the named findings, not a better document.
- */
 fun findingCoverageDirective(priorFindingCoverage: String?): String {
   if (priorFindingCoverage.isNullOrBlank()) return ""
   return """
@@ -107,13 +84,6 @@ fun findingCoverageDirective(priorFindingCoverage: String?): String {
   """.trimIndent()
 }
 
-/**
- * Emitted when the prior attempt ended in a retryable `blocked` or `failed` envelope.
- *
- * Deliberately not the schema-correction directive: that envelope validated. Telling its author the
- * output was rejected and must be re-emitted describes an event that did not happen and invites a
- * cosmetic re-serialization of the same blocked state instead of an attempt at the blocker itself.
- */
 fun terminalRetryDirective(priorTerminalFailure: String?): String {
   if (priorTerminalFailure.isNullOrBlank()) return ""
   return """
@@ -127,10 +97,6 @@ fun terminalRetryDirective(priorTerminalFailure: String?): String {
   """.trimIndent()
 }
 
-/**
- * Everything the review-execution directive needs to state the run's review depth and scope. These
- * travel together from [FeatureTaskRuntimePhasePromptComposer.compose] and are only ever read as a set.
- */
 internal data class ReviewExecutionDirectiveInputs(
   val codeReviewMode: CodeReviewExecutionMode,
   val goalSubtaskReviewInput: GoalSubtaskReviewInput?,
@@ -142,8 +108,6 @@ internal data class ReviewExecutionDirectiveInputs(
   val priorReviewContext: FeatureTaskRuntimePriorReviewContext? = null,
 )
 
-// Emits for every commit phase: the runtime and agent never stage feature specs. A human operator
-// may already have committed them; leave those HEAD files alone and leave remaining spec dirt local.
 fun commitExclusionDirective(phaseId: String, issueKey: String): String {
   if (phaseId != FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_COMMIT_PUSH) {
     return ""
@@ -179,19 +143,6 @@ fun goalContinuationDirective(phaseId: String, suppressDecomposition: Boolean): 
     that prevents an implementable plan from being produced.
   """.trimIndent()
 }
-
-// One imperative task directive per phase; the briefing carries the spec-specific scope.
-// Validate Task-line specialization lives in FeatureTaskRuntimePhasePromptValidateDirectives.
-
-private const val AUDIT_NO_EARLIER_AUDIT_SENTENCE: String =
-  "A later audit re-checks every criterion from scratch, so you never need to account for what an " +
-    "earlier audit said."
-
-private const val AUDIT_STICKY_REJUSTIFICATION_SENTENCE: String =
-  "A later audit re-checks every criterion from scratch. When this briefing carries prior-gap memory, " +
-    "treat prior_audit_values as authoritative context: repeating a criterion already named in an " +
-    "earlier audit value string requires explicit re-justification — name what the prior implement " +
-    "claimed and why the tree still fails it."
 
 const val AUDIT_READONLY_EVIDENCE_SENTENCE: String =
   "All evidence is read-only repository facts: never run a build, a test, or any " +
@@ -275,29 +226,19 @@ val phaseDirectives: Map<String, String> = mapOf(
     "boundary_context_unavailable — may support the disposition but does not gate settlement. Do " +
     "not edit the worktree.",
   FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT to
-    "Answer one question: is every acceptance criterion in the briefing implemented in the repository? " +
-    "Read the tree itself at the resolved checkpoint — the diff over its base_ref/head_ref plus its " +
-    "scoped_owned_paths. The upstream implement value is structured prose (former implementation_receipt " +
-    "JSON stuffed inside value): read and interpret it as a producer CLAIM, not evidence. Never mark a " +
-    "criterion satisfied because that string lists a completed task id, a changed path, or " +
-    "reconciliation_evidence claiming reconciled. A claim the tree contradicts is itself unmet. " +
-    "Report the answer as envelope verdict plus produced_outputs.value: verdict satisfied when every " +
-    "criterion is implemented, or verdict gaps_found when one or more remain unmet. Stuff the gap " +
-    "report inside value as structured prose (for example a JSON object with gaps and " +
-    "non_blocking_findings arrays); the runtime does not cross-check that inner shape against the " +
-    "verdict. Every unmet gap must name its criterion ref and one dense note that both diagnoses what " +
-    "is missing and hands implement a complete fix plan. Before you emit a gap, plan the repair " +
-    "carefully: name the minimal production change that closes the criterion; inspect blast radius " +
-    "across callers, DI/bindings, sibling phases, contracts, and fixtures that share the touched " +
-    "surface; confirm the plan does not regress neighboring criteria or break other functionality; " +
-    "and confirm the plan is complete enough that one implement round can close the gap without " +
-    "inventing follow-up work or opening a new gap. Prefer a slightly broader correct plan over a " +
-    "narrow patch that leaves a sibling hole for the next audit. Do not emit a separate repair-plan " +
-    "object, per-item identifiers, or verification bookkeeping — the note inside value is the plan. " +
-    "A later audit re-checks every criterion from scratch, so you never need to account for what an " +
-    "earlier audit said unless this briefing carries prior_gap_memory. Judge production behavior and " +
-    "production implementation only: test adequacy, coverage, fixtures, and assertions are never " +
-    "unmet criteria. " +
+    "Assess every acceptance criterion against the repository at the runtime-owned checkpoint. " +
+    "Treat implementation receipts as claims that require repository evidence. Record all gaps " +
+    "before repairing. For each gap, identify the failing production behavior, its cause, the " +
+    "authorized paths, and the observable evidence that will demonstrate closure. Inspect callers, " +
+    "bindings and contracts before choosing the repair. Apply the authorized repairs in this session " +
+    "and re-audit every criterion against the retained post-repair checkpoint. " +
+    "A changed file or a repair receipt does not prove an acceptance criterion is satisfied. " +
+    "Preserve validation obligations for the downstream validation phase. " +
+    "When a criterion explicitly requires tests, inspect the required test behavior in source and " +
+    "record execution as pending validation when this phase cannot run it. " +
+    "Settle with the exact durable final assessment only after its stage is satisfied. " +
+    "A paused stage or a rejected stage request ends repair work. Report the blocking reason and " +
+    "wait for runtime recovery or a fresh operator decision; do not edit code to bypass the protocol. " +
     AUDIT_READONLY_EVIDENCE_SENTENCE,
   FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VALIDATE to RUNTIME_OWNED_VALIDATE_PHASE_TASK,
   FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_WRITE_HISTORY to
@@ -322,23 +263,43 @@ val phaseDirectives: Map<String, String> = mapOf(
     "idempotently, and emit pr_result with the PR URL/number, title, and whether a new PR was created.",
 )
 
-/**
- * The audit phase task directive, memory- and gate-proof-aware. A first or forward audit without
- * gate-proof ACs returns the shared static wording byte-for-byte; memory swaps the blank-slate
- * sentence; gate-proof ACs swap the absolute no-command evidence sentence.
- */
 fun auditPhaseTaskDirective(
   memory: FeatureTaskRuntimePriorGapMemory?,
   acceptanceCriteria: List<String> = emptyList(),
 ): String {
-  var text = phaseDirectives.getValue(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT)
-  if (memory != null) {
-    text = text.replace(AUDIT_NO_EARLIER_AUDIT_SENTENCE, AUDIT_STICKY_REJUSTIFICATION_SENTENCE)
+  val evidence = if (acceptanceCriteriaRequireGateProof(acceptanceCriteria)) {
+    AUDIT_GATE_PROOF_EVIDENCE_SENTENCE
+  } else {
+    AUDIT_READONLY_EVIDENCE_SENTENCE
   }
-  if (acceptanceCriteriaRequireGateProof(acceptanceCriteria)) {
-    text = text.replace(AUDIT_READONLY_EVIDENCE_SENTENCE, AUDIT_GATE_PROOF_EVIDENCE_SENTENCE)
+  val task = phaseDirectives.getValue(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT)
+    .removeSuffix(AUDIT_READONLY_EVIDENCE_SENTENCE)
+  val history = if (memory == null) {
+    "Read restored_cycle_evidence when present before diagnosing or repairing. "
+  } else {
+    "Account for prior_audit_values and restored_cycle_evidence. For each recurring gap, name " +
+      "the earlier repair, why it failed, and what new evidence supports a different repair. "
   }
-  return text
+  return task + history + evidence
+}
+
+fun auditRepairCycleDirective(phaseId: String): String {
+  if (phaseId != FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT) return ""
+  return """
+    ## Audit-repair cycle
+    This audit owns diagnosis, authorized repair, checkpoint capture, and final re-audit in this same
+    session. Use the durable feature_task_audit_stage channel described below. First record a diagnosis
+    covering every acceptance criterion, including repair_id and repair_guidance for every unmet criterion.
+    Do not authorize repair until the repository still matches that diagnosis checkpoint. Apply only the
+    authorized repairs, record each outcome, attach the post-repair checkpoint, and submit a complete
+    final audit against that checkpoint. Advance only after the durable stage response reports satisfied.
+    If repair cannot proceed, record a paused stage with the unresolved criteria and operator reason.
+    After a paused acknowledgement or stage rejection, stop mutations and emit a blocked outcome.
+    Never retry a failed protocol operation by inventing another cycle, checkpoint, or request identity.
+    For every recurring gap, identify the earlier repair, why it failed, and the new evidence for the
+    next repair. File changes alone do not show progress. Preserve every pending validation obligation.
+    A final response claiming gaps is not a substitute for durable stage evidence.
+  """.trimIndent()
 }
 
 fun implementPhaseTaskDirective(auditGapImplement: Boolean, acceptanceCriteria: List<String>): String {

@@ -1,13 +1,18 @@
 package skillbill.engine.featuretask
 
+import skillbill.contracts.JsonCodec
+import skillbill.contracts.SharedPayloadKeys
 import skillbill.engine.featuretask.model.FeatureTaskRuntimePhaseStateRequest
+import skillbill.error.AuditRepairCycleConflictError
 import skillbill.error.FeatureTaskRuntimePhaseOrderViolationError
+import skillbill.error.InvalidAuditRepairCycleSchemaError
 import skillbill.goalrunner.subtaskreview.GoalSubtaskReviewSummaryReducer
 import skillbill.ports.workflow.gitops.repositoryCheckpointFingerprint
 import skillbill.workflow.goal.model.GoalSubtaskReviewState
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import skillbill.workflow.taskruntime.FeatureTaskRuntimeQualityGateRouting
 import skillbill.workflow.taskruntime.FeatureTaskRuntimeTransitionFunction
+import skillbill.workflow.taskruntime.ProsePhaseOutputSynthesizer
 import skillbill.workflow.taskruntime.model.AUDIT_GAP_PAUSE_DECISION_ABANDON_SUBTASK
 import skillbill.workflow.taskruntime.model.AUDIT_GAP_PAUSE_DECISION_RETRY_FIX
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditGapPause
@@ -17,6 +22,7 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutputRepairE
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeTransitionContext
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeVerdict
 import skillbill.workflow.taskruntime.model.NormalizedFeatureTaskRuntimePhaseOutput
+import skillbill.workflow.taskruntime.model.SettlementEnvelopeRequest
 import skillbill.workflow.taskruntime.model.requireAcceptedOutput
 
 object FeatureTaskRuntimeRunLoopDrive {
@@ -197,13 +203,7 @@ object FeatureTaskRuntimeRunLoopDrive {
     pause: FeatureTaskRuntimeAuditGapPause,
   ): PhaseSettlement {
     val auditPhaseId = FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT
-    if (
-      runLoop.state.isComplete(auditPhaseId) &&
-      runLoop.state.verdictFor(auditPhaseId) == FeatureTaskRuntimeVerdict.SATISFIED
-    ) {
-      consumeAuditGapRetryGrant(runLoop, pause)
-      return PhaseSettlement.completed(auditPhaseId, FeatureTaskRuntimeVerdict.SATISFIED)
-    }
+    val attempt = runLoop.state.recordFor(auditPhaseId)?.attemptCount ?: 1
     val outputArtifact = runLoop.state.recordFor(auditPhaseId)?.outputArtifact
       ?: return FeatureTaskRuntimeRunLoopDrive.blockCarriedForwardAudit(runLoop, "missing")
     return runCatching {
@@ -214,6 +214,20 @@ object FeatureTaskRuntimeRunLoopDrive {
         auditPhaseId,
         acceptedOutput.normalizedOutput.envelope,
       )
+      if (derivedVerdict != FeatureTaskRuntimeVerdict.SATISFIED) {
+        return blockCarriedForwardAudit(runLoop, "the carried-forward audit is not a satisfied final assessment")
+      }
+      val produced = acceptedOutput.normalizedOutput.envelope[SharedPayloadKeys.PRODUCED_OUTPUTS]
+        ?.let(JsonCodec::anyToStringAnyMap)
+      val value = produced?.get(SharedPayloadKeys.VALUE) as? String
+      if (value == null || !runLoop.phaseSettlementService.auditRepairReady(
+          runLoop.request.workflowId,
+          attempt,
+          value,
+        )
+      ) {
+        return blockCarriedForwardAudit(runLoop, "the durable final audit is not eligible")
+      }
       if (!runLoop.state.isComplete(auditPhaseId)) {
         recordCarriedForwardAudit(runLoop, acceptedOutput.normalizedOutput, acceptedOutput.repairEvidence)
       }
@@ -231,10 +245,9 @@ object FeatureTaskRuntimeRunLoopDrive {
   }
 
   fun consumeAuditGapRetryGrant(runLoop: FeatureTaskRuntimeRunLoop, pause: FeatureTaskRuntimeAuditGapPause) {
-    runLoop.recorder.persistAuditGapPause(
-      runLoop.request.workflowId,
-      pause.copy(grantConsumed = true, operatorDecision = null),
-    )
+    if (!runLoop.recorder.consumeAuditGapRetryGrant(runLoop.request.workflowId, pause)) {
+      throw AuditRepairCycleConflictError("The audit operator decision changed before it could be consumed.")
+    }
   }
 
   fun recordCarriedForwardAudit(
@@ -527,9 +540,6 @@ object FeatureTaskRuntimeRunLoopDrive {
         return AuditGapDriveAction.Stop
       }
       AUDIT_GAP_PAUSE_DECISION_RETRY_FIX -> {
-        if (!auditGapPause.grantConsumed) {
-          runLoop.session.auditGapRetryResumePending = true
-        }
         return AuditGapDriveAction.Continue
       }
       else -> {
@@ -563,7 +573,16 @@ object FeatureTaskRuntimeRunLoopDrive {
       runLoop.session.pendingReentry = null
       runLoop.session.activeReentry = null
     }
-    var phaseId: String? = explicitResumePhase
+    val auditRepairResume = runLoop.recorder.loadAuditGapPause(runLoop.request.workflowId)
+      ?.takeIf { it.operatorDecision == AUDIT_GAP_PAUSE_DECISION_RETRY_FIX && !it.grantConsumed }
+      ?.let { FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT }
+    if (auditRepairResume != null &&
+      runLoop.state.verdictFor(auditRepairResume) == FeatureTaskRuntimeVerdict.SATISFIED
+    ) {
+      val carried = settleCarriedForwardAuditGapAudit(runLoop)
+      if (carried?.completedPhaseId == null) return
+    }
+    var phaseId: String? = auditRepairResume ?: explicitResumePhase
       ?: runLoop.session.pendingReentry?.phaseId
       ?: runLoop.transitions.forwardPhaseIds.first()
     while (phaseId != null) {
@@ -581,8 +600,8 @@ object FeatureTaskRuntimeRunLoopDrive {
     }
   }
 
-  fun advancePhaseReason(runLoop: FeatureTaskRuntimeRunLoop, phaseId: String): String? =
-    if (runLoop.state.isComplete(phaseId)) {
+  fun advancePhaseReason(runLoop: FeatureTaskRuntimeRunLoop, phaseId: String): String? = try {
+    if (runLoop.state.isComplete(phaseId) || restoreSatisfiedAudit(runLoop, phaseId)) {
       runLoop.state.outputFor(phaseId)
         ?.takeIf { phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PLAN }
         ?.let { FeatureTaskRuntimeRunLoopBackwardEdge.applyPlanningStop(runLoop, phaseId, it) }
@@ -592,6 +611,38 @@ object FeatureTaskRuntimeRunLoopDrive {
         phaseId,
       ) ?: FeatureTaskRuntimeRunLoopBackwardEdge.runPhaseFor(runLoop, phaseId)
     }
+  } catch (error: AuditRepairCycleConflictError) {
+    auditRecoveryFailure(runLoop, error)
+  } catch (error: InvalidAuditRepairCycleSchemaError) {
+    auditRecoveryFailure(runLoop, error)
+  }
+
+  private fun auditRecoveryFailure(runLoop: FeatureTaskRuntimeRunLoop, error: Throwable): String {
+    runLoop.diagnostics.warning("Durable audit recovery failed before another launch.", error)
+    return "Durable audit recovery requires operator action: ${error.message.orEmpty()}"
+  }
+
+  private fun restoreSatisfiedAudit(runLoop: FeatureTaskRuntimeRunLoop, phaseId: String): Boolean {
+    if (phaseId != FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT) return false
+    val attempt = runLoop.state.recordFor(phaseId)?.attemptCount ?: 1
+    val cycle = runLoop.phaseSettlementService.auditRepairCycle(runLoop.request.workflowId, attempt)
+    val final = cycle?.finalAssessment ?: return false
+    if (!runLoop.phaseSettlementService.auditRepairReady(runLoop.request.workflowId, attempt, final.value)) return false
+    val envelope = ProsePhaseOutputSynthesizer.envelopeFromSettlement(
+      SettlementEnvelopeRequest(
+        phaseId = phaseId,
+        status = "completed",
+        value = final.value,
+        summary = "Restored the durable satisfied final audit.",
+        verdict = FeatureTaskRuntimeVerdict.SATISFIED.wireValue,
+      ),
+    )
+    val accepted = runLoop.outputValidator.validatePhaseOutput(JsonCodec.mapToJsonString(envelope), phaseId)
+      .requireAcceptedOutput(phaseId)
+    recordCarriedForwardAudit(runLoop, accepted.normalizedOutput, accepted.repairEvidence)
+    runLoop.diagnostics.warning("Restored satisfied audit cycle '${cycle.identity.cycleId}' without launching repair.")
+    return true
+  }
 
   internal fun settleAdvanceOutcome(
     runLoop: FeatureTaskRuntimeRunLoop,

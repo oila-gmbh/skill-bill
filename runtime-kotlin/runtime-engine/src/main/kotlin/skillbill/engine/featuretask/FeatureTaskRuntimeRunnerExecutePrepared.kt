@@ -10,7 +10,10 @@ import skillbill.engine.featuretask.validation.durableValidationChangedPaths
 import skillbill.engine.featuretask.validation.resolveRequiredValidationCommand
 import skillbill.error.FeatureTaskRuntimeOperatorDecisionRejectedError
 import skillbill.workflow.decomposition.model.SpecSource
+import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
+import skillbill.workflow.taskruntime.model.AuditRepairCycle
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeTransitionDeclaration
+import java.util.concurrent.CancellationException
 
 fun FeatureTaskRuntimeRunner.buildExecutePreparedRunTelemetryContext(
   runRequest: FeatureTaskRuntimeRunRequest,
@@ -27,6 +30,7 @@ fun FeatureTaskRuntimeRunner.buildExecutePreparedRunTelemetryContext(
   reviewFixIterationCount = { loadReviewFixIterationCount(runRequest) },
   auditGapIterationCount = { loadAuditGapIterationCount(runRequest) },
   auditRepairProgress = { loadAuditRepairProgress(runRequest) },
+  auditRepairCycle = { auditCycleForTelemetry(runRequest) },
   regenerationTelemetry = { loadRegenerationTelemetry(runRequest) },
   findingVerificationTelemetry = { loadFindingVerificationTelemetry(runRequest) },
   phaseTokenData = { serializeTokenData(phaseTokenAccumulator) },
@@ -124,3 +128,16 @@ fun FeatureTaskRuntimeRunner.finalizeExecutePreparedRunReport(
   )
   return terminalReport
 }
+
+private fun FeatureTaskRuntimeRunner.auditCycleForTelemetry(request: FeatureTaskRuntimeRunRequest): AuditRepairCycle? =
+  runCatching {
+    phaseSettlementService.auditRepairCycle(
+      request.workflowId,
+      recorder.loadPhaseRecords(request.workflowId)
+        ?.get(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT)?.attemptCount ?: 1,
+    )
+  }.getOrElse { error ->
+    if (error is CancellationException) throw error
+    diagnostics.warning("Audit completion telemetry could not read durable cycle evidence.", error)
+    null
+  }

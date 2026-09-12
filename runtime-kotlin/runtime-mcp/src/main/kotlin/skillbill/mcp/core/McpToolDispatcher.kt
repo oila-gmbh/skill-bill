@@ -3,6 +3,7 @@ package skillbill.mcp.core
 import skillbill.application.workflow.model.WorkflowFamilyKind
 import skillbill.contracts.SharedPayloadKeys
 import skillbill.mcp.featuretask.featureTaskAuditSettle
+import skillbill.mcp.featuretask.featureTaskAuditStage
 import skillbill.mcp.featuretask.featureTaskPhaseBlock
 import skillbill.mcp.featuretask.featureTaskPhaseComplete
 import skillbill.mcp.lifecycle.featureVerifyFinished
@@ -35,6 +36,7 @@ object McpToolDispatcher {
     mapOf(
       "doctor" to { _, context -> McpRuntime.doctor(context) },
       "feature_task_audit_settle" to ::featureTaskAuditSettle,
+      "feature_task_audit_stage" to ::featureTaskAuditStage,
       "feature_task_phase_block" to ::featureTaskPhaseBlock,
       "feature_task_phase_complete" to ::featureTaskPhaseComplete,
       "feature_verify_finished" to ::featureVerifyFinished,

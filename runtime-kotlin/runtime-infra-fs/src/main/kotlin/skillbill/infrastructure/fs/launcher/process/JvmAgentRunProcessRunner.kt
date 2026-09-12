@@ -85,6 +85,11 @@ class JvmAgentRunProcessRunner(
     }
   }
 
+  private fun stopOwnedProcess(process: Process) {
+    process.descendants().use { descendants -> descendants.forEach { it.destroyForcibly() } }
+    process.destroyForcibly()
+  }
+
   private fun runStartedProcess(
     process: Process,
     stdoutStream: InputStream,
@@ -101,6 +106,7 @@ class JvmAgentRunProcessRunner(
       outputStream = AgentRunOutputStream.STDOUT,
       outputSink = request.outputSink,
       onChunkRead = { outputTracker.markObserved() },
+      onFailure = { stopOwnedProcess(process) },
     ).also { it.start() }
     val stderr = CappedUtf8Drain(
       input = stderrStream,
@@ -108,6 +114,7 @@ class JvmAgentRunProcessRunner(
       outputStream = AgentRunOutputStream.STDERR,
       outputSink = request.outputSink,
       onChunkRead = { outputTracker.markObserved() },
+      onFailure = { stopOwnedProcess(process) },
     ).also { it.start() }
     writeAndCloseStdin(process, request.stdinText)
     lifecycleEmitter.emitStarted(process.isAlive)
@@ -161,6 +168,8 @@ class JvmAgentRunProcessRunner(
     liveProcesses.remove(process)
     stdout.join()
     stderr.join()
+    val drainFailure = stdout.failure ?: stderr.failure
+    if (drainFailure != null) throw drainFailure
     val terminalOutcome = when {
       interrupted -> GoalProgressOutcome.CANCELLED
       finished -> GoalProgressOutcome.SUCCEEDED

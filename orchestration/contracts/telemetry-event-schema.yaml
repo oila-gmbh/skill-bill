@@ -96,6 +96,7 @@ discriminator:
 oneOf:
   - $ref: "#/$defs/doctorEvent"
   - $ref: "#/$defs/featureTaskAuditSettleEvent"
+  - $ref: "#/$defs/featureTaskAuditStageEvent"
   - $ref: "#/$defs/featureTaskPhaseBlockEvent"
   - $ref: "#/$defs/featureTaskPhaseCompleteEvent"
   - $ref: "#/$defs/featureVerifyFinishedEvent"
@@ -504,6 +505,92 @@ $defs:
         type: string
         minLength: 1
       summary:
+        type: string
+        minLength: 1
+
+  featureTaskAuditStageEvent:
+    type: object
+    additionalProperties: false
+    required:
+      - event_name
+      - contract_version
+      - workflow_id
+      - audit_attempt
+      - execution_id
+      - session_id
+      - cycle_id
+      - owner_token
+      - fencing_generation
+      - expected_revision
+      - request_id
+      - stage
+    properties:
+      event_name:
+        const: feature_task_audit_stage
+      contract_version:
+        const: "1.11.0"
+      workflow_id:
+        type: string
+        minLength: 1
+      audit_attempt:
+        type: integer
+        minimum: 1
+      execution_id:
+        type: string
+        minLength: 1
+      session_id:
+        type: string
+        minLength: 1
+      cycle_id:
+        type: string
+        minLength: 1
+      owner_token:
+        type: string
+        minLength: 1
+      fencing_generation:
+        type: integer
+        minimum: 1
+      expected_revision:
+        type: integer
+        minimum: 0
+      request_id:
+        type: string
+        minLength: 1
+      stage:
+        type: string
+        enum: [diagnosis, authorized_repair, checkpoint_pending, final_audit, satisfied, paused]
+      revision:
+        type: integer
+        minimum: 0
+      recorded_at:
+        type: string
+        minLength: 1
+      criterion_refs:
+        type: array
+        items:
+          type: string
+          minLength: 1
+      legacy_evidence:
+        type: string
+        minLength: 1
+      assessment:
+        type: object
+        additionalProperties: true
+      repository_fingerprint:
+        type: string
+        minLength: 1
+      checkpoint_intent:
+        type: string
+        minLength: 1
+      checkpoint:
+        type: object
+        additionalProperties: true
+      repair_outcomes:
+        type: array
+        items:
+          type: object
+          additionalProperties: true
+      reason:
         type: string
         minLength: 1
 

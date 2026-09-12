@@ -87,6 +87,10 @@ class DatabaseMigrationsTest {
         34 to "allow-goal-planning-phase-output-0-6",
         35 to "add-feature-task-phase-settlements",
         36 to "add-agent-activity-stamps",
+        37 to "add-audit-repair-cycles",
+        38 to "add-audit-repair-launch-bindings",
+        39 to "retain-audit-launch-checkpoint",
+        40 to "pin-active-audit-cycle",
       ),
       migrationDefinitions,
     )
@@ -275,8 +279,6 @@ class DatabaseMigrationsTest {
       writer.createStatement().use { it.execute("BEGIN IMMEDIATE") }
       try {
         DriverManager.getConnection("jdbc:sqlite:$dbPath").use { reader ->
-          // busy_timeout = 0 turns any attempt to take the write lock into an immediate failure, so a
-          // passing run proves the gate skipped the transaction instead of waiting out a timeout.
           reader.createStatement().use { it.execute("PRAGMA busy_timeout = 0") }
           val startedAt = System.nanoTime()
           DatabaseMigrations.apply(reader)
@@ -294,8 +296,6 @@ class DatabaseMigrationsTest {
   fun `racing applies re-derive in lock and apply each pending migration exactly once`() {
     val dbPath = Files.createTempDirectory("runtime-kotlin-db-gate-race").resolve("metrics.db")
     DatabaseRuntime.ensureDatabase(dbPath).use { connection ->
-      // Version 13 renames and rebuilds the planning tables, so a second application against an
-      // already-rebuilt schema fails loudly. Both racers see it pending; only one may run it.
       connection.createStatement().use { it.executeUpdate("DELETE FROM schema_migrations WHERE version = 13") }
     }
     val ready = CountDownLatch(2)
@@ -334,8 +334,6 @@ class DatabaseMigrationsTest {
   fun `column heal still runs on a write capable open with no pending migration`() {
     val dbPath = Files.createTempDirectory("runtime-kotlin-db-gate-column-heal").resolve("metrics.db")
     DatabaseRuntime.ensureDatabase(dbPath).use { connection ->
-      // Drop a column an already-applied migration body appends today: the ledger stays complete and
-      // name-keyed, so DatabaseMigrations.apply short-circuits and only the column heal can restore it.
       connection.createStatement().use {
         it.executeUpdate("ALTER TABLE feature_task_workflows DROP COLUMN interruption_reason")
       }
@@ -343,8 +341,6 @@ class DatabaseMigrationsTest {
       assertFalse(versionIsPrimaryKey(connection), "The ledger must already be name-keyed for this to gate.")
       assertEquals(DatabaseMigrations.migrations.size, migrationRows(connection).size)
       connection.createStatement().use {
-        // state_entered_at is NOT NULL in the base schema, so an unset value is the empty string the
-        // heal's COALESCE treats as missing; it must fall back to started_at.
         it.executeUpdate(
           """
           INSERT INTO feature_task_workflows (
@@ -463,13 +459,9 @@ class DatabaseMigrationsTest {
           row.version == 29 && row.name == "rekey-diagnostic-evidence-by-repair-turn"
         },
       )
-      // Every carried-across row lands at turn 0, which is the key an ordinary attempt still writes.
       assertEquals(listOf(0), producerEvidenceRepairTurns(connection))
       assertEquals(payload.size.toLong(), producerEvidenceByteSizes(connection).single())
       assertEquals(listOf(identity to 0), rejectedDiagnosticIdentitiesAndTurns(connection))
-      // The rebuild drops the table, and DROP TABLE takes every index with it. The version-14
-      // retention index is not in the base schema and version 14 is already in the ledger, so
-      // nothing else would put it back — markExpired would silently regress to a full scan.
       assertEquals(
         listOf(
           "idx_rejected_output_diagnostic_retention",
@@ -843,8 +835,6 @@ class DatabaseMigrationsEnsureDatabaseTest {
     }
   }
 
-  // SKILL-136 subtask 5 AC-007: lane attribution is additive. A store that predates it gains the
-  // table and the finding columns without losing a single recorded review row.
   @Test
   fun `ensureDatabase adds review run lane attribution to a legacy store without losing rows`() {
     val dbPath = Files.createTempDirectory("runtime-kotlin-db-migrations").resolve("legacy-review-lanes.db")
@@ -872,8 +862,6 @@ class DatabaseMigrationsEnsureDatabaseTest {
     }
   }
 
-  // SKILL-136 subtask 6 AC-001/AC-008: the outbox rebuild backfills '' to NULL, preserves genuine
-  // error text verbatim, and never drops a row.
   @Test
   fun `relaxing telemetry outbox last_error backfills empty strings and preserves error text`() {
     val dbPath = Files.createTempDirectory("runtime-kotlin-outbox-migration").resolve("legacy-outbox.db")
@@ -907,8 +895,6 @@ class DatabaseMigrationsEnsureDatabaseTest {
     }
   }
 
-  // SKILL-163 AC-002/AC-005: an existing store gains skill_bill_version on startup, and every row
-  // that predates it survives with a NULL version rather than being dropped or backfilled.
   @Test
   fun `opening a legacy telemetry outbox adds skill_bill_version and preserves version-less rows`() {
     val dbPath = Files.createTempDirectory("runtime-kotlin-outbox-version").resolve("legacy-outbox.db")
@@ -951,10 +937,6 @@ class DatabaseMigrationsEnsureDatabaseTest {
     }
   }
 
-  // AC-003/AC-008: the key columns arrive through ensureColumn, so pre-existing ledger rows survive
-  // and are marked unresolved rather than being defaulted to a guessed review run.
-  // AC-003/AC-008: the key columns arrive through ensureColumn, so pre-existing ledger rows survive
-  // and are marked unresolved rather than being defaulted to a guessed review run.
   @Test
   fun `adding the review finding outcome key preserves existing ledger rows as unresolved`() {
     val dbPath = Files.createTempDirectory("runtime-kotlin-outcome-migration").resolve("legacy-ledger.db")
@@ -998,11 +980,6 @@ class DatabaseMigrationsEnsureDatabaseTest {
     }
   }
 
-  /**
-   * AC-007's real-store check. It needs a real ~91.5 MB review-metrics store, which is far too large
-   * to commit, so it is env-gated on SKILL_BILL_REAL_STORE_DB and reports as skipped when unset. The
-   * store is copied first: migrations never run against the operator's live database.
-   */
   @Test
   fun `migrating a copy of a real review metrics store preserves every table row count`() {
     val realStore = requireRealStore()
@@ -1013,8 +990,6 @@ class DatabaseMigrationsEnsureDatabaseTest {
     DatabaseRuntime.ensureDatabase(copy).close()
     val after = DriverManager.getConnection("jdbc:sqlite:$copy").use(::allTableRowCounts)
 
-    // schema_migrations is the ledger of what has been applied, so it gains one row for every
-    // migration the store was behind on. Every table that carries data must survive untouched.
     before.filterKeys { it != SCHEMA_MIGRATIONS_TABLE }.forEach { (table, count) ->
       assertEquals(count, after[table], "Migration must preserve every row of '$table'.")
     }
@@ -1026,12 +1001,6 @@ class DatabaseMigrationsEnsureDatabaseTest {
 }
 
 class DatabaseMigrationsReviewAttributionTest {
-  /**
-   * SKILL-136 subtask 6 AC-008/AC-009. The row-count harness above proves nothing is lost; this one
-   * proves the migrated data is *correct* at real volume — the outbox backfill actually landed, no
-   * finding was orphaned, and the outbox still drains. Same env gate and same copy-first discipline:
-   * the operator's live store is never migrated, mutated, or deleted.
-   */
   @Test
   fun `migrating a copy of a real review metrics store leaves referential integrity sound`() {
     val realStore = requireRealStore()
@@ -1071,7 +1040,6 @@ class DatabaseMigrationsReviewAttributionTest {
         "AC-009: no finding may be left without its review_runs parent.",
       )
 
-      // AC-009: the outbox still drains fully with the nullable column in place.
       val store = TelemetryOutboxStore(connection)
       val pendingIds = store.listPending(null).map(TelemetryOutboxRecord::id)
       store.markSynced(pendingIds)
@@ -1228,9 +1196,6 @@ class DatabaseMigrationsReviewAttributionTest {
 
   @Test
   fun `ensureDatabase heals goal subtask agent attribution columns on a fully version-recorded legacy database`() {
-    // SKILL-89: a DB created before the agent-attribution columns existed already records migration
-    // version 3, so editing the applied migration body is a silent no-op. The unconditional column
-    // ensure must heal the two columns on every startup.
     val dbPath = Files.createTempDirectory("runtime-kotlin-db-migrations").resolve("legacy-goal-subtask.db")
     createLegacyGoalSubtaskEventsDatabase(dbPath)
 
@@ -1338,9 +1303,6 @@ class DatabaseMigrationsReviewAttributionTest {
     }
   }
 
-  // SKILL-136 subtask 4 AC-004/AC-006: a legacy review_runs table gains the canonical columns on
-  // open, existing raw values are preserved untouched, and the unambiguous-only backfill collapses
-  // the observed prose variants to one row per pack and one row per stack.
   @Test
   fun `legacy review runs gain canonical attribution columns and an unambiguous backfill`() {
     val dbPath = Files.createTempDirectory("runtime-kotlin-review-canonical-backfill").resolve("metrics.db")
@@ -1359,8 +1321,6 @@ class DatabaseMigrationsReviewAttributionTest {
       )
       assertEquals(expectedRowCount, rowCount(connection, "review_runs"))
 
-      // The 6 routed-skill and 5 stack prose variants collapse; only the deliberately ambiguous row
-      // stays behind, and it stays as the explicit unresolved marker rather than being bucketed.
       assertEquals(
         mapOf("bill-kmp-code-review" to 11, "unresolved" to 1),
         groupCount(connection, "routed_skill_canonical"),
@@ -1372,7 +1332,6 @@ class DatabaseMigrationsReviewAttributionTest {
       )
       assertEquals("main..HEAD", reviewRunColumn(connection, "rvw-skill-0", "detected_scope_detail"))
 
-      // Raw text is never rewritten by the backfill.
       LEGACY_ROUTED_SKILL_VARIANTS.forEachIndexed { index, routedSkill ->
         assertEquals(routedSkill, reviewRunColumn(connection, "rvw-skill-$index", "routed_skill"))
       }
@@ -1381,8 +1340,6 @@ class DatabaseMigrationsReviewAttributionTest {
     }
   }
 
-  // SKILL-136 subtask 4 AC-004: re-opening the store re-runs nothing — the collapsed cardinality and
-  // the retained raw text stay exactly as the first open left them.
   @Test
   fun `the review attribution backfill is idempotent across repeated opens`() {
     val dbPath = Files.createTempDirectory("runtime-kotlin-review-canonical-reopen").resolve("metrics.db")
@@ -1401,9 +1358,6 @@ class DatabaseMigrationsReviewAttributionTest {
     }
   }
 
-  // Seeds a legacy review_runs table carrying the observed prose variants and returns the row count.
-  // SKILL-136 subtask 4 AC-002/AC-006: the backfill is a one-shot ledger migration that never
-  // overwrites an ingestion-computed canonical and converges instead of rewriting rows on every open.
   @Test
   fun `review attribution backfill runs once and never overwrites ingestion canonicals`() {
     val dbPath = Files.createTempDirectory("runtime-kotlin-review-canonical-converge").resolve("metrics.db")
@@ -1432,8 +1386,6 @@ class DatabaseMigrationsReviewAttributionTest {
 
     DatabaseRuntime.ensureDatabase(dbPath).use { connection ->
       assertEquals("unresolved", reviewRunColumn(connection, "rvw-unresolvable", "routed_skill_canonical"))
-      // Stand in for a value ingestion resolved against the discovered pack catalog: the backfill's own
-      // vocabulary would not produce it, so re-running must leave it alone.
       connection.createStatement().use { statement ->
         statement.execute(
           "UPDATE review_runs SET routed_skill_canonical = 'bill-acme-code-review' " +
@@ -1459,8 +1411,6 @@ class DatabaseMigrationsReviewAttributionTest {
     }
   }
 
-  // SKILL-136 subtask 4 AC-006: run against a COPY of a real review-metrics store by exporting
-  // SKILL_BILL_MIGRATION_FIXTURE_DB. Unset (the CI default) the test skips so the suite stays hermetic.
   @Test
   fun `migrating a copy of a real review metrics store preserves every row`() {
     val source = requireGatedStore(MIGRATION_FIXTURE_ENV)

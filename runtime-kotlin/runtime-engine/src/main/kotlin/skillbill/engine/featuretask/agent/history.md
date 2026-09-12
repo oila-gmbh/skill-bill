@@ -1,5 +1,14 @@
 # featuretask runtime boundary history
 
+## [2026-09-12] SKILL-240 subtask 1 — Durable session ownership, recovery and operator control
+Areas: runtime-engine/featuretask, runtime-infra-fs/launcher/agentrun, featuretask model tests
+- Audit-repair stage requests derive omitted post-diagnosis revisions from the expected revision, while settlement prioritizes the active owning cycle during recovery.
+- Provider output sinks flush an unterminated final event before session identity validation, preserving structured provider attribution across chunk boundaries.
+- Pattern: derive replay-safe defaults at the codec boundary and finish stream capture before decoding provider identity. reusable
+- Known limitation: retained Git checkpoints and final audit eligibility remain owned by subtask 2.
+Feature flag: N/A
+Acceptance criteria: 9/9 implemented
+
 ## [2026-09-12] 0AC-16 — Evidence-backed validation settlement
 Areas: orchestration/contracts, runtime-kotlin/{runtime-cli,runtime-contracts,runtime-domain,runtime-engine,runtime-infra-fs}
 - Validation settlement now requires schema-valid command identity and integer exit-code evidence, with missing, malformed, or non-zero required results unable to advance completion.

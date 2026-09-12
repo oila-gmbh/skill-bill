@@ -82,6 +82,7 @@ import skillbill.ports.diagnostics.model.RejectedOutputDiagnosticRecord
 import skillbill.ports.diagnostics.model.RejectedOutputDiagnosticSelector
 import skillbill.ports.diff.DiffResolverPort
 import skillbill.ports.featuretask.FeatureTaskRuntimeAuditGenerationRepository
+import skillbill.ports.featuretask.InMemoryAuditRepairCycleRepository
 import skillbill.ports.featuretask.model.FeatureTaskRuntimeAuditGenerationRow
 import skillbill.ports.featuretask.model.FeatureTaskRuntimeCrashReconciliationCandidate
 import skillbill.ports.featuretask.model.FeatureTaskRuntimeWorkerLeaseState
@@ -570,6 +571,7 @@ internal data class RuntimeHarnessConfig(
   val agentAssignment: FeatureTaskRuntimeAgentAssignment? = null,
   val validator: FeatureTaskRuntimePhaseOutputValidator? = null,
   val diagnostics: RuntimeDiagnostics? = null,
+  val phaseSettlementService: FeatureTaskPhaseSettlementService? = null,
 )
 
 private fun runtimeSpecSourceResolver(): SpecSourceResolver =
@@ -776,6 +778,7 @@ private fun harnessCrashReconciler(
 private fun harnessPhaseSettlement(): FeatureTaskPhaseSettlementService = FeatureTaskPhaseSettlementService(
   InMemoryFeatureTaskPhaseSettlementRepository(),
   testHarnessClock,
+  InMemoryAuditRepairCycleRepository(),
 )
 
 internal fun runnerHarness(
@@ -881,7 +884,7 @@ private fun harnessRunner(deps: HarnessRunnerDeps): FeatureTaskRuntimeRunner {
       ),
     ),
     crashReconciler = harnessCrashReconciler(deps.database, deps.crashSupervisor),
-    phaseSettlementService = harnessPhaseSettlement(),
+    phaseSettlementService = deps.runtimeConfig.phaseSettlementService ?: harnessPhaseSettlement(),
     diagnostics = deps.diagnostics,
     clock = testHarnessClock,
     activityStampWriter = AgentActivityStampWriter(deps.database, Clock.systemUTC()),

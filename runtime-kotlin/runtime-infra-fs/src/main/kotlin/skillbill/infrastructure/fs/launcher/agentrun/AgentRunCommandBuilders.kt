@@ -22,14 +22,7 @@ data class AgentRunCommand(
   val inheritEnvironment: Boolean = true,
   val idlePolicy: AgentRunIdlePolicy = AgentRunIdlePolicy.DB_PROGRESS_ONLY,
   val conversationIsolation: ConversationIsolation? = null,
-  /** Overrides the builder's default decoder when this command selects a different output format. */
   val outputDecoder: AgentRunOutputDecoder? = null,
-  /**
-   * Additional parent-environment keys to pass through during an isolated launch
-   * (inheritEnvironment = false). Builders declare the keys their agent CLI needs from the ambient
-   * environment (provider credentials, endpoint overrides, proxy settings) so the infra runner does
-   * not need per-agent knowledge. Has no effect when inheritEnvironment is true.
-   */
   val environmentPassthroughKeys: Set<String> = emptySet(),
 )
 
@@ -39,7 +32,6 @@ interface AgentRunCommandBuilder {
   val reviewIsolation: ReviewLaunchIsolationStrategy get() = ReviewLaunchIsolationStrategy.UNSUPPORTED
   val governedReviewLaunchCapability: GovernedReviewLaunchCapability
 
-  /** The headless CLI this builder's command execs, resolved against PATH before every spawn. */
   val launcherCli: AgentLauncherCli get() = requireNotNull(AGENT_LAUNCHER_CLIS[agent]) {
     "Agent '${agent.id}' has a headless command builder but no declared launcher CLI."
   }
@@ -51,9 +43,6 @@ internal val GoalContinuationEnvironment: Map<String, String> = mapOf(
   "SKILL_BILL_GOAL_CONTINUATION" to "1",
 )
 
-// Provider credentials and endpoint overrides the Claude CLI reads from the environment. Passed
-// through during isolated review launches so the delegated worker authenticates via the same
-// provider configuration as the parent process, regardless of what is on disk.
 internal val PROXY_PASSTHROUGH_KEYS: Set<String> = setOf(
   "HTTP_PROXY",
   "HTTPS_PROXY",
@@ -90,11 +79,6 @@ internal val CURSOR_PROVIDER_PASSTHROUGH_KEYS: Set<String> = setOf(
   "CURSOR_API_KEY",
 ) + PROXY_PASSTHROUGH_KEYS
 
-/**
- * Claude Code sizes its own auto-compaction trigger against the model's context window, so a phase
- * on a 1M-context model never compacts at the few-hundred-thousand tokens a phase actually reaches.
- * These variables re-point that trigger at the window the runtime chose for the phase.
- */
 internal fun compactionEnvironment(request: SkillRunRequest): Map<String, String> =
   request.compaction?.let { directive ->
     mapOf(
@@ -118,16 +102,6 @@ internal fun goalContinuationEnvironment(request: SkillRunRequest): Map<String, 
     }
   }.orEmpty()
 
-/**
- * Resolves a feature-task model directive for a claude child against the provider the parent
- * process was launched with. A directive naming an Anthropic model (`claude-*` or an
- * opus/sonnet/haiku alias) is only servable by the official Anthropic endpoint. A non-Anthropic
- * endpoint (for example `api.deepseek.com`) does not serve those names and silently substitutes
- * its own model, so the child would run on a model the operator never chose. In that case the
- * child falls back to the model the parent process itself was launched with — the only model the
- * operator actually selected. A directive naming an explicit model the endpoint serves (for
- * example `deepseek-v4-flash`) passes through unchanged.
- */
 internal fun resolveClaudeModelDirective(directive: String?, providerEnvironment: Map<String, String>): String? {
   if (directive == null) return null
   val endpoint = providerEnvironment["ANTHROPIC_BASE_URL"]
@@ -169,14 +143,16 @@ class ClaudeAgentRunCommandBuilder(
   override fun build(request: SkillRunRequest): AgentRunCommand {
     requireProcessLaunch(request, reviewIsolation)
     requireGovernedReviewLaunch(request, agent, governedReviewLaunchCapability)
-    val streaming = request.streamProviderOutput || request.streamOutputForLiveness
+    val streaming = requiresClaudeStreaming(request)
     return goalContinuationCommand(request, agent, databasePath) ?: AgentRunCommand(
       command = buildList {
         add("claude")
+        if (request.auditRepairResume) {
+          add("--resume")
+          add(requireNotNull(request.auditRepairSessionId))
+        }
         add("--print")
         add("--output-format")
-        // stream-json emits one NDJSON event per turn instead of a single buffered object at
-        // exit, so a launch with no durable progress signal can still prove it is working.
         add(if (streaming) "stream-json" else "json")
         if (streaming) add("--verbose")
         resolveClaudeModelDirective(request.modelOverride, providerEnvironment)?.let {
@@ -240,38 +216,16 @@ class CodexAgentRunCommandBuilder(
       command = buildList {
         add("codex")
         add("exec")
-        add("--json")
-        add("--cd")
-        add(request.repoRoot.toString())
-        if (request.reviewEvidenceBroker == null) {
-          add("--dangerously-bypass-approvals-and-sandbox")
-          add("--config")
-          add("shell_environment_policy.inherit=all")
-        } else {
-          add("--skip-git-repo-check")
-          add("--ignore-user-config")
-          add("--sandbox")
-          add("read-only")
-          add("--config")
-          add("shell_environment_policy.inherit=none")
-          add("--config")
-          add("fork_turns=none")
-          add("--config")
-          add("tools.web_search=false")
-          add("--config")
-          add("tools.shell=false")
-          request.reviewEvidenceEndpoint?.let { endpoint ->
-            GovernedReviewMcpConfigWriter.codexConfigOverrides(
-              mcpConfigPath = endpoint.descriptor.mcpConfigPath,
-              socketPath = endpoint.descriptor.socketPath,
-              token = endpoint.descriptor.token,
-              lane = endpoint.descriptor.lane,
-            ).forEach { override ->
-              add("--config")
-              add(override)
-            }
-          }
+        if (request.auditRepairResume) {
+          add("resume")
+          add(requireNotNull(request.auditRepairSessionId))
         }
+        add("--json")
+        if (!request.auditRepairResume) {
+          add("--cd")
+          add(request.repoRoot.toString())
+        }
+        addAll(codexIsolationArguments(request))
         request.modelOverride?.let {
           add("--model")
           add(it)
@@ -280,6 +234,7 @@ class CodexAgentRunCommandBuilder(
           add("--config")
           add("model_reasoning_effort=$it")
         }
+        if (request.auditRepairResume) add("-")
       },
       workingDirectory = request.repoRoot,
       timeout = request.timeout,
@@ -293,3 +248,38 @@ class CodexAgentRunCommandBuilder(
     )
   }
 }
+
+private fun codexIsolationArguments(request: SkillRunRequest): List<String> = buildList {
+  if (request.reviewEvidenceBroker == null) {
+    add("--dangerously-bypass-approvals-and-sandbox")
+    add("--config")
+    add("shell_environment_policy.inherit=all")
+  } else {
+    add("--skip-git-repo-check")
+    add("--ignore-user-config")
+    add("--sandbox")
+    add("read-only")
+    add("--config")
+    add("shell_environment_policy.inherit=none")
+    add("--config")
+    add("fork_turns=none")
+    add("--config")
+    add("tools.web_search=false")
+    add("--config")
+    add("tools.shell=false")
+    request.reviewEvidenceEndpoint?.let { endpoint ->
+      GovernedReviewMcpConfigWriter.codexConfigOverrides(
+        mcpConfigPath = endpoint.descriptor.mcpConfigPath,
+        socketPath = endpoint.descriptor.socketPath,
+        token = endpoint.descriptor.token,
+        lane = endpoint.descriptor.lane,
+      ).forEach { override ->
+        add("--config")
+        add(override)
+      }
+    }
+  }
+}
+
+private fun requiresClaudeStreaming(request: SkillRunRequest): Boolean =
+  request.streamProviderOutput || request.streamOutputForLiveness || request.auditRepairExecutionId != null

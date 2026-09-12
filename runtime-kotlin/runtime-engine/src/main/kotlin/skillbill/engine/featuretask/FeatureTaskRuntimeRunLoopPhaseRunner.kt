@@ -10,6 +10,7 @@ import skillbill.engine.featuretask.model.GoalSubtaskReviewPassReservation
 import skillbill.engine.featuretask.model.GoalSubtaskReviewPassReserved
 import skillbill.ports.workflow.gitops.buildGoalSubtaskReviewInput
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
+import skillbill.workflow.taskruntime.model.AUDIT_GAP_PAUSE_DECISION_RETRY_FIX
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFailureDisposition
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutput
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseRecord
@@ -168,11 +169,15 @@ object FeatureTaskRuntimeRunLoopPhaseRunner {
       persistedReason,
     ) ||
       state.legacyReviewPreparationRetryConsumedBudget(phaseId, persistedReason)
+    val auditRepairRetry = phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT &&
+      runLoop.recorder.loadAuditGapPause(runLoop.request.workflowId)
+        ?.let { it.operatorDecision == AUDIT_GAP_PAUSE_DECISION_RETRY_FIX && !it.grantConsumed } == true
     val reenterableRecordRejection = isReenterableRecordRejection(state, phaseId, persistedReason)
     val removedContinuationBudget =
       FeatureTaskRuntimeRunLoopPhaseRunner.isRemovedImplementationContinuationBudgetBlock(phaseId, persistedReason)
     val restartsBudget = listOf(
       retryReviewPreparation,
+      auditRepairRetry,
       reenterableRecordRejection,
       removedContinuationBudget,
       FeatureTaskRuntimeRunLoopPhaseAttempts.operatorReopenedPhase(runLoop, phaseId),
@@ -186,6 +191,7 @@ object FeatureTaskRuntimeRunLoopPhaseRunner {
         phaseId = phaseId,
         durable = durable,
         retryReviewPreparation = retryReviewPreparation,
+        auditRepairRetry = auditRepairRetry,
         reenterableRecordRejection = reenterableRecordRejection,
         persistedReason = persistedReason,
       ),
@@ -199,12 +205,14 @@ object FeatureTaskRuntimeRunLoopPhaseRunner {
     val phaseId = args.phaseId
     val durable = args.durable
     val retryReviewPreparation = args.retryReviewPreparation
+    val auditRepairRetry = args.auditRepairRetry
     val reenterableRecordRejection = args.reenterableRecordRejection
     val persistedReason = args.persistedReason
     val disposition = durable?.failureDisposition
     return when {
       FeatureTaskRuntimeRunLoopPhaseAttempts.operatorReopenedPhase(runLoop, phaseId) -> true
       retryReviewPreparation -> true
+      auditRepairRetry -> true
       reenterableRecordRejection -> true
       FeatureTaskRuntimeRunLoopPhaseRunner.isRemovedGoalReviewSchemaGateBlock(phaseId, persistedReason) -> true
       FeatureTaskRuntimeRunLoopPhaseRunner.isRemovedImplementationContinuationBudgetBlock(

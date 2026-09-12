@@ -21,6 +21,9 @@ class JunieAgentRunCommandBuilder(
   override fun build(request: SkillRunRequest): AgentRunCommand {
     requireProcessLaunch(request, reviewIsolation)
     requireGovernedReviewLaunch(request, agent, governedReviewLaunchCapability)
+    require(request.auditRepairExecutionId == null) {
+      "Junie cannot provide the durable session identity required for audit repair."
+    }
     return goalContinuationCommand(request, agent, databasePath) ?: AgentRunCommand(
       command = buildList {
         require(request.modelOverride == null && request.effortOverride == null) {

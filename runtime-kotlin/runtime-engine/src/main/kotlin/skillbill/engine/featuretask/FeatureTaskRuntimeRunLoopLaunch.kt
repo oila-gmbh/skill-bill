@@ -13,9 +13,7 @@ import skillbill.goalrunner.subtaskreview.model.StructuredGoalReviewFinding
 import skillbill.goalrunner.subtaskreview.verificationBoundaryFindingPaths
 import skillbill.ports.agentrun.model.AgentRunLaunchFacts
 import skillbill.ports.agentrun.model.AgentRunLaunchOutcome
-import skillbill.ports.agentrun.model.SkillRunRequest
 import skillbill.ports.agentrun.model.UnsupportedAgentRunLaunch
-import skillbill.ports.goalrunner.runner.model.GoalRunnerSubtaskLaunchRequest
 import skillbill.ports.repository.toFileLocation
 import skillbill.ports.workflow.gitops.model.WorkflowGitOperationResult
 import skillbill.ports.workflow.gitops.pathContentIdentities
@@ -28,6 +26,8 @@ import skillbill.review.context.model.SpecIntentProjectionResolveRequest
 import skillbill.review.context.model.SpecIntentResolution
 import skillbill.telemetry.estimation.estimateTokens
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
+import skillbill.workflow.taskruntime.model.AuditRepairIdentity
+import skillbill.workflow.taskruntime.model.AuditRepairLaunchBinding
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeCorrectiveRepairContext
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFailureDisposition
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutput
@@ -38,7 +38,6 @@ import skillbill.workflow.taskruntime.model.NormalizedFeatureTaskRuntimePhaseOut
 import skillbill.workflow.taskruntime.model.QUARANTINE_REJECTION_CLASS_PLANNING_PROJECTION
 import skillbill.workflow.taskruntime.model.boundPriorGapNotes
 import java.nio.file.Path
-import kotlin.time.Duration.Companion.minutes
 
 object FeatureTaskRuntimeRunLoopLaunch {
   internal fun findingPathsForBoundaryMemory(finding: StructuredGoalReviewFinding): List<String> =
@@ -256,6 +255,24 @@ object FeatureTaskRuntimeRunLoopLaunch {
       childNeverLaunched = childNeverLaunched,
     )
 
+  internal fun prepareAuditLaunch(runLoop: FeatureTaskRuntimeRunLoop, run: PhaseRun): AuditRepairLaunchBinding? {
+    if (run.phaseId != FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT) return null
+    val owner = runLoop.recorder.workerOwnership(run.request.workflowId) ?: return null
+    val cycle = runLoop.phaseSettlementService.auditRepairCycle(run.request.workflowId, owner.phaseAttempt)
+    val attempt = cycle?.identity?.auditAttempt ?: owner.phaseAttempt
+    return runLoop.phaseSettlementService.bindAuditRepairLaunch(
+      AuditRepairIdentity(
+        workflowId = run.request.workflowId,
+        auditAttempt = attempt,
+        cycleId = cycle?.identity?.cycleId ?: "audit-${run.request.workflowId}-$attempt",
+        executionId = cycle?.identity?.executionId ?: "${run.request.workflowId}:audit:$attempt",
+        sessionId = cycle?.identity?.sessionId ?: run.request.sessionId,
+        ownerToken = owner.ownerToken,
+        fencingGeneration = owner.generation,
+      ),
+    )
+  }
+
   internal fun executeSubtaskLaunch(
     runLoop: FeatureTaskRuntimeRunLoop,
     run: PhaseRun,
@@ -263,29 +280,7 @@ object FeatureTaskRuntimeRunLoopLaunch {
     isReviewPhase: Boolean,
     isVerifyFindingsPhase: Boolean,
   ): AgentRunLaunchOutcome {
-    val launched = FeatureTaskRuntimeRunLoopOutputPersistence.launchedModelDirective(run)
-    return runLoop.subtaskLauncher.launch(
-      GoalRunnerSubtaskLaunchRequest(
-        invokedAgentId = run.resolvedAgent.invokedAgentId,
-        configuredAgentOverrideId = run.resolvedAgent.configuredAgentOverrideId,
-        skillRunRequest = SkillRunRequest(
-          issueKey = run.request.issueKey,
-          repoRoot = run.request.repoRoot,
-          timeout = run.request.timeout,
-          modelOverride = launched.modelOverride,
-          effortOverride = launched.effortOverride,
-          compaction = run.compaction,
-          promptOverride = prepared.prompt,
-          readOnlyPhase = isReviewPhase || isVerifyFindingsPhase,
-          progressIdleTimeout = READ_ONLY_PHASE_PROGRESS_IDLE_TIMEOUT_MINUTES.minutes
-            .takeIf { isReviewPhase || isVerifyFindingsPhase },
-          activityStampSink = runLoop.activityStampWriter.sink(
-            workflowId = run.request.workflowId,
-            parentWorkflowId = run.request.goalContinuation?.parentWorkflowId,
-          ),
-        ),
-      ),
-    )
+    return AuditAwareSubtaskLaunch(runLoop, run, prepared, isReviewPhase, isVerifyFindingsPhase).launch()
   }
 
   internal fun buildLaunchFileManifest(

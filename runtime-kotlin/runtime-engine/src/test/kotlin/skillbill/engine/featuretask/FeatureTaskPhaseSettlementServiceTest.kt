@@ -5,6 +5,7 @@ import skillbill.contracts.JsonCodec
 import skillbill.contracts.workflow.ValidationEvidencePayloadKeys
 import skillbill.engine.featuretask.model.FeatureTaskPhaseSettlementBlockRequest
 import skillbill.engine.featuretask.model.FeatureTaskPhaseSettlementCompleteRequest
+import skillbill.ports.featuretask.InMemoryAuditRepairCycleRepository
 import skillbill.ports.featuretask.model.FeatureTaskPhaseSettlement
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeValidationCommandResult
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeValidationEvidence
@@ -18,7 +19,11 @@ import kotlin.test.assertTrue
 class FeatureTaskPhaseSettlementServiceTest {
   @Test
   fun `complete then findEnvelope returns stuffed value`() {
-    val service = FeatureTaskPhaseSettlementService(InMemoryFeatureTaskPhaseSettlementRepository(), testHarnessClock)
+    val service = FeatureTaskPhaseSettlementService(
+      InMemoryFeatureTaskPhaseSettlementRepository(),
+      testHarnessClock,
+      InMemoryAuditRepairCycleRepository(),
+    )
     service.complete(
       FeatureTaskPhaseSettlementCompleteRequest(
         workflowId = "wftr-test",
@@ -35,7 +40,11 @@ class FeatureTaskPhaseSettlementServiceTest {
 
   @Test
   fun `last write wins for the same attempt`() {
-    val service = FeatureTaskPhaseSettlementService(InMemoryFeatureTaskPhaseSettlementRepository(), testHarnessClock)
+    val service = FeatureTaskPhaseSettlementService(
+      InMemoryFeatureTaskPhaseSettlementRepository(),
+      testHarnessClock,
+      InMemoryAuditRepairCycleRepository(),
+    )
     service.complete(
       FeatureTaskPhaseSettlementCompleteRequest(
         workflowId = "wftr-test",
@@ -59,7 +68,11 @@ class FeatureTaskPhaseSettlementServiceTest {
 
   @Test
   fun `block stores blocked status`() {
-    val service = FeatureTaskPhaseSettlementService(InMemoryFeatureTaskPhaseSettlementRepository(), testHarnessClock)
+    val service = FeatureTaskPhaseSettlementService(
+      InMemoryFeatureTaskPhaseSettlementRepository(),
+      testHarnessClock,
+      InMemoryAuditRepairCycleRepository(),
+    )
     service.block(
       FeatureTaskPhaseSettlementBlockRequest(
         workflowId = "wftr-test",
@@ -75,7 +88,7 @@ class FeatureTaskPhaseSettlementServiceTest {
   @Test
   fun `clear removes a stored settlement so findEnvelope returns null`() {
     val repo = InMemoryFeatureTaskPhaseSettlementRepository()
-    val service = FeatureTaskPhaseSettlementService(repo, testHarnessClock)
+    val service = FeatureTaskPhaseSettlementService(repo, testHarnessClock, InMemoryAuditRepairCycleRepository())
     repo.upsert(
       FeatureTaskPhaseSettlement(
         workflowId = "wftr-test",
@@ -93,7 +106,11 @@ class FeatureTaskPhaseSettlementServiceTest {
 
   @Test
   fun `settlement round trip preserves multiple validation command results`() {
-    val service = FeatureTaskPhaseSettlementService(InMemoryFeatureTaskPhaseSettlementRepository(), testHarnessClock)
+    val service = FeatureTaskPhaseSettlementService(
+      InMemoryFeatureTaskPhaseSettlementRepository(),
+      testHarnessClock,
+      InMemoryAuditRepairCycleRepository(),
+    )
     val evidence = FeatureTaskRuntimeValidationEvidence(
       listOf(
         FeatureTaskRuntimeValidationCommandResult("./gradlew check", 1),

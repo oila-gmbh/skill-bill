@@ -219,6 +219,7 @@ class FeatureTaskRuntimeRunCommand(
     subcommands(
       featureTaskRuntimeExplicitRunCommand,
       control.status,
+      control.auditStage,
       control.resume,
       control.abandon,
       control.retryBlocked,

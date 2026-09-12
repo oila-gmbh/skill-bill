@@ -209,8 +209,8 @@ fun validationGateFindingsDirective(
 
 fun auditNoEarlierAuditLine(briefing: FeatureTaskRuntimePhaseLaunchBriefing): String =
   if (briefing.priorGapMemory == null) {
-    "      Every audit re-checks every listed criterion from scratch against the tree, so there is no\n" +
-      "      earlier audit to account for and nothing to carry forward except the notes you emit now.\n"
+    "      Every audit re-checks every listed criterion against the retained tree. Read restored cycle\n" +
+      "      evidence before repair and preserve earlier outcomes and validation obligations.\n"
   } else {
     "      Every audit re-checks every listed criterion from scratch against the tree; when this\n" +
       "      briefing carries prior-gap memory, earlier audit value strings in prior_audit_values are\n" +

@@ -54,8 +54,8 @@ private fun unsupportedAgentMessage(agentId: String, source: String): String =
 
 private fun undetectedInvokingAgentMessage(agentOption: String): String =
   "Cannot determine the invoking agent, and there is no default: $agentOption was not passed, " +
-    "$SKILL_BILL_AGENT_ENV is unset, and no agent execution-context marker " +
-    "($invokingAgentContextMarkers) is present in this environment. " +
+    "$SKILL_BILL_AGENT_ENV is unset, and the agent execution-context markers " +
+    "($invokingAgentContextMarkers) do not identify exactly one agent in this environment. " +
     "Re-run with $agentOption <agent-id> or export $SKILL_BILL_AGENT_ENV."
 
 private val invokingAgentContextMarkers: String

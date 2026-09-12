@@ -64,6 +64,7 @@ internal fun assembleGoalRunnerStatusProjection(
     planning = extras.planning,
     latestLivenessSignal = extras.latestLivenessSignal?.takeIf { it.isNotBlank() && !context.staleSignal },
     latestObservabilityEvent = extras.latestObservabilityEvent?.takeUnless { context.staleSignal },
+    auditRepair = extras.auditRepair,
     requestedDiffStat = extras.requestedDiffStat,
     selectedDiffHunks = extras.selectedDiffHunks,
     blockedAttemptCount = extras.blockedAttemptCount,

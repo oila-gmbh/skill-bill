@@ -3035,6 +3035,7 @@ class GoalChildPlanningHydrationTransactionIntegrationTest {
 
     harness.store.saveNewChildWorkflow(harness.state, harness.setup)
     val first = requireNotNull(harness.workflows.getFeatureTaskRuntimeWorkflow(CHILD_ID))
+    assertEquals("ftr-$CHILD_ID", first.sessionId)
     harness.store.saveNewChildWorkflow(harness.state, harness.setup)
     val resumed = requireNotNull(harness.workflows.getFeatureTaskRuntimeWorkflow(CHILD_ID))
 

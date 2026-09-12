@@ -58,8 +58,11 @@ internal data class FeatureTaskRuntimeCliFixture(
 
   fun context(launcher: AgentRunLauncher, options: FeatureTaskRuntimeCliContextOptions): CliRuntimeContext =
     CliRuntimeContext(
+      dbPathOverride = dbPath.toString(),
       userHome = tempDir.also { installFakeRuntimeMcpBin(it) },
-      agentRunLauncher = launcher,
+      agentRunLauncher = AuditStageFixtureLauncher(launcher) {
+        context(launcher, options).copy(agentRunLauncher = launcher, repositoryRoot = tempDir)
+      },
       environment = options.environment,
       requester = options.requester,
       liveStdout = options.liveStdout,
@@ -474,6 +477,8 @@ internal class FakeRuntimeGitOperations(
   internal val checkoutResult: WorkflowGitOperationResult? = null,
   internal val trackedDelta: String = "",
 ) : WorkflowGitOperationsTestBase() {
+  override val checkpointHistoryOperations = CliAuditCheckpointOperations()
+
   override val repositoryOwnedPathsOperations: RepositoryOwnedPathsGitOperations = TestRepositoryOwnedPathsOperations
 
   override val repositoryFingerprintOperations: RepositoryFingerprintGitOperations = TestRepositoryFingerprintOperations

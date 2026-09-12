@@ -17,10 +17,10 @@ class FeatureTaskRuntimeRunLoopSessionIsolationTest {
       initialPendingReentry = null,
     )
     sessionOne.resolvedBranch = "feature-branch"
-    sessionOne.auditGapRetryResumePending = true
+    sessionOne.recordRejectionSettlementPending = true
     sessionOne.phaseContentIdentities["implement"] = mapOf("src/Foo.kt" to "abc")
     assertNull(sessionTwo.resolvedBranch)
-    assertEquals(false, sessionTwo.auditGapRetryResumePending)
+    assertEquals(false, sessionTwo.recordRejectionSettlementPending)
     assertEquals(emptyMap(), sessionTwo.phaseContentIdentities)
     assertNotSame(sessionOne, sessionTwo)
   }

@@ -71,6 +71,23 @@ class FeatureTaskRuntimeGateProgressRecorder(
     FeatureTaskRuntimeAuditGapPause.fromArtifactMap(artifact)
   }
 
+  override fun consumeAuditGapRetryGrant(workflowId: String, expected: FeatureTaskRuntimeAuditGapPause): Boolean =
+    database.transaction { unitOfWork ->
+      val record = WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, workflowId) ?: return@transaction false
+      val raw = decodeArtifacts(record.artifactsJson)[FEATURE_TASK_RUNTIME_AUDIT_GAP_PAUSE_ARTIFACT_KEY]
+      val current = JsonCodec.anyToStringAnyMap(raw)?.let(FeatureTaskRuntimeAuditGapPause::fromArtifactMap)
+      if (current != expected) return@transaction false
+      workflowPersistence.persistPatch(
+        unitOfWork.workflowStates,
+        record,
+        mapOf(
+          FEATURE_TASK_RUNTIME_AUDIT_GAP_PAUSE_ARTIFACT_KEY to
+            expected.copy(grantConsumed = true, operatorDecision = null).toArtifactMap(),
+        ),
+      )
+      true
+    }
+
   override fun persistAuditGapPause(workflowId: String, pause: FeatureTaskRuntimeAuditGapPause) {
     database.transaction { unitOfWork ->
       val record = WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, workflowId)

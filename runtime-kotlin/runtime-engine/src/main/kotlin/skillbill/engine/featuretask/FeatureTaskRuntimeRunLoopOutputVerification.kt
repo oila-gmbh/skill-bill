@@ -232,11 +232,18 @@ object FeatureTaskRuntimeRunLoopOutputVerification {
     FeatureTaskRuntimeRunLoopOutputVerification.buildRepositoryCheckpoint(runLoop, run)
   }
 
-  internal fun completedPhaseRepositoryFingerprint(runLoop: FeatureTaskRuntimeRunLoop, run: PhaseRun) = if (
-    run.phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT ||
-    run.phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT_FIX
+  internal fun completedPhaseRepositoryFingerprint(
+    runLoop: FeatureTaskRuntimeRunLoop,
+    run: PhaseRun,
+  ): WorkflowGitOperationResult? = if (
+    run.phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT
   ) {
     runLoop.gitOperations.repositoryFingerprint(run.request.repoRoot)
+  } else if (
+    run.phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT_FIX
+  ) {
+    buildRepositoryCheckpoint(runLoop, run)?.let { WorkflowGitOperationResult.Ok(it.fingerprint) }
+      ?: WorkflowGitOperationResult.Failed("Unable to establish the repository checkpoint identity.")
   } else {
     null
   }
@@ -249,6 +256,8 @@ object FeatureTaskRuntimeRunLoopOutputVerification {
     auditOutputArtifact: String,
   ): FeatureTaskRuntimeAuditGapPause? {
     if (run.phaseId != FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT) return null
+    val attempt = runLoop.state.recordFor(run.phaseId)?.attemptCount ?: 1
+    if (runLoop.phaseSettlementService.auditRepairCycle(run.request.workflowId, attempt) != null) return null
     if (auditOutputArtifact.isBlank()) return null
     val verdict = FeatureTaskRuntimeOutputVerification.verdictFor(run.phaseId, outputMap)
     val currentHasGaps = verdict == FeatureTaskRuntimeVerdict.GAPS_FOUND
@@ -271,6 +280,7 @@ object FeatureTaskRuntimeRunLoopOutputVerification {
         ),
       )
     }
+    recordAuditProgressFallback(runLoop, currentHasGaps, decision.blocked, previous, repositoryFingerprint)
     if (currentHasGaps) {
       runLoop.recorder.persistAuditGapProgress(
         runLoop.request.workflowId,
@@ -296,8 +306,23 @@ object FeatureTaskRuntimeRunLoopOutputVerification {
     )
   }
 
+  private fun recordAuditProgressFallback(
+    runLoop: FeatureTaskRuntimeRunLoop,
+    currentHasGaps: Boolean,
+    blocked: Boolean,
+    previous: FeatureTaskRuntimeAuditGapProgress?,
+    fingerprint: String?,
+  ) {
+    if (!currentHasGaps || blocked || previous == null) return
+    if (fingerprint == null || previous.repositoryFingerprint == null) {
+      runLoop.diagnostics.warning(
+        "Audit progress used fewer unresolved criteria because a repository fingerprint was unavailable.",
+      )
+    }
+  }
+
   fun noProgressPauseReason(decisionReason: String): String =
-    "$decisionReason The subtask is runLoop.session.paused for an operator decision: choose retry_fix to allow one " +
+    "$decisionReason The subtask is paused for an operator decision: choose retry_fix to allow one " +
       "further remediation attempt, or abandon_subtask to end the subtask."
 
   internal fun terminalOutputAttempt(
