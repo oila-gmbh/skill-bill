@@ -316,9 +316,10 @@ val phaseDirectives: Map<String, String> = mapOf(
     "commit. If goal-continuation suppresses PR, this successful phase is the terminal success " +
     "signal for the goal subtask.",
   FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PR to
-    "Invoke bill-pr-description, honor any repo-native PR template, create or reuse the open " +
-    "pull request for the branch idempotently, and emit pr_result with the PR URL/number, " +
-    "title, and whether a new PR was created.",
+    "Invoke bill-pr-description, honor any repo-native PR template except its checklist, and " +
+    "generate a title in the form `[<issue key>] <descriptive title>` that explains the user-visible " +
+    "outcome rather than copying a branch slug; create or reuse the open pull request for the branch " +
+    "idempotently, and emit pr_result with the PR URL/number, title, and whether a new PR was created.",
 )
 
 /**

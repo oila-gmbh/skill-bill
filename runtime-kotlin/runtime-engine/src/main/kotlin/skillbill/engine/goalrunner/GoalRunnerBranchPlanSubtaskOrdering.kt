@@ -51,16 +51,30 @@ fun DecompositionManifest.withBlockedSelection(subtaskId: Int, reason: String): 
 )
 
 fun DecompositionManifest.toPullRequestRequest(repoRoot: Path): GoalPullRequestRequest {
-  val title = "$issueKey: $featureName"
+  val title = "[$issueKey] ${featureName.toPullRequestTitle()}"
   val body = buildString {
-    appendLine("Goal: $featureName")
+    appendLine("# Summary")
     appendLine()
-    appendLine("Subtasks:")
+    appendLine("This pull request delivers ${featureName.toPullRequestTitle()} through the completed goal subtasks:")
     subtasks.forEach { subtask ->
-      append("- ${subtask.id}. ${subtask.name}")
-      subtask.commitSha?.let { append(" ($it)") }
+      append("- ${subtask.name}")
       appendLine()
     }
+    appendLine()
+    appendLine("## Feature Flags")
+    appendLine()
+    appendLine("N/A")
+    appendLine()
+    appendLine("## Media")
+    appendLine()
+    appendLine("N/A")
+    appendLine()
+    appendLine("# How Has This Been Tested?")
+    appendLine()
+    appendLine(
+      "Every subtask completed the configured review, audit, validation, and history gates before " +
+        "this pull request was opened.",
+    )
   }
   return GoalPullRequestRequest(
     repoRoot = repoRoot,
@@ -72,6 +86,12 @@ fun DecompositionManifest.toPullRequestRequest(repoRoot: Path): GoalPullRequestR
     body = body,
   )
 }
+
+private fun String.toPullRequestTitle(): String = split(Regex("[-_\\s]+"))
+  .filter(String::isNotBlank)
+  .joinToString(" ") { word ->
+    word.replaceFirstChar { character -> character.uppercase() }
+  }
 
 fun DecompositionManifest.branchForFinalPullRequest(): String = stackBranches.lastOrNull()?.branch.orEmpty()
 
