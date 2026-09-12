@@ -3,6 +3,7 @@ package skillbill.engine.featuretask
 import skillbill.contracts.JsonCodec
 import skillbill.contracts.SharedPayloadKeys
 import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_CONTRACT_VERSION
+import skillbill.contracts.workflow.ValidationEvidencePayloadKeys
 import skillbill.engine.featuretask.validation.FeatureTaskRuntimeBuildGateCoordinator
 import skillbill.engine.featuretask.validation.model.ValidationGateAgentRepairLauncher
 import skillbill.engine.featuretask.validation.model.ValidationGateAgentRepairResult
@@ -12,12 +13,14 @@ import skillbill.engine.featuretask.validation.model.ValidationGateCycleResult
 import skillbill.engine.featuretask.validation.model.ValidationGateCycleTerminalOutcome
 import skillbill.engine.featuretask.validation.model.ValidationGateResolution
 import skillbill.engine.featuretask.validation.model.ValidationGateTriageResult
+import skillbill.engine.featuretask.validation.resolveRequiredValidationCommand
 import skillbill.ports.workflow.gitops.repositoryFingerprint
 import skillbill.workflow.goal.model.ValidationDepth
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import skillbill.workflow.taskruntime.model.AcceptedFeatureTaskRuntimePhaseOutput
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFailureDisposition
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutput
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeValidationEvidence
 import skillbill.workflow.taskruntime.model.requireAcceptedOutput
 
 object FeatureTaskRuntimeRunLoopValidationGate {
@@ -406,10 +409,26 @@ object FeatureTaskRuntimeRunLoopValidationGate {
     observability: FeatureTaskRuntimeRunObservability,
   ): PhaseOutcome {
     val acceptedOutput = runCatching {
-      runLoop.outputValidator.validatePhaseOutput(
+      val accepted = runLoop.outputValidator.validatePhaseOutput(
         outputText,
         sourceLabel = run.phaseId,
       ).requireAcceptedOutput(run.phaseId)
+      val produced = JsonCodec.anyToStringAnyMap(
+        accepted.normalizedOutput.envelope[SharedPayloadKeys.PRODUCED_OUTPUTS],
+      )
+      val validationResult = JsonCodec.anyToStringAnyMap(
+        produced?.get(ValidationEvidencePayloadKeys.VALIDATION_RESULT),
+      )
+      val evidence = JsonCodec.anyToStringAnyMap(
+        validationResult?.get(ValidationEvidencePayloadKeys.VALIDATION_EVIDENCE),
+      )?.let { raw ->
+        FeatureTaskRuntimeValidationEvidence.fromArtifactMap(raw, run.phaseId)
+      } ?: error("Runtime-owned validation evidence is missing.")
+      evidence.requireSuccessfulCommand(
+        requiredValidationCommand(runLoop, run, evidence),
+        run.phaseId,
+      )
+      accepted
     }.getOrElse { error ->
       return FeatureTaskRuntimeRunLoopPhaseAttempts.blockAndPersistInPhase(
         runLoop,
@@ -476,11 +495,32 @@ object FeatureTaskRuntimeRunLoopValidationGate {
     )
   }
 
-  internal fun validationChangedPaths(runLoop: FeatureTaskRuntimeRunLoop, run: PhaseRun): List<String> =
+  internal fun validationChangedPaths(runLoop: FeatureTaskRuntimeRunLoop, run: PhaseRun): List<String>? =
     FeatureTaskRuntimeRunLoopOutputVerification.resolveRepositoryCheckpoint(
       runLoop,
       run,
-    )?.workingTreeOwnedPaths.orEmpty().distinct().sorted()
+    )?.workingTreeOwnedPaths?.distinct()?.sorted()
+
+  internal fun requiredValidationCommand(
+    runLoop: FeatureTaskRuntimeRunLoop,
+    run: PhaseRun,
+    evidence: FeatureTaskRuntimeValidationEvidence,
+    changedPaths: List<String>? = validationChangedPaths(runLoop, run),
+  ): String = requireNotNull(
+    resolveRequiredValidationCommand(
+      resolver = runLoop.phaseGates.validationGateResolver,
+      requiredCommandForDeclaration = { declaration ->
+        runLoop.validationGateCoordinator.requiredValidationCommand(
+          run.request.repoRoot,
+          run.request.workflowId,
+          declaration,
+        )
+      },
+      changedPaths = changedPaths,
+      evidence = evidence,
+      sourceLabel = run.phaseId,
+    ),
+  )
 
   internal fun packCollectAllCommand(runLoop: FeatureTaskRuntimeRunLoop, run: PhaseRun): String? {
     if (run.phaseId != FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VALIDATE) {
@@ -491,7 +531,7 @@ object FeatureTaskRuntimeRunLoopValidationGate {
         validationChangedPaths(
           runLoop,
           run,
-        ),
+        ).orEmpty(),
       )
     ) {
       is ValidationGateResolution.Declared -> resolution.declaration.collectAllFullGateCommand.joinToString(" ")
@@ -506,7 +546,9 @@ object FeatureTaskRuntimeRunLoopValidationGate {
     }
     val validationChangedPaths = FeatureTaskRuntimeRunLoopValidationGate
       .validationChangedPaths(runLoop, run)
-    return when (val resolution = runLoop.phaseGates.validationGateResolver.resolve(validationChangedPaths)) {
+    return when (
+      val resolution = runLoop.phaseGates.validationGateResolver.resolve(validationChangedPaths.orEmpty())
+    ) {
       is ValidationGateResolution.Declared -> resolution.declaration.buildCommand?.joinToString(" ")
       is ValidationGateResolution.Absent -> null
       is ValidationGateResolution.Incompatible -> null
@@ -670,7 +712,7 @@ object FeatureTaskRuntimeRunLoopValidationGate {
       repoRoot = run.request.repoRoot,
       request = run.request,
       validationDepth = validationDepth,
-      changedPaths = FeatureTaskRuntimeRunLoopValidationGate.validationChangedPaths(runLoop, run),
+      changedPaths = FeatureTaskRuntimeRunLoopValidationGate.validationChangedPaths(runLoop, run).orEmpty(),
       repositoryCheckpoint = args.checkpoint,
       agentTriageLauncher = ValidationGateAgentTriageLauncher { findings ->
         FeatureTaskRuntimeRunLoopValidationGate.launchValidationGateTriage(

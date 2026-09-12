@@ -224,3 +224,14 @@ object FeatureTaskRuntimeSharedEvidenceProjectionSchemaPaths {
   const val EXPECTED_SCHEMA_ID: String =
     "https://skill-bill.dev/contracts/feature-task-runtime-shared-evidence-projection-schema.yaml"
 }
+
+const val FEATURE_TASK_RUNTIME_VALIDATION_EVIDENCE_CONTRACT_VERSION: String = "0.1"
+
+object FeatureTaskRuntimeValidationEvidenceSchemaPaths {
+  const val REPO_RELATIVE_PATH: String =
+    "orchestration/contracts/feature-task-runtime-validation-evidence-schema.yaml"
+  const val CLASSPATH_RESOURCE: String =
+    "skillbill/infrastructure/fs/contracts/feature-task-runtime-validation-evidence-schema.yaml"
+  const val EXPECTED_SCHEMA_ID: String =
+    "https://skill-bill.dev/contracts/feature-task-runtime-validation-evidence-schema.yaml"
+}

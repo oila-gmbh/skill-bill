@@ -4,13 +4,16 @@ import skillbill.application.diagnostics.model.FeatureTaskRuntimeRejectedOutputW
 import skillbill.application.diagnostics.model.RejectedOutputDiagnosticRequest
 import skillbill.contracts.JsonCodec
 import skillbill.contracts.SharedPayloadKeys
+import skillbill.contracts.workflow.ValidationEvidencePayloadKeys
 import skillbill.engine.featuretask.model.FeatureTaskRuntimeCommitPushHandoffInvalid
 import skillbill.engine.featuretask.model.FeatureTaskRuntimeCommitPushHandoffValid
 import skillbill.engine.featuretask.model.FeatureTaskRuntimeSubtaskFinalisationBlocked
 import skillbill.engine.featuretask.model.FeatureTaskRuntimeSubtaskFinaliseRequest
 import skillbill.engine.featuretask.model.FeatureTaskRuntimeSubtaskFinalised
+import skillbill.engine.featuretask.validation.durableValidationChangedPaths
 import skillbill.error.FeatureTaskRuntimePhaseOutputFailureKind
 import skillbill.error.InvalidFeatureTaskRuntimePhaseOutputSchemaError
+import skillbill.error.InvalidFeatureTaskRuntimeValidationEvidenceSchemaError
 import skillbill.ports.diagnostics.model.ProducerOutputEvidence
 import skillbill.ports.workflow.gitops.model.WorkflowGitOperationResult
 import skillbill.ports.workflow.gitops.stagedPaths
@@ -21,6 +24,7 @@ import skillbill.workflow.taskruntime.model.CorrectiveRepairCapturedResponse
 import skillbill.workflow.taskruntime.model.CorrectiveRepairDiagnosticLocator
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeCorrectiveRepairContext
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFailureDisposition
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeValidationEvidence
 import skillbill.workflow.taskruntime.model.NormalizedFeatureTaskRuntimePhaseOutput
 import skillbill.workflow.taskruntime.model.requireAcceptedOutput
 
@@ -228,19 +232,38 @@ object FeatureTaskRuntimeRunLoopAttemptSettlement {
   }
 
   internal fun settleFromPersistedEnvelope(runLoop: FeatureTaskRuntimeRunLoop, args: GateOutputArgs): AttemptResult? {
+    val settlementEnvelope = loadPersistedSettlementEnvelope(runLoop, args) ?: return null
+    return settlePersistedEnvelope(runLoop, args, settlementEnvelope)
+  }
+
+  private fun loadPersistedSettlementEnvelope(
+    runLoop: FeatureTaskRuntimeRunLoop,
+    args: GateOutputArgs,
+  ): Map<String, Any?>? {
     val run = args.run
-    val settlementEnvelope = runLoop.phaseSettlementService.findEnvelope(
-      workflowId = run.request.workflowId,
-      phaseId = run.phaseId,
-      attempt = args.iteration,
-    ) ?: return null
+    return try {
+      runLoop.phaseSettlementService.findEnvelope(
+        workflowId = run.request.workflowId,
+        phaseId = run.phaseId,
+        attempt = args.iteration,
+      )
+    } catch (error: InvalidFeatureTaskRuntimeValidationEvidenceSchemaError) {
+      clearAndRecordPersistedEvidenceFailure(runLoop, args, error)
+      null
+    }
+  }
+
+  private fun settlePersistedEnvelope(
+    runLoop: FeatureTaskRuntimeRunLoop,
+    args: GateOutputArgs,
+    settlementEnvelope: Map<String, Any?>,
+  ): AttemptResult? {
+    val run = args.run
     return try {
       val acceptedOutput = runLoop.outputValidator
-        .validatePhaseOutput(
-          JsonCodec.mapToJsonString(settlementEnvelope),
-          sourceLabel = run.phaseId,
-        )
+        .validatePhaseOutput(JsonCodec.mapToJsonString(settlementEnvelope), sourceLabel = run.phaseId)
         .requireAcceptedOutput(run.phaseId)
+      validatePersistedValidationEvidence(runLoop, run, acceptedOutput.normalizedOutput.envelope)
       FeatureTaskRuntimeRunLoopAttemptSettlement.settleValidatedOutput(
         runLoop,
         SettleValidatedOutputArgs(
@@ -258,7 +281,64 @@ object FeatureTaskRuntimeRunLoopAttemptSettlement {
     } catch (error: InvalidFeatureTaskRuntimePhaseOutputSchemaError) {
       rejectPersistedEnvelopeSchema(runLoop, args, run, error)
       null
+    } catch (error: InvalidFeatureTaskRuntimeValidationEvidenceSchemaError) {
+      clearAndRecordPersistedEvidenceFailure(runLoop, args, error)
+      null
     }
+  }
+
+  private fun validatePersistedValidationEvidence(
+    runLoop: FeatureTaskRuntimeRunLoop,
+    run: PhaseRun,
+    envelope: Map<String, Any?>,
+  ) {
+    if (run.phaseId != FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VALIDATE) return
+    val produced = JsonCodec.anyToStringAnyMap(envelope[SharedPayloadKeys.PRODUCED_OUTPUTS])
+    val result = JsonCodec.anyToStringAnyMap(
+      produced?.get(ValidationEvidencePayloadKeys.VALIDATION_RESULT),
+    )
+    val evidence = JsonCodec.anyToStringAnyMap(
+      result?.get(ValidationEvidencePayloadKeys.VALIDATION_EVIDENCE),
+    )?.let { raw -> FeatureTaskRuntimeValidationEvidence.fromArtifactMap(raw, run.phaseId) }
+      ?: throw InvalidFeatureTaskRuntimeValidationEvidenceSchemaError(
+        run.phaseId,
+        "runtime-owned validation evidence is missing.",
+      )
+    evidence.requireSuccessfulCommand(
+      FeatureTaskRuntimeRunLoopValidationGate.requiredValidationCommand(
+        runLoop = runLoop,
+        run = run,
+        evidence = evidence,
+        changedPaths = durableValidationChangedPaths(runLoop.recorder, run.request.workflowId),
+      ),
+      run.phaseId,
+    )
+  }
+
+  private fun clearAndRecordPersistedEvidenceFailure(
+    runLoop: FeatureTaskRuntimeRunLoop,
+    args: GateOutputArgs,
+    error: InvalidFeatureTaskRuntimeValidationEvidenceSchemaError,
+  ) {
+    val run = args.run
+    runLoop.phaseSettlementService.clear(
+      workflowId = run.request.workflowId,
+      phaseId = run.phaseId,
+      attempt = args.iteration,
+    )
+    FeatureTaskRuntimeRunLoopAttemptSettlement.recordRejectedOutput(
+      runLoop,
+      RecordRejectedOutputArgs(
+        run = run,
+        iteration = args.iteration,
+        rule = "phase-settlement-validation-evidence",
+        reason = error.message.orEmpty(),
+        captured = args.captured,
+        targeting = FeatureTaskRuntimeRunLoopAttemptSettlement.rejectedOutputTargeting(
+          defaultRejectedOutputTargetingArgs(run),
+        ),
+      ),
+    )
   }
 
   private fun rejectPersistedEnvelopeSchema(

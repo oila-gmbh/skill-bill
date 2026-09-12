@@ -11,13 +11,18 @@ import skillbill.application.testDecompositionManifestWriter
 import skillbill.application.testHarnessClock
 import skillbill.application.testRepositoryRoot
 import skillbill.application.testWorkflowSnapshotValidator
+import skillbill.config.model.RepoLocalConfig
 import skillbill.engine.featuretask.AcceptingFeatureTaskRuntimeHandoffEnvelopeValidator
 import skillbill.engine.featuretask.AcceptingFeatureTaskRuntimeHandoffFoundationValidator
 import skillbill.engine.featuretask.FeatureTaskRuntimePhaseRecorder
 import skillbill.engine.featuretask.FeatureTaskRuntimeStatusService
 import skillbill.engine.featuretask.featureTaskRuntimePhaseRecorder
+import skillbill.engine.featuretask.validation.ValidationGateResolver
 import skillbill.engine.goalrunner.planning.GoalChildPlanningHydratorPortAdapter
 import skillbill.engine.goalrunner.planning.GoalPlanningStatusReasonCoherence
+import skillbill.ports.config.RepoLocalConfigPort
+import skillbill.ports.config.model.ReadRepoLocalConfigRequest
+import skillbill.ports.config.model.ReadRepoLocalConfigResult
 import skillbill.ports.db.DatabaseSessionFactory
 import skillbill.ports.diagnostics.NoopRuntimeDiagnostics
 import skillbill.ports.diagnostics.RuntimeDiagnostics
@@ -25,11 +30,13 @@ import skillbill.ports.goalrunner.persistence.GoalRunnerChildRepairStore
 import skillbill.ports.goalrunner.runner.GoalRunnerManifestStore
 import skillbill.ports.goalrunner.runner.GoalRunnerWorkflowOutcomeStore
 import skillbill.ports.goalrunner.runner.NoopGoalRunnerAttemptLedgerStore
+import skillbill.ports.scaffold.install.InstalledPlatformPackCatalogPort
 import skillbill.ports.taskruntime.FeatureTaskRuntimeWorkerSupervisor
 import skillbill.ports.taskruntime.NoopFeatureTaskRuntimeWorkerSupervisor
 import skillbill.ports.workflow.decomposition.DecompositionManifestStore
 import skillbill.ports.workflow.gitops.NoopWorkflowGitOperations
 import skillbill.ports.workflow.gitops.WorkflowGitOperations
+import skillbill.scaffold.model.PlatformManifest
 import skillbill.workflow.decomposition.DecompositionManifestValidator
 import skillbill.workflow.engine.WorkflowSnapshotValidator
 import skillbill.workflow.taskruntime.FeatureTaskRuntimeHandoffEnvelopeValidator
@@ -46,6 +53,11 @@ data class GoalRunnerStatusTestPorts(
   val workerSupervisor: FeatureTaskRuntimeWorkerSupervisor = NoopFeatureTaskRuntimeWorkerSupervisor,
   val childRepairStore: GoalRunnerChildRepairStore = NoopGoalRunnerChildRepairStore,
   val runtimeStatusService: FeatureTaskRuntimeStatusService? = null,
+  val validationGatePlatformManifests: List<PlatformManifest> = emptyList(),
+  val repoLocalConfig: RepoLocalConfigPort = object : RepoLocalConfigPort {
+    override fun readRepoLocalConfig(request: ReadRepoLocalConfigRequest) =
+      ReadRepoLocalConfigResult(RepoLocalConfig.defaults())
+  },
 )
 
 fun testGoalRunnerStatusService(
@@ -56,17 +68,25 @@ fun testGoalRunnerStatusService(
   ports: GoalRunnerStatusTestPorts = GoalRunnerStatusTestPorts(),
 ): GoalRunnerStatusService {
   val projectionAssembler = GoalRunnerStatusProjectionAssembler(
-    manifestStore = manifestStore,
-    outcomeStore = outcomeStore,
-    phaseRecorder = phaseRecorder,
+    dataSources = GoalRunnerStatusProjectionDataSources(
+      manifestStore = manifestStore,
+      outcomeStore = outcomeStore,
+      phaseRecorder = phaseRecorder,
+      attemptLedgerStore = NoopGoalRunnerAttemptLedgerStore,
+    ),
     gitOperations = ports.gitOperations,
-    attemptLedgerStore = NoopGoalRunnerAttemptLedgerStore,
     clock = clock,
     workerSupervisor = ports.workerSupervisor,
     planningStatusReasonCoherence = GoalPlanningStatusReasonCoherence.NONE,
     diagnostics = NoopRuntimeDiagnostics,
     runtimeStatusService = ports.runtimeStatusService,
     repositoryRoot = testRepositoryRoot,
+    validationDependencies = GoalRunnerStatusProjectionValidationDependencies(
+      validationGateResolver = ValidationGateResolver(
+        InstalledPlatformPackCatalogPort { ports.validationGatePlatformManifests },
+      ),
+      repoLocalConfig = ports.repoLocalConfig,
+    ),
   )
   return GoalRunnerStatusService(
     manifestStore = manifestStore,

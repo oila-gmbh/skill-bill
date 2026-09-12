@@ -25,7 +25,8 @@ internal const val HANDOFF_VALIDATOR_TEST_CONSUMER: String = "implement"
 internal const val HANDOFF_VALIDATOR_TEST_PRODUCER: String = "plan"
 internal const val HANDOFF_VALIDATOR_VALIDATION_PHASE_PAYLOAD: String =
   """{"produced_outputs":{"validation_result":{"validation_status":"passed","checks":[],""" +
-    """"repository_checkpoint":{"fingerprint":"tree-1"},"gate_run_count":1,"gate_runs":[]}}}"""
+    """"repository_checkpoint":{"fingerprint":"tree-1"},"gate_run_count":1,"gate_runs":[],""" +
+    """"validation_evidence":{"contract_version":"0.1","results":[{"command":"./gradlew check","exit_code":0}]}}}}"""
 internal const val HANDOFF_VALIDATOR_HISTORY_PHASE_PAYLOAD: String =
   """{"produced_outputs":{"history_result":{"changed_paths":["src/Foo.kt"],"decisions_recorded":[]}}}"""
 internal const val HANDOFF_VALIDATOR_COMMIT_PUSH_PHASE_PAYLOAD: String =

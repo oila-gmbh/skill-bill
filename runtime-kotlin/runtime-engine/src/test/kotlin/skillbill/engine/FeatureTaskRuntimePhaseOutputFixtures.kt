@@ -172,7 +172,11 @@ private fun validateProducedOutputs(): String = """{"validation_result":{
       "checks":["FooTest"],
       "repository_checkpoint":{"fingerprint":"fixture-checkpoint-1"},
       "gate_run_count":1,
-      "gate_runs":[{"duration_ms":1,"outcome":"passed","cache_mode":"forced_full","executed_work_units":1}]
+      "gate_runs":[{"duration_ms":1,"outcome":"passed","cache_mode":"forced_full","executed_work_units":1,
+        "command":"./gradlew check","exit_code":0}],
+      "validation_evidence":{"contract_version":"0.1","results":[
+        {"command":"./gradlew check","exit_code":0}
+      ]}
     }}
 """.trimIndent()
 

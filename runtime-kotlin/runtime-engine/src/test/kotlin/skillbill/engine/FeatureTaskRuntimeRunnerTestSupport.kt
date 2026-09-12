@@ -209,7 +209,11 @@ internal val VALIDATE_REPAIR_WITHOUT_GATE_COUNTS = """
       "validation_result": {
         "validation_status": "passed",
         "checks": [{"name": "check", "status": "passed"}],
-        "repository_checkpoint": {"fingerprint": "fixture-checkpoint-1"}
+        "repository_checkpoint": {"fingerprint": "fixture-checkpoint-1"},
+        "validation_evidence": {
+          "contract_version": "0.1",
+          "results": [{"command": "./gradlew check", "exit_code": 0}]
+        }
       }
     }
   }

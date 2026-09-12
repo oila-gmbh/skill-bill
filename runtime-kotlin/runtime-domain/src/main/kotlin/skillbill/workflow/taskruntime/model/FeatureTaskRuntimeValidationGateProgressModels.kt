@@ -3,6 +3,7 @@ package skillbill.workflow.taskruntime.model
 import skillbill.boundary.OpenBoundaryMap
 import skillbill.contracts.SharedPayloadKeys
 import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_PERSISTENCE_CONTRACT_VERSION
+import skillbill.contracts.workflow.ValidationEvidencePayloadKeys
 import skillbill.error.InvalidWorkflowStateSchemaError
 
 const val FEATURE_TASK_RUNTIME_VALIDATION_GATE_PROGRESS_ARTIFACT_KEY: String =
@@ -32,12 +33,16 @@ data class FeatureTaskRuntimeValidationGateRunRecord(
   val outcome: ValidationGateRunOutcome,
   val cacheMode: ValidationGateCacheMode,
   val executedWorkUnits: Int,
+  val command: String? = null,
+  val exitCode: Int? = null,
 ) {
   constructor(
     durationMs: Long,
     outcome: String,
     cacheMode: String,
     executedWorkUnits: Int,
+    command: String? = null,
+    exitCode: Int? = null,
   ) : this(
     durationMs = durationMs,
     outcome = requireNotNull(ValidationGateRunOutcome.fromWire(outcome)) {
@@ -47,7 +52,15 @@ data class FeatureTaskRuntimeValidationGateRunRecord(
       "Unknown validation gate cache mode '$cacheMode'."
     },
     executedWorkUnits = executedWorkUnits,
+    command = command,
+    exitCode = exitCode,
   )
+
+  init {
+    require((command == null) == (exitCode == null)) {
+      "Validation gate command and exit_code must be present together."
+    }
+  }
 
   @OpenBoundaryMap("Runtime-owned validation gate run measurement at the durable workflow-artifact seam")
   fun toArtifactMap(): Map<String, Any?> = linkedMapOf(
@@ -55,7 +68,10 @@ data class FeatureTaskRuntimeValidationGateRunRecord(
     "outcome" to outcome.wireValue,
     "cache_mode" to cacheMode.wireValue,
     "executed_work_units" to executedWorkUnits,
-  )
+  ).apply {
+    command?.let { put(ValidationEvidencePayloadKeys.COMMAND, it) }
+    exitCode?.let { put(ValidationEvidencePayloadKeys.EXIT_CODE, it) }
+  }
 }
 
 data class FeatureTaskRuntimeValidationGateProgress(
@@ -126,6 +142,8 @@ data class FeatureTaskRuntimeValidationGateProgress(
             "Unknown validation gate cache mode."
           },
           executedWorkUnits = map.gateProgressInt("executed_work_units"),
+          command = map.gateProgressOptionalString(ValidationEvidencePayloadKeys.COMMAND),
+          exitCode = map.gateProgressOptionalInt(ValidationEvidencePayloadKeys.EXIT_CODE),
         )
       }
     }
@@ -176,4 +194,9 @@ private fun Map<*, *>.gateProgressOptionalInt(key: String): Int? {
     return null
   }
   return gateProgressInt(key)
+}
+
+private fun Map<*, *>.gateProgressOptionalString(key: String): String? {
+  if (!containsKey(key) || this[key] == null) return null
+  return gateProgressString(key)
 }

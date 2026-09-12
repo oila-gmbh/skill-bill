@@ -1,11 +1,14 @@
 package skillbill.goalrunner.model
 
 import skillbill.boundary.OpenBoundaryMap
+import skillbill.contracts.SharedPayloadKeys
+import skillbill.contracts.workflow.ValidationEvidencePayloadKeys
 import skillbill.workflow.decomposition.model.DecompositionManifest
 import skillbill.workflow.goal.model.GoalObservabilityDiffStat
 import skillbill.workflow.goal.model.GoalObservabilitySelectedDiffHunks
 import skillbill.workflow.model.DecompositionStatus
 import skillbill.workflow.model.WorkflowStatus
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeValidationEvidence
 
 enum class GoalPlanningStatusState(val wireValue: String) {
   NOT_STARTED("not_started"),
@@ -91,6 +94,7 @@ data class GoalRunnerStatusProjection(
   val reAttemptCauseCounts: Map<String, Int> = emptyMap(),
   val findingsInScope: Int? = null,
   val outOfBandAcceptances: List<GoalRunnerAcceptedSubtask> = emptyList(),
+  val completedSubtaskValidation: List<GoalRunnerSubtaskValidationEvidence> = emptyList(),
   val paused: Boolean = false,
   val pauseRequested: Boolean = false,
   val pauseReason: String? = null,
@@ -101,6 +105,20 @@ data class GoalRunnerStatusProjection(
   val subtaskActiveDurationMs: Long = 0,
   val subtaskActiveDurationAsOf: String? = null,
 )
+
+data class GoalRunnerSubtaskValidationEvidence(
+  val subtaskId: Int,
+  val evidence: FeatureTaskRuntimeValidationEvidence? = null,
+  val integrityProblem: String? = null,
+) {
+  @OpenBoundaryMap("Goal status validation evidence wire map")
+  fun toStatusMap(): Map<String, Any?> = linkedMapOf(
+    SharedPayloadKeys.SUBTASK_ID to subtaskId,
+    ValidationEvidencePayloadKeys.VALIDATION_EVIDENCE to
+      evidence?.toArtifactMap(),
+    ValidationEvidencePayloadKeys.INTEGRITY_PROBLEM to integrityProblem,
+  )
+}
 
 /**
  * A subtask an operator recorded as landed outside the runtime. The git-tracked manifest projection
@@ -136,6 +154,7 @@ data class GoalRunnerStatusProjectionRuntimeInputs(
   val reAttemptCauseCounts: Map<String, Int> = emptyMap(),
   val findingsInScope: Int? = null,
   val outOfBandAcceptances: List<GoalRunnerAcceptedSubtask> = emptyList(),
+  val completedSubtaskValidation: List<GoalRunnerSubtaskValidationEvidence> = emptyList(),
   val paused: Boolean = false,
   val pauseRequested: Boolean = false,
   val pauseReason: String? = null,

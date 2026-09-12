@@ -1,10 +1,17 @@
 package skillbill.engine.goalrunner
 
 import me.tatarka.inject.annotations.Inject
+import skillbill.contracts.JsonCodec
+import skillbill.contracts.SharedPayloadKeys
+import skillbill.contracts.workflow.ValidationEvidencePayloadKeys
 import skillbill.engine.featuretask.FeatureTaskRuntimePhaseRecorder
 import skillbill.engine.featuretask.FeatureTaskRuntimeStatusService
 import skillbill.engine.featuretask.agentAttributionFromPhaseState
 import skillbill.engine.featuretask.model.FeatureTaskRuntimeStatusRequest
+import skillbill.engine.featuretask.validation.ValidationGateResolver
+import skillbill.engine.featuretask.validation.durableValidationChangedPaths
+import skillbill.engine.featuretask.validation.requiredValidationGateCommand
+import skillbill.engine.featuretask.validation.resolveRequiredValidationCommand
 import skillbill.engine.goalrunner.model.GoalRunnerStatusRequest
 import skillbill.engine.goalrunner.planning.GoalPlanningStatusReasonCoherence
 import skillbill.engine.goalrunner.planning.model.GoalPlanningStatusAlignRequest
@@ -13,7 +20,10 @@ import skillbill.goalrunner.model.ExecutionLiveness
 import skillbill.goalrunner.model.GoalRunnerStatusProjection
 import skillbill.goalrunner.model.GoalRunnerStatusProjectionRuntimeInputs
 import skillbill.goalrunner.model.GoalRunnerStatusProjector
+import skillbill.goalrunner.model.GoalRunnerSubtaskValidationEvidence
 import skillbill.model.RepositoryRoot
+import skillbill.ports.config.RepoLocalConfigPort
+import skillbill.ports.config.model.ReadRepoLocalConfigRequest
 import skillbill.ports.diagnostics.RuntimeDiagnostics
 import skillbill.ports.featuretask.model.FeatureTaskRuntimeWorkerOwnership
 import skillbill.ports.goalrunner.runner.GoalRunnerAttemptLedgerStore
@@ -31,24 +41,46 @@ import skillbill.workflow.decomposition.model.DecompositionManifest
 import skillbill.workflow.decomposition.model.DecompositionSubtask
 import skillbill.workflow.model.DecompositionStatus
 import skillbill.workflow.model.decompositionStatus
+import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeValidationEvidence
 import java.io.IOException
+import java.nio.file.Path
 import java.time.Clock
 import java.time.Instant
 
+private const val MAX_STATUS_ERROR_LENGTH = 240
+
 @Inject
-class GoalRunnerStatusProjectionAssembler(
+class GoalRunnerStatusProjectionDataSources(
   val manifestStore: GoalRunnerManifestStore,
   val outcomeStore: GoalRunnerWorkflowOutcomeStore,
   val phaseRecorder: FeatureTaskRuntimePhaseRecorder,
-  val gitOperations: WorkflowGitOperations,
   val attemptLedgerStore: GoalRunnerAttemptLedgerStore,
+)
+
+@Inject
+class GoalRunnerStatusProjectionValidationDependencies(
+  val validationGateResolver: ValidationGateResolver,
+  val repoLocalConfig: RepoLocalConfigPort,
+)
+
+@Inject
+class GoalRunnerStatusProjectionAssembler(
+  val dataSources: GoalRunnerStatusProjectionDataSources,
+  val gitOperations: WorkflowGitOperations,
   val clock: Clock,
   val workerSupervisor: FeatureTaskRuntimeWorkerSupervisor,
   val planningStatusReasonCoherence: GoalPlanningStatusReasonCoherence,
   val diagnostics: RuntimeDiagnostics,
   val runtimeStatusService: FeatureTaskRuntimeStatusService?,
   val repositoryRoot: RepositoryRoot,
+  val validationDependencies: GoalRunnerStatusProjectionValidationDependencies,
 ) {
+  val manifestStore get() = dataSources.manifestStore
+  val outcomeStore get() = dataSources.outcomeStore
+  val phaseRecorder get() = dataSources.phaseRecorder
+  val attemptLedgerStore get() = dataSources.attemptLedgerStore
+
   fun project(loadedState: GoalRunnerManifestState, request: GoalRunnerStatusRequest): GoalRunnerStatusProjection {
     val acceptances = manifestStore.outOfBandAcceptances(loadedState.parentWorkflowId)
     val manifest = reconcileStatusManifest(loadedState, request, acceptances)
@@ -113,6 +145,10 @@ internal fun GoalRunnerStatusProjectionAssembler.statusProjectionRuntimeInputs(
     reAttemptCauseCounts = ledgerSummary?.reAttemptCauseCounts ?: emptyMap(),
     findingsInScope = ledgerSummary?.findingsInScope,
     outOfBandAcceptances = acceptances.toAcceptedSubtasks(),
+    completedSubtaskValidation = completedSubtaskValidation(
+      manifest,
+      request.repoRoot ?: repositoryRoot.path,
+    ),
     paused = loadedState.controlState.paused,
     pauseRequested = loadedState.controlState.pauseRequested,
     pauseReason = loadedState.controlState.pauseReason,
@@ -124,6 +160,82 @@ internal fun GoalRunnerStatusProjectionAssembler.statusProjectionRuntimeInputs(
     subtaskActiveDurationAsOf = loadedState.controlState.subtaskActiveDurationAsOf,
   )
 }
+
+private fun GoalRunnerStatusProjectionAssembler.completedSubtaskValidation(
+  manifest: DecompositionManifest,
+  repoRoot: Path,
+): List<GoalRunnerSubtaskValidationEvidence> = manifest.subtasks
+  .filter { it.status.decompositionStatus() == DecompositionStatus.COMPLETE }
+  .map { subtask -> completedSubtaskValidationFor(subtask, repoRoot) }
+
+private fun GoalRunnerStatusProjectionAssembler.completedSubtaskValidationFor(
+  subtask: DecompositionSubtask,
+  repoRoot: Path,
+): GoalRunnerSubtaskValidationEvidence {
+  val workflowId = subtask.workflowId?.takeIf(String::isNotBlank)
+  val rawEvidence = workflowId?.let(::runtimeValidationEvidence)
+  if (rawEvidence == null) {
+    return GoalRunnerSubtaskValidationEvidence(
+      subtaskId = subtask.id,
+      integrityProblem = "Completed subtask has no runtime-owned validation evidence.",
+    )
+  }
+  val sourceLabel = "goal-status.subtask-${subtask.id}"
+  return runCatching {
+    val evidence = FeatureTaskRuntimeValidationEvidence.fromArtifactMap(rawEvidence, sourceLabel)
+    val requiredCommand = requiredValidationCommandFor(
+      workflowId = requireNotNull(workflowId),
+      repoRoot = repoRoot,
+      evidence = evidence,
+      sourceLabel = sourceLabel,
+    )
+    evidence.requireSuccessfulCommand(requireNotNull(requiredCommand), sourceLabel)
+    GoalRunnerSubtaskValidationEvidence(subtask.id, evidence = evidence)
+  }.getOrElse { error ->
+    GoalRunnerSubtaskValidationEvidence(
+      subtaskId = subtask.id,
+      integrityProblem = "Validation evidence is invalid: ${error.message.orEmpty().take(MAX_STATUS_ERROR_LENGTH)}",
+    )
+  }
+}
+
+private fun GoalRunnerStatusProjectionAssembler.runtimeValidationEvidence(workflowId: String): Map<String, Any?>? =
+  phaseRecorder.loadPhaseRecords(workflowId)
+    ?.get(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VALIDATE)
+    ?.outputArtifact
+    ?.let(JsonCodec::parseObjectOrNull)
+    ?.let(JsonCodec::jsonElementToValue)
+    ?.let(JsonCodec::anyToStringAnyMap)
+    ?.get(SharedPayloadKeys.PRODUCED_OUTPUTS)
+    ?.let(JsonCodec::anyToStringAnyMap)
+    ?.get(ValidationEvidencePayloadKeys.VALIDATION_RESULT)
+    ?.let(JsonCodec::anyToStringAnyMap)
+    ?.get(ValidationEvidencePayloadKeys.VALIDATION_EVIDENCE)
+    ?.let(JsonCodec::anyToStringAnyMap)
+
+private fun GoalRunnerStatusProjectionAssembler.requiredValidationCommandFor(
+  workflowId: String,
+  repoRoot: Path,
+  evidence: FeatureTaskRuntimeValidationEvidence,
+  sourceLabel: String,
+): String? = resolveRequiredValidationCommand(
+  resolver = validationDependencies.validationGateResolver,
+  requiredCommandForDeclaration = { declaration ->
+    val wrapper = validationDependencies.repoLocalConfig
+      .readRepoLocalConfig(ReadRepoLocalConfigRequest(repoRoot))
+      .config
+      .validationGate
+      .gradleWrapper
+    requiredValidationGateCommand(
+      declaration,
+      wrapper,
+      phaseRecorder.loadValidationGateProgress(workflowId),
+    )
+  },
+  changedPaths = durableValidationChangedPaths(phaseRecorder, workflowId),
+  evidence = evidence,
+  sourceLabel = sourceLabel,
+)
 
 internal fun GoalRunnerStatusProjectionAssembler.alignedPlanningStatus(
   loadedState: GoalRunnerManifestState,

@@ -6,6 +6,7 @@ import skillbill.contracts.JsonCodec
 import skillbill.contracts.SharedPayloadKeys
 import skillbill.contracts.review.ReviewVerificationSignalKeys
 import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_CONTRACT_VERSION
+import skillbill.contracts.workflow.ValidationEvidencePayloadKeys
 import skillbill.engine.featuretask.FeatureTaskRuntimePhaseRecorder
 import skillbill.engine.featuretask.emitFeatureTaskRuntimeEventSafely
 import skillbill.engine.featuretask.model.FeatureTaskRuntimeRunEvent
@@ -20,6 +21,7 @@ import skillbill.engine.featuretask.validation.model.ValidationGateProgressWrite
 import skillbill.engine.featuretask.validation.model.ValidationGateResolution
 import skillbill.engine.featuretask.validation.model.ValidationGateTriageResult
 import skillbill.engine.featuretask.validation.model.requiresUnparseableGateTriage
+import skillbill.error.InvalidFeatureTaskRuntimeValidationEvidenceSchemaError
 import skillbill.ports.config.RepoLocalConfigPort
 import skillbill.ports.config.model.ReadRepoLocalConfigRequest
 import skillbill.ports.diagnostics.RuntimeDiagnostics
@@ -32,6 +34,8 @@ import skillbill.scaffold.model.ValidationGateDeclaration
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFailureDisposition
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutput
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeValidationCommandResult
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeValidationEvidence
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeValidationGateProgress
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeValidationGateRepairWindowPhase
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeValidationGateRunRecord
@@ -39,6 +43,7 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeVerdict
 import skillbill.workflow.taskruntime.model.ValidationGateCacheMode
 import skillbill.workflow.taskruntime.model.ValidationGateRunOutcome
 import skillbill.workflow.taskruntime.unparseableGateFailureMessage
+import java.nio.file.Path
 
 private const val VALIDATE_PHASE_STATUS_COMPLETED = "completed"
 
@@ -80,6 +85,19 @@ class FeatureTaskRuntimeValidationGateCoordinator(
   private val repoLocalConfig: RepoLocalConfigPort,
   private val diagnostics: RuntimeDiagnostics,
 ) {
+  internal fun requiredValidationCommand(
+    repoRoot: Path,
+    workflowId: String,
+    declaration: ValidationGateDeclaration,
+  ): String {
+    val wrapper = repoLocalConfig
+      .readRepoLocalConfig(ReadRepoLocalConfigRequest(repoRoot))
+      .config
+      .validationGate
+      .gradleWrapper
+    return requiredValidationGateCommand(declaration, wrapper, progressStore.load(workflowId))
+  }
+
   fun execute(cycle: ValidationGateCycleRequest, onGateRunCount: (Int) -> Unit = {}): ValidationGateCycleResult {
     return when (val resolution = resolver.resolve(cycle.changedPaths)) {
       is ValidationGateResolution.Absent -> ValidationGateCycleResult.AbsentFallback
@@ -112,6 +130,7 @@ class FeatureTaskRuntimeValidationGateCoordinator(
     recordGateProgress(
       state = state,
       result = discovery,
+      command = commandFor(cycle, declaration, ValidationGateCyclePhase.INITIAL_DISCOVERY),
       write = ValidationGateProgressWrite(
         repairWindowPhase = repairWindowPhaseFor(discoveryFindings),
         remainingFindings = null,
@@ -121,7 +140,11 @@ class FeatureTaskRuntimeValidationGateCoordinator(
       ),
     )
     if (discoveryFindings.isEmpty()) {
-      return terminalCompletedResult(cycle.repositoryCheckpoint, measurements)
+      return terminalCompletedResult(
+        cycle.repositoryCheckpoint,
+        measurements,
+        commandFor(cycle, declaration, ValidationGateCyclePhase.INITIAL_DISCOVERY),
+      )
     }
     val triagePlan = runTriageIfNeeded(cycle, discoveryFindings, persistedPlan = null)
     if (triagePlan != null) {
@@ -171,7 +194,11 @@ class FeatureTaskRuntimeValidationGateCoordinator(
     var currentFindings = openFindings
     while (true) {
       if (currentFindings.isEmpty()) {
-        return terminalCompletedResult(cycle.repositoryCheckpoint, measurements)
+        return terminalCompletedResult(
+          cycle.repositoryCheckpoint,
+          measurements,
+          commandFor(cycle, declaration, ValidationGateCyclePhase.POST_REPAIR_VERIFY),
+        )
       }
       val projection = ValidationFindingSetProjection(findings = currentFindings)
       if (repairsUsed >= MAX_REPAIR_TURNS) {
@@ -210,7 +237,11 @@ class FeatureTaskRuntimeValidationGateCoordinator(
       }
       currentFindings = verifyAfterRepair(state, declaration, repairsUsed, triagePlan)
       if (currentFindings.isEmpty()) {
-        return terminalCompletedResult(cycle.repositoryCheckpoint, measurements)
+        return terminalCompletedResult(
+          cycle.repositoryCheckpoint,
+          measurements,
+          commandFor(cycle, declaration, ValidationGateCyclePhase.POST_REPAIR_VERIFY),
+        )
       }
     }
   }
@@ -226,6 +257,7 @@ class FeatureTaskRuntimeValidationGateCoordinator(
     recordGateProgress(
       state = state,
       result = verify,
+      command = commandFor(state.cycle, declaration, ValidationGateCyclePhase.POST_REPAIR_VERIFY),
       write = ValidationGateProgressWrite(
         repairWindowPhase = repairWindowPhaseFor(verifyFindings),
         remainingFindings = null,
@@ -274,9 +306,23 @@ class FeatureTaskRuntimeValidationGateCoordinator(
     )
   }
 
+  private fun commandFor(
+    cycle: ValidationGateCycleRequest,
+    declaration: ValidationGateDeclaration,
+    cyclePhase: ValidationGateCyclePhase,
+  ): String {
+    val wrapper = repoLocalConfig
+      .readRepoLocalConfig(ReadRepoLocalConfigRequest(cycle.repoRoot))
+      .config
+      .validationGate
+      .gradleWrapper
+    return validationGateCommand(declaration, cyclePhase, wrapper)
+  }
+
   private fun recordGateProgress(
     state: ValidationGateCycleState,
     result: ValidationGateRunResult,
+    command: String,
     write: ValidationGateProgressWrite,
   ) {
     state.measurements += FeatureTaskRuntimeValidationGateRunRecord(
@@ -284,6 +330,8 @@ class FeatureTaskRuntimeValidationGateCoordinator(
       outcome = result.outcome,
       cacheMode = result.cacheMode,
       executedWorkUnits = result.executedWorkUnits,
+      command = command,
+      exitCode = result.exitCode,
     )
     persistProgress(state = state, write = write)
   }
@@ -336,7 +384,20 @@ class FeatureTaskRuntimeValidationGateCoordinator(
       repositoryCheckpoint: String,
       measurements: List<FeatureTaskRuntimeValidationGateRunRecord>,
       checks: List<String>,
+      requiredCommand: String,
     ): FeatureTaskRuntimePhaseOutput {
+      val evidence = measurements.mapNotNull { measurement ->
+        val command = measurement.command ?: return@mapNotNull null
+        val exitCode = measurement.exitCode ?: return@mapNotNull null
+        FeatureTaskRuntimeValidationCommandResult(command, exitCode)
+      }
+      if (evidence.isEmpty()) {
+        throw InvalidFeatureTaskRuntimeValidationEvidenceSchemaError(
+          "validate",
+          "runtime-owned validation evidence has no command results.",
+        )
+      }
+      FeatureTaskRuntimeValidationEvidence(evidence).requireSuccessfulCommand(requiredCommand, "validate")
       val validationResult = linkedMapOf<String, Any?>(
         "validation_status" to "passed",
         "checks" to checks,
@@ -344,7 +405,14 @@ class FeatureTaskRuntimeValidationGateCoordinator(
           mapOf(ReviewVerificationSignalKeys.REPOSITORY_CHECKPOINT_FINGERPRINT to repositoryCheckpoint),
         "gate_run_count" to measurements.size,
         "gate_runs" to measurements.map { it.toArtifactMap() },
-      )
+      ).apply {
+        if (evidence.isNotEmpty()) {
+          put(
+            ValidationEvidencePayloadKeys.VALIDATION_EVIDENCE,
+            FeatureTaskRuntimeValidationEvidence(evidence).toArtifactMap(),
+          )
+        }
+      }
       val payload = JsonCodec.mapToJsonString(
         mapOf(
           SharedPayloadKeys.CONTRACT_VERSION to FEATURE_TASK_RUNTIME_CONTRACT_VERSION,
@@ -353,7 +421,7 @@ class FeatureTaskRuntimeValidationGateCoordinator(
           SharedPayloadKeys.SUMMARY to "Validation satisfied by runtime-owned gate execution.",
           SharedPayloadKeys.VERDICT to FeatureTaskRuntimeVerdict.SATISFIED.wireValue,
           SharedPayloadKeys.PRODUCED_OUTPUTS to mapOf(
-            "validation_result" to validationResult,
+            ValidationEvidencePayloadKeys.VALIDATION_RESULT to validationResult,
           ),
         ),
       )
@@ -367,7 +435,7 @@ class FeatureTaskRuntimeValidationGateCoordinator(
 }
 
 private fun findingsForRepairFromResult(result: ValidationGateRunResult): List<ValidationGateFinding> =
-  if (result.outcome == ValidationGateRunOutcome.PASSED) {
+  if (result.outcome == ValidationGateRunOutcome.PASSED && result.exitCode == 0) {
     emptyList()
   } else {
     result.findings.ifEmpty {
@@ -387,15 +455,21 @@ private fun decodePersistedFindings(raw: List<Map<String, String?>>): List<Valid
 private fun terminalCompletedResult(
   repositoryCheckpoint: String,
   measurements: List<FeatureTaskRuntimeValidationGateRunRecord>,
-): ValidationGateCycleResult = ValidationGateCycleResult.Terminal(
-  ValidationGateCycleTerminalOutcome.Completed(
-    output = FeatureTaskRuntimeValidationGateCoordinator.runtimeOwnedValidationOutput(
-      repositoryCheckpoint = repositoryCheckpoint,
-      measurements = measurements,
-      checks = emptyList(),
+  requiredCommand: String,
+): ValidationGateCycleResult = try {
+  ValidationGateCycleResult.Terminal(
+    ValidationGateCycleTerminalOutcome.Completed(
+      output = FeatureTaskRuntimeValidationGateCoordinator.runtimeOwnedValidationOutput(
+        repositoryCheckpoint = repositoryCheckpoint,
+        measurements = measurements,
+        checks = emptyList(),
+        requiredCommand = requiredCommand,
+      ),
     ),
-  ),
-)
+  )
+} catch (error: InvalidFeatureTaskRuntimeValidationEvidenceSchemaError) {
+  terminalBlockedResult(error.message.orEmpty(), measurements = measurements)
+}
 
 private fun terminalBlockedResult(
   reason: String,
