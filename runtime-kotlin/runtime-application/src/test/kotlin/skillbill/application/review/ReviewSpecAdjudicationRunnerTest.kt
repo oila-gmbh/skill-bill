@@ -274,6 +274,27 @@ class ReviewSpecAdjudicationRunnerTest {
   }
 
   @Test
+  fun `malformed adjudication citation lines are omitted with finding-scoped diagnostics`() {
+    val stdout =
+      """{"scope_disposition":"in_scope","citations":[{"path":"spec.md","line":1},{"path":"spec.md","line":0}]}"""
+    val outcome = runAdjudication(
+      launcher = { request -> facts(request, stdout) },
+      fixture = AdjudicationRequestFixture(
+        findings = listOf(finding("F-001")),
+        existingVerdicts = listOf(stage1("F-001", ReviewClaimVerdict.CONFIRMED)),
+        projection = projection(),
+        budget = ReviewContextBudgetPolicy.DEFAULT,
+        repoRoot = Files.createTempDirectory("adj-malformed-citation"),
+      ),
+    )
+    assertEquals(ReviewScopeDisposition.IN_SCOPE, outcome.verdicts.single().scopeDisposition)
+    assertEquals(listOf("spec.md"), outcome.verdicts.single().citations.map { it.path })
+    assertEquals(1, outcome.citationDiagnostics.size)
+    assertEquals("F-001", outcome.citationDiagnostics.single().findingRef)
+    assertEquals("non_positive_line", outcome.citationDiagnostics.single().diagnostic.reason)
+  }
+
+  @Test
   fun `spec_deviation citing an element absent from the projection is not admitted`() {
     val verdict = runAdjudication(
       launcher = { request -> facts(request, INVENTED_DEVIATION) },

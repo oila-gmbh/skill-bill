@@ -107,11 +107,11 @@ class ParallelCodeReviewRunner(
       result.mergeResult.findings,
     )
     resultAssembly.recordMergedFindingLanes(initial.request.reviewRunId)
-    val verificationVerdicts = verificationStages.runClaimVerification(initial, result)
-    val adjudicationVerdicts = verificationStages.runSpecAdjudication(initial, result)
+    val verificationOutcome = verificationStages.runClaimVerification(initial, result)
+    val adjudicationOutcome = verificationStages.runSpecAdjudication(initial, result)
     val recordedVerdicts = verificationStages.recordedFindingVerdicts(
       initial.request.reviewRunId,
-      verificationVerdicts + adjudicationVerdicts,
+      verificationOutcome.verdicts + adjudicationOutcome.verdicts,
     )
     resultAssembly.emitReviewStageDegradations(initial.request.reviewRunId, outcomes)
     val prose = result.output
@@ -130,6 +130,9 @@ class ParallelCodeReviewRunner(
     return result.copy(
       mergeResult = assembled,
       stageResume = resultAssembly.stageResumeReport(initial.request.reviewRunId),
+      citationDiagnostics = result.citationDiagnostics +
+        verificationOutcome.citationDiagnostics +
+        adjudicationOutcome.citationDiagnostics,
     )
   }
 

@@ -3,6 +3,7 @@ package skillbill.review
 
 import skillbill.review.model.ParallelReviewFindingRejectionReason
 import skillbill.review.model.ReviewClaimVerdict
+import skillbill.review.model.ReviewFindingCitation
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
@@ -284,6 +285,22 @@ class ParallelReviewFindingParserTest {
         - Minor | Low | src/C.kt:3 | bullet missing token
         """.trimIndent(),
       ).lines(),
+    )
+  }
+
+  @Test
+  fun `trailing citation tokens omit malformed lines with finding-scoped diagnostics`() {
+    val parsed = ParallelReviewFindingParser.parse(
+      "[F-001] Major | High | path=src/A.kt | line=12 | stale check | " +
+        "citations=src/Valid.kt:5,src/Bad.kt:0,src/C.kt:abc",
+    )
+    val finding = parsed.findings.single()
+    assertEquals(listOf(ReviewFindingCitation("src/Valid.kt", 5)), finding.citations)
+    assertEquals(2, parsed.citationDiagnostics.size)
+    assertTrue(parsed.citationDiagnostics.all { it.findingRef == "F-001" })
+    assertEquals(
+      listOf("non_positive_line", "non_numeric_line"),
+      parsed.citationDiagnostics.map { it.diagnostic.reason },
     )
   }
 

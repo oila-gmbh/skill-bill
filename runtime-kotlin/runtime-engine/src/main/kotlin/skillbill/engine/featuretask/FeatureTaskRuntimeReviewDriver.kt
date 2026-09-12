@@ -17,6 +17,8 @@ import skillbill.review.context.model.CodeReviewExecutionMode
 import skillbill.review.context.model.ReviewIntegrationTerminalOutcome
 import skillbill.review.model.ParallelReviewMergedFinding
 import skillbill.review.model.ReviewFindingCitation
+import skillbill.review.model.ReviewFindingCitationDiagnosticKeys
+import skillbill.review.model.ReviewFindingCitationDiagnosticWithFinding
 import skillbill.workflow.goal.model.GoalSubtaskBlockerDisposition
 import skillbill.workflow.goal.model.GoalSubtaskCommitFocusedAccounting
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeReviewPassSequence
@@ -126,6 +128,7 @@ object FeatureTaskRuntimeReviewEnvelope {
     )
     val outcome = GoalSubtaskReviewSummaryReducer.outcomeFor(envelope)
     produced[FeatureTaskRuntimeVerificationSignalKeys.REVIEW_FINDINGS] = findings
+    mergeCitationDiagnostics(produced, result.citationDiagnostics)
     envelope[FeatureTaskRuntimeVerificationSignalKeys.VERDICT] = outcome.verdict.wireValue
     return JsonCodec.mapToJsonString(envelope)
   }
@@ -180,6 +183,29 @@ object FeatureTaskRuntimeReviewEnvelope {
   private fun citationPayload(citation: ReviewFindingCitation): Map<String, Any?> =
     mapOf("path" to citation.path, "line" to citation.line)
 
+  private fun mergeCitationDiagnostics(
+    produced: MutableMap<String, Any?>,
+    diagnostics: List<ReviewFindingCitationDiagnosticWithFinding>,
+  ) {
+    if (diagnostics.isEmpty()) return
+    val existing = (produced[FeatureTaskRuntimeVerificationSignalKeys.CITATION_DIAGNOSTICS] as? List<*>)
+      ?.mapNotNull { entry ->
+        (entry as? Map<*, *>)?.mapKeys { (key, _) -> key.toString() }?.mapValues { (_, value) -> value }
+      }
+      .orEmpty()
+    val merged = (existing + diagnostics.map(::citationDiagnosticWireMap))
+      .distinctBy { entry ->
+        listOf(
+          entry["finding_ref"],
+          entry[ReviewFindingCitationDiagnosticKeys.CITATION_INDEX],
+          entry["path"],
+          entry[ReviewFindingCitationDiagnosticKeys.RAW_LINE],
+          entry["reason"],
+        )
+      }
+    produced[FeatureTaskRuntimeVerificationSignalKeys.CITATION_DIAGNOSTICS] = merged
+  }
+
   private fun commitFocusedAccounting(
     result: ParallelCodeReviewResult,
     resolvedTier: CodeReviewExecutionMode,
@@ -218,6 +244,15 @@ object FeatureTaskRuntimeReviewEnvelope {
     )
   }
 }
+
+private fun citationDiagnosticWireMap(diagnostic: ReviewFindingCitationDiagnosticWithFinding): Map<String, Any?> =
+  buildMap {
+    diagnostic.findingRef?.let { put("finding_ref", it) }
+    put(ReviewFindingCitationDiagnosticKeys.CITATION_INDEX, diagnostic.diagnostic.citationIndex)
+    put("path", diagnostic.diagnostic.path)
+    put(ReviewFindingCitationDiagnosticKeys.RAW_LINE, diagnostic.diagnostic.rawLine)
+    put("reason", diagnostic.diagnostic.reason)
+  }
 
 internal data class FeatureTaskRuntimeReviewDriverCycleOutcome(
   val outputText: String,

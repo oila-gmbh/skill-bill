@@ -53,6 +53,7 @@ object ParallelReviewMerger {
         citations = candidate.citations,
         severityAdjustment = candidate.severityAdjustment,
         sourceVerdicts = candidate.sourceVerdicts,
+        sourceFindingRefs = candidate.sourceFindingRefs,
       )
     }
 
@@ -225,6 +226,7 @@ object ParallelReviewMerger {
       citations = sourceVerdicts.flatMap { it.citations }.distinct(),
       severityAdjustment = sourceVerdicts.mapNotNull { it.severityAdjustment }.firstOrNull(),
       sourceVerdicts = sourceVerdicts,
+      sourceFindingRefs = entries.mapNotNull { it.finding.sourceFindingRef }.distinct(),
     )
   }
 
@@ -285,5 +287,6 @@ object ParallelReviewMerger {
     val citations: List<ReviewFindingCitation>,
     val severityAdjustment: ReviewSeverityAdjustment?,
     val sourceVerdicts: List<ReviewLaneFindingVerdict>,
+    val sourceFindingRefs: List<String>,
   )
 }

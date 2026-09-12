@@ -18,6 +18,7 @@ import skillbill.review.context.model.ReviewSpecialistSummary
 import skillbill.review.context.model.ReviewSpecialistSummaryCoverage
 import skillbill.review.context.model.structuredString
 import skillbill.review.model.ParallelReviewRawFinding
+import skillbill.review.model.ReviewFindingCitationDiagnosticWithFinding
 
 /**
  * Runs the single bounded integration pass after every specialist lane reaches a terminal state.
@@ -78,15 +79,17 @@ class ReviewIntegrationPassRunner(
     launchBytes: Long,
   ): ReviewIntegrationPassOutcome {
     val terminal = terminalOutcomeOf(facts)
+    val parsed = if (terminal == ReviewIntegrationTerminalOutcome.COMPLETED) {
+      crossCommitFindings(facts.stdout, integration)
+    } else {
+      CrossCommitFindings()
+    }
     return ReviewIntegrationPassOutcome(
       commitSequenceDigest = integration.commitSequenceDigest,
       terminalOutcome = terminal,
       summarizedLaneCount = integration.specialistSummaries.size,
-      findings = if (terminal == ReviewIntegrationTerminalOutcome.COMPLETED) {
-        crossCommitFindings(facts.stdout, integration)
-      } else {
-        emptyList()
-      },
+      findings = parsed.findings,
+      citationDiagnostics = parsed.citationDiagnostics,
       launchBytes = launchBytes,
       resultBytes = facts.stdout.toByteArray(Charsets.UTF_8).size.toLong(),
       modelTurns = 1,
@@ -104,12 +107,10 @@ class ReviewIntegrationPassRunner(
    * the finding, so the remaining cross-commit findings survive instead of the whole run throwing
    * away every specialist lane's already-finished work.
    */
-  private fun crossCommitFindings(
-    stdout: String,
-    integration: GovernedReviewIntegrationLaunch,
-  ): List<ParallelReviewRawFinding> {
+  private fun crossCommitFindings(stdout: String, integration: GovernedReviewIntegrationLaunch): CrossCommitFindings {
     val owned = integration.packet.ownedCommitIds
-    return ParallelReviewFindingParser.parse(stdout).findings.mapNotNull { finding ->
+    val parsed = ParallelReviewFindingParser.parse(stdout)
+    val findings = parsed.findings.mapNotNull { finding ->
       val resolved = finding.commitShas.map { sha -> resolveCommitSha(sha, owned) }
       if (resolved.any { it == null }) return@mapNotNull null
       finding.copy(
@@ -117,6 +118,11 @@ class ReviewIntegrationPassRunner(
         commitShas = resolved.filterNotNull().distinct(),
       )
     }.filter { it.commitShas.size > 1 }
+    val sourceRefs = findings.mapNotNull { it.sourceFindingRef }.toSet()
+    return CrossCommitFindings(
+      findings = findings,
+      citationDiagnostics = parsed.citationDiagnostics.filter { it.findingRef in sourceRefs },
+    )
   }
 
   /** Exact match, else the single owned commit this abbreviation prefixes; ambiguous stays foreign. */
@@ -196,6 +202,11 @@ class ReviewIntegrationPassRunner(
     facts.exitStatus != 0 -> ReviewIntegrationTerminalOutcome.PROCESS_FAILURE
     else -> ReviewIntegrationTerminalOutcome.COMPLETED
   }
+
+  private data class CrossCommitFindings(
+    val findings: List<ParallelReviewRawFinding> = emptyList(),
+    val citationDiagnostics: List<ReviewFindingCitationDiagnosticWithFinding> = emptyList(),
+  )
 
   companion object {
     /** Attribution for a finding the integration pass owns; never a specialist skill name. */

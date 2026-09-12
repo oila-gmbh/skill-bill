@@ -215,7 +215,7 @@ internal class ParallelCodeReviewRunnerLaneLaunch(
     val softAdmission = if (launchReason == null) {
       failureAdmission.softAdmitFindings(outcome.stdout, launch)
     } else {
-      ParallelCodeReviewSoftRegisterAdmission(emptyList(), null, 0)
+      ParallelCodeReviewSoftRegisterAdmission(emptyList(), null, 0, emptyList())
     }
     return ParallelReviewLaneOutcome(
       success = launchReason == null,
@@ -238,6 +238,7 @@ internal class ParallelCodeReviewRunnerLaneLaunch(
       budgetDimension = completion.budgetDimension,
       unreviewedUnits = completion.unreviewedUnits,
       rejectedCandidateCount = softAdmission.rejectedCandidateCount,
+      citationDiagnostics = softAdmission.citationDiagnostics,
     )
   }
 

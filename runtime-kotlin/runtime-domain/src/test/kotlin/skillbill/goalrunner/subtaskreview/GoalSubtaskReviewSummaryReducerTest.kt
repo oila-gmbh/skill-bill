@@ -571,6 +571,42 @@ class GoalSubtaskReviewSummaryReducerTest {
   }
 
   @Test
+  fun `structured findings preserve valid citations and findings when one citation line is malformed`() {
+    val output = mapOf(
+      "produced_outputs" to mapOf(
+        "findings" to listOf(
+          mapOf(
+            "finding_id" to "F-001",
+            "severity" to "major",
+            "message" to "Valid finding survives malformed citation sibling",
+            "location" to "src/Valid.kt:10",
+            "citations" to listOf(
+              mapOf("path" to "src/Valid.kt", "line" to 10),
+              mapOf("path" to "src/Bad.kt", "line" to 0),
+            ),
+          ),
+          mapOf(
+            "finding_id" to "F-002",
+            "severity" to "minor",
+            "message" to "Second finding remains parseable",
+            "location" to "src/Other.kt:3",
+          ),
+        ),
+      ),
+    )
+    val findings = GoalSubtaskReviewSummaryReducer.structuredFindings(output)
+    assertEquals(2, findings.size)
+    assertEquals(
+      listOf(ReviewFindingCitation("src/Valid.kt", 10)),
+      findings.first().citations,
+    )
+    val diagnostics = GoalSubtaskReviewStructuredFindingsParse.citationDiagnostics(output)
+    assertEquals(1, diagnostics.size)
+    assertEquals("F-001", diagnostics.single().findingRef)
+    assertEquals("non_positive_line", diagnostics.single().diagnostic.reason)
+  }
+
+  @Test
   fun `structured findings drop invalid repository_path values`() {
     val output = mapOf(
       "produced_outputs" to mapOf(

@@ -26,11 +26,12 @@ class ParallelCodeReviewRunnerFailureAdmission(
       findings = attributeInlineFindings(parsed, launch.selected),
       droppedCandidateDiagnostic = rejectedCandidateDiagnostic(parsed),
       rejectedCandidateCount = parsed.rejections.size,
+      citationDiagnostics = parsed.citationDiagnostics,
     )
   } catch (cancellation: CancellationException) {
     throw cancellation
   } catch (_: ReviewRegisterParseSeamException) {
-    ParallelCodeReviewSoftRegisterAdmission(emptyList(), null, 0)
+    ParallelCodeReviewSoftRegisterAdmission(emptyList(), null, 0, emptyList())
   }
 
   private fun attributeInlineFindings(

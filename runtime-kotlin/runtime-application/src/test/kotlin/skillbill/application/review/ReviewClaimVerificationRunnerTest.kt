@@ -105,6 +105,32 @@ class ReviewClaimVerificationRunnerTest {
   }
 
   @Test
+  fun `malformed worker citation lines are omitted while the finding verdict still settles`() {
+    val stdout = """
+      {
+        "claim_verdict": "refuted",
+        "citations": [
+          {"path": "src/A.kt", "line": 12},
+          {"path": "src/A.kt", "line": 0}
+        ]
+      }
+    """.trimIndent()
+    val outcome = runner(
+      launcher = { request -> facts(request, stdout) },
+    ).run(
+      verificationRequest(
+        findings = listOf(finding("F-001")),
+        repoRoot = Files.createTempDirectory("verify-malformed-citation"),
+      ),
+    )
+    assertEquals(ReviewClaimVerdict.REFUTED, outcome.verdicts.single().claimVerdict)
+    assertEquals(listOf("src/A.kt"), outcome.verdicts.single().citations.map { it.path })
+    assertEquals(1, outcome.citationDiagnostics.size)
+    assertEquals("F-001", outcome.citationDiagnostics.single().findingRef)
+    assertEquals("non_positive_line", outcome.citationDiagnostics.single().diagnostic.reason)
+  }
+
+  @Test
   fun `inline bounds evidence to the cited region while delegated permits brokered expansion`() {
     val inline = envelopesFor(ResolvedReviewExecutionMode.INLINE)
     val delegated = envelopesFor(ResolvedReviewExecutionMode.DELEGATED)

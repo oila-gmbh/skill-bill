@@ -33,6 +33,7 @@ import skillbill.review.model.ParallelReviewLaneResult
 import skillbill.review.model.ParallelReviewMergedFinding
 import skillbill.review.model.ReviewCoverageReport
 import skillbill.review.model.ReviewEvidenceBoundaryAccounting
+import skillbill.review.model.ReviewFindingCitationDiagnosticWithFinding
 import skillbill.review.model.ReviewLaneAggregationInput
 import skillbill.review.model.ReviewRunLaneSegmentAccountingJson
 import skillbill.review.model.ReviewStage
@@ -272,6 +273,10 @@ class ParallelCodeReviewRunnerResultAssembly(
         ParallelReviewLaneResult(agentId = args.agent1Id, findings = emptyList()),
       )
     }
+    val citationDiagnostics = remapCitationDiagnostics(
+      diagnostics = args.outcomes.lane1.citationDiagnostics + args.integration.citationDiagnostics,
+      findings = merged.findings,
+    )
     return ParallelCodeReviewResult(
       mergeResult = merged.copy(formattedOutput = prose),
       lane1 = args.outcomes.lane1.toParallelReviewLaneStatus(args.agent1Id),
@@ -280,9 +285,20 @@ class ParallelCodeReviewRunnerResultAssembly(
       integration = args.integration,
       coverage = args.coverage,
       stageResume = args.stageResume,
+      citationDiagnostics = citationDiagnostics,
     )
   }
 }
+
+private fun remapCitationDiagnostics(
+  diagnostics: List<ReviewFindingCitationDiagnosticWithFinding>,
+  findings: List<ParallelReviewMergedFinding>,
+): List<ReviewFindingCitationDiagnosticWithFinding> = diagnostics.map { diagnostic ->
+  val finalRef = diagnostic.findingRef?.let { sourceRef ->
+    findings.firstOrNull { sourceRef in it.sourceFindingRefs }?.fNumber
+  }
+  if (finalRef == null) diagnostic else diagnostic.copy(findingRef = finalRef)
+}.distinct()
 
 private fun ParallelReviewLaneOutcome.toParallelReviewLaneStatus(agentId: String) = ParallelReviewLaneStatus(
   agentId,

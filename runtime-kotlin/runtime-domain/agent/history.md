@@ -1,5 +1,14 @@
 # Boundary History — runtime-domain
 
+## [2026-09-12] SKILL-333 subtask 1 — isolate malformed citations
+Areas: runtime-domain/review, runtime-application/review, runtime-engine/featuretask, runtime-ports/review, runtime-core/architecture
+- Malformed citation fields are isolated per finding, valid citations remain in the review result, and typed citation diagnostics retain finding or entry identity through review outcomes.
+- Review parsing, claim adjudication, durable phase output, and retryable runtime handling now share the diagnostic-carrying result path.
+- Pattern: preserve usable findings while making malformed structured fields observable at the ingestion boundary. reusable
+- Breaking changes or known limitations: blank and repository-external paths remain rejected; positive-line validation remains enforced.
+Feature flag: N/A
+Acceptance criteria: 7/7 implemented
+
 ## [2026-08-24] SKILL-206 remove-provider-token-accounting
 Areas: runtime-domain/review/context, runtime-application/review, runtime-ports/review, runtime-infra-fs, runtime-infra-sqlite, orchestration/contracts
 - Review accounting now retains byte, count, routing, parent-analysis, integration, segment, and local byte-derived estimate surfaces without provider-reported token values.

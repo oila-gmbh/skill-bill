@@ -4,6 +4,8 @@ import skillbill.contracts.JsonCodec
 import skillbill.review.model.RecordedVerdictFields
 import skillbill.review.model.ReviewClaimVerdict
 import skillbill.review.model.ReviewFindingCitation
+import skillbill.review.model.ReviewFindingCitationDiagnostic
+import skillbill.review.model.ReviewFindingCitationsDecode
 import skillbill.review.model.ReviewScopeDisposition
 import skillbill.review.model.ReviewSeverityAdjustment
 import skillbill.review.model.ReviewSeverityAdjustmentDirection
@@ -22,7 +24,7 @@ object ReviewFindingFieldCodec {
   ): RecordedVerdictFields = RecordedVerdictFields(
     claimVerdict = claimVerdictOf(claimVerdict),
     scopeDisposition = scopeDispositionOf(scopeDisposition),
-    citations = citationsOf(citations),
+    citations = decodeCitations(citations).citations,
     severityAdjustment = severityAdjustmentOf(severityAdjustment),
   )
 
@@ -32,20 +34,28 @@ object ReviewFindingFieldCodec {
   fun scopeDispositionOf(raw: Any?): ReviewScopeDisposition? =
     (raw as? String)?.trim()?.takeIf(String::isNotBlank)?.let(ReviewScopeDisposition::fromWire)
 
-  fun citationsOf(raw: Any?): List<ReviewFindingCitation> {
-    val items = raw as? List<*> ?: return emptyList()
-    return items.map { item ->
+  fun citationsOf(raw: Any?): List<ReviewFindingCitation> = decodeCitations(raw).citations
+
+  fun decodeCitations(raw: Any?): ReviewFindingCitationsDecode {
+    val items = raw as? List<*> ?: return ReviewFindingCitationsDecode(emptyList(), emptyList())
+    val citations = mutableListOf<ReviewFindingCitation>()
+    val diagnostics = mutableListOf<ReviewFindingCitationDiagnostic>()
+    items.forEachIndexed { index, item ->
       val map = JsonCodec.anyToStringAnyMap(item)
         ?: error("Finding citation entry must be an object.")
       val path = (map["path"] as? String)?.trim()?.takeIf(String::isNotBlank)
         ?: error("Finding citation path must be non-blank.")
-      val line = when (val value = map["line"]) {
-        is Number -> value.toInt()
-        is String -> value.trim().toIntOrNull()
-        else -> null
-      } ?: error("Finding citation line must be a positive integer.")
-      ReviewFindingCitation(path, line)
+      when (val line = parseCitationLine(map["line"])) {
+        is ParsedCitationLine.Accepted -> citations += ReviewFindingCitation(path, line.value)
+        is ParsedCitationLine.Rejected -> diagnostics += ReviewFindingCitationDiagnostic(
+          citationIndex = index,
+          path = path,
+          rawLine = line.rawLine,
+          reason = line.reason,
+        )
+      }
     }
+    return ReviewFindingCitationsDecode(citations, diagnostics)
   }
 
   fun severityAdjustmentOf(raw: Any?): ReviewSeverityAdjustment? {
@@ -55,5 +65,32 @@ object ReviewFindingFieldCodec {
       ?: return null
     val justification = (map["justification"] as? String)?.trim()?.takeIf(String::isNotBlank) ?: return null
     return ReviewSeverityAdjustment(direction, justification)
+  }
+
+  private sealed interface ParsedCitationLine {
+    data class Accepted(val value: Int) : ParsedCitationLine
+    data class Rejected(val rawLine: String?, val reason: String) : ParsedCitationLine
+  }
+
+  private fun parseCitationLine(raw: Any?): ParsedCitationLine = when (raw) {
+    null -> ParsedCitationLine.Rejected(rawLine = null, reason = "missing_line")
+    is Number -> {
+      val value = raw.toInt()
+      if (value >= 1) {
+        ParsedCitationLine.Accepted(value)
+      } else {
+        ParsedCitationLine.Rejected(rawLine = raw.toString(), reason = "non_positive_line")
+      }
+    }
+    is String -> {
+      val trimmed = raw.trim()
+      val parsed = trimmed.toIntOrNull()
+      when {
+        parsed == null -> ParsedCitationLine.Rejected(rawLine = trimmed, reason = "non_numeric_line")
+        parsed < 1 -> ParsedCitationLine.Rejected(rawLine = trimmed, reason = "non_positive_line")
+        else -> ParsedCitationLine.Accepted(parsed)
+      }
+    }
+    else -> ParsedCitationLine.Rejected(rawLine = raw.toString(), reason = "non_numeric_line")
   }
 }

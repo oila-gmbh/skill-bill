@@ -1000,6 +1000,8 @@ internal object RuntimeArchitectureScanConstants {
     "skillbill.ports.review.model.GovernedReviewEvidenceCodec.payload",
     "skillbill.ports.review.model.GovernedReviewEvidenceCodec.readRequest",
     "skillbill.goalrunner.subtaskreview.GoalSubtaskReviewOutcomeDispositionReduction.blockerDispositions",
+    "skillbill.goalrunner.subtaskreview.GoalSubtaskReviewStructuredFindingsParse.citationDiagnostics",
+    "skillbill.goalrunner.subtaskreview.GoalSubtaskReviewStructuredFindingsParse.parseStructuredFindings",
     "skillbill.goalrunner.subtaskreview.GoalSubtaskReviewStructuredFindingsParse.recordedVerdicts",
     "skillbill.goalrunner.subtaskreview.GoalSubtaskReviewStructuredFindingsParse.reviewRunIdOf",
     "skillbill.goalrunner.subtaskreview.GoalSubtaskReviewStructuredFindingsParse.structuredFindings",
