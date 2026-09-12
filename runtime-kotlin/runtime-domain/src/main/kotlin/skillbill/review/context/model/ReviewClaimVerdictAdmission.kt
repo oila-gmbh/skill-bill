@@ -3,12 +3,14 @@ package skillbill.review.context.model
 import skillbill.review.model.ParallelReviewMergedFinding
 import skillbill.review.model.ReviewClaimVerdict
 import skillbill.review.model.ReviewFindingCitation
+import skillbill.review.model.ReviewFindingCitationDiagnostic
 import skillbill.review.model.ReviewFindingVerdict
 import skillbill.review.model.ReviewStage
 
 data class ReviewClaimWorkerResult(
   val claimVerdict: String? = null,
   val citations: List<ReviewFindingCitation> = emptyList(),
+  val citationDiagnostics: List<ReviewFindingCitationDiagnostic> = emptyList(),
   val findingRef: String? = null,
   val severity: String? = null,
   val location: String? = null,

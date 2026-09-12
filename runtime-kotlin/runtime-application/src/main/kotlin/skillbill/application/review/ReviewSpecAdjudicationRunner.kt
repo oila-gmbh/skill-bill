@@ -19,6 +19,7 @@ import skillbill.review.context.model.ReviewSpecAdjudicationWorkerResult
 import skillbill.review.context.model.SpecIntentProjection
 import skillbill.review.model.ParallelReviewMergedFinding
 import skillbill.review.model.ReviewClaimVerdict
+import skillbill.review.model.ReviewFindingCitationDiagnosticWithFinding
 import skillbill.review.model.ReviewFindingVerdict
 import skillbill.review.model.ReviewScopeDisposition
 import skillbill.review.model.ReviewStage
@@ -38,6 +39,7 @@ class ReviewSpecAdjudicationRunner(
     val survivorState = resolveAdjudicationSurvivors(request)
     survivorState.earlyOutcome?.let { return it }
     val recordedAt = clock.instant().toString()
+    val citationDiagnostics = mutableListOf<ReviewFindingCitationDiagnosticWithFinding>()
     val launched = survivorState.pending.map { finding ->
       when (
         val job = prepareLaunch(
@@ -64,11 +66,13 @@ class ReviewSpecAdjudicationRunner(
             promptSuffix = request.launch.promptSuffix,
           ),
           recordedAt,
-        )
+        ).also { outcome -> citationDiagnostics += outcome.citationDiagnostics }
+          .verdict
       }
     }
     return ReviewSpecAdjudicationOutcome(
       verdicts = survivorState.survivors.mapNotNull { survivorState.durableAdj[it.fNumber] } + launched,
+      citationDiagnostics = citationDiagnostics,
     )
   }
 
@@ -165,11 +169,16 @@ class ReviewSpecAdjudicationRunner(
     val promptSuffix: String,
   )
 
+  private data class AdjudicationFindingOutcome(
+    val verdict: ReviewFindingVerdict,
+    val citationDiagnostics: List<ReviewFindingCitationDiagnosticWithFinding> = emptyList(),
+  )
+
   private fun launchOne(
     job: PreparedAdjudicationReady,
     env: AdjudicationLaunchEnv,
     recordedAt: String,
-  ): ReviewFindingVerdict {
+  ): AdjudicationFindingOutcome {
     val prompt = appendPromptSuffix(adjudicationPrompt(job.launch), env.promptSuffix)
     val outcome = launcher.launch(
       GoalRunnerSubtaskLaunchRequest(
@@ -186,13 +195,15 @@ class ReviewSpecAdjudicationRunner(
     )
     return when (outcome) {
       is UnsupportedAgentRunLaunch ->
-        ReviewFindingVerdict(
-          stage = ReviewStage.ADJUDICATION,
-          findingRef = job.finding.fNumber,
-          claimVerdict = job.stage1.claimVerdict,
-          scopeDisposition = ReviewScopeDisposition.IN_SCOPE,
-          recordedAt = recordedAt,
-          rejectionReason = "unsupported agent: ${outcome.reason}",
+        AdjudicationFindingOutcome(
+          ReviewFindingVerdict(
+            stage = ReviewStage.ADJUDICATION,
+            findingRef = job.finding.fNumber,
+            claimVerdict = job.stage1.claimVerdict,
+            scopeDisposition = ReviewScopeDisposition.IN_SCOPE,
+            recordedAt = recordedAt,
+            rejectionReason = "unsupported agent: ${outcome.reason}",
+          ),
         )
       is AgentRunLaunchFacts -> fromLaunchFacts(job, outcome, recordedAt)
     }
@@ -202,32 +213,42 @@ class ReviewSpecAdjudicationRunner(
     job: PreparedAdjudicationReady,
     facts: AgentRunLaunchFacts,
     recordedAt: String,
-  ): ReviewFindingVerdict {
+  ): AdjudicationFindingOutcome {
     launchFailureReason(facts)?.let { reason ->
-      return ReviewFindingVerdict(
-        stage = ReviewStage.ADJUDICATION,
-        findingRef = job.finding.fNumber,
-        claimVerdict = job.stage1.claimVerdict,
-        scopeDisposition = ReviewScopeDisposition.IN_SCOPE,
-        recordedAt = recordedAt,
-        rejectionReason = reason,
+      return AdjudicationFindingOutcome(
+        ReviewFindingVerdict(
+          stage = ReviewStage.ADJUDICATION,
+          findingRef = job.finding.fNumber,
+          claimVerdict = job.stage1.claimVerdict,
+          scopeDisposition = ReviewScopeDisposition.IN_SCOPE,
+          recordedAt = recordedAt,
+          rejectionReason = reason,
+        ),
       )
     }
     val worker = parseAdjudicationWorkerResult(facts.stdout)
-      ?: return ReviewFindingVerdict(
-        stage = ReviewStage.ADJUDICATION,
-        findingRef = job.finding.fNumber,
-        claimVerdict = job.stage1.claimVerdict,
-        scopeDisposition = ReviewScopeDisposition.IN_SCOPE,
-        recordedAt = recordedAt,
-        rejectionReason = "unparseable adjudication output",
+      ?: return AdjudicationFindingOutcome(
+        ReviewFindingVerdict(
+          stage = ReviewStage.ADJUDICATION,
+          findingRef = job.finding.fNumber,
+          claimVerdict = job.stage1.claimVerdict,
+          scopeDisposition = ReviewScopeDisposition.IN_SCOPE,
+          recordedAt = recordedAt,
+          rejectionReason = "unparseable adjudication output",
+        ),
       )
-    return ReviewSpecAdjudicationAdmission.admit(
-      job.finding,
-      job.stage1,
-      job.projection,
-      worker,
-      recordedAt,
+    val diagnostics = worker.citationDiagnostics.map { diagnostic ->
+      diagnostic.withFindingRef(job.finding.fNumber)
+    }
+    return AdjudicationFindingOutcome(
+      verdict = ReviewSpecAdjudicationAdmission.admit(
+        job.finding,
+        job.stage1,
+        job.projection,
+        worker,
+        recordedAt,
+      ),
+      citationDiagnostics = diagnostics,
     )
   }
 
@@ -303,11 +324,13 @@ internal fun parseAdjudicationWorkerResult(stdout: String): ReviewSpecAdjudicati
   val dispositionField = stringList(payload[ReviewFindingPayloadKeys.SCOPE_DISPOSITION])
   val extraDispositions = stringList(payload["dispositions"])
   val primary = dispositionField.firstOrNull()
+  val decodedCitations = parseCitationsWithDiagnostics(payload[ReviewFindingPayloadKeys.CITATIONS])
   return ReviewSpecAdjudicationWorkerResult(
     scopeDisposition = primary,
     dispositionValues = (dispositionField.drop(1) + extraDispositions),
     citedSpecElement = payload["cited_spec_element"] as? String,
-    citations = parseCitations(payload[ReviewFindingPayloadKeys.CITATIONS]),
+    citations = decodedCitations.citations,
+    citationDiagnostics = decodedCitations.diagnostics,
     severityAdjustmentDirection = adjustment?.get("direction") as? String,
     severityAdjustmentJustification = adjustment?.get("justification") as? String,
     adjustedSeverity = (adjustment?.get("adjusted_severity") as? String) ?: payload["adjusted_severity"] as? String,

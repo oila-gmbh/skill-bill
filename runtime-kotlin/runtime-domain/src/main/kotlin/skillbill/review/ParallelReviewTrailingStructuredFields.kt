@@ -2,6 +2,8 @@ package skillbill.review
 
 import skillbill.review.model.ReviewClaimVerdict
 import skillbill.review.model.ReviewFindingCitation
+import skillbill.review.model.ReviewFindingCitationDiagnostic
+import skillbill.review.model.ReviewFindingCitationsDecode
 import skillbill.review.model.ReviewScopeDisposition
 import skillbill.review.model.ReviewSeverityAdjustment
 import skillbill.review.model.ReviewSeverityAdjustmentDirection
@@ -11,6 +13,7 @@ internal data class ParallelReviewTrailingStructuredFields(
   val claimVerdict: ReviewClaimVerdict? = null,
   val scopeDisposition: ReviewScopeDisposition? = null,
   val citations: List<ReviewFindingCitation> = emptyList(),
+  val citationDiagnostics: List<ReviewFindingCitationDiagnostic> = emptyList(),
   val severityAdjustment: ReviewSeverityAdjustment? = null,
 )
 
@@ -80,9 +83,10 @@ private fun applyTrailingStructuredToken(
     } ?: return null
     current.copy(scopeDisposition = parsed)
   }
-  token.startsWith("citations=") -> current.copy(
-    citations = parseCitationToken(token.removePrefix("citations=")),
-  )
+  token.startsWith("citations=") -> {
+    val decoded = parseCitationToken(token.removePrefix("citations="))
+    current.copy(citations = decoded.citations, citationDiagnostics = decoded.diagnostics)
+  }
   token.startsWith("severity_adjustment=") -> {
     val parsed = parseSeverityAdjustmentToken(token.removePrefix("severity_adjustment=")) ?: return null
     current.copy(severityAdjustment = parsed)
@@ -90,13 +94,40 @@ private fun applyTrailingStructuredToken(
   else -> null
 }
 
-private fun parseCitationToken(raw: String): List<ReviewFindingCitation> = raw.split(',').mapNotNull { item ->
-  val trimmed = item.trim()
-  val colon = trimmed.lastIndexOf(':')
-  if (colon <= 0) return@mapNotNull null
-  val path = trimmed.substring(0, colon).trim().takeIf(String::isNotBlank) ?: return@mapNotNull null
-  val line = trimmed.substring(colon + 1).trim().toIntOrNull()?.takeIf { it > 0 } ?: return@mapNotNull null
-  runCatching { ReviewFindingCitation(path, line) }.getOrNull()
+private fun parseCitationToken(raw: String): ReviewFindingCitationsDecode {
+  val citations = mutableListOf<ReviewFindingCitation>()
+  val diagnostics = mutableListOf<ReviewFindingCitationDiagnostic>()
+  raw.split(',').forEachIndexed { index, item ->
+    val trimmed = item.trim()
+    if (trimmed.isEmpty()) return@forEachIndexed
+    val colon = trimmed.lastIndexOf(':')
+    if (colon <= 0) {
+      diagnostics += ReviewFindingCitationDiagnostic(index, null, trimmed, "missing_path")
+      return@forEachIndexed
+    }
+    val path = trimmed.substring(0, colon).trim()
+    if (path.isBlank()) {
+      diagnostics += ReviewFindingCitationDiagnostic(index, null, trimmed, "missing_path")
+      return@forEachIndexed
+    }
+    val lineRaw = trimmed.substring(colon + 1).trim()
+    when {
+      lineRaw.isEmpty() -> diagnostics += ReviewFindingCitationDiagnostic(index, path, null, "missing_line")
+      else -> {
+        val parsed = lineRaw.toIntOrNull()
+        when {
+          parsed == null -> diagnostics += ReviewFindingCitationDiagnostic(index, path, lineRaw, "non_numeric_line")
+          parsed < 1 -> diagnostics += ReviewFindingCitationDiagnostic(index, path, lineRaw, "non_positive_line")
+          else -> try {
+            citations += ReviewFindingCitation(path, parsed)
+          } catch (_: IllegalArgumentException) {
+            diagnostics += ReviewFindingCitationDiagnostic(index, path, lineRaw, "invalid_path")
+          }
+        }
+      }
+    }
+  }
+  return ReviewFindingCitationsDecode(citations, diagnostics)
 }
 
 private fun parseSeverityAdjustmentToken(raw: String): ReviewSeverityAdjustment? {

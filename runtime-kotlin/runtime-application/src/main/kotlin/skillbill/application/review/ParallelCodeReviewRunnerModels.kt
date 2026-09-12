@@ -26,6 +26,7 @@ import skillbill.review.context.model.asFailedLaneRun
 import skillbill.review.context.model.withBrokerEvidenceRefusal
 import skillbill.review.model.ParallelReviewRawFinding
 import skillbill.review.model.ReviewCoverageReport
+import skillbill.review.model.ReviewFindingCitationDiagnosticWithFinding
 import skillbill.review.model.ReviewStageResumeReport
 import skillbill.scaffold.model.PlatformManifest
 
@@ -108,6 +109,7 @@ internal data class ParallelCodeReviewSoftRegisterAdmission(
   val findings: List<ParallelReviewRawFinding>,
   val droppedCandidateDiagnostic: String?,
   val rejectedCandidateCount: Int,
+  val citationDiagnostics: List<ReviewFindingCitationDiagnosticWithFinding> = emptyList(),
 )
 
 class ParallelCodeReviewInlineParentLaunch(

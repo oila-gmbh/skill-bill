@@ -5,39 +5,57 @@ import skillbill.contracts.SharedPayloadKeys
 import skillbill.contracts.review.ReviewFindingPayloadKeys
 import skillbill.contracts.review.ReviewVerificationSignalKeys
 import skillbill.goalrunner.subtaskreview.model.StructuredGoalReviewFinding
+import skillbill.goalrunner.subtaskreview.model.StructuredGoalReviewFindingsParse
 import skillbill.review.ReviewFindingActionability
 import skillbill.review.ReviewFindingFieldCodec
 import skillbill.review.context.model.requireRepositoryRelativePath
+import skillbill.review.model.RecordedVerdictFields
 import skillbill.review.model.ReviewFindingCitation
+import skillbill.review.model.ReviewFindingCitationDiagnosticWithFinding
 import skillbill.review.model.ReviewFindingVerdict
 
 object GoalSubtaskReviewStructuredFindingsParse {
   fun structuredFindings(
     output: Map<String, Any?>,
     recordedVerdicts: List<ReviewFindingVerdict> = emptyList(),
-  ): List<StructuredGoalReviewFinding> {
+  ): List<StructuredGoalReviewFinding> = parseStructuredFindings(output, recordedVerdicts).findings
+
+  fun parseStructuredFindings(
+    output: Map<String, Any?>,
+    recordedVerdicts: List<ReviewFindingVerdict> = emptyList(),
+  ): StructuredGoalReviewFindingsParse {
     val findings = output[SharedPayloadKeys.PRODUCED_OUTPUTS]
       ?.let(JsonCodec::anyToStringAnyMap)
       ?.get(ReviewVerificationSignalKeys.REVIEW_FINDINGS) as? List<*>
-      ?: return emptyList()
-    return findings.mapNotNull { entry ->
+      ?: return StructuredGoalReviewFindingsParse(emptyList(), emptyList())
+    val citationDiagnostics = mutableListOf<ReviewFindingCitationDiagnosticWithFinding>()
+    val parsed = findings.mapNotNull { entry ->
       val finding = JsonCodec.anyToStringAnyMap(entry) ?: return@mapNotNull null
       val severity = (finding["severity"] as? String)?.trim()?.lowercase()?.takeIf(String::isNotBlank)
         ?: return@mapNotNull null
       val message = (finding["message"] as? String)?.trim()?.takeIf(String::isNotBlank)
         ?: return@mapNotNull null
+      val findingRef = ReviewFindingFieldCodec.findingRefOf(
+        finding["id"],
+        finding[ReviewFindingPayloadKeys.FINDING_ID],
+        finding[ReviewFindingPayloadKeys.F_NUMBER],
+      )
+      val decodedCitations = ReviewFindingFieldCodec.decodeCitations(finding[ReviewFindingPayloadKeys.CITATIONS])
+      decodedCitations.diagnostics.forEach { diagnostic ->
+        citationDiagnostics += diagnostic.withFindingRef(findingRef)
+      }
       val overlay = ReviewFindingActionability.overlayOf(
-        findingRef = ReviewFindingFieldCodec.findingRefOf(
-          finding["id"],
-          finding[ReviewFindingPayloadKeys.FINDING_ID],
-          finding[ReviewFindingPayloadKeys.F_NUMBER],
-        ),
+        findingRef = findingRef,
         recordedVerdicts = recordedVerdicts,
-        encoded = ReviewFindingFieldCodec.recordedFieldsOf(
-          claimVerdict = finding[ReviewFindingPayloadKeys.CLAIM_VERDICT],
-          scopeDisposition = finding[ReviewFindingPayloadKeys.SCOPE_DISPOSITION],
-          citations = finding[ReviewFindingPayloadKeys.CITATIONS],
-          severityAdjustment = finding[ReviewFindingPayloadKeys.SEVERITY_ADJUSTMENT],
+        encoded = RecordedVerdictFields(
+          claimVerdict = ReviewFindingFieldCodec.claimVerdictOf(finding[ReviewFindingPayloadKeys.CLAIM_VERDICT]),
+          scopeDisposition = ReviewFindingFieldCodec.scopeDispositionOf(
+            finding[ReviewFindingPayloadKeys.SCOPE_DISPOSITION],
+          ),
+          citations = decodedCitations.citations,
+          severityAdjustment = ReviewFindingFieldCodec.severityAdjustmentOf(
+            finding[ReviewFindingPayloadKeys.SEVERITY_ADJUSTMENT],
+          ),
         ),
       )
       StructuredGoalReviewFinding(
@@ -48,11 +66,7 @@ object GoalSubtaskReviewStructuredFindingsParse {
         location = sequenceOf(finding["location"], finding[ReviewFindingPayloadKeys.ARTIFACT_REF])
           .filterIsInstance<String>().firstOrNull()?.trim()?.takeIf(String::isNotBlank) ?: "<unknown>",
         compactLabel = GoalSubtaskReviewSummarySanitize.labelFor(finding, message),
-        findingId = ReviewFindingFieldCodec.findingRefOf(
-          finding["id"],
-          finding[ReviewFindingPayloadKeys.FINDING_ID],
-          finding[ReviewFindingPayloadKeys.F_NUMBER],
-        ),
+        findingId = findingRef,
         repositoryPath = admissibleRepositoryPath(finding[ReviewFindingPayloadKeys.REPOSITORY_PATH] as? String),
         claimVerdict = overlay.claimVerdict,
         scopeDisposition = overlay.scopeDisposition,
@@ -60,7 +74,14 @@ object GoalSubtaskReviewStructuredFindingsParse {
         severityAdjustment = overlay.severityAdjustment,
       )
     }
+    return StructuredGoalReviewFindingsParse(parsed, citationDiagnostics)
   }
+
+  fun citationDiagnostics(
+    output: Map<String, Any?>,
+    recordedVerdicts: List<ReviewFindingVerdict> = emptyList(),
+  ): List<ReviewFindingCitationDiagnosticWithFinding> =
+    parseStructuredFindings(output, recordedVerdicts).citationDiagnostics
 
   fun reviewRunIdOf(output: Map<String, Any?>): String? = (
     output[SharedPayloadKeys.PRODUCED_OUTPUTS]

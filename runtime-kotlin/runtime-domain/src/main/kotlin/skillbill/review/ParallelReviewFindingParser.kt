@@ -6,6 +6,7 @@ import skillbill.review.model.ParallelReviewFindingRejectionReason
 import skillbill.review.model.ParallelReviewParseResult
 import skillbill.review.model.ParallelReviewRawFinding
 import skillbill.review.model.ParallelReviewSeverity
+import skillbill.review.model.ReviewFindingCitationDiagnosticWithFinding
 
 object ParallelReviewFindingParser {
   const val PARALLEL_REVIEW_FINDING_ID_MIN: Int = 0
@@ -58,12 +59,14 @@ object ParallelReviewFindingParser {
     val lines = normalizedText.lines()
     val admitted = mutableListOf<ParallelReviewRawFinding>()
     val rejections = mutableListOf<ParallelReviewFindingRejection>()
+    val citationDiagnostics = mutableListOf<ReviewFindingCitationDiagnosticWithFinding>()
     val matchedPositions = mutableSetOf<Int>()
     parallelFindingPattern.findAll(normalizedText).forEach { match ->
       val position = linePositionOfFindingToken(normalizedText, match)
       matchedPositions += position
       val outcome = parseMatch(match)
       outcome.finding?.let { admitted += it }
+      citationDiagnostics += outcome.citationDiagnostics
       outcome.reason?.let { reason ->
         rejections += ParallelReviewFindingRejection(
           lineText = lines.getOrElse(position - 1) { match.value }.trim(),
@@ -87,6 +90,7 @@ object ParallelReviewFindingParser {
       findings = admitted,
       rejections = rejections.sortedBy(ParallelReviewFindingRejection::linePosition),
       candidateCount = candidateCount,
+      citationDiagnostics = citationDiagnostics,
     )
   }
 
@@ -130,6 +134,7 @@ object ParallelReviewFindingParser {
   private data class MatchOutcome(
     val finding: ParallelReviewRawFinding? = null,
     val reason: ParallelReviewFindingRejectionReason? = null,
+    val citationDiagnostics: List<ReviewFindingCitationDiagnosticWithFinding> = emptyList(),
   )
 
   private data class ResolvedPath(
@@ -147,6 +152,7 @@ object ParallelReviewFindingParser {
     val lineText = match.groups["line"]?.value ?: match.groups["legacyLine"]?.value
     val line = lineText?.toIntOrNull()?.takeIf { it >= PARALLEL_REVIEW_MIN_SOURCE_LINE }
       ?: return MatchOutcome(reason = ParallelReviewFindingRejectionReason.INVALID_LINE_NUMBER)
+    val findingRef = match.groups["findingId"]?.value
     val peeled = peelTrailingStructuredFields(match.groups["description"]?.value.orEmpty().trim())
     return MatchOutcome(
       finding = ParallelReviewRawFinding(
@@ -162,7 +168,11 @@ object ParallelReviewFindingParser {
         scopeDisposition = peeled.scopeDisposition,
         citations = peeled.citations,
         severityAdjustment = peeled.severityAdjustment,
+        sourceFindingRef = findingRef,
       ),
+      citationDiagnostics = peeled.citationDiagnostics.map { diagnostic ->
+        diagnostic.withFindingRef(findingRef)
+      },
     )
   }
 

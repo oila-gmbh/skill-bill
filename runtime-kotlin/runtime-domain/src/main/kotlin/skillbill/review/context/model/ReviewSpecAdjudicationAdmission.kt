@@ -2,6 +2,7 @@ package skillbill.review.context.model
 
 import skillbill.review.model.ParallelReviewMergedFinding
 import skillbill.review.model.ReviewFindingCitation
+import skillbill.review.model.ReviewFindingCitationDiagnostic
 import skillbill.review.model.ReviewFindingVerdict
 import skillbill.review.model.ReviewScopeDisposition
 import skillbill.review.model.ReviewSeverityAdjustment
@@ -13,6 +14,7 @@ data class ReviewSpecAdjudicationWorkerResult(
   val dispositionValues: List<String> = emptyList(),
   val citedSpecElement: String? = null,
   val citations: List<ReviewFindingCitation> = emptyList(),
+  val citationDiagnostics: List<ReviewFindingCitationDiagnostic> = emptyList(),
   val severityAdjustmentDirection: String? = null,
   val severityAdjustmentJustification: String? = null,
   val adjustedSeverity: String? = null,

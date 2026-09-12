@@ -41,7 +41,6 @@ class FeatureTaskRuntimeCheckpointScopeTest {
     assertEquals(listOf("src/Owned.kt"), stage.ownedPaths)
   }
 
-  // AC-002: an owned inventory with nothing left to stage skips rather than committing foreign dirt.
   @Test
   fun `a dirty path is ignored when the durable inventory has no overlapping delta`() {
     val decision = decide(

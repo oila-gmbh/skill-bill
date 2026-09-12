@@ -25,6 +25,7 @@ import skillbill.review.context.model.requireRepositoryRelativePath
 import skillbill.review.model.ParallelReviewMergedFinding
 import skillbill.review.model.ReviewClaimVerdict
 import skillbill.review.model.ReviewFindingCitation
+import skillbill.review.model.ReviewFindingCitationDiagnosticWithFinding
 import skillbill.review.model.ReviewFindingVerdict
 import skillbill.review.model.ReviewStage
 import java.time.Clock
@@ -69,6 +70,7 @@ class ReviewClaimVerificationRunner(
       )
     }
     val recordedAt = clock.instant().toString()
+    val citationDiagnostics = mutableListOf<ReviewFindingCitationDiagnosticWithFinding>()
     val verdicts = pending.map { finding ->
       verifyOne(
         VerificationFindingInput(
@@ -79,12 +81,15 @@ class ReviewClaimVerificationRunner(
           launch = request.launch,
           recordedAt = recordedAt,
         ),
-      )
+      ).also { outcome ->
+        citationDiagnostics += outcome.citationDiagnostics
+      }.verdict
     }
     return ReviewClaimVerificationOutcome(
       verdicts = request.existingVerdicts.filter {
         it.stage == ReviewStage.VERIFICATION && it.findingRef in durableRefs
       } + verdicts,
+      citationDiagnostics = citationDiagnostics,
     )
   }
 
@@ -135,9 +140,16 @@ class ReviewClaimVerificationRunner(
     }
   }
 
-  private fun verifyOne(input: VerificationFindingInput): ReviewFindingVerdict {
+  private data class VerificationFindingOutcome(
+    val verdict: ReviewFindingVerdict,
+    val citationDiagnostics: List<ReviewFindingCitationDiagnosticWithFinding> = emptyList(),
+  )
+
+  private fun verifyOne(input: VerificationFindingInput): VerificationFindingOutcome {
     val region = citedRegionOf(input.finding)
-      ?: return unresolved(input.finding, input.recordedAt, "finding has no cited file:line region")
+      ?: return VerificationFindingOutcome(
+        unresolved(input.finding, input.recordedAt, "finding has no cited file:line region"),
+      )
     val launch = GovernedReviewVerificationLaunch(
       packet = input.packet,
       finding = input.finding,
@@ -150,12 +162,14 @@ class ReviewClaimVerificationRunner(
     val envelope = launch.toVerificationLaunchEnvelope().asWireMap()
     val launchBytes = JsonCodec.mapToJsonString(envelope).toByteArray(Charsets.UTF_8).size.toLong()
     if (launchBytes > input.launch.budget.maxLaneLaunchBytes) {
-      return ReviewFindingVerdict(
-        stage = ReviewStage.VERIFICATION,
-        findingRef = input.finding.fNumber,
-        claimVerdict = ReviewClaimVerdict.UNRESOLVED,
-        recordedAt = input.recordedAt,
-        rejectionReason = "verification launch exceeded max_lane_launch_bytes",
+      return VerificationFindingOutcome(
+        ReviewFindingVerdict(
+          stage = ReviewStage.VERIFICATION,
+          findingRef = input.finding.fNumber,
+          claimVerdict = ReviewClaimVerdict.UNRESOLVED,
+          recordedAt = input.recordedAt,
+          rejectionReason = "verification launch exceeded max_lane_launch_bytes",
+        ),
       )
     }
     envelopeValidator.validate(envelope, "review verification launch for ${input.finding.fNumber}")
@@ -177,8 +191,9 @@ class ReviewClaimVerificationRunner(
       ),
     )
     return when (outcome) {
-      is UnsupportedAgentRunLaunch ->
-        unresolved(input.finding, input.recordedAt, "unsupported agent: ${outcome.reason}")
+      is UnsupportedAgentRunLaunch -> VerificationFindingOutcome(
+        unresolved(input.finding, input.recordedAt, "unsupported agent: ${outcome.reason}"),
+      )
       is AgentRunLaunchFacts -> fromLaunchFacts(input.finding, outcome, input.recordedAt)
     }
   }
@@ -187,13 +202,19 @@ class ReviewClaimVerificationRunner(
     finding: ParallelReviewMergedFinding,
     facts: AgentRunLaunchFacts,
     recordedAt: String,
-  ): ReviewFindingVerdict {
+  ): VerificationFindingOutcome {
     launchFailureReason(facts)?.let { reason ->
-      return unresolved(finding, recordedAt, reason)
+      return VerificationFindingOutcome(unresolved(finding, recordedAt, reason))
     }
     val worker = parseWorkerResult(facts.stdout)
-      ?: return unresolved(finding, recordedAt, "unparseable verification output")
-    return ReviewClaimVerdictAdmission.admit(finding, worker, recordedAt).verdict
+      ?: return VerificationFindingOutcome(unresolved(finding, recordedAt, "unparseable verification output"))
+    val diagnostics = worker.citationDiagnostics.map { diagnostic ->
+      diagnostic.withFindingRef(finding.fNumber)
+    }
+    return VerificationFindingOutcome(
+      verdict = ReviewClaimVerdictAdmission.admit(finding, worker, recordedAt).verdict,
+      citationDiagnostics = diagnostics,
+    )
   }
 
   private fun verificationPrompt(launch: GovernedReviewVerificationLaunch, phaseInput: AgentPhaseInput): String =
@@ -281,9 +302,11 @@ internal fun citedRegionOf(finding: ParallelReviewMergedFinding): ReviewCitedReg
 internal fun parseWorkerResult(stdout: String): ReviewClaimWorkerResult? {
   val payload = parseJsonObject(stdout) ?: return null
   val finding = JsonCodec.anyToStringAnyMap(payload["finding"])
+  val decodedCitations = ReviewFindingFieldCodec.decodeCitations(payload[ReviewFindingPayloadKeys.CITATIONS])
   return ReviewClaimWorkerResult(
     claimVerdict = payload[ReviewFindingPayloadKeys.CLAIM_VERDICT] as? String,
-    citations = parseCitations(payload[ReviewFindingPayloadKeys.CITATIONS]),
+    citations = decodedCitations.citations,
+    citationDiagnostics = decodedCitations.diagnostics,
     findingRef = (finding?.get("finding_ref") as? String) ?: payload["finding_ref"] as? String,
     severity = (finding?.get("severity") as? String) ?: payload["severity"] as? String,
     location = (finding?.get("location") as? String) ?: payload["location"] as? String,
@@ -304,6 +327,8 @@ internal fun parseJsonObject(stdout: String): Map<String, Any?>? {
 }
 
 internal fun parseCitations(raw: Any?): List<ReviewFindingCitation> = ReviewFindingFieldCodec.citationsOf(raw)
+
+internal fun parseCitationsWithDiagnostics(raw: Any?) = ReviewFindingFieldCodec.decodeCitations(raw)
 
 internal fun intValue(raw: Any?): Int? = when (raw) {
   is Int -> raw

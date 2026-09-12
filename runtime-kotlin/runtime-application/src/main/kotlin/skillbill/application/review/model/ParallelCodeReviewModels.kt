@@ -10,6 +10,7 @@ import skillbill.review.context.model.ReviewBudgetOutcome
 import skillbill.review.context.model.ReviewLaneCompletionState
 import skillbill.review.model.ParallelReviewMergeResult
 import skillbill.review.model.ReviewCoverageReport
+import skillbill.review.model.ReviewFindingCitationDiagnosticWithFinding
 import skillbill.review.model.ReviewStageResumeReport
 import java.nio.file.Path
 import kotlin.time.Duration
@@ -100,6 +101,7 @@ data class ParallelCodeReviewResult(
   val integration: ReviewIntegrationPassOutcome? = null,
   val coverage: ReviewCoverageReport? = null,
   val stageResume: ReviewStageResumeReport? = null,
+  val citationDiagnostics: List<ReviewFindingCitationDiagnosticWithFinding> = emptyList(),
 ) {
   val output: String
     get() = mergeResult.output

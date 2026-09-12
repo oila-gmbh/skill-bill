@@ -34,7 +34,7 @@ class ParallelCodeReviewRunnerVerificationStages(
   internal fun runClaimVerification(
     initial: ParallelCodeReviewInitialRun,
     result: ParallelCodeReviewResult,
-  ): List<ReviewFindingVerdict> {
+  ): ReviewClaimVerificationOutcome {
     val reviewRunId = initial.request.reviewRunId
     val boundaries = reviewStageBoundaries(reviewRunId)
     val claims = claimVerificationClaims(reviewRunId, boundaries, result.mergeResult.findings)
@@ -45,11 +45,13 @@ class ParallelCodeReviewRunnerVerificationStages(
       .toSet()
     if (claims.isNotEmpty() && claims.all { it.fNumber in verifiedRefs }) {
       if (reviewRunId != null) recordVerificationBoundary(reviewRunId)
-      return existing
+      return ReviewClaimVerificationOutcome(verdicts = existing)
     }
     val verificationInput = verificationReviewOutput(result.output, claims)
     if (claims.isEmpty()) {
-      emptyClaimsVerificationShortCircuit(reviewRunId, boundaries, verificationInput, existing)?.let { return it }
+      emptyClaimsVerificationShortCircuit(reviewRunId, boundaries, verificationInput, existing)?.let { verdicts ->
+        return ReviewClaimVerificationOutcome(verdicts = verdicts)
+      }
     }
     val outcome = ReviewClaimVerificationRunner(parentReviewLauncher, reviewContextEnvelopeValidator, clock).run(
       ReviewClaimVerificationRunRequest(
@@ -61,15 +63,21 @@ class ParallelCodeReviewRunnerVerificationStages(
         launch = initial.delegatedStageLaunch(),
       ),
     )
-    return persistClaimVerificationOutcome(reviewRunId, claims, existing, outcome)
+    val verdicts = persistClaimVerificationOutcome(reviewRunId, claims, existing, outcome)
+    return ReviewClaimVerificationOutcome(
+      verdicts = verdicts,
+      output = outcome.output,
+      skipReason = outcome.skipReason,
+      citationDiagnostics = outcome.citationDiagnostics,
+    )
   }
 
   internal fun runSpecAdjudication(
     initial: ParallelCodeReviewInitialRun,
     result: ParallelCodeReviewResult,
-  ): List<ReviewFindingVerdict> {
+  ): ReviewSpecAdjudicationOutcome {
     val reviewRunId = initial.request.reviewRunId
-    durableAdjudication(reviewRunId)?.let { return it }
+    durableAdjudication(reviewRunId)?.let { return ReviewSpecAdjudicationOutcome(verdicts = it) }
     val projection = (initial.specIntentResolution as? SpecIntentResolution.Resolved)?.projection
     val claims = if (reviewRunId == null) {
       result.mergeResult.findings
@@ -98,7 +106,8 @@ class ParallelCodeReviewRunnerVerificationStages(
         launch = initial.delegatedStageLaunch(),
       ),
     )
-    return persistAdjudication(reviewRunId, outcome)
+    val verdicts = persistAdjudication(reviewRunId, outcome)
+    return outcome.copy(verdicts = verdicts)
   }
 
   fun recordAdjudicationBoundary(reviewRunId: String) {

@@ -2,6 +2,7 @@ package skillbill.ports.review.model
 
 import skillbill.review.context.model.ReviewIntegrationTerminalOutcome
 import skillbill.review.model.ParallelReviewRawFinding
+import skillbill.review.model.ReviewFindingCitationDiagnosticWithFinding
 
 /**
  * Terminal result of the single integration pass. It is a separate durable boundary from any
@@ -12,6 +13,7 @@ data class ReviewIntegrationPassOutcome(
   val terminalOutcome: ReviewIntegrationTerminalOutcome,
   val summarizedLaneCount: Int,
   val findings: List<ParallelReviewRawFinding> = emptyList(),
+  val citationDiagnostics: List<ReviewFindingCitationDiagnosticWithFinding> = emptyList(),
   val skipReason: String? = null,
   val launchBytes: Long = 0,
   val resultBytes: Long = 0,

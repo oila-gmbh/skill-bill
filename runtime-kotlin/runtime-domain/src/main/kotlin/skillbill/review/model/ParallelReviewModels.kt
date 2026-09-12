@@ -29,6 +29,7 @@ data class ParallelReviewRawFinding(
   val scopeDisposition: ReviewScopeDisposition? = null,
   val citations: List<ReviewFindingCitation> = emptyList(),
   val severityAdjustment: ReviewSeverityAdjustment? = null,
+  val sourceFindingRef: String? = null,
 )
 
 data class ParallelReviewLaneResult(
@@ -53,6 +54,7 @@ data class ParallelReviewMergedFinding(
   val citations: List<ReviewFindingCitation> = emptyList(),
   val severityAdjustment: ReviewSeverityAdjustment? = null,
   val sourceVerdicts: List<ReviewLaneFindingVerdict> = emptyList(),
+  val sourceFindingRefs: List<String> = emptyList(),
 ) {
   val hasRecordedVerdict: Boolean
     get() = claimVerdict != null ||
