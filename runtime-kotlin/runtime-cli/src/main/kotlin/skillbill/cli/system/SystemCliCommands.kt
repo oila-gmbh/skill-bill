@@ -1,7 +1,5 @@
 package skillbill.cli.system
 
-import skillbill.contracts.SharedPayloadKeys
-
 import com.github.ajalt.clikt.parameters.arguments.argument
 import com.github.ajalt.clikt.parameters.arguments.optional
 import com.github.ajalt.clikt.parameters.options.default
@@ -20,6 +18,7 @@ import skillbill.cli.kernel.toPayload
 import skillbill.cli.model.CliExecutionResult
 import skillbill.cli.model.CliRunInputs
 import skillbill.cli.model.ExternalCommand
+import skillbill.contracts.SharedPayloadKeys
 
 @Inject
 class VersionCommand(

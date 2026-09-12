@@ -1,9 +1,8 @@
 package skillbill.engine.featuretask
 
-import skillbill.contracts.SharedPayloadKeys
-
 import skillbill.application.decomposition.decodeArtifacts
 import skillbill.application.workflow.model.WorkflowFamily
+import skillbill.contracts.SharedPayloadKeys
 import skillbill.engine.featuretask.model.PersistHealedRemediationBaseRequest
 import skillbill.engine.featuretask.model.RemediationBaseBlocked
 import skillbill.engine.featuretask.model.RemediationBaseCoherenceResult

@@ -1,8 +1,7 @@
 package skillbill.infrastructure.sqlite.telemetry
 
-import skillbill.contracts.SharedPayloadKeys
-
 import skillbill.contracts.JsonCodec
+import skillbill.contracts.SharedPayloadKeys
 import skillbill.review.normalizeRoutedSkill
 import skillbill.review.normalizeStackLabel
 import skillbill.telemetry.model.PrDescriptionGeneratedRecord

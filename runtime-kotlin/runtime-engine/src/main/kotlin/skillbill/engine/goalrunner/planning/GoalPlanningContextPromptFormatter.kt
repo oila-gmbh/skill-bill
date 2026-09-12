@@ -1,8 +1,7 @@
 package skillbill.engine.goalrunner.planning
 
-import skillbill.contracts.SharedPayloadKeys
-
 import skillbill.contracts.JsonCodec
+import skillbill.contracts.SharedPayloadKeys
 import skillbill.ports.goalrunner.planning.model.GoalPlanningContext
 import skillbill.ports.goalrunner.planning.model.GoalPlanningResolvedBoundaryBodies
 import skillbill.workflow.decomposition.model.DecompositionSubtask

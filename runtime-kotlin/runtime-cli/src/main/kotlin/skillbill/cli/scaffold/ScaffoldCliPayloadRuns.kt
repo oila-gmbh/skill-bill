@@ -1,13 +1,12 @@
 package skillbill.cli.scaffold
 
-import skillbill.contracts.SharedPayloadKeys
-
 import skillbill.application.install.ExternalAddonOverlayService
 import skillbill.cli.kernel.CliOutput
 import skillbill.cli.kernel.CliRunState
 import skillbill.cli.model.CliExecutionResult
 import skillbill.cli.model.CliFormat
 import skillbill.cli.model.CliRunInputs
+import skillbill.contracts.SharedPayloadKeys
 import skillbill.error.SkillBillRuntimeException
 import skillbill.install.model.ExternalAddonSource
 import skillbill.ports.repository.toFileLocation

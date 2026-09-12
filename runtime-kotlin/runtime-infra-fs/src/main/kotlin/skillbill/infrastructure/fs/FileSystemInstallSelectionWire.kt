@@ -1,8 +1,7 @@
 package skillbill.infrastructure.fs
 
-import skillbill.contracts.SharedPayloadKeys
-
 import skillbill.contracts.JsonCodec
+import skillbill.contracts.SharedPayloadKeys
 import skillbill.install.model.InstallAgent
 import skillbill.install.model.McpRegistrationChoice
 import skillbill.install.model.PlatformPackSelection

@@ -1,8 +1,7 @@
 package skillbill.engine.goalrunner
 
-import skillbill.contracts.SharedPayloadKeys
-
 import skillbill.contracts.JsonCodec
+import skillbill.contracts.SharedPayloadKeys
 import skillbill.goalrunner.goalContinuationTerminalStatus
 import skillbill.goalrunner.model.GoalRunnerReconciledOutcome
 import skillbill.goalrunner.model.GoalRunnerStopReason

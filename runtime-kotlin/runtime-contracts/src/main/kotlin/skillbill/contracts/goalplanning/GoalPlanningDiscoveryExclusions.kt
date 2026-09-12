@@ -1,9 +1,8 @@
 package skillbill.contracts.goalplanning
 
-import skillbill.contracts.SharedPayloadKeys
-
 import org.yaml.snakeyaml.Yaml
 import org.yaml.snakeyaml.error.YAMLException
+import skillbill.contracts.SharedPayloadKeys
 import skillbill.error.InvalidGoalPlanningDiscoveryExclusionsSchemaError
 import kotlin.coroutines.cancellation.CancellationException
 

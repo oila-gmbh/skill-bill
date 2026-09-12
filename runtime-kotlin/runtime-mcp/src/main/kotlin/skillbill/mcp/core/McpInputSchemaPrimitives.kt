@@ -26,7 +26,9 @@ internal fun stepUpdateSchema(stepIdEnum: List<String>): Map<String, Any?> = Mcp
   required = listOf("step_id", "status", "attempt_count"),
   properties = mapOf(
     SharedPayloadKeys.STEP_ID to stringSchema(enum = stepIdEnum),
-    SharedPayloadKeys.STATUS to stringSchema(enum = listOf("pending", "running", "completed", "failed", "blocked", "skipped")),
+    SharedPayloadKeys.STATUS to stringSchema(
+      enum = listOf("pending", "running", "completed", "failed", "blocked", "skipped"),
+    ),
     "attempt_count" to integerSchema,
   ),
 )

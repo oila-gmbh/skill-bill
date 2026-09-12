@@ -1,10 +1,8 @@
 package skillbill.goalrunner.subtaskreview
 
-import skillbill.contracts.review.ReviewFindingPayloadKeys
-
-import skillbill.contracts.SharedPayloadKeys
-
 import skillbill.contracts.JsonCodec
+import skillbill.contracts.SharedPayloadKeys
+import skillbill.contracts.review.ReviewFindingPayloadKeys
 import skillbill.goalrunner.model.UNADDRESSED_FINDING_DEFAULT_CATEGORY
 import skillbill.goalrunner.model.UNADDRESSED_FINDING_DEFAULT_SEVERITY
 import skillbill.goalrunner.model.UNADDRESSED_FINDING_REJECTED_DISPOSITION

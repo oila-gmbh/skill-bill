@@ -1,12 +1,11 @@
 package skillbill.application.review
 
-import skillbill.contracts.review.ReviewVerificationSignalKeys
-
 import skillbill.application.review.model.FeatureTaskRuntimeStatsResult
 import skillbill.application.review.model.FeatureVerifyStatsResult
 import skillbill.application.review.model.GoalStatsResult
 import skillbill.application.review.model.ReviewStatsResult
 import skillbill.contracts.JsonPayloadContract
+import skillbill.contracts.review.ReviewVerificationSignalKeys
 import skillbill.ports.workflow.model.toPayload
 
 fun ReviewStatsResult.toReviewStatsPayload(): JsonPayloadContract = MapPayloadContract(

@@ -1,7 +1,6 @@
 package skillbill.cli.goal
 
 import skillbill.contracts.SharedPayloadKeys
-
 import skillbill.engine.goalrunner.model.GoalRunnerAcceptResult
 import skillbill.engine.goalrunner.model.GoalRunnerReplanResult
 import skillbill.engine.goalrunner.model.GoalRunnerReplanSnapshot
@@ -114,7 +113,10 @@ internal fun goalAcceptText(payload: Map<String, Any?>): String = buildString {
   payload["commit_sha"]?.let { appendLine("commit_sha: $it") }
   payload["parent_workflow_id"]?.let { appendLine("parent_workflow_id: $it") }
   (payload["after"] as? Map<*, *>)?.let { after ->
-    appendLine("after: status=${after[SharedPayloadKeys.STATUS]}; current_subtask=${after["current_subtask"] ?: "none"}")
+    appendLine(
+      "after: status=${after[SharedPayloadKeys.STATUS]}; " +
+        "current_subtask=${after["current_subtask"] ?: "none"}",
+    )
     appendLine("after_subtasks:")
     appendGoalResetSubtaskLines(this, after["subtasks"] as? List<*>)
   }
@@ -158,8 +160,14 @@ internal fun goalResetText(payload: Map<String, Any?>): String = buildString {
   val before = payload["before"] as? Map<*, *>
   val after = payload["after"] as? Map<*, *>
   if (before != null && after != null) {
-    appendLine("before: status=${before[SharedPayloadKeys.STATUS]}; current_subtask=${before["current_subtask"] ?: "none"}")
-    appendLine("after: status=${after[SharedPayloadKeys.STATUS]}; current_subtask=${after["current_subtask"] ?: "none"}")
+    appendLine(
+      "before: status=${before[SharedPayloadKeys.STATUS]}; " +
+        "current_subtask=${before["current_subtask"] ?: "none"}",
+    )
+    appendLine(
+      "after: status=${after[SharedPayloadKeys.STATUS]}; " +
+        "current_subtask=${after["current_subtask"] ?: "none"}",
+    )
     appendLine("before_subtasks:")
     appendGoalResetSubtaskLines(this, before["subtasks"] as? List<*>)
     appendLine("after_subtasks:")
@@ -167,7 +175,8 @@ internal fun goalResetText(payload: Map<String, Any?>): String = buildString {
   }
   (payload["recovery"] as? Map<*, *>)?.let { recovery ->
     appendLine(
-      "recovery: subtask=${recovery[SharedPayloadKeys.SUBTASK_ID]}; workflow_id=${recovery[SharedPayloadKeys.WORKFLOW_ID]}; " +
+      "recovery: subtask=${recovery[SharedPayloadKeys.SUBTASK_ID]}; " +
+        "workflow_id=${recovery[SharedPayloadKeys.WORKFLOW_ID]}; " +
         "classification=${recovery["classification"]}",
     )
     recovery["command"]?.let { appendLine("recovery_command: $it") }
@@ -179,7 +188,9 @@ internal fun goalReplanText(payload: Map<String, Any?>): String = buildString {
   appendLine("status: ${payload[SharedPayloadKeys.STATUS]}")
   appendLine("mode: ${payload["mode"]}")
   payload["parent_workflow_id"]?.let { appendLine("parent_workflow_id: $it") }
-  payload[SharedPayloadKeys.SUBTASK_ID]?.let { appendLine("discarded_plan: subtask=$it; existed=${payload["discarded_plan"]}") }
+  payload[SharedPayloadKeys.SUBTASK_ID]?.let {
+    appendLine("discarded_plan: subtask=$it; existed=${payload["discarded_plan"]}")
+  }
   val discardedShared = payload["discarded_shared_preplan"] as? Boolean == true
   val cascaded = (payload["cascaded_plan_subtask_ids"] as? List<*>).orEmpty().filterNotNull()
   if (discardedShared || cascaded.isNotEmpty()) {
@@ -196,8 +207,14 @@ internal fun goalReplanText(payload: Map<String, Any?>): String = buildString {
         "planned_before=${(before["planned_subtask_ids"] as? List<*>)?.joinToString(",") ?: "none"}; " +
         "planned_after=${(after["planned_subtask_ids"] as? List<*>)?.joinToString(",") ?: "none"}",
     )
-    appendLine("before: status=${before[SharedPayloadKeys.STATUS]}; current_subtask=${before["current_subtask"] ?: "none"}")
-    appendLine("after: status=${after[SharedPayloadKeys.STATUS]}; current_subtask=${after["current_subtask"] ?: "none"}")
+    appendLine(
+      "before: status=${before[SharedPayloadKeys.STATUS]}; " +
+        "current_subtask=${before["current_subtask"] ?: "none"}",
+    )
+    appendLine(
+      "after: status=${after[SharedPayloadKeys.STATUS]}; " +
+        "current_subtask=${after["current_subtask"] ?: "none"}",
+    )
     appendLine("before_subtasks:")
     appendGoalResetSubtaskLines(this, before["subtasks"] as? List<*>)
     appendLine("after_subtasks:")

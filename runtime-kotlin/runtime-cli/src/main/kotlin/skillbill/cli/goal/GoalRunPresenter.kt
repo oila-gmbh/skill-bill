@@ -1,8 +1,7 @@
 package skillbill.cli.goal
 
-import skillbill.contracts.SharedPayloadKeys
-
 import skillbill.cli.model.CliRunInputs
+import skillbill.contracts.SharedPayloadKeys
 import skillbill.contracts.system.RuntimeProvenanceContract
 import skillbill.engine.goalrunner.model.GoalRunnerEventSink
 import skillbill.engine.goalrunner.model.GoalRunnerPauseResult

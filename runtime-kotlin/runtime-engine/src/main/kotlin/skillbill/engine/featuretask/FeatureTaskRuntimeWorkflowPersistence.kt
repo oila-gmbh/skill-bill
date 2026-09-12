@@ -1,8 +1,7 @@
 package skillbill.engine.featuretask
 
-import skillbill.contracts.SharedPayloadKeys
-
 import skillbill.application.workflow.model.WorkflowFamily
+import skillbill.contracts.SharedPayloadKeys
 import skillbill.contracts.issuekey.normalizeIssueKey
 import skillbill.engine.featuretask.model.FeatureTaskRuntimePhaseStateRequest
 import skillbill.error.InvalidWorkflowStateSchemaError

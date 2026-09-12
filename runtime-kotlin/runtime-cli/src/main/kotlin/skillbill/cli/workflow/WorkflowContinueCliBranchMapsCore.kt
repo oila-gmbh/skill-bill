@@ -1,8 +1,7 @@
 package skillbill.cli.workflow
 
-import skillbill.contracts.SharedPayloadKeys
-
 import skillbill.application.workflow.model.WorkflowContinueResult
+import skillbill.contracts.SharedPayloadKeys
 
 internal fun WorkflowContinueResult.toCliMap(): Map<String, Any?> = when (this) {
   is WorkflowContinueResult.Standard -> toStandardCliMap()

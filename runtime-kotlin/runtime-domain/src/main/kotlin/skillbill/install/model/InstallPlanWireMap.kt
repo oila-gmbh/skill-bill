@@ -1,8 +1,7 @@
 package skillbill.install.model
 
-import skillbill.contracts.SharedPayloadKeys
-
 import skillbill.boundary.OpenBoundaryMap
+import skillbill.contracts.SharedPayloadKeys
 import skillbill.contracts.install.INSTALL_PLAN_CONTRACT_VERSION
 import skillbill.contracts.install.InstallPlanSchemaPaths
 

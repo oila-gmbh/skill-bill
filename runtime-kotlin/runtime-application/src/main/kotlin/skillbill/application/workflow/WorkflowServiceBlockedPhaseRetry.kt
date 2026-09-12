@@ -1,10 +1,9 @@
 package skillbill.application.workflow
 
-import skillbill.contracts.SharedPayloadKeys
-
 import skillbill.application.decomposition.DecompositionManifestWriteGuard
 import skillbill.application.decomposition.DecompositionManifestWriter
 import skillbill.application.workflow.model.WorkflowUpdateResult
+import skillbill.contracts.SharedPayloadKeys
 import skillbill.model.RepositoryRoot
 import skillbill.ports.db.DatabaseSessionFactory
 import skillbill.ports.persistence.UnitOfWork

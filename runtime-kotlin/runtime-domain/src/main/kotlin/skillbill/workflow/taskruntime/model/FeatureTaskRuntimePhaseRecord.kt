@@ -1,10 +1,8 @@
 package skillbill.workflow.taskruntime.model
 
-import skillbill.contracts.review.ReviewVerificationSignalKeys
-
-import skillbill.contracts.SharedPayloadKeys
-
 import skillbill.boundary.OpenBoundaryMap
+import skillbill.contracts.SharedPayloadKeys
+import skillbill.contracts.review.ReviewVerificationSignalKeys
 import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_PERSISTENCE_CONTRACT_VERSION
 import skillbill.error.InvalidWorkflowStateSchemaError
 import skillbill.workflow.model.WorkflowStepStatus

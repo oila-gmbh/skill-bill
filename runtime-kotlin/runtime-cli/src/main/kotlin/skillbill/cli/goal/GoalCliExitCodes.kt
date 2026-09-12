@@ -1,7 +1,6 @@
 package skillbill.cli.goal
 
 import skillbill.contracts.SharedPayloadKeys
-
 import skillbill.engine.goalrunner.model.GoalRunnerStopStatus
 import skillbill.goalrunner.model.GoalRunnerTerminalStatus
 

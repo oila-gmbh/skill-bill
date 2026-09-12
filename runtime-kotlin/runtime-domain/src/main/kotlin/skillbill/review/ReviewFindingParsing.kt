@@ -1,7 +1,6 @@
 package skillbill.review
 
 import skillbill.contracts.SharedPayloadKeys
-
 import skillbill.review.model.ImportedFinding
 
 fun requireMatch(pattern: Regex, text: String, errorMessage: String): String =

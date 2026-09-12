@@ -1,8 +1,7 @@
 package skillbill.goalrunner
 
-import skillbill.contracts.SharedPayloadKeys
-
 import skillbill.boundary.OpenBoundaryMap
+import skillbill.contracts.SharedPayloadKeys
 import skillbill.goalrunner.model.GOAL_ATTEMPT_LEDGER_ARTIFACT_KEY
 import skillbill.goalrunner.model.GoalRunnerAttemptLedgerSummary
 import java.time.Instant

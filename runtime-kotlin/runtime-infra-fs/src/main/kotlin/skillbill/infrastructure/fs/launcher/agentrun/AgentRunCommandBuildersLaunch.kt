@@ -1,8 +1,7 @@
 package skillbill.infrastructure.fs.launcher.agentrun
 
-import skillbill.contracts.SharedPayloadKeys
-
 import com.fasterxml.jackson.databind.ObjectMapper
+import skillbill.contracts.SharedPayloadKeys
 import skillbill.error.GovernedReviewLaunchCapabilityError
 import skillbill.install.model.InstallAgent
 import skillbill.ports.agentrun.model.ConversationIsolation

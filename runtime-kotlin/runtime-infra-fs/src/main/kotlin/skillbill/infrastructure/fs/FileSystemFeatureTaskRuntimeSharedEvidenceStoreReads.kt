@@ -1,10 +1,9 @@
 package skillbill.infrastructure.fs
 
-import skillbill.contracts.SharedPayloadKeys
-
 import com.fasterxml.jackson.core.JsonProcessingException
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.databind.node.ObjectNode
+import skillbill.contracts.SharedPayloadKeys
 import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_SHARED_EVIDENCE_PROJECTION_CONTRACT_VERSION
 import skillbill.error.InvalidFeatureTaskRuntimeSharedEvidenceProjectionSchemaError
 import skillbill.infrastructure.fs.contracts.workflow.FeatureTaskRuntimeSharedEvidenceProjectionSchemaValidator

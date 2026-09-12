@@ -1,9 +1,8 @@
 package skillbill.infrastructure.fs
 
-import skillbill.contracts.SharedPayloadKeys
-
 import com.fasterxml.jackson.dataformat.yaml.YAMLMapper
 import skillbill.contracts.JsonCodec
+import skillbill.contracts.SharedPayloadKeys
 import skillbill.error.InvalidDecompositionManifestSchemaError
 import java.nio.file.AtomicMoveNotSupportedException
 import java.nio.file.Files

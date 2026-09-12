@@ -1,6 +1,6 @@
 package skillbill.infrastructure.sqlite.goalrunner
-import skillbill.contracts.issuekey.normalizeRequiredIssueKey
 import skillbill.contracts.SharedPayloadKeys
+import skillbill.contracts.issuekey.normalizeRequiredIssueKey
 import skillbill.infrastructure.sqlite.decomposition.resolveDecompositionManifest
 import skillbill.infrastructure.sqlite.decomposition.withParentStatus
 import skillbill.infrastructure.sqlite.workflow.decompositionRuntime
@@ -101,8 +101,16 @@ internal class WorkflowGoalRunnerManifestLoader(
             null
           } else {
             listOf(
-              mapOf(SharedPayloadKeys.STEP_ID to "preplan", SharedPayloadKeys.STATUS to "completed", "attempt_count" to 1),
-              mapOf(SharedPayloadKeys.STEP_ID to "plan", SharedPayloadKeys.STATUS to "completed", "attempt_count" to 1),
+              mapOf(
+                SharedPayloadKeys.STEP_ID to "preplan",
+                SharedPayloadKeys.STATUS to "completed",
+                "attempt_count" to 1,
+              ),
+              mapOf(
+                SharedPayloadKeys.STEP_ID to "plan",
+                SharedPayloadKeys.STATUS to "completed",
+                "attempt_count" to 1,
+              ),
             )
           },
           artifactsPatch = parentProjection.artifacts(manifest, base.artifactsJson),

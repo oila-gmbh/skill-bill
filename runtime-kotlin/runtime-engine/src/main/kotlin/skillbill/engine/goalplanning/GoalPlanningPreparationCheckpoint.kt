@@ -1,9 +1,8 @@
 package skillbill.engine.goalplanning
 
-import skillbill.contracts.SharedPayloadKeys
-
 import me.tatarka.inject.annotations.Inject
 import skillbill.contracts.JsonCodec
+import skillbill.contracts.SharedPayloadKeys
 import skillbill.engine.planningprojection.producerProjectionGateReason
 import skillbill.engine.planningprojection.requireValidPlanningProjection
 import skillbill.error.IncompatibleGoalPlanningPreparationRecoveryError
@@ -406,8 +405,12 @@ private fun SharedGoalPreplanCheckpoint.toEnvelopeMap(): Map<String, Any?> = lin
 ).filterValues { it != null }
 
 private fun GoalSubtaskPlanCheckpoint.toEnvelopeMap(): Map<String, Any?> = linkedMapOf(
-  SharedPayloadKeys.CONTRACT_VERSION to contractVersion, "record_type" to "subtask_plan", "identity" to identity.asMap(),
-  SharedPayloadKeys.SUBTASK_ID to subtaskId, "manifest_order" to manifestOrder, "governed_sub_spec_path" to governedSubSpecPath,
+  SharedPayloadKeys.CONTRACT_VERSION to contractVersion,
+  "record_type" to "subtask_plan",
+  "identity" to identity.asMap(),
+  SharedPayloadKeys.SUBTASK_ID to subtaskId,
+  "manifest_order" to manifestOrder,
+  "governed_sub_spec_path" to governedSubSpecPath,
   "sub_spec_hash" to subSpecHash, "preparation_status" to preparationStatus.wireValue,
   "provenance" to provenance.asMap(), "payload_sha256" to payloadSha256, "plan_payload" to planPayload,
   "repair_evidence" to repairEvidence?.toArtifactMap(),

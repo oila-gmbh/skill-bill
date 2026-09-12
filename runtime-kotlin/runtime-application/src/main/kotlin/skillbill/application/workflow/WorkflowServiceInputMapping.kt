@@ -1,6 +1,5 @@
 package skillbill.application.workflow
 import skillbill.application.workflow.model.GoalObservabilityProgressInput
-import skillbill.contracts.SharedPayloadKeys
 import skillbill.application.workflow.model.GoalObservabilityWorktreeActivity
 import skillbill.application.workflow.model.PersistOpenedWorkflowArgs
 import skillbill.application.workflow.model.WorkflowFamilyKind
@@ -10,6 +9,7 @@ import skillbill.application.workflow.model.WorkflowServiceOpenFeatureTaskArgs
 import skillbill.application.workflow.model.WorkflowUpdateRequest
 import skillbill.application.workflow.model.WorkflowUpdateResult
 import skillbill.contracts.JsonCodec
+import skillbill.contracts.SharedPayloadKeys
 import skillbill.contracts.issuekey.normalizeIssueKey
 import skillbill.goalrunner.GoalObservabilityArtifacts
 import skillbill.ports.workflow.get

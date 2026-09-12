@@ -1,7 +1,5 @@
 package skillbill.application.workflow
 
-import skillbill.contracts.SharedPayloadKeys
-
 import skillbill.application.decomposition.DECOMPOSITION_RUNTIME_ARTIFACT_KEY
 import skillbill.application.decomposition.decodeArtifacts
 import skillbill.application.decomposition.encodeDecompositionManifestMap
@@ -9,6 +7,7 @@ import skillbill.application.decomposition.executionModel
 import skillbill.application.workflow.model.ContinueExistingWorkflowArgs
 import skillbill.application.workflow.model.DecompositionRuntimeWriteArgs
 import skillbill.application.workflow.model.WorkflowContinueResult
+import skillbill.contracts.SharedPayloadKeys
 import skillbill.ports.persistence.UnitOfWork
 import skillbill.ports.workflow.get
 import skillbill.ports.workflow.save
@@ -110,7 +109,13 @@ fun WorkflowEngine.alignSubtaskResumeStep(
       workflowStatus = record.workflowStatus,
       currentStepId = alignment.targetStepId,
       stepUpdates = alignment.staleBlockedStep?.let { step ->
-        listOf(mapOf(SharedPayloadKeys.STEP_ID to step.stepId, SharedPayloadKeys.STATUS to "completed", "attempt_count" to step.attemptCount))
+        listOf(
+          mapOf(
+            SharedPayloadKeys.STEP_ID to step.stepId,
+            SharedPayloadKeys.STATUS to "completed",
+            "attempt_count" to step.attemptCount,
+          ),
+        )
       },
       artifactsPatch = null,
       sessionId = record.sessionId.orEmpty(),

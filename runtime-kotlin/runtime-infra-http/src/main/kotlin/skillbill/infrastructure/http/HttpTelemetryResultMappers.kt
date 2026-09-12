@@ -1,7 +1,6 @@
 package skillbill.infrastructure.http
 
 import skillbill.contracts.SharedPayloadKeys
-
 import skillbill.telemetry.model.TelemetryProxyCapabilities
 import skillbill.telemetry.model.TelemetryRemoteStatsResult
 

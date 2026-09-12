@@ -1,8 +1,7 @@
 package skillbill.cli.workflow
 
-import skillbill.contracts.SharedPayloadKeys
-
 import skillbill.application.workflow.WorkflowWireProjections
+import skillbill.contracts.SharedPayloadKeys
 import skillbill.workflow.engine.model.WorkflowContinueView
 import skillbill.workflow.model.WorkflowContinueStatus
 

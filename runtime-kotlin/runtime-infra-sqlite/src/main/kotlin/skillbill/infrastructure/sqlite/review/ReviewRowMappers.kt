@@ -1,9 +1,7 @@
 package skillbill.infrastructure.sqlite.review
 
-import skillbill.contracts.review.ReviewVerificationSignalKeys
-
 import skillbill.contracts.review.ReviewFindingPayloadKeys
-
+import skillbill.contracts.review.ReviewVerificationSignalKeys
 import skillbill.review.model.ImportedFinding
 import skillbill.review.model.NumberedFinding
 import skillbill.review.model.ReviewClaimVerdict
@@ -50,7 +48,10 @@ fun ResultSet.toNumberedFinding(number: Int): NumberedFinding = NumberedFinding(
   confidence = getString("confidence"),
   location = getString("location"),
   description = getString("description"),
-  claimVerdict = getString(ReviewFindingPayloadKeys.CLAIM_VERDICT)?.trim()?.takeIf(String::isNotBlank)?.let(ReviewClaimVerdict::fromWire),
+  claimVerdict = getString(ReviewFindingPayloadKeys.CLAIM_VERDICT)
+    ?.trim()
+    ?.takeIf(String::isNotBlank)
+    ?.let(ReviewClaimVerdict::fromWire),
   scopeDisposition = getString(ReviewFindingPayloadKeys.SCOPE_DISPOSITION)?.trim()?.takeIf(String::isNotBlank)
     ?.let(ReviewScopeDisposition::fromWire),
   citations = ReviewFindingCitation.decodeList(getString(ReviewFindingPayloadKeys.CITATIONS)),

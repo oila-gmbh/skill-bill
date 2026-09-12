@@ -1,7 +1,6 @@
 package skillbill.infrastructure.sqlite.workflow
 
 import skillbill.contracts.SharedPayloadKeys
-
 import skillbill.goalrunner.model.GoalRunnerControlState
 import skillbill.goalrunner.model.GoalRunnerExecutionLease
 import skillbill.ports.goalrunner.runner.model.GoalRunnerOutOfBandAcceptance

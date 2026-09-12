@@ -1,9 +1,7 @@
 package skillbill.infrastructure.sqlite.review
 
-import skillbill.contracts.review.ReviewVerificationSignalKeys
-
 import skillbill.contracts.review.ReviewFindingPayloadKeys
-
+import skillbill.contracts.review.ReviewVerificationSignalKeys
 import skillbill.review.model.FindingOutcomeRow
 import skillbill.review.model.ReviewFindingDetail
 import skillbill.review.model.ReviewFindingStats

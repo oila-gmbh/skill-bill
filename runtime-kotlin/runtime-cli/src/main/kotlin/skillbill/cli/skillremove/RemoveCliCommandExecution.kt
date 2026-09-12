@@ -1,10 +1,10 @@
 
 package skillbill.cli.skillremove
 
-import skillbill.contracts.SharedPayloadKeys
 import skillbill.cli.kernel.CliOutput
 import skillbill.cli.model.CliExecutionResult
 import skillbill.cli.model.CliFormat
+import skillbill.contracts.SharedPayloadKeys
 import skillbill.domain.skillremove.SkillRemovalRefusedException
 import skillbill.domain.skillremove.SkillRemoveErrorSanitizer
 import skillbill.domain.skillremove.model.SkillRemovalRefusalReason

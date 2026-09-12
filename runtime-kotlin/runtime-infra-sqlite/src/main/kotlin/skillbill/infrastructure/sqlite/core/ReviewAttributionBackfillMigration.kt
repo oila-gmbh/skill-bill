@@ -1,7 +1,6 @@
 package skillbill.infrastructure.sqlite.core
 
 import skillbill.contracts.review.ReviewVerificationSignalKeys
-
 import skillbill.review.EXECUTION_MODE_DELEGATED
 import skillbill.review.UNRESOLVED_ATTRIBUTION
 import skillbill.review.canonicalPackSkillNames

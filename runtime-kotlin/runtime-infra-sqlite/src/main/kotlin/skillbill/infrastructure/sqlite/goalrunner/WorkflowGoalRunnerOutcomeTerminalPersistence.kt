@@ -1,7 +1,6 @@
 package skillbill.infrastructure.sqlite.goalrunner
 
 import skillbill.contracts.SharedPayloadKeys
-
 import skillbill.goalrunner.commitShaFrom
 import skillbill.goalrunner.goalContinuationOutcome
 import skillbill.goalrunner.model.GoalRunnerStoredOutcome

@@ -1,6 +1,6 @@
 package skillbill.infrastructure.sqlite.review
-import skillbill.infrastructure.sqlite.PARAM_FOUR
 import skillbill.contracts.review.ReviewFindingPayloadKeys
+import skillbill.infrastructure.sqlite.PARAM_FOUR
 import skillbill.infrastructure.sqlite.PARAM_ONE
 import skillbill.infrastructure.sqlite.PARAM_THREE
 import skillbill.infrastructure.sqlite.PARAM_TWO

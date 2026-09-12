@@ -1,8 +1,7 @@
 package skillbill.workflow.taskruntime
 
-import skillbill.contracts.SharedPayloadKeys
-
 import skillbill.contracts.JsonCodec
+import skillbill.contracts.SharedPayloadKeys
 
 internal object ProsePhaseOutputRecover {
   private val LEGACY_VALUE_KEYS: List<String> = listOf(
@@ -49,7 +48,11 @@ internal object ProsePhaseOutputRecover {
   }
 
   fun recoverSummary(parsed: Map<String, Any?>?, value: String): String {
-    val fromField = parsed?.get(SharedPayloadKeys.SUMMARY)?.toString()?.trim()?.takeIf { it.any { ch -> !ch.isWhitespace() } }
+    val fromField = parsed
+      ?.get(SharedPayloadKeys.SUMMARY)
+      ?.toString()
+      ?.trim()
+      ?.takeIf { it.any { ch -> !ch.isWhitespace() } }
     if (fromField != null) return fromField
     val compact = value.lineSequence().map { it.trim() }.firstOrNull { it.isNotEmpty() }.orEmpty()
     return when {
@@ -74,8 +77,11 @@ internal object ProsePhaseOutputRecover {
     }
   }
 
-  fun recoverFailureDisposition(parsed: Map<String, Any?>?): String? =
-    parsed?.get(SharedPayloadKeys.FAILURE_DISPOSITION)?.toString()?.trim()?.takeIf { it.any { ch -> !ch.isWhitespace() } }
+  fun recoverFailureDisposition(parsed: Map<String, Any?>?): String? = parsed
+    ?.get(SharedPayloadKeys.FAILURE_DISPOSITION)
+    ?.toString()
+    ?.trim()
+    ?.takeIf { it.any { ch -> !ch.isWhitespace() } }
 }
 
 private fun stuffSibling(sibling: Any?): String? = when (sibling) {

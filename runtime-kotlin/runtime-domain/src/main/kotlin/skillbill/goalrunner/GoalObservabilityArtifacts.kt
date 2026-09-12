@@ -1,8 +1,7 @@
 package skillbill.goalrunner
 
-import skillbill.contracts.SharedPayloadKeys
-
 import skillbill.boundary.OpenBoundaryMap
+import skillbill.contracts.SharedPayloadKeys
 import skillbill.goalrunner.model.GoalObservabilityProgressInput
 import skillbill.goalrunner.model.GoalObservabilityRuntimeEventInput
 import skillbill.workflow.goal.GoalObservabilityEventValidator

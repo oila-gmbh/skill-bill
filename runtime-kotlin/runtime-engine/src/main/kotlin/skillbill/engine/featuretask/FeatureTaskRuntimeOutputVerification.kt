@@ -1,10 +1,8 @@
 package skillbill.engine.featuretask
 
-import skillbill.contracts.review.ReviewFindingPayloadKeys
-
-import skillbill.contracts.SharedPayloadKeys
-
 import skillbill.contracts.JsonCodec
+import skillbill.contracts.SharedPayloadKeys
+import skillbill.contracts.review.ReviewFindingPayloadKeys
 import skillbill.goalrunner.subtaskreview.FeatureTaskRuntimeVerificationSignalKeys
 import skillbill.review.ReviewFindingActionability
 import skillbill.review.model.ReviewClaimVerdict

@@ -1,7 +1,6 @@
 package skillbill.infrastructure.sqlite.goalrunner
 
 import skillbill.contracts.SharedPayloadKeys
-
 import skillbill.goalrunner.model.GoalRunnerSupervisionEvent
 import skillbill.goalrunner.toArtifactsMap
 import skillbill.infrastructure.sqlite.decomposition.decodeArtifacts
@@ -73,7 +72,11 @@ internal class WorkflowGoalRunnerBlockWrites(
         workflowStatus = "blocked",
         currentStepId = stepId,
         stepUpdates = listOf(
-          mapOf(SharedPayloadKeys.STEP_ID to stepId, SharedPayloadKeys.STATUS to "blocked", "attempt_count" to attemptCount),
+          mapOf(
+            SharedPayloadKeys.STEP_ID to stepId,
+            SharedPayloadKeys.STATUS to "blocked",
+            "attempt_count" to attemptCount,
+          ),
         ),
         artifactsPatch = buildMap {
           put("blocked_reason", write.blockedReason)

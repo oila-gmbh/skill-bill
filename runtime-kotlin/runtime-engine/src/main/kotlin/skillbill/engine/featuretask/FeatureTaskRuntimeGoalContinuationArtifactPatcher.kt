@@ -1,9 +1,8 @@
 package skillbill.engine.featuretask
 
-import skillbill.contracts.SharedPayloadKeys
-
 import skillbill.agentaddon.model.AgentAddonSelection
 import skillbill.application.workflow.model.WorkflowFamily
+import skillbill.contracts.SharedPayloadKeys
 import skillbill.error.InvalidGoalSubtaskReviewStateSchemaError
 import skillbill.ports.workflow.WorkflowStateRepository
 import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewBaseline

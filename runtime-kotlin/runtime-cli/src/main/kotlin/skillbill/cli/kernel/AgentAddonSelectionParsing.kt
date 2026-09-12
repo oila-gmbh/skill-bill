@@ -1,11 +1,10 @@
 package skillbill.cli.kernel
 
-import skillbill.contracts.SharedPayloadKeys
-
 import com.github.ajalt.clikt.core.UsageError
 import skillbill.agentaddon.model.AgentAddonSelection
 import skillbill.agentaddon.model.PersistedAgentAddonSelectionEntry
 import skillbill.contracts.JsonCodec
+import skillbill.contracts.SharedPayloadKeys
 
 internal fun parseAgentAddonSelection(raw: String?): AgentAddonSelection {
   if (raw == null) return AgentAddonSelection()

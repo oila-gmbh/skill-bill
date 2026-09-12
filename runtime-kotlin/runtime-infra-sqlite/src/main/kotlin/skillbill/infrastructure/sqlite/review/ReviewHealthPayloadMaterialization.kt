@@ -1,7 +1,7 @@
 package skillbill.infrastructure.sqlite.review
 import skillbill.contracts.JsonCodec
-import skillbill.contracts.review.ReviewVerificationSignalKeys
 import skillbill.contracts.SharedPayloadKeys
+import skillbill.contracts.review.ReviewVerificationSignalKeys
 import skillbill.infrastructure.sqlite.PARAM_ONE
 import skillbill.infrastructure.sqlite.PARAM_TWO
 import skillbill.infrastructure.sqlite.telemetry.enqueueTelemetry
@@ -39,7 +39,9 @@ internal fun persistLegacyReviewFinishedRow(connection: Connection, outboxId: Lo
       "event_name" to REVIEW_FINISHED_LEGACY_REGENERATED_EVENT_NAME,
       SharedPayloadKeys.CONTRACT_VERSION to REVIEW_STAGE_DEGRADATION_CONTRACT_VERSION,
       ReviewVerificationSignalKeys.REVIEW_RUN_ID to reviewRunId,
-      "from_version" to (payload[SharedPayloadKeys.CONTRACT_VERSION]?.toString() ?: REVIEW_FINISHED_LEGACY_CONTRACT_VERSION),
+      "from_version" to (
+        payload[SharedPayloadKeys.CONTRACT_VERSION]?.toString() ?: REVIEW_FINISHED_LEGACY_CONTRACT_VERSION
+        ),
       "to_version" to REVIEW_STAGE_DEGRADATION_CONTRACT_VERSION,
     ),
   )

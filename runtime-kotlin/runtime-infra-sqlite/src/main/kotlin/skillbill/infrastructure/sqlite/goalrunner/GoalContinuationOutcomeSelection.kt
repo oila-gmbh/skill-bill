@@ -1,7 +1,7 @@
 package skillbill.infrastructure.sqlite.goalrunner
 import skillbill.boundary.OpenBoundaryMap
-import skillbill.contracts.SharedPayloadKeys
 import skillbill.contracts.JsonCodec
+import skillbill.contracts.SharedPayloadKeys
 import skillbill.goalrunner.asGoalRunnerIntOrNull
 import skillbill.goalrunner.goalContinuationTerminalStatus
 import skillbill.goalrunner.model.GoalRunnerStoredOutcome
@@ -76,7 +76,9 @@ fun Map<String, Any?>.toMissingResultPrefixOutcomeArtifact(
   SharedPayloadKeys.ISSUE_KEY to issueKey,
   SharedPayloadKeys.SUBTASK_ID to subtaskId,
   SharedPayloadKeys.STATUS to status.toGoalContinuationWireStatus(),
-  SharedPayloadKeys.WORKFLOW_ID to (this[SharedPayloadKeys.WORKFLOW_ID]?.toString()?.takeIf(String::isNotBlank) ?: workflowId),
+  SharedPayloadKeys.WORKFLOW_ID to (
+    this[SharedPayloadKeys.WORKFLOW_ID]?.toString()?.takeIf(String::isNotBlank) ?: workflowId
+    ),
   "last_resumable_step" to (
     this["last_resumable_step"]?.toString()?.takeIf(String::isNotBlank) ?: "preplan"
     ),

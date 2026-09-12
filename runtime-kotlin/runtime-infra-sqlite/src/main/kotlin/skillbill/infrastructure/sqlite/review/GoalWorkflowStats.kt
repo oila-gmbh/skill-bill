@@ -1,7 +1,6 @@
 package skillbill.infrastructure.sqlite.review
 
 import skillbill.contracts.SharedPayloadKeys
-
 import skillbill.review.model.GoalBlockedSubtaskSummary
 import skillbill.review.model.GoalModeStats
 import skillbill.review.model.GoalRunSummary
@@ -167,7 +166,8 @@ private fun parseGoalRunRow(row: Map<String, Any?>): GoalRunRow {
 private fun parseGoalSubtaskRow(row: Map<String, Any?>): GoalSubtaskRow {
   val identity =
     "goal_subtask_events[issue_key=${row[SharedPayloadKeys.ISSUE_KEY] ?: "<null>"}, " +
-      "subtask_id=${row[SharedPayloadKeys.SUBTASK_ID] ?: "<null>"}, workflow_id=${row[SharedPayloadKeys.WORKFLOW_ID] ?: "<null>"}]"
+      "subtask_id=${row[SharedPayloadKeys.SUBTASK_ID] ?: "<null>"}, " +
+      "workflow_id=${row[SharedPayloadKeys.WORKFLOW_ID] ?: "<null>"}]"
   row.requireNonBlankString("started_at", identity)
   row.requireNonBlankString("finished_at", identity)
   val status = row.requireEnum("status", goalSubtaskStatuses.map { it.wireValue }, identity)

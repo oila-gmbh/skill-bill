@@ -1,9 +1,7 @@
 package skillbill.infrastructure.sqlite.telemetry
 
-import skillbill.contracts.review.ReviewVerificationSignalKeys
-
 import skillbill.contracts.review.ReviewFindingPayloadKeys
-
+import skillbill.contracts.review.ReviewVerificationSignalKeys
 import skillbill.infrastructure.sqlite.core.DbConstants
 import java.sql.Connection
 

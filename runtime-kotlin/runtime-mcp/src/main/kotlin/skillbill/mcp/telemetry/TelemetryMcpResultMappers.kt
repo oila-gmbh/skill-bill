@@ -1,7 +1,6 @@
 package skillbill.mcp.telemetry
 
 import skillbill.contracts.SharedPayloadKeys
-
 import skillbill.telemetry.model.TelemetryProxyCapabilities
 import skillbill.telemetry.model.TelemetryRemoteStatsResult
 

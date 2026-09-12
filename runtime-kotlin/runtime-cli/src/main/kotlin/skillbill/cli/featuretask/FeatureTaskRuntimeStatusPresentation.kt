@@ -1,7 +1,6 @@
 package skillbill.cli.featuretask
 
 import skillbill.contracts.SharedPayloadKeys
-
 import skillbill.engine.featuretask.model.FeatureTaskRuntimePhaseStatus
 import skillbill.engine.featuretask.model.FeatureTaskRuntimeStatusProjection
 
@@ -107,9 +106,12 @@ internal fun runtimeStatusText(payload: Map<String, Any?>): String = buildString
   (payload["phases"] as? List<*>).orEmpty().forEach { rawPhase ->
     val phase = rawPhase as? Map<*, *> ?: return@forEach
     appendLine(
-      "phase: id=${phase[SharedPayloadKeys.PHASE_ID]} status=${phase[SharedPayloadKeys.STATUS]} attempt=${phase["attempt_count"]} " +
+      "phase: id=${phase[SharedPayloadKeys.PHASE_ID]} " +
+        "status=${phase[SharedPayloadKeys.STATUS]} " +
+        "attempt=${phase["attempt_count"]} " +
         "agent=${phase["resolved_agent_id"] ?: "none"} " +
-        "origin=${phase["execution_origin"] ?: "none"} finished=${phase["finished"]}",
+        "origin=${phase["execution_origin"] ?: "none"} " +
+        "finished=${phase["finished"]}",
     )
   }
 }

@@ -1,7 +1,5 @@
 package skillbill.cli.agentaddon
 
-import skillbill.contracts.SharedPayloadKeys
-
 import com.github.ajalt.clikt.core.UsageError
 import com.github.ajalt.clikt.core.subcommands
 import com.github.ajalt.clikt.parameters.options.default
@@ -16,6 +14,7 @@ import skillbill.cli.kernel.DocumentedNoOpCliCommand
 import skillbill.cli.kernel.formatOption
 import skillbill.cli.kernel.parseAgentAddonSelection
 import skillbill.cli.model.CliRunInputs
+import skillbill.contracts.SharedPayloadKeys
 import skillbill.error.ShellContentContractException
 import skillbill.model.toPath
 import skillbill.ports.agentaddon.AgentAddonSelectionPort
@@ -80,7 +79,11 @@ class AgentAddonResolveSelectionCommand(
     try {
       state.complete(block(), format)
     } catch (error: ShellContentContractException) {
-      state.complete(mapOf(SharedPayloadKeys.STATUS to "failed", "error" to error.message.orEmpty()), format, exitCode = 1)
+      state.complete(
+        mapOf(SharedPayloadKeys.STATUS to "failed", "error" to error.message.orEmpty()),
+        format,
+        exitCode = 1,
+      )
     }
   }
 }
@@ -123,7 +126,11 @@ class AgentAddonVerifySelectionCommand(
         format,
       )
     } catch (error: ShellContentContractException) {
-      state.complete(mapOf(SharedPayloadKeys.STATUS to "failed", "error" to error.message.orEmpty()), format, exitCode = 1)
+      state.complete(
+        mapOf(SharedPayloadKeys.STATUS to "failed", "error" to error.message.orEmpty()),
+        format,
+        exitCode = 1,
+      )
     }
   }
 }

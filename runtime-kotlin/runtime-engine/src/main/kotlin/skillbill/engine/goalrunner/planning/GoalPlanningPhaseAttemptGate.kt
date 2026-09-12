@@ -1,7 +1,6 @@
 package skillbill.engine.goalrunner.planning
 
 import skillbill.contracts.SharedPayloadKeys
-
 import skillbill.engine.featuretask.FeatureTaskRuntimePhaseSafetyPolicy
 import skillbill.engine.goalrunner.planning.model.GoalPlanningPhaseProduction
 import skillbill.engine.goalrunner.planning.model.GoalPlanningSweepOutcome

@@ -1,9 +1,8 @@
 package skillbill.cli.goal
 
-import skillbill.contracts.SharedPayloadKeys
-
 import skillbill.cli.kernel.detectInvokingAgentId
 import skillbill.cli.model.CliRunInputs
+import skillbill.contracts.SharedPayloadKeys
 import skillbill.engine.goalrunner.model.GoalRunnerStatusRequest
 import skillbill.error.DatabaseAccessError
 import skillbill.goalrunner.model.ExecutionLiveness
@@ -202,27 +201,28 @@ private fun planningWaveText(waveSize: Int): String = when (waveSize) {
   else -> " wave=$waveSize subtasks"
 }
 
-internal fun goalMonitorStatusText(payload: Map<String, Any?>): String = if (payload[SharedPayloadKeys.STATUS] == "not_found") {
-  buildString {
-    appendLine("goal: ${payload[SharedPayloadKeys.ISSUE_KEY]}")
-    appendLine("status: not_found")
-    appendLine("resumable_state: not_found")
+internal fun goalMonitorStatusText(payload: Map<String, Any?>): String =
+  if (payload[SharedPayloadKeys.STATUS] == "not_found") {
+    buildString {
+      appendLine("goal: ${payload[SharedPayloadKeys.ISSUE_KEY]}")
+      appendLine("status: not_found")
+      appendLine("resumable_state: not_found")
+    }
+  } else if (payload[SharedPayloadKeys.STATUS] == GOAL_STATUS_DATABASE_UNAVAILABLE) {
+    buildString {
+      appendLine("goal: ${payload[SharedPayloadKeys.ISSUE_KEY]}")
+      appendLine("status: $GOAL_STATUS_DATABASE_UNAVAILABLE")
+      appendLine("resumable_state: $GOAL_STATUS_DATABASE_UNAVAILABLE")
+      appendLine("reason: ${payload["reason"]}")
+    }
+  } else {
+    buildString {
+      appendLine("complete: ${payload["complete_count"]}")
+      appendLine("pending: ${payload["pending_count"]}")
+      appendLine("blocked: ${payload["blocked_count"]}")
+      appendLine("current_subtask: ${payload["current_subtask"] ?: "none"}")
+      appendLine("current_step: ${payload["current_step"] ?: "none"}")
+      appendLine("execution_liveness: ${payload["execution_liveness"]}")
+      appendLine("resumable_state: ${payload["resumable_state"]}")
+    }
   }
-} else if (payload[SharedPayloadKeys.STATUS] == GOAL_STATUS_DATABASE_UNAVAILABLE) {
-  buildString {
-    appendLine("goal: ${payload[SharedPayloadKeys.ISSUE_KEY]}")
-    appendLine("status: $GOAL_STATUS_DATABASE_UNAVAILABLE")
-    appendLine("resumable_state: $GOAL_STATUS_DATABASE_UNAVAILABLE")
-    appendLine("reason: ${payload["reason"]}")
-  }
-} else {
-  buildString {
-    appendLine("complete: ${payload["complete_count"]}")
-    appendLine("pending: ${payload["pending_count"]}")
-    appendLine("blocked: ${payload["blocked_count"]}")
-    appendLine("current_subtask: ${payload["current_subtask"] ?: "none"}")
-    appendLine("current_step: ${payload["current_step"] ?: "none"}")
-    appendLine("execution_liveness: ${payload["execution_liveness"]}")
-    appendLine("resumable_state: ${payload["resumable_state"]}")
-  }
-}

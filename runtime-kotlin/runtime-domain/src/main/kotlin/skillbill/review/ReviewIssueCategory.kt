@@ -1,7 +1,6 @@
 package skillbill.review
 
 import skillbill.contracts.SharedPayloadKeys
-
 import skillbill.review.model.ImportedFinding
 import skillbill.review.model.ReviewIssueCategory
 

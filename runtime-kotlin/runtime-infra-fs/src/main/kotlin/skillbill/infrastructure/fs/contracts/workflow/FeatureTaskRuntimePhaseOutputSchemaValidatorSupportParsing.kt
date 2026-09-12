@@ -1,9 +1,8 @@
 package skillbill.infrastructure.fs.contracts.workflow
 
-import skillbill.contracts.SharedPayloadKeys
-
 import com.fasterxml.jackson.core.JsonProcessingException
 import com.fasterxml.jackson.databind.JsonNode
+import skillbill.contracts.SharedPayloadKeys
 import skillbill.error.InvalidFeatureTaskRuntimePhaseOutputSchemaError
 import java.util.logging.Level
 

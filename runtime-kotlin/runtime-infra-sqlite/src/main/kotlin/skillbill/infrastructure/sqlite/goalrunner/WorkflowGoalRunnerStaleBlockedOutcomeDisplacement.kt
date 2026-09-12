@@ -1,7 +1,6 @@
 package skillbill.infrastructure.sqlite.goalrunner
 
 import skillbill.contracts.SharedPayloadKeys
-
 import skillbill.goalrunner.GOAL_CONTINUATION_OUTCOME_DISPLACEMENT_ARTIFACT_KEY
 import skillbill.goalrunner.derivedTerminalOutcomeFor
 import skillbill.goalrunner.goalContinuationOutcome

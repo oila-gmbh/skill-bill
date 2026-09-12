@@ -1,10 +1,8 @@
 package skillbill.infrastructure.sqlite.review
 
-import skillbill.contracts.review.ReviewVerificationSignalKeys
-
-import skillbill.contracts.review.ReviewFindingPayloadKeys
-
 import skillbill.contracts.JsonCodec
+import skillbill.contracts.review.ReviewFindingPayloadKeys
+import skillbill.contracts.review.ReviewVerificationSignalKeys
 import skillbill.review.model.ParallelReviewMergedFinding
 import skillbill.review.model.ParallelReviewSeverity
 import skillbill.review.model.ReviewFindingCitation

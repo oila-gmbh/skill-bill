@@ -1,12 +1,9 @@
 package skillbill.goalrunner.subtaskreview
 
-import skillbill.contracts.review.ReviewVerificationSignalKeys
-
-import skillbill.contracts.review.ReviewFindingPayloadKeys
-
-import skillbill.contracts.SharedPayloadKeys
-
 import skillbill.contracts.JsonCodec
+import skillbill.contracts.SharedPayloadKeys
+import skillbill.contracts.review.ReviewFindingPayloadKeys
+import skillbill.contracts.review.ReviewVerificationSignalKeys
 import skillbill.goalrunner.subtaskreview.model.StructuredGoalReviewFinding
 import skillbill.review.ReviewFindingActionability
 import skillbill.review.ReviewFindingFieldCodec

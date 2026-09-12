@@ -1,7 +1,5 @@
 package skillbill.cli.install
 
-import skillbill.contracts.SharedPayloadKeys
-
 import com.github.ajalt.clikt.parameters.options.default
 import com.github.ajalt.clikt.parameters.options.option
 import me.tatarka.inject.annotations.Inject
@@ -9,6 +7,7 @@ import skillbill.application.install.ExternalAddonOverlayService
 import skillbill.cli.kernel.CliRunState
 import skillbill.cli.kernel.DocumentedCliCommand
 import skillbill.cli.model.CliRunInputs
+import skillbill.contracts.SharedPayloadKeys
 import skillbill.error.ShellContentContractException
 import java.nio.file.Path
 

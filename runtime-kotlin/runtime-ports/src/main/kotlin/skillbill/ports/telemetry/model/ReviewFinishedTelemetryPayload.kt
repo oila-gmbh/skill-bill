@@ -1,10 +1,8 @@
 package skillbill.ports.telemetry.model
 
-import skillbill.contracts.review.ReviewVerificationSignalKeys
-
-import skillbill.contracts.review.ReviewFindingPayloadKeys
-
 import skillbill.contracts.JsonPayloadContract
+import skillbill.contracts.review.ReviewFindingPayloadKeys
+import skillbill.contracts.review.ReviewVerificationSignalKeys
 import skillbill.review.model.ReviewFindingDetail
 import skillbill.review.model.ReviewFinishedFindingStats
 import skillbill.review.model.ReviewFinishedTelemetry

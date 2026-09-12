@@ -1,7 +1,6 @@
 package skillbill.cli.goal
 
 import skillbill.contracts.SharedPayloadKeys
-
 import skillbill.engine.goalrunner.model.GoalRunnerOperatorDecisionResult
 import skillbill.engine.goalrunner.model.GoalRunnerRepairResult
 import skillbill.engine.goalrunner.model.GoalRunnerRepairStatus
@@ -86,7 +85,8 @@ private fun appendGoalRepairDiagnoses(builder: StringBuilder, diagnoses: List<*>
   diagnoses.orEmpty().forEach { raw ->
     val diagnosis = raw as? Map<*, *> ?: return@forEach
     builder.appendLine(
-      "  - subtask=${diagnosis[SharedPayloadKeys.SUBTASK_ID]}; workflow_id=${diagnosis[SharedPayloadKeys.WORKFLOW_ID] ?: "none"}; " +
+      "  - subtask=${diagnosis[SharedPayloadKeys.SUBTASK_ID]}; " +
+        "workflow_id=${diagnosis[SharedPayloadKeys.WORKFLOW_ID] ?: "none"}; " +
         "healthy=${diagnosis["healthy"]}",
     )
     (diagnosis["passed_checks"] as? List<*>).orEmpty().takeIf { it.isNotEmpty() }?.let { checks ->
@@ -132,7 +132,8 @@ internal fun GoalRunnerOperatorDecisionResult.toGoalOperatorDecisionCliMap(): Ma
   )
 }
 
-internal fun Map<String, Any?>.goalOperatorDecisionExitCode(): Int = if (this[SharedPayloadKeys.STATUS] == "ok") 0 else 1
+internal fun Map<String, Any?>.goalOperatorDecisionExitCode(): Int =
+  if (this[SharedPayloadKeys.STATUS] == "ok") 0 else 1
 
 internal fun goalOperatorDecisionText(payload: Map<String, Any?>): String = buildString {
   appendLine("goal: ${payload[SharedPayloadKeys.ISSUE_KEY]}")

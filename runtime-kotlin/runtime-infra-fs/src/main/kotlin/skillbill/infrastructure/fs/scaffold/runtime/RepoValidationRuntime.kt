@@ -1,7 +1,6 @@
 package skillbill.infrastructure.fs.scaffold.runtime
 
 import skillbill.contracts.SharedPayloadKeys
-
 import skillbill.infrastructure.fs.nativeagent.composition.NativeAgentCompositionContext
 import java.nio.file.Files
 import java.nio.file.Path

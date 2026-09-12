@@ -1,8 +1,7 @@
 package skillbill.infrastructure.sqlite.telemetry
 
-import skillbill.contracts.SharedPayloadKeys
-
 import skillbill.contracts.JsonCodec
+import skillbill.contracts.SharedPayloadKeys
 import java.time.Duration
 import java.time.Instant
 import java.time.LocalDateTime

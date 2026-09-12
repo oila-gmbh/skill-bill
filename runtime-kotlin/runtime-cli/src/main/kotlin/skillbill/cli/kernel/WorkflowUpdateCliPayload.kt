@@ -1,9 +1,8 @@
 package skillbill.cli.kernel
 
-import skillbill.contracts.SharedPayloadKeys
-
 import skillbill.application.workflow.WorkflowWireProjections
 import skillbill.application.workflow.model.WorkflowUpdateResult
+import skillbill.contracts.SharedPayloadKeys
 
 /**
  * Wire shape for every workflow-mutating CLI command, whichever command area owns it. The key order

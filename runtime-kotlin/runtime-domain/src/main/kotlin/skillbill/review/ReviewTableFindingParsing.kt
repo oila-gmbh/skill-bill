@@ -1,7 +1,6 @@
 package skillbill.review
 
 import skillbill.contracts.review.ReviewFindingPayloadKeys
-
 import skillbill.review.model.ImportedFinding
 
 fun isTableHeaderLine(line: String): Boolean {
@@ -57,7 +56,9 @@ fun parseTableFindingLine(stripped: String, columnMap: Map<String, Int>): Import
       findingId = "F-%03d".format(number),
       severity = normalizeSeverity(tableCell(cells, columnMap.getValue("severity"))),
       confidence = normalizeConfidence(confidenceValue),
-      issueCategory = normalizeReviewIssueCategory(tableCell(cells, columnMap[ReviewFindingPayloadKeys.ISSUE_CATEGORY])),
+      issueCategory = normalizeReviewIssueCategory(
+        tableCell(cells, columnMap[ReviewFindingPayloadKeys.ISSUE_CATEGORY]),
+      ),
       location = buildLocation(tableCell(cells, columnMap["file"]), tableCell(cells, columnMap["lines"])),
       description = description,
       findingText = stripped,

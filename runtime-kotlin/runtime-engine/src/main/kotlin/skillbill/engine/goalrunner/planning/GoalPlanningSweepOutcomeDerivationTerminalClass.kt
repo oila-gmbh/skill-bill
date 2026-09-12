@@ -1,8 +1,7 @@
 package skillbill.engine.goalrunner.planning
 
-import skillbill.contracts.SharedPayloadKeys
-
 import skillbill.application.agentoutput.stderrExcerpt
+import skillbill.contracts.SharedPayloadKeys
 import skillbill.engine.goalrunner.planning.model.GoalPlanningEmptyTurnEvidence
 import skillbill.engine.goalrunner.planning.model.GoalPlanningPhaseProduction
 import skillbill.error.IncompatibleGoalPlanningPreparationRecoveryError

@@ -1,8 +1,7 @@
 package skillbill.infrastructure.fs
 
-import skillbill.contracts.SharedPayloadKeys
-
 import skillbill.contracts.JsonCodec
+import skillbill.contracts.SharedPayloadKeys
 import skillbill.error.UnreadableBaselineManifestError
 import skillbill.install.model.BaselineManifest
 import java.nio.file.Path

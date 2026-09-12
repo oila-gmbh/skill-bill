@@ -1,7 +1,6 @@
 package skillbill.workflow.verify
 
 import skillbill.contracts.SharedPayloadKeys
-
 import skillbill.contracts.workflow.WORKFLOW_STATE_CONTRACT_VERSION
 import skillbill.workflow.engine.model.WorkflowDefinition
 import skillbill.workflow.engine.model.WorkflowInputProjectionDeclaration

@@ -1,13 +1,12 @@
 package skillbill.infrastructure.fs.contracts.workflow
 
-import skillbill.contracts.SharedPayloadKeys
-
 import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.dataformat.yaml.YAMLMapper
 import com.networknt.schema.JsonSchema
 import com.networknt.schema.JsonSchemaFactory
 import com.networknt.schema.SpecVersion
+import skillbill.contracts.SharedPayloadKeys
 import skillbill.contracts.workflow.PRODUCER_OUTPUT_EVIDENCE_CONTRACT_VERSION
 import skillbill.contracts.workflow.ProducerOutputEvidenceSchemaPaths
 import skillbill.error.InvalidProducerOutputEvidenceSchemaError

@@ -1,7 +1,6 @@
 package skillbill.mcp.scaffold
 
 import skillbill.contracts.SharedPayloadKeys
-
 import skillbill.scaffold.model.ScaffoldResult
 
 private const val SCAFFOLD_TELEMETRY_DURATION_SECONDS = 0

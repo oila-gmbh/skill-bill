@@ -1,9 +1,7 @@
 package skillbill.infrastructure.sqlite.telemetry
 
-import skillbill.contracts.review.ReviewVerificationSignalKeys
-
 import skillbill.contracts.SharedPayloadKeys
-
+import skillbill.contracts.review.ReviewVerificationSignalKeys
 import skillbill.ports.telemetry.FeatureTaskRuntimeTelemetryMeasurementRepository
 import skillbill.ports.telemetry.ReviewStageTelemetryMeasurementRepository
 import skillbill.review.model.REVIEW_STAGE_DEGRADATION_CONTRACT_VERSION

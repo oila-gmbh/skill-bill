@@ -1,7 +1,5 @@
 package skillbill.cli.scaffold
 
-import skillbill.contracts.SharedPayloadKeys
-
 import com.github.ajalt.clikt.parameters.arguments.argument
 import com.github.ajalt.clikt.parameters.arguments.optional
 import com.github.ajalt.clikt.parameters.options.default
@@ -14,6 +12,7 @@ import skillbill.cli.kernel.CliRunState
 import skillbill.cli.kernel.DocumentedCliCommand
 import skillbill.cli.kernel.formatOption
 import skillbill.cli.model.CliRunInputs
+import skillbill.contracts.SharedPayloadKeys
 import skillbill.ports.scaffold.ScaffoldGateway
 import skillbill.ports.scaffold.UnsupportedScaffoldGateway
 import java.nio.file.Path
@@ -107,7 +106,10 @@ class ValidateSkillCommand(
 
   override fun run() {
     state.result =
-      authoringResult(format, successExitCode = { payload -> if (payload[SharedPayloadKeys.STATUS] == "pass") 0 else 1 }) {
+      authoringResult(
+        format,
+        successExitCode = { payload -> if (payload[SharedPayloadKeys.STATUS] == "pass") 0 else 1 },
+      ) {
         scaffoldGateway.validate(Path.of(repoRoot), skillNames).toCliMap()
       }
   }

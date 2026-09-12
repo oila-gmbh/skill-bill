@@ -1,8 +1,7 @@
 package skillbill.learnings
 
-import skillbill.contracts.SharedPayloadKeys
-
 import skillbill.contracts.JsonCodec
+import skillbill.contracts.SharedPayloadKeys
 import skillbill.learnings.model.LearningRecord
 import skillbill.learnings.model.LearningScope
 

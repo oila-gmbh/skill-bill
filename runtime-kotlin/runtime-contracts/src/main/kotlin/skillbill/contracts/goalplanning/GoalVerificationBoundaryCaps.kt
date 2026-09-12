@@ -1,8 +1,7 @@
 package skillbill.contracts.goalplanning
 
-import skillbill.contracts.SharedPayloadKeys
-
 import org.yaml.snakeyaml.Yaml
+import skillbill.contracts.SharedPayloadKeys
 import skillbill.error.InvalidGoalVerificationBoundaryCapsSchemaError
 
 object GoalVerificationBoundaryCaps {

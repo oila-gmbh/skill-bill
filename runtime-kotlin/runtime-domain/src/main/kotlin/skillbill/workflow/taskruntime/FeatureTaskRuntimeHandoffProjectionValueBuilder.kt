@@ -1,12 +1,9 @@
 package skillbill.workflow.taskruntime
 
-import skillbill.contracts.review.ReviewVerificationSignalKeys
-
-import skillbill.contracts.review.ReviewFindingPayloadKeys
-
-import skillbill.contracts.SharedPayloadKeys
-
 import skillbill.contracts.JsonCodec
+import skillbill.contracts.SharedPayloadKeys
+import skillbill.contracts.review.ReviewFindingPayloadKeys
+import skillbill.contracts.review.ReviewVerificationSignalKeys
 import skillbill.error.FeatureTaskRuntimeHandoffProjectionFailureKind
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeCompactReferenceKind
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFindingVerificationDisposition
@@ -97,7 +94,8 @@ internal object FeatureTaskRuntimeHandoffProjectionValueBuilder {
       REPOSITORY_CHECKPOINT_FIELD to checkpointFingerprint(inputs),
     )
     FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.FINDINGS_VERIFICATION_DISPOSITIONS -> mapOf(
-      ReviewVerificationSignalKeys.FINDINGS_VERIFICATION_DISPOSITIONS to produced[ReviewVerificationSignalKeys.FINDINGS_VERIFICATION_DISPOSITIONS],
+      ReviewVerificationSignalKeys.FINDINGS_VERIFICATION_DISPOSITIONS to
+        produced[ReviewVerificationSignalKeys.FINDINGS_VERIFICATION_DISPOSITIONS],
       REPOSITORY_CHECKPOINT_FIELD to checkpointFingerprint(inputs),
     )
     FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.CHANGE_RECEIPT -> mapOf(
@@ -189,7 +187,9 @@ internal object FeatureTaskRuntimeHandoffProjectionValueBuilder {
       .map { finding ->
         val severity = (finding["severity"] as? String)?.takeIf(String::isNotBlank) ?: "blocker"
         mapOf(
-          ReviewFindingPayloadKeys.FINDING_ID to (finding[ReviewFindingPayloadKeys.FINDING_ID] ?: finding[ReviewFindingPayloadKeys.F_NUMBER] ?: finding["id"]),
+          ReviewFindingPayloadKeys.FINDING_ID to (
+            finding[ReviewFindingPayloadKeys.FINDING_ID] ?: finding[ReviewFindingPayloadKeys.F_NUMBER] ?: finding["id"]
+            ),
           "severity" to severity,
           "location" to (
             finding["location"] ?: finding[ReviewFindingPayloadKeys.REPOSITORY_PATH] ?: finding["path"] ?: "repository"
@@ -197,7 +197,9 @@ internal object FeatureTaskRuntimeHandoffProjectionValueBuilder {
           "message" to (
             finding["message"] ?: finding["description"] ?: finding["expected_outcome"] ?: "Review finding."
             ),
-          ReviewFindingPayloadKeys.ISSUE_CATEGORY to (finding[ReviewFindingPayloadKeys.ISSUE_CATEGORY] ?: finding["category"] ?: "other"),
+          ReviewFindingPayloadKeys.ISSUE_CATEGORY to (
+            finding[ReviewFindingPayloadKeys.ISSUE_CATEGORY] ?: finding["category"] ?: "other"
+            ),
           ReviewFindingPayloadKeys.CLAIM_VERDICT to finding[ReviewFindingPayloadKeys.CLAIM_VERDICT],
           ReviewFindingPayloadKeys.SCOPE_DISPOSITION to finding[ReviewFindingPayloadKeys.SCOPE_DISPOSITION],
         ).filterValues { it != null }

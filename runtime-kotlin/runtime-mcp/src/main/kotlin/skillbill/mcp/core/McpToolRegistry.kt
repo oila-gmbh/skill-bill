@@ -1,8 +1,7 @@
 package skillbill.mcp.core
 
-import skillbill.contracts.review.ReviewVerificationSignalKeys
-
 import skillbill.contracts.SharedPayloadKeys
+import skillbill.contracts.review.ReviewVerificationSignalKeys
 
 data class McpToolSpec(
   val name: String,

@@ -1,7 +1,6 @@
 package skillbill.engine.goalplanning
 
 import skillbill.contracts.SharedPayloadKeys
-
 import skillbill.ports.goalrunner.model.GoalPlanningPreparationProvenance
 import skillbill.ports.goalrunner.model.GoalPlanningPreparationRecord
 import skillbill.ports.goalrunner.model.GoalPlanningPreparationState

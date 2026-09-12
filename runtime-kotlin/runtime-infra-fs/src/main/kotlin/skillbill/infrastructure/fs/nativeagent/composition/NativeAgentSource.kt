@@ -1,9 +1,8 @@
 package skillbill.infrastructure.fs.nativeagent.composition
 
-import skillbill.contracts.SharedPayloadKeys
-
 import com.fasterxml.jackson.databind.node.JsonNodeFactory
 import com.fasterxml.jackson.databind.node.ObjectNode
+import skillbill.contracts.SharedPayloadKeys
 import skillbill.infrastructure.fs.nativeagent.rendering.YAML_DOUBLE_QUOTE_ESCAPES
 import java.nio.file.Files
 import java.nio.file.Path

@@ -1,8 +1,7 @@
 package skillbill.engine.goalrunner
 
-import skillbill.contracts.SharedPayloadKeys
-
 import skillbill.application.decomposition.withParentStatus
+import skillbill.contracts.SharedPayloadKeys
 import skillbill.engine.goalrunner.model.GoalRunnerResetSnapshot
 import skillbill.engine.goalrunner.model.GoalRunnerResetSubtaskSnapshot
 import skillbill.goalrunner.model.GoalObservabilityProgressEvent

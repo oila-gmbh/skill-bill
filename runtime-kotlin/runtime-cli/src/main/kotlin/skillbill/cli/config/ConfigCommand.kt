@@ -1,7 +1,5 @@
 package skillbill.cli.config
 
-import skillbill.contracts.SharedPayloadKeys
-
 import com.github.ajalt.clikt.core.subcommands
 import com.github.ajalt.clikt.parameters.options.default
 import com.github.ajalt.clikt.parameters.options.option
@@ -12,6 +10,7 @@ import skillbill.cli.kernel.DocumentedCliCommand
 import skillbill.cli.kernel.DocumentedNoOpCliCommand
 import skillbill.config.model.SpecType
 import skillbill.config.model.parseSpecType
+import skillbill.contracts.SharedPayloadKeys
 import skillbill.error.ShellContentContractException
 import java.nio.file.Path
 

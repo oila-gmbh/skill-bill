@@ -1,8 +1,7 @@
 package skillbill.ports.review.model
 
-import skillbill.contracts.SharedPayloadKeys
-
 import skillbill.boundary.OpenBoundaryMap
+import skillbill.contracts.SharedPayloadKeys
 import skillbill.contracts.review.REVIEW_CONTEXT_CONTRACT_VERSION
 import skillbill.error.InvalidReviewContextSchemaError
 
@@ -35,7 +34,10 @@ private fun requireBoundedAccountingPayload(payload: Map<String, Any?>) {
     payload[key]?.let { require(it is Map<*, *>) { "Review accounting '$key' must be an object when present." } }
   }
   require(
-    payload[SharedPayloadKeys.CONTRACT_VERSION] in setOf(REVIEW_CONTEXT_CONTRACT_VERSION, LEGACY_REVIEW_CONTEXT_CONTRACT_VERSION) &&
+    payload[SharedPayloadKeys.CONTRACT_VERSION] in setOf(
+      REVIEW_CONTEXT_CONTRACT_VERSION,
+      LEGACY_REVIEW_CONTEXT_CONTRACT_VERSION,
+    ) &&
       payload["kind"] == "accounting_summary",
   )
   require(payload["review_id"] is String && payload["packet_digest"] is String)

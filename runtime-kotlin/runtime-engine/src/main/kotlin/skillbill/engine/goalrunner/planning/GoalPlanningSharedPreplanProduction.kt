@@ -1,9 +1,8 @@
 package skillbill.engine.goalrunner.planning
 
-import skillbill.contracts.SharedPayloadKeys
-
 import skillbill.application.decomposition.DECOMPOSITION_MANIFEST_FILENAME
 import skillbill.contracts.JsonCodec
+import skillbill.contracts.SharedPayloadKeys
 import skillbill.engine.goalrunner.model.GoalRunnerRunRequest
 import skillbill.engine.goalrunner.planning.model.GoalPlanningPhaseProduction
 import skillbill.ports.goalrunner.model.GoalPlanningContractProvenance
@@ -64,7 +63,10 @@ fun enrichPreplan(payload: String, packet: Map<String, Any?>): String {
   val produced = JsonCodec.anyToStringAnyMap(root[SharedPayloadKeys.PRODUCED_OUTPUTS])
     ?: error("preplan produced_outputs is not an object")
   return JsonCodec.mapToJsonString(
-    root + (SharedPayloadKeys.PRODUCED_OUTPUTS to (produced + (GoalPlanningSweepConstants.SHARED_CONTEXT_FIELD to packet))),
+    root + (
+      SharedPayloadKeys.PRODUCED_OUTPUTS to
+        (produced + (GoalPlanningSweepConstants.SHARED_CONTEXT_FIELD to packet))
+      ),
   )
 }
 

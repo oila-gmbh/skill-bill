@@ -1,11 +1,10 @@
 package skillbill.mcp.core
 
-import skillbill.contracts.SharedPayloadKeys
-
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import skillbill.SkillBillVersion
 import skillbill.contracts.JsonCodec
+import skillbill.contracts.SharedPayloadKeys
 import skillbill.error.ShellContentContractException
 import skillbill.mcp.shared.McpRuntimeContext
 import skillbill.mcp.shared.McpRuntimeLifecycle

@@ -1,11 +1,5 @@
 package skillbill.cli.goal
 
-import skillbill.contracts.review.ReviewVerificationSignalKeys
-
-import skillbill.contracts.review.ReviewFindingPayloadKeys
-
-import skillbill.contracts.SharedPayloadKeys
-
 import com.github.ajalt.clikt.core.UsageError
 import com.github.ajalt.clikt.parameters.arguments.argument
 import com.github.ajalt.clikt.parameters.options.flag
@@ -21,6 +15,9 @@ import skillbill.cli.kernel.formatOption
 import skillbill.cli.kernel.invokingAgentResolutionHelp
 import skillbill.cli.kernel.requireSupportedOptionalAgentId
 import skillbill.cli.model.CliRunInputs
+import skillbill.contracts.SharedPayloadKeys
+import skillbill.contracts.review.ReviewFindingPayloadKeys
+import skillbill.contracts.review.ReviewVerificationSignalKeys
 import skillbill.engine.featuretask.model.FeatureTaskContinuationCandidate
 import skillbill.engine.goalrunner.GoalPreflightService
 import skillbill.engine.goalrunner.findings.UnaddressedFindingsLedgerService

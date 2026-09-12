@@ -1,7 +1,6 @@
 package skillbill.workflow.engine
 
 import skillbill.contracts.SharedPayloadKeys
-
 import skillbill.workflow.engine.model.WorkflowDefinition
 import skillbill.workflow.engine.model.WorkflowUpdateInput
 

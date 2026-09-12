@@ -1,8 +1,7 @@
 package skillbill.ports.validation.model
 
-import skillbill.contracts.SharedPayloadKeys
-
 import skillbill.boundary.OpenBoundaryMap
+import skillbill.contracts.SharedPayloadKeys
 
 data class RepoValidationReport(
   val issues: List<String>,

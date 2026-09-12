@@ -1,7 +1,5 @@
 package skillbill.cli.workflow
 
-import skillbill.contracts.SharedPayloadKeys
-
 import com.github.ajalt.clikt.core.CliktCommand
 import com.github.ajalt.clikt.core.subcommands
 import com.github.ajalt.clikt.parameters.arguments.argument
@@ -25,6 +23,7 @@ import skillbill.cli.kernel.formatOption
 import skillbill.cli.kernel.toPayload
 import skillbill.cli.model.CliRunInputs
 import skillbill.contracts.JsonCodec
+import skillbill.contracts.SharedPayloadKeys
 import skillbill.ports.workflow.model.FeatureTaskRouteScope
 
 @Inject

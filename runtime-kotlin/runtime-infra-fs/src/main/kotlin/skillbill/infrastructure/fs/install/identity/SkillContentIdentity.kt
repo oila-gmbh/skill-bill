@@ -1,8 +1,7 @@
 package skillbill.infrastructure.fs.install.identity
 
-import skillbill.contracts.SharedPayloadKeys
-
 import skillbill.contracts.JsonCodec
+import skillbill.contracts.SharedPayloadKeys
 import skillbill.error.InvalidSkillContentIdentityError
 import skillbill.error.SkillContentIdentityMismatchError
 import skillbill.infrastructure.fs.scaffold.validation.parseSkillFrontmatter

@@ -1,8 +1,7 @@
 package skillbill.contracts.learning
 
-import skillbill.contracts.SharedPayloadKeys
-
 import skillbill.contracts.JsonPayloadContract
+import skillbill.contracts.SharedPayloadKeys
 
 data class LearningEntryDto(
   val reference: String,

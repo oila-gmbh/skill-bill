@@ -1,10 +1,9 @@
 package skillbill.cli.telemetry
 
-import skillbill.contracts.SharedPayloadKeys
-
 import skillbill.application.telemetry.model.TelemetryMutationResult
 import skillbill.application.telemetry.model.TelemetryStatusResult
 import skillbill.application.telemetry.model.TelemetrySyncStatusResult
+import skillbill.contracts.SharedPayloadKeys
 import skillbill.telemetry.model.TelemetryProxyCapabilities
 import skillbill.telemetry.model.TelemetryRemoteStatsResult
 

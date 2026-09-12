@@ -1,7 +1,6 @@
 package skillbill.infrastructure.sqlite
 
 import skillbill.contracts.SharedPayloadKeys
-
 import skillbill.error.InvalidProducerOutputEvidenceSchemaError
 import skillbill.ports.diagnostics.RejectedOutputDiagnosticRepository
 import skillbill.ports.diagnostics.model.ProducerOutputEvidence

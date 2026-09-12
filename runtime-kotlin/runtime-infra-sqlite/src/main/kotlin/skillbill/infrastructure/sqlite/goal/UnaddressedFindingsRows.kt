@@ -1,11 +1,8 @@
 package skillbill.infrastructure.sqlite.goal
 
-import skillbill.contracts.review.ReviewVerificationSignalKeys
-
-import skillbill.contracts.review.ReviewFindingPayloadKeys
-
 import skillbill.contracts.SharedPayloadKeys
-
+import skillbill.contracts.review.ReviewFindingPayloadKeys
+import skillbill.contracts.review.ReviewVerificationSignalKeys
 import skillbill.goalrunner.model.UnaddressedFinding
 import skillbill.review.model.ReviewClaimVerdict
 import skillbill.review.model.ReviewFindingCitation
@@ -26,7 +23,10 @@ internal fun readUnaddressedFinding(rows: ResultSet): UnaddressedFinding = Unadd
   summary = rows.getString(SharedPayloadKeys.SUMMARY),
   reviewRunId = rows.getString(ReviewVerificationSignalKeys.REVIEW_RUN_ID),
   findingId = rows.getString(ReviewFindingPayloadKeys.FINDING_ID),
-  claimVerdict = rows.getString(ReviewFindingPayloadKeys.CLAIM_VERDICT)?.trim()?.takeIf(String::isNotBlank)?.let(ReviewClaimVerdict::fromWire),
+  claimVerdict = rows.getString(ReviewFindingPayloadKeys.CLAIM_VERDICT)
+    ?.trim()
+    ?.takeIf(String::isNotBlank)
+    ?.let(ReviewClaimVerdict::fromWire),
   scopeDisposition = rows.getString(ReviewFindingPayloadKeys.SCOPE_DISPOSITION)?.trim()?.takeIf(String::isNotBlank)
     ?.let(ReviewScopeDisposition::fromWire),
   citations = ReviewFindingCitation.decodeList(rows.getString(ReviewFindingPayloadKeys.CITATIONS)),

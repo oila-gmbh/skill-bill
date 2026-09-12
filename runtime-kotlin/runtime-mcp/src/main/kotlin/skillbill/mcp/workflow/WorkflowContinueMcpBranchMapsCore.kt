@@ -1,8 +1,7 @@
 package skillbill.mcp.workflow
 
-import skillbill.contracts.SharedPayloadKeys
-
 import skillbill.application.workflow.model.WorkflowContinueResult
+import skillbill.contracts.SharedPayloadKeys
 
 internal fun WorkflowContinueResult.Standard.toStandardMcpMap(): Map<String, Any?> =
   standardMcpContinueMap(view, dbPath, decompositionExtras = emptyMap())

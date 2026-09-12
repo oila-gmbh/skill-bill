@@ -1,8 +1,7 @@
 package skillbill.infrastructure.fs.scaffold.runtime
 
-import skillbill.contracts.SharedPayloadKeys
-
 import skillbill.agentaddon.model.AgentAddonConsumer
+import skillbill.contracts.SharedPayloadKeys
 import skillbill.error.InvalidScaffoldPayloadError
 import skillbill.error.MissingPlatformPackError
 import skillbill.error.UnknownPreShellFamilyError

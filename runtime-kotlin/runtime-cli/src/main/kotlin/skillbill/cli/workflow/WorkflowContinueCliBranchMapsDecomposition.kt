@@ -1,9 +1,8 @@
 package skillbill.cli.workflow
 
-import skillbill.contracts.SharedPayloadKeys
-
 import skillbill.application.workflow.model.GoalContinuationOutcome
 import skillbill.application.workflow.model.WorkflowContinueResult
+import skillbill.contracts.SharedPayloadKeys
 import skillbill.workflow.model.WorkflowContinueStatus
 
 internal fun WorkflowContinueResult.DecompositionStandard.toDecompositionStandardCliMap(): Map<String, Any?> =

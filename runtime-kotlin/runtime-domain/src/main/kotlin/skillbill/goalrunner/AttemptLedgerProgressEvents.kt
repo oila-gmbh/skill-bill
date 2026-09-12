@@ -1,7 +1,6 @@
 package skillbill.goalrunner
 
 import skillbill.contracts.SharedPayloadKeys
-
 import skillbill.goalrunner.model.GoalObservabilityProgressEvent
 import skillbill.goalrunner.model.GoalRunnerProgressEvent
 import skillbill.workflow.goal.model.GoalObservabilityEvent

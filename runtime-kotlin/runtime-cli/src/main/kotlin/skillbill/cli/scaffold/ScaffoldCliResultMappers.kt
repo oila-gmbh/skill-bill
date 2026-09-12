@@ -1,8 +1,7 @@
 package skillbill.cli.scaffold
 
-import skillbill.contracts.SharedPayloadKeys
-
 import skillbill.cli.kernel.CliOutput
+import skillbill.contracts.SharedPayloadKeys
 import skillbill.ports.scaffold.catalog.model.ScaffoldExplainResult
 import skillbill.ports.scaffold.catalog.model.ScaffoldListResult
 import skillbill.ports.scaffold.catalog.model.ScaffoldShowResult

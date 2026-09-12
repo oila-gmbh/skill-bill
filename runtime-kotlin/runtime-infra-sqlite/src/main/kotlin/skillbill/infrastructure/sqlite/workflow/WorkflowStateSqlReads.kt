@@ -1,7 +1,6 @@
 package skillbill.infrastructure.sqlite.workflow
 
 import skillbill.contracts.SharedPayloadKeys
-
 import skillbill.error.InvalidWorkflowStateSchemaError
 import skillbill.ports.workflow.model.FeatureTaskWorkflowMode
 import skillbill.ports.workflow.model.WorkflowStateRecord

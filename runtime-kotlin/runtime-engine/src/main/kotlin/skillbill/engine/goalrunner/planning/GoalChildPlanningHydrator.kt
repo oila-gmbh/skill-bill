@@ -1,8 +1,7 @@
 package skillbill.engine.goalrunner.planning
 
-import skillbill.contracts.SharedPayloadKeys
-
 import skillbill.application.decomposition.decodeArtifacts
+import skillbill.contracts.SharedPayloadKeys
 import skillbill.engine.goalrunner.planning.model.GoalChildPlanningHydration
 import skillbill.engine.planningprojection.requireValidPlanningProjection
 import skillbill.error.IncompatibleGoalPlanningPreparationRecoveryError
@@ -244,7 +243,10 @@ private class PreparedPlanningPayloadValidator(
     val decoded = accepted.normalizedOutput.envelope
     // The projection gate is a no-op on a non-completed envelope, because a blocked or failed producer
     // makes no projection claim. An import, by contrast, only ever admits a settled completed payload.
-    if (decoded[SharedPayloadKeys.PHASE_ID] != phaseId || decoded[SharedPayloadKeys.STATUS].workflowStepStatus() != WorkflowStepStatus.COMPLETED) {
+    if (
+      decoded[SharedPayloadKeys.PHASE_ID] != phaseId ||
+      decoded[SharedPayloadKeys.STATUS].workflowStepStatus() != WorkflowStepStatus.COMPLETED
+    ) {
       invalidPlanningPreparation(
         workflowId,
         "$phaseId.payload",

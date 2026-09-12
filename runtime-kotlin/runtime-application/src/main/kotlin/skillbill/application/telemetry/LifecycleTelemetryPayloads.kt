@@ -1,17 +1,19 @@
 package skillbill.application.telemetry
 
-import skillbill.contracts.SharedPayloadKeys
-
 import skillbill.application.telemetry.model.FeatureVerifyFinishedRequest
 import skillbill.application.telemetry.model.PrDescriptionGeneratedRequest
 import skillbill.application.telemetry.model.QualityCheckFinishedRequest
 import skillbill.boundary.OpenBoundaryMap
+import skillbill.contracts.SharedPayloadKeys
 
 private const val STATUS_OK = "ok"
 private const val STATUS_SKIPPED = "skipped"
 
 @OpenBoundaryMap("Lifecycle telemetry event bag emitted to the MCP/CLI telemetry boundary")
-fun lifecycleOkPayload(sessionId: String): Map<String, Any?> = mapOf(SharedPayloadKeys.STATUS to STATUS_OK, "session_id" to sessionId)
+fun lifecycleOkPayload(sessionId: String): Map<String, Any?> = mapOf(
+  SharedPayloadKeys.STATUS to STATUS_OK,
+  "session_id" to sessionId,
+)
 
 @OpenBoundaryMap("Lifecycle telemetry event bag emitted to the MCP/CLI telemetry boundary")
 fun lifecycleSkippedPayload(sessionId: String): Map<String, Any?> =

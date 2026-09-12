@@ -1,9 +1,8 @@
 package skillbill.contracts.mcp
 
+import skillbill.contracts.JsonPayloadContract
 import skillbill.contracts.SharedPayloadKeys
 import skillbill.contracts.review.ReviewVerificationSignalKeys
-
-import skillbill.contracts.JsonPayloadContract
 
 data class McpReviewImportSkippedContract(
   val reason: String,

@@ -1,6 +1,6 @@
 package skillbill.infrastructure.sqlite.goalrunner
-import skillbill.contracts.issuekey.normalizeRequiredIssueKey
 import skillbill.contracts.SharedPayloadKeys
+import skillbill.contracts.issuekey.normalizeRequiredIssueKey
 import skillbill.error.IncompatibleGoalPlanningPreparationRecoveryError
 import skillbill.goalrunner.GoalRunnerQualityGateSelectionResolver
 import skillbill.infrastructure.sqlite.decomposition.decodeArtifacts

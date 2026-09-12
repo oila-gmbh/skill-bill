@@ -1,7 +1,6 @@
 package skillbill.learnings
 
 import skillbill.contracts.SharedPayloadKeys
-
 import skillbill.learnings.model.LearningEntry
 import skillbill.learnings.model.LearningRecord
 import skillbill.learnings.model.LearningScope

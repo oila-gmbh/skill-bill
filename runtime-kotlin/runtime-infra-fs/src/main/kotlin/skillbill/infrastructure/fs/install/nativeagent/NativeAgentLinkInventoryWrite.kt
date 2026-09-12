@@ -1,7 +1,6 @@
 package skillbill.infrastructure.fs.install.nativeagent
 
 import skillbill.contracts.SharedPayloadKeys
-
 import skillbill.contracts.nativeagent.NATIVE_AGENT_LINK_INVENTORY_CONTRACT_VERSION
 import java.io.IOException
 import java.nio.file.AtomicMoveNotSupportedException
@@ -17,7 +16,8 @@ internal object NativeAgentLinkInventoryWrite {
       journalMissingAncestors(parent, request.beforeMutation)
       Files.createDirectories(parent)
     }
-    val root = request.mapper.createObjectNode().put(SharedPayloadKeys.CONTRACT_VERSION, NATIVE_AGENT_LINK_INVENTORY_CONTRACT_VERSION)
+    val root = request.mapper.createObjectNode()
+      .put(SharedPayloadKeys.CONTRACT_VERSION, NATIVE_AGENT_LINK_INVENTORY_CONTRACT_VERSION)
     val array = root.putArray("entries")
     request.entries.forEach { entry ->
       array.addObject()

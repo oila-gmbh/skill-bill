@@ -1,7 +1,6 @@
 package skillbill.infrastructure.fs.contracts.workflow
 
 import skillbill.contracts.SharedPayloadKeys
-
 import skillbill.error.InvalidDecompositionManifestSchemaError
 import java.math.BigDecimal
 import java.math.BigInteger

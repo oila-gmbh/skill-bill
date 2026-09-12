@@ -1,7 +1,6 @@
 package skillbill.infrastructure.sqlite.workflow
 
 import skillbill.contracts.SharedPayloadKeys
-
 import skillbill.infrastructure.sqlite.telemetry.bind
 import skillbill.ports.featuretask.FeatureTaskRuntimeAuditGenerationRepository
 import skillbill.ports.featuretask.model.FeatureTaskRuntimeAuditGenerationRow

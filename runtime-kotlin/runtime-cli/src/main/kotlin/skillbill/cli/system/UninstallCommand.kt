@@ -1,7 +1,5 @@
 package skillbill.cli.system
 
-import skillbill.contracts.SharedPayloadKeys
-
 import com.github.ajalt.clikt.parameters.options.flag
 import com.github.ajalt.clikt.parameters.options.option
 import me.tatarka.inject.annotations.Inject
@@ -11,6 +9,7 @@ import skillbill.cli.kernel.CliRunState
 import skillbill.cli.kernel.DocumentedCliCommand
 import skillbill.cli.kernel.formatOption
 import skillbill.cli.model.CliRunInputs
+import skillbill.contracts.SharedPayloadKeys
 import skillbill.ports.diagnostics.RuntimeDiagnostics
 import skillbill.ports.install.mcp.InstallMcpRegistrationPort
 import skillbill.ports.install.nativeagent.InstallNativeAgentLinkPort
@@ -42,7 +41,11 @@ class UninstallCommand(
           "Goal workers must preserve the active workflow store; uninstall after the goal completes."
       state.completeText(
         message,
-        mapOf(SharedPayloadKeys.STATUS to "error", "error" to message, "exit_code" to GOAL_CONTINUATION_REFUSAL_EXIT_CODE),
+        mapOf(
+          SharedPayloadKeys.STATUS to "error",
+          "error" to message,
+          "exit_code" to GOAL_CONTINUATION_REFUSAL_EXIT_CODE,
+        ),
         exitCode = GOAL_CONTINUATION_REFUSAL_EXIT_CODE,
       )
       return

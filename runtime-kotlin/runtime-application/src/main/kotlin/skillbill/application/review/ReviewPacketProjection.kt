@@ -1,11 +1,9 @@
 package skillbill.application.review
 
-import skillbill.contracts.review.ReviewFindingPayloadKeys
-
-import skillbill.contracts.SharedPayloadKeys
-
 import skillbill.application.review.model.ReviewContextEnvelope
+import skillbill.contracts.SharedPayloadKeys
 import skillbill.contracts.review.REVIEW_CONTEXT_CONTRACT_VERSION
+import skillbill.contracts.review.ReviewFindingPayloadKeys
 import skillbill.review.context.model.GovernedReviewAdjudicationLaunch
 import skillbill.review.context.model.GovernedReviewIntegrationLaunch
 import skillbill.review.context.model.GovernedReviewLaunch
@@ -174,7 +172,8 @@ internal fun ReviewFindingVerdict.toEnvelope(): Map<String, Any?> = buildMap {
   scopeDisposition?.let { put(ReviewFindingPayloadKeys.SCOPE_DISPOSITION, it.wireValue) }
   if (citations.isNotEmpty()) put(ReviewFindingPayloadKeys.CITATIONS, citations.map { it.toEnvelope() })
   severityAdjustment?.let { adjustment ->
-    put(ReviewFindingPayloadKeys.SEVERITY_ADJUSTMENT,
+    put(
+      ReviewFindingPayloadKeys.SEVERITY_ADJUSTMENT,
       linkedMapOf(
         "direction" to adjustment.direction.wireValue,
         "justification" to adjustment.justification,

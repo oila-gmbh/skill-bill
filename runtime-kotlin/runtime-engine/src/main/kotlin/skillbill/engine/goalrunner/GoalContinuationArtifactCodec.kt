@@ -1,10 +1,9 @@
 package skillbill.engine.goalrunner
 
-import skillbill.contracts.SharedPayloadKeys
-
 import skillbill.application.workflow.model.WorkflowFamily
 import skillbill.boundary.OpenBoundaryMap
 import skillbill.contracts.JsonCodec
+import skillbill.contracts.SharedPayloadKeys
 import skillbill.engine.goalrunner.model.GoalContinuation
 import skillbill.error.InvalidGoalSubtaskReviewStateSchemaError
 import skillbill.error.InvalidWorkflowStateSchemaError

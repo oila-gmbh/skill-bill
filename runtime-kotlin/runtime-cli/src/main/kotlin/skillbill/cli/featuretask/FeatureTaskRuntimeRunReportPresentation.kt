@@ -1,7 +1,6 @@
 package skillbill.cli.featuretask
 
 import skillbill.contracts.SharedPayloadKeys
-
 import skillbill.engine.featuretask.model.FeatureTaskRuntimeRunReport
 import skillbill.engine.featuretask.model.FeatureTaskRuntimeSubtaskOutcome
 import skillbill.workflow.model.DecompositionStatus

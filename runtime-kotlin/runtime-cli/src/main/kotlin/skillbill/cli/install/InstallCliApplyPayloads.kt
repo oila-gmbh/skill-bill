@@ -1,8 +1,7 @@
 package skillbill.cli.install
 
-import skillbill.contracts.SharedPayloadKeys
-
 import skillbill.application.install.InstallService
+import skillbill.contracts.SharedPayloadKeys
 import skillbill.install.model.InstallAgent
 import skillbill.install.model.InstallAgentSkillLinkOutcome
 import skillbill.install.model.InstallAppliedSkill

@@ -1,7 +1,6 @@
 package skillbill.mcp.core
 
 import skillbill.contracts.SharedPayloadKeys
-
 import skillbill.ports.workflow.FeatureTaskExecutionIdentityPolicy
 
 internal val emptyObjectSchema: Map<String, Any?> = McpToolSpec.strictObjectSchema()

@@ -1,8 +1,7 @@
 package skillbill.engine.featuretask
 
-import skillbill.contracts.SharedPayloadKeys
-
 import skillbill.contracts.JsonCodec
+import skillbill.contracts.SharedPayloadKeys
 import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_CONTRACT_VERSION
 import skillbill.engine.featuretask.validation.FeatureTaskRuntimeBuildGateCoordinator
 import skillbill.engine.featuretask.validation.model.ValidationGateAgentRepairLauncher
@@ -78,7 +77,9 @@ object FeatureTaskRuntimeRunLoopValidationGate {
     val accepted = runLoop.outputValidator.validatePhaseOutput(outputText, sourceLabel = run.phaseId)
       .requireAcceptedOutput(run.phaseId)
     val buildReceipt = JsonCodec.anyToStringAnyMap(
-      JsonCodec.anyToStringAnyMap(accepted.normalizedOutput.envelope[SharedPayloadKeys.PRODUCED_OUTPUTS])?.get("build_receipt"),
+      JsonCodec.anyToStringAnyMap(
+        accepted.normalizedOutput.envelope[SharedPayloadKeys.PRODUCED_OUTPUTS],
+      )?.get("build_receipt"),
     )
     runLoop.buildReceiptValidator.validateBuildReceipt(buildReceipt ?: emptyMap(), sourceLabel = run.phaseId)
     accepted

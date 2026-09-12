@@ -1,8 +1,7 @@
 package skillbill.mcp.core
 
-import skillbill.contracts.SharedPayloadKeys
-
 import skillbill.application.review.toReviewFinishedTelemetryPayload
+import skillbill.contracts.SharedPayloadKeys
 import skillbill.contracts.mcp.McpLearningsSkippedContract
 import skillbill.contracts.mcp.McpOrchestratedPayloadContract
 import skillbill.contracts.mcp.McpReviewImportSkippedContract

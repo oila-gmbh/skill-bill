@@ -1,8 +1,7 @@
 package skillbill.goalrunner.model
 
-import skillbill.contracts.SharedPayloadKeys
-
 import skillbill.boundary.OpenBoundaryMap
+import skillbill.contracts.SharedPayloadKeys
 import skillbill.workflow.taskruntime.model.optionalStringField
 import skillbill.workflow.taskruntime.model.optionalStringListField
 import skillbill.workflow.taskruntime.model.requireIntField

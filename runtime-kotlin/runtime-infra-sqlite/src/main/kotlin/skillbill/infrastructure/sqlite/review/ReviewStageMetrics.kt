@@ -1,6 +1,6 @@
 package skillbill.infrastructure.sqlite.review
-import skillbill.infrastructure.sqlite.PARAM_ONE
 import skillbill.contracts.review.ReviewVerificationSignalKeys
+import skillbill.infrastructure.sqlite.PARAM_ONE
 import skillbill.review.context.model.ReviewClaimVerdictAdmission
 import skillbill.review.context.model.ReviewSpecAdjudicationAdmission
 import skillbill.review.model.ReviewClaimVerdict

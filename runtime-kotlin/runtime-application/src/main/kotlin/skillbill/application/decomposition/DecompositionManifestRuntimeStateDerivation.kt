@@ -1,9 +1,8 @@
 package skillbill.application.decomposition
 
-import skillbill.contracts.SharedPayloadKeys
-
 import skillbill.application.decomposition.model.DecompositionManifestRuntimeUpdate
 import skillbill.application.telemetry.normalizedBlockedReason
+import skillbill.contracts.SharedPayloadKeys
 import skillbill.workflow.decomposition.model.CurrentSubtaskIntent
 import skillbill.workflow.decomposition.model.DecompositionExecutionModel
 import skillbill.workflow.decomposition.model.DecompositionManifest
@@ -86,7 +85,8 @@ fun statusFromUpdate(update: DecompositionManifestRuntimeUpdate): String? {
         it[SharedPayloadKeys.STATUS].workflowStepStatus() == WorkflowStepStatus.COMPLETED &&
           it[SharedPayloadKeys.STEP_ID] in completionSteps
       } -> DecompositionStatus.COMPLETE.wireValue
-    update.currentStepId in statusTrackedSteps || stepUpdates.any { it[SharedPayloadKeys.STEP_ID] in statusTrackedSteps } ->
+    update.currentStepId in statusTrackedSteps ||
+      stepUpdates.any { it[SharedPayloadKeys.STEP_ID] in statusTrackedSteps } ->
       DecompositionStatus.IN_PROGRESS.wireValue
     else -> null
   }

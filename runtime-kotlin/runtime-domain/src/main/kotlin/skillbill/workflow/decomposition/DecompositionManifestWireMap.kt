@@ -1,7 +1,6 @@
 package skillbill.workflow.decomposition
 
 import skillbill.contracts.SharedPayloadKeys
-
 import skillbill.workflow.decomposition.model.DecompositionManifest
 import skillbill.workflow.decomposition.model.SpecSource
 

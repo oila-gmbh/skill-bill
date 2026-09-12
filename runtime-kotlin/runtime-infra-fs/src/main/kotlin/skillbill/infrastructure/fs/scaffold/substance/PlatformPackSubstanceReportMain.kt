@@ -1,8 +1,7 @@
 package skillbill.infrastructure.fs.scaffold.substance
 
-import skillbill.contracts.SharedPayloadKeys
-
 import com.fasterxml.jackson.databind.ObjectMapper
+import skillbill.contracts.SharedPayloadKeys
 import java.nio.file.Path
 
 fun main(arguments: Array<String>) {

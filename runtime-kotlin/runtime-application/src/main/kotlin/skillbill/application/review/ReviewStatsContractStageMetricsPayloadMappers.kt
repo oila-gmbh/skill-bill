@@ -1,7 +1,6 @@
 package skillbill.application.review
 
 import skillbill.contracts.review.ReviewFindingPayloadKeys
-
 import skillbill.review.model.ReviewStageMetrics
 import skillbill.review.model.ReviewStageVerdictDistribution
 

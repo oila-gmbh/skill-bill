@@ -1,7 +1,5 @@
 package skillbill.cli.repovalidation
 
-import skillbill.contracts.SharedPayloadKeys
-
 import com.github.ajalt.clikt.parameters.arguments.argument
 import com.github.ajalt.clikt.parameters.arguments.optional
 import com.github.ajalt.clikt.parameters.options.default
@@ -13,6 +11,7 @@ import skillbill.cli.kernel.DocumentedCliCommand
 import skillbill.cli.kernel.formatOption
 import skillbill.cli.model.CliFormat
 import skillbill.cli.model.CliRunInputs
+import skillbill.contracts.SharedPayloadKeys
 import skillbill.ports.validation.RepoValidationGateway
 import java.nio.file.Path
 
@@ -92,7 +91,10 @@ class ValidateReleaseRefCommand(
     if (rawRef == null) {
       state.completeText(
         "No release ref supplied. Pass a tag or set GITHUB_REF_NAME.\n",
-        mapOf(SharedPayloadKeys.STATUS to "failed", "error" to "No release ref supplied. Pass a tag or set GITHUB_REF_NAME."),
+        mapOf(
+          SharedPayloadKeys.STATUS to "failed",
+          "error" to "No release ref supplied. Pass a tag or set GITHUB_REF_NAME.",
+        ),
         exitCode = 1,
       )
       return
