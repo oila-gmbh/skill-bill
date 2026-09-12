@@ -117,9 +117,9 @@ private fun parseCitationToken(raw: String): ReviewFindingCitationsDecode {
         val parsed = lineRaw.toIntOrNull()
         when {
           parsed == null -> diagnostics += ReviewFindingCitationDiagnostic(index, path, lineRaw, "non_numeric_line")
-          parsed < 1 -> diagnostics += ReviewFindingCitationDiagnostic(index, path, lineRaw, "non_positive_line")
+          parsed < 0 -> diagnostics += ReviewFindingCitationDiagnostic(index, path, lineRaw, "non_positive_line")
           else -> try {
-            citations += ReviewFindingCitation(path, parsed)
+            citations += ReviewFindingCitation(path, if (parsed == 0) 1 else parsed)
           } catch (_: IllegalArgumentException) {
             diagnostics += ReviewFindingCitationDiagnostic(index, path, lineRaw, "invalid_path")
           }

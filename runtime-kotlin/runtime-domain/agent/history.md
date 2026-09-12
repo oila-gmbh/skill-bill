@@ -1,5 +1,14 @@
 # Boundary History — runtime-domain
 
+## [2026-09-12] SKILL-340 subtask 1 — File-level citation line normalization
+Areas: runtime-domain/review, runtime-domain/goalrunner/subtaskreview, runtime-application/review
+- Review citation ingestion now coerces zero and other non-positive numeric line values to `1` before constructing `ReviewFindingCitation`; positive lines remain unchanged.
+- Trailing structured citation fields and codec callers preserve repository-relative path validation while retaining per-citation diagnostics for missing, blank, or non-numeric lines.
+- Pattern: normalize recoverable boundary values at ingestion while preserving usable findings and diagnostics for malformed entries. reusable
+- Breaking changes or known limitations: review prompts and path acceptance are unchanged.
+Feature flag: N/A
+Acceptance criteria: 6/6 implemented
+
 ## [2026-09-12] SKILL-333 subtask 1 — isolate malformed citations
 Areas: runtime-domain/review, runtime-application/review, runtime-engine/featuretask, runtime-ports/review, runtime-core/architecture
 - Malformed citation fields are isolated per finding, valid citations remain in the review result, and typed citation diagnostics retain finding or entry identity through review outcomes.

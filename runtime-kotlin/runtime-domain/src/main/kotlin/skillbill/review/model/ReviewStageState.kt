@@ -77,11 +77,13 @@ data class ReviewFindingCitation(
   companion object {
     fun decodeList(raw: String?): List<ReviewFindingCitation> =
       raw.orEmpty().lineSequence().filter { it.isNotBlank() }.map { line ->
-        ReviewFindingCitation(line.substringBefore('\t'), line.substringAfter('\t').toInt())
+        ReviewFindingCitation(line.substringBefore('\t'), normalizeLine(line.substringAfter('\t').toInt()))
       }.toList()
 
     fun encodeList(citations: List<ReviewFindingCitation>): String =
       citations.joinToString("\n", transform = ReviewFindingCitation::encoded)
+
+    private fun normalizeLine(line: Int): Int = if (line == 0) 1 else line
   }
 }
 

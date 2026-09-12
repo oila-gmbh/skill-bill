@@ -571,7 +571,7 @@ class GoalSubtaskReviewSummaryReducerTest {
   }
 
   @Test
-  fun `structured findings preserve valid citations and findings when one citation line is malformed`() {
+  fun `structured findings preserve valid and zero citations with sibling findings`() {
     val output = mapOf(
       "produced_outputs" to mapOf(
         "findings" to listOf(
@@ -597,13 +597,14 @@ class GoalSubtaskReviewSummaryReducerTest {
     val findings = GoalSubtaskReviewSummaryReducer.structuredFindings(output)
     assertEquals(2, findings.size)
     assertEquals(
-      listOf(ReviewFindingCitation("src/Valid.kt", 10)),
+      listOf(
+        ReviewFindingCitation("src/Valid.kt", 10),
+        ReviewFindingCitation("src/Bad.kt", 1),
+      ),
       findings.first().citations,
     )
     val diagnostics = GoalSubtaskReviewStructuredFindingsParse.citationDiagnostics(output)
-    assertEquals(1, diagnostics.size)
-    assertEquals("F-001", diagnostics.single().findingRef)
-    assertEquals("non_positive_line", diagnostics.single().diagnostic.reason)
+    assertTrue(diagnostics.isEmpty())
   }
 
   @Test

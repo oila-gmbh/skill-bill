@@ -274,7 +274,7 @@ class ReviewSpecAdjudicationRunnerTest {
   }
 
   @Test
-  fun `malformed adjudication citation lines are omitted with finding-scoped diagnostics`() {
+  fun `zero adjudication citation lines are coerced without diagnostics`() {
     val stdout =
       """{"scope_disposition":"in_scope","citations":[{"path":"spec.md","line":1},{"path":"spec.md","line":0}]}"""
     val outcome = runAdjudication(
@@ -288,10 +288,11 @@ class ReviewSpecAdjudicationRunnerTest {
       ),
     )
     assertEquals(ReviewScopeDisposition.IN_SCOPE, outcome.verdicts.single().scopeDisposition)
-    assertEquals(listOf("spec.md"), outcome.verdicts.single().citations.map { it.path })
-    assertEquals(1, outcome.citationDiagnostics.size)
-    assertEquals("F-001", outcome.citationDiagnostics.single().findingRef)
-    assertEquals("non_positive_line", outcome.citationDiagnostics.single().diagnostic.reason)
+    assertEquals(
+      listOf(1, 1),
+      outcome.verdicts.single().citations.map { it.line },
+    )
+    assertTrue(outcome.citationDiagnostics.isEmpty())
   }
 
   @Test

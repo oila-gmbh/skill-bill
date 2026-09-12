@@ -74,23 +74,30 @@ object ReviewFindingFieldCodec {
 
   private fun parseCitationLine(raw: Any?): ParsedCitationLine = when (raw) {
     null -> ParsedCitationLine.Rejected(rawLine = null, reason = "missing_line")
-    is Number -> {
-      val value = raw.toInt()
-      if (value >= 1) {
-        ParsedCitationLine.Accepted(value)
-      } else {
-        ParsedCitationLine.Rejected(rawLine = raw.toString(), reason = "non_positive_line")
-      }
-    }
+    is Number -> parseNumericCitationLine(raw)
     is String -> {
       val trimmed = raw.trim()
       val parsed = trimmed.toIntOrNull()
       when {
         parsed == null -> ParsedCitationLine.Rejected(rawLine = trimmed, reason = "non_numeric_line")
+        parsed == 0 -> ParsedCitationLine.Accepted(1)
         parsed < 1 -> ParsedCitationLine.Rejected(rawLine = trimmed, reason = "non_positive_line")
         else -> ParsedCitationLine.Accepted(parsed)
       }
     }
     else -> ParsedCitationLine.Rejected(rawLine = raw.toString(), reason = "non_numeric_line")
+  }
+
+  private fun parseNumericCitationLine(raw: Number): ParsedCitationLine {
+    val value = raw.toDouble()
+    if (!value.isFinite() || value % 1.0 != 0.0 || value < Int.MIN_VALUE || value > Int.MAX_VALUE) {
+      return ParsedCitationLine.Rejected(rawLine = raw.toString(), reason = "non_numeric_line")
+    }
+    val integer = value.toInt()
+    return when {
+      integer == 0 -> ParsedCitationLine.Accepted(1)
+      integer >= 1 -> ParsedCitationLine.Accepted(integer)
+      else -> ParsedCitationLine.Rejected(rawLine = raw.toString(), reason = "non_positive_line")
+    }
   }
 }
