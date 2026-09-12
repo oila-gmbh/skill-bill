@@ -1,6 +1,7 @@
 package skillbill.mcp.core
 
 import skillbill.contracts.SharedPayloadKeys
+import skillbill.workflow.model.WorkflowStepStatus
 
 internal fun stringSchema(
   enum: List<String> = emptyList(),
@@ -27,7 +28,7 @@ internal fun stepUpdateSchema(stepIdEnum: List<String>): Map<String, Any?> = Mcp
   properties = mapOf(
     SharedPayloadKeys.STEP_ID to stringSchema(enum = stepIdEnum),
     SharedPayloadKeys.STATUS to stringSchema(
-      enum = listOf("pending", "running", "completed", "failed", "blocked", "skipped"),
+      enum = WorkflowStepStatus.entries.map(WorkflowStepStatus::wireValue),
     ),
     "attempt_count" to integerSchema,
   ),
