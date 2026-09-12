@@ -105,7 +105,7 @@ class ReviewClaimVerificationRunnerTest {
   }
 
   @Test
-  fun `malformed worker citation lines are omitted while the finding verdict still settles`() {
+  fun `zero worker citation lines are coerced while the finding verdict still settles`() {
     val stdout = """
       {
         "claim_verdict": "refuted",
@@ -124,10 +124,11 @@ class ReviewClaimVerificationRunnerTest {
       ),
     )
     assertEquals(ReviewClaimVerdict.REFUTED, outcome.verdicts.single().claimVerdict)
-    assertEquals(listOf("src/A.kt"), outcome.verdicts.single().citations.map { it.path })
-    assertEquals(1, outcome.citationDiagnostics.size)
-    assertEquals("F-001", outcome.citationDiagnostics.single().findingRef)
-    assertEquals("non_positive_line", outcome.citationDiagnostics.single().diagnostic.reason)
+    assertEquals(
+      listOf(12, 1),
+      outcome.verdicts.single().citations.map { it.line },
+    )
+    assertTrue(outcome.citationDiagnostics.isEmpty())
   }
 
   @Test

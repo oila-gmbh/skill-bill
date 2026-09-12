@@ -13,6 +13,7 @@ import skillbill.engine.goalrunner.model.GoalRunnerAppliedRepair
 import skillbill.engine.goalrunner.model.GoalRunnerChildRepairApplyRequest
 import skillbill.engine.goalrunner.model.GoalRunnerChildRepairApplyResult
 import skillbill.engine.goalrunner.model.GoalRunnerWedgeClass
+import skillbill.engine.goalrunner.model.GoalRunnerWedgeFinding
 import skillbill.goalrunner.derivedTerminalOutcomeFor
 import skillbill.goalrunner.goalContinuationOutcome
 import skillbill.goalrunner.model.GoalRunnerTerminalStatus
@@ -140,6 +141,7 @@ class GoalRunnerChildRepairWedgeApplyLoop(
       UnreachableReviewRepairLookup(
         wedgeClass = wedgeClass,
         wedgeDiagnosis = wedgeDiagnosis,
+        wedgeFinding = state.request.wedgeFindings.firstOrNull { it.wedgeClass == wedgeClass },
         repoRoot = state.request.repoRoot,
         gitOperations = gitOperations,
         review = state.workingReview,
@@ -192,6 +194,7 @@ fun unreachableReviewFailedSha(wedgeClass: GoalRunnerWedgeClass, review: GoalSub
 internal data class UnreachableReviewRepairLookup(
   val wedgeClass: GoalRunnerWedgeClass,
   val wedgeDiagnosis: GoalRunnerChildRepairWedgeDiagnosis,
+  val wedgeFinding: GoalRunnerWedgeFinding?,
   val repoRoot: Path,
   val gitOperations: WorkflowGitOperations,
   val review: GoalSubtaskReviewState?,
@@ -202,7 +205,8 @@ internal fun unreachableReviewRepairContext(lookup: UnreachableReviewRepairLooku
   val wedgeClass = lookup.wedgeClass
   val review = lookup.review
   val continuation = lookup.continuation
-  val failedSha = review?.let { unreachableReviewFailedSha(wedgeClass, it) }
+  val failedSha = lookup.wedgeFinding?.currentValue
+    ?: review?.let { unreachableReviewFailedSha(wedgeClass, it) }
   if (review == null || continuation == null || failedSha == null) return null
   if (!lookup.wedgeDiagnosis.isUnreachable(lookup.repoRoot, failedSha)) return null
   val recovered = lookup.gitOperations.recoverGoalSubtaskReviewBaseline(

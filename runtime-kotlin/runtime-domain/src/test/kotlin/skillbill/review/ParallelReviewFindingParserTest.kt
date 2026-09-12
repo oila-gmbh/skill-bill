@@ -289,17 +289,23 @@ class ParallelReviewFindingParserTest {
   }
 
   @Test
-  fun `trailing citation tokens omit malformed lines with finding-scoped diagnostics`() {
+  fun `trailing citation tokens coerce zero and diagnose malformed lines`() {
     val parsed = ParallelReviewFindingParser.parse(
       "[F-001] Major | High | path=src/A.kt | line=12 | stale check | " +
         "citations=src/Valid.kt:5,src/Bad.kt:0,src/C.kt:abc",
     )
     val finding = parsed.findings.single()
-    assertEquals(listOf(ReviewFindingCitation("src/Valid.kt", 5)), finding.citations)
-    assertEquals(2, parsed.citationDiagnostics.size)
+    assertEquals(
+      listOf(
+        ReviewFindingCitation("src/Valid.kt", 5),
+        ReviewFindingCitation("src/Bad.kt", 1),
+      ),
+      finding.citations,
+    )
+    assertEquals(1, parsed.citationDiagnostics.size)
     assertTrue(parsed.citationDiagnostics.all { it.findingRef == "F-001" })
     assertEquals(
-      listOf("non_positive_line", "non_numeric_line"),
+      listOf("non_numeric_line"),
       parsed.citationDiagnostics.map { it.diagnostic.reason },
     )
   }

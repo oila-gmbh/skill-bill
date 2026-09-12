@@ -140,6 +140,7 @@ internal class WorkflowGoalRunnerChildRepairBridge(
           subtaskId = request.subtaskId,
           wedgeClasses = request.wedgeClasses,
           repoRoot = request.repoRoot,
+          wedgeFindings = request.wedgeFindings,
         ),
       )
     }
